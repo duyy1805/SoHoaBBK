@@ -1,0 +1,31 @@
+POST http://localhost:5001/api/auth/register
+Content-Type: application/json
+
+{
+    "username": "user",
+    "password": "123"
+}
+
+
+### Login
+POST http://localhost:5001/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "123"
+}
+
+###
+POST http://localhost:5001/api/phieu-kiem/phan-bo
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsInVzZXJuYW1lIjoiYWRtaW4iLCJyb2xlcyI6WyJBRE1JTiJdLCJwZXJtaXNzaW9ucyI6WyJEVVlFVF9ZX0tJRU4iLCJLRVRfTFVBTiIsIkxBUF9CSUVOX0JBTiIsIlBIQU5fQk9fS0lFTSIsIlFVQU5fVFJJX0RNIiwiVEhVQ19ISUVOX0tJRU0iLCJUUkFfTE9JX1lfS0lFTiIsIlhBQ19OSEFOX0xPSSIsIlhFTV9CQU9fQ0FPIiwiWElOX1lfS0lFTiJdLCJpYXQiOjE3Njk1MDMyMzQsImV4cCI6MTc2OTUzMjAzNH0.l3MhERrOafb_b8qzc1Lv5UYCxL9e-LfRDhHGOiBnj4s
+Content-Type: application/json
+
+{
+  "loaiKiem": "Đầu vào",
+  "chungLoaiId": 1,
+  "lot": "LOT-001",
+  "doiTuong": "PO-0001",
+  "nguoiKiemId": 2,
+  "thoiGianKiem": "2026-01-27T08:00:00"
+}
