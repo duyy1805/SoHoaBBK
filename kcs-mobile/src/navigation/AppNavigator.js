@@ -2,7 +2,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import LoginScreen from '../screens/LoginScreen';
 import PhieuKiemListScreen from '../screens/PhieuKiemListScreen';
-// import PhieuKiemDetailScreen from '../screens/PhieuKiemDetailScreen';
+import PhieuKiemDetailScreen from '../screens/PhieuKiemDetailScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -20,11 +20,11 @@ export default function AppNavigator() {
                     component={PhieuKiemListScreen}
                     options={{ title: 'Phiếu kiểm' }}
                 />
-                {/* <Stack.Screen
+                <Stack.Screen
                     name="PhieuKiemDetail"
                     component={PhieuKiemDetailScreen}
                     options={{ title: 'Kiểm tra' }}
-                /> */}
+                />
             </Stack.Navigator>
         </NavigationContainer>
     );
