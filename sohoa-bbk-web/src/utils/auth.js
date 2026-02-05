@@ -5,33 +5,42 @@ import axiosClient from '../api/axiosClient';
    ================================ */
 
 export const getToken = () => {
-    return localStorage.getItem('token');
+    // Check both storage locations
+    return localStorage.getItem('token') || sessionStorage.getItem('token');
 };
 
-export const setToken = (token) => {
-    localStorage.setItem('token', token);
+export const setToken = (token, rememberMe = true) => {
+    if (rememberMe) {
+        localStorage.setItem('token', token);
+        sessionStorage.removeItem('token');
+    } else {
+        sessionStorage.setItem('token', token);
+        localStorage.removeItem('token');
+    }
 };
 
 export const removeToken = () => {
     localStorage.removeItem('token');
+    sessionStorage.removeItem('token');
 };
 
 /* ================================
    LOGIN
    ================================ */
 
-export const login = async (username, password) => {
+export const login = async (username, password, rememberMe = true) => {
     const res = await axiosClient.post('/auth/login', {
         username,
         password
     });
 
     if (res.data?.token) {
-        setToken(res.data.token);
+        setToken(res.data.token, rememberMe);
     }
 
     return res.data;
 };
+
 
 /* ================================
    JWT DECODE (không dùng lib)
