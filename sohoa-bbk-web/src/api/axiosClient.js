@@ -21,10 +21,15 @@ axiosClient.interceptors.request.use(
 axiosClient.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error.response?.status === 401) {
+        const status = error.response?.status;
+        const url = error.config?.url;
+
+        // ⭐ chỉ redirect khi KHÔNG phải login
+        if (status === 401 && !url?.includes('/auth/login')) {
             localStorage.removeItem('token');
             window.location.href = '/login';
         }
+
         return Promise.reject(error);
     }
 );

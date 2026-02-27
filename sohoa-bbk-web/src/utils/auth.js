@@ -45,6 +45,13 @@ export const login = async (username, password, rememberMe = true) => {
 /* ================================
    JWT DECODE (không dùng lib)
    ================================ */
+export const isTokenExpired = () => {
+    const decoded = decodeToken();
+    if (!decoded?.exp) return true;
+
+    const now = Date.now() / 1000; // seconds
+    return decoded.exp < now;
+};
 
 export const decodeToken = () => {
     const token = getToken();
@@ -82,7 +89,15 @@ export const getCurrentUser = () => {
    ================================ */
 
 export const isAuthenticated = () => {
-    return !!getToken();
+    const token = getToken();
+    if (!token) return false;
+
+    if (isTokenExpired()) {
+        removeToken();
+        return false;
+    }
+
+    return true;
 };
 
 /* ================================

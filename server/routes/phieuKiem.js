@@ -7,25 +7,214 @@ const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
 
 /* =========================================================
-   POST /phieu-kiem/phan-bo
+   GET /phieu-kiem
+   Role       : TO_TRUONG_KCS / KCS / TP_B8
+   Permission : XEM_PHIEU_KIEM
+========================================================= */
+
+router.get(
+    '/',
+    authenticateToken,
+    authorize('XEM_PHIEU_KIEM'),
+    async (req, res) => {
+        try {
+            const pool = await poolPromise;
+
+            const userId = req.user.id;
+            const role = req.user.role;
+
+            const request = pool.request();
+
+            request.input('UserId', sql.Int, userId);
+            request.input('Role', sql.NVarChar, role);
+
+            const result = await request.execute('sp_PhieuKiem_GetList_ByRole');
+
+            res.json(result.recordset);
+        } catch (err) {
+            console.error('GetPhieuKiem error:', err);
+            res.status(500).json({ message: 'Lỗi tải danh sách phiếu kiểm' });
+        }
+    }
+);
+
+/* =========================================================
+   GET /phieu-kiem/:id
+   Permission : XEM_PHIEU_KIEM
+========================================================= */
+router.get(
+    '/:id',
+    authenticateToken,
+    authorize('XEM_PHIEU_KIEM'),
+    async (req, res) => {
+        const { id } = req.params;
+
+        try {
+            const pool = await poolPromise;
+
+            const result = await pool.request()
+                .input('PhieuKiemId', sql.Int, id)
+                .execute('sp_PhieuKiem_GetDetail');
+
+            const phieu = result.recordsets[0][0] || null;
+            const sections = result.recordsets[1] || [];
+            const checkItems = result.recordsets[2] || [];
+            const defects = result.recordsets[3] || [];
+
+            res.json({
+                phieu,
+                sections,
+                checkItems,
+                defects
+            });
+
+        } catch (err) {
+            console.error('GetDetail error:', err);
+            res.status(500).json({
+                message: 'Lỗi tải chi tiết phiếu kiểm'
+            });
+        }
+    }
+);
+
+/* =========================================================
+   POST /phieu-kiem/create
    Role       : TO_TRUONG_KCS
    Permission : PHAN_BO_KIEM
-   ========================================================= */
+========================================================= */
+
 router.post(
-    '/phan-bo',
+    '/create',
     authenticateToken,
     authorize('PHAN_BO_KIEM'),
     async (req, res) => {
         const {
-            loaiKiem,
-            chungLoaiId,
+            sanPhamId,
+            loaiKiemId,
             lot,
             doiTuong,
-            nguoiKiemId,
-            thoiGianKiem
+            nguoiKiemId
         } = req.body;
 
-        if (!loaiKiem || !chungLoaiId || !nguoiKiemId) {
+        if (!sanPhamId || !loaiKiemId || !nguoiKiemId) {
+            return res.status(400).json({
+                message: 'Thiếu thông tin bắt buộc'
+            });
+        }
+
+        try {
+            const pool = await poolPromise;
+
+            const result = await pool.request()
+                .input('SanPhamId', sql.Int, sanPhamId)
+                .input('LoaiKiemId', sql.Int, loaiKiemId)
+                .input('Lot', sql.NVarChar, lot)
+                .input('DoiTuong', sql.NVarChar, doiTuong)
+                .input('NguoiKiemId', sql.Int, nguoiKiemId)
+                // .input('NguoiTaoId', sql.Int, req.user.userId)
+                .execute('sp_PhieuKiem_Create');
+
+            res.json({
+                success: true,
+                phieuKiemId: result.recordset[0].Id,
+                soPhieu: result.recordset[0].SoPhieu
+            });
+
+        } catch (err) {
+            console.error('CreatePhieuKiem error:', err);
+            res.status(500).json({
+                message: 'Tạo phiếu kiểm thất bại'
+            });
+        }
+    }
+);
+
+/* =========================================================
+   POST /phieu-kiem/section
+   Role       : KCS
+   Permission : THUC_HIEN_KIEM
+========================================================= */
+router.post(
+    '/section',
+    authenticateToken,
+    authorize('PHAN_BO_KIEM'),
+    async (req, res) => {
+        const {
+            phieuKiemId,
+            // nhomKiemId,
+            // tenNhom,
+            lotSize,
+            inspectionLevel
+        } = req.body;
+
+        if (!phieuKiemId || !lotSize || !inspectionLevel) {
+            return res.status(400).json({
+                message: 'Missing required fields'
+            });
+        }
+        console.log('CreateAllSection data:', req.body);
+        try {
+            const pool = await poolPromise;
+
+            const result = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                // .input('NhomKiemId', sql.Int, nhomKiemId)
+                // .input('TenNhom', sql.NVarChar, tenNhom)
+                .input('LotSize', sql.Int, lotSize)
+                .input('InspectionLevel', sql.NVarChar, inspectionLevel)
+                .execute('sp_PhieuKiem_CreateAllSection');
+
+            res.json({
+                success: true,
+                sectionId: result.recordset[0].SectionId
+            });
+
+        } catch (err) {
+            console.error('CreateSection error:', err);
+            res.status(500).json({
+                message: 'Tạo section thất bại'
+            });
+        }
+    }
+);
+
+router.post(
+    '/start',
+    authenticateToken,
+    authorize('PHAN_BO_KIEM'),
+    async (req, res) => {
+        const { phieuKiemId, lotSize, inspectionLevel } = req.body;
+
+        const pool = await poolPromise;
+
+        await pool.request()
+            .input('PhieuKiemId', sql.Int, phieuKiemId)
+            .input('LotSize', sql.Int, lotSize)
+            .input('InspectionLevel', sql.NVarChar, inspectionLevel)
+            .execute('sp_PhieuKiem_CreateAllSection');
+
+        res.json({ success: true });
+    }
+);
+/* =========================================================
+   POST /phieu-kiem/check-item
+   Role       : KCS
+   Permission : THUC_HIEN_KIEM
+========================================================= */
+router.post(
+    '/check-item',
+    authenticateToken,
+    authorize('THUC_HIEN_KIEM'),
+    async (req, res) => {
+        const {
+            checkItemId,
+            ketQua,
+            soLuongLoi,
+            defectId,
+            defectType
+        } = req.body;
+
+        if (!checkItemId || !ketQua) {
             return res.status(400).json({
                 message: 'Missing required fields'
             });
@@ -34,180 +223,97 @@ router.post(
         try {
             const pool = await poolPromise;
 
-            const result = await pool.request()
-                .input('LoaiKiem', sql.NVarChar, loaiKiem)
-                .input('ChungLoaiId', sql.Int, chungLoaiId)
-                .input('Lot', sql.NVarChar, lot)
-                .input('DoiTuong', sql.NVarChar, doiTuong)
-                .input('NguoiKiemId', sql.Int, nguoiKiemId)
-                .input('ThoiGianKiem', sql.DateTime2, thoiGianKiem)
-                .execute('sp_PhieuKiem_PhanBo');
+            await pool.request()
+                .input('CheckItemId', sql.Int, checkItemId)
+                .input('KetQua', sql.NVarChar, ketQua)
+                .input('SoLuongLoi', sql.Int, soLuongLoi || 0)
+                .input('DefectId', sql.Int, defectId || null)
+                .input('DefectType', sql.NVarChar, defectType || null)
+                .execute('sp_PhieuKiem_SaveCheckItem');
 
             res.json({
-                success: true,
-                soPhieu: result.recordset[0].SoPhieu
+                success: true
             });
+
         } catch (err) {
-            console.error('PhanBoKiem error:', err);
+            console.error('SaveCheckItem error:', err);
             res.status(500).json({
-                message: 'Phân bổ kiểm thất bại'
+                message: 'Lưu check item thất bại'
             });
         }
     }
 );
 
-router.get(
-    '/',
-    authenticateToken,
-    async (req, res) => {
-        try {
-            const pool = await poolPromise;
-
-            const { soPhieu } = req.query;
-
-            const result = await pool.request()
-                .input('SoPhieu', sql.NVarChar, soPhieu || null)
-                .execute('sp_PhieuKiem_GetList');
-
-            res.json(result.recordset);
-        } catch (err) {
-            console.error('GetPhieuKiemList error:', err);
-            res.status(500).json({
-                message: 'Không lấy được danh sách phiếu kiểm'
-            });
-        }
-    }
-);
-
-router.get(
-    '/:id',
-    authenticateToken,
-    async (req, res) => {
-        try {
-            const pool = await poolPromise;
-
-            const result = await pool.request()
-                .input('PhieuKiemId', sql.Int, req.params.id)
-                .execute('sp_PhieuKiem_GetDetail');
-
-            if (result.recordset.length === 0) {
-                return res.status(404).json({
-                    message: 'Phiếu kiểm không tồn tại'
-                });
-            }
-
-            res.json(result.recordset[0]);
-        } catch (err) {
-            console.error('GetPhieuKiemDetail error:', err);
-            res.status(500).json({
-                message: 'Không lấy được chi tiết phiếu kiểm'
-            });
-        }
-    }
-);
-
+/* =========================================================
+   POST /phieu-kiem/complete
+   Role       : KCS
+   Permission : THUC_HIEN_KIEM
+========================================================= */
 router.post(
-    '/kq-chi-so',
+    '/complete',
     authenticateToken,
     authorize('THUC_HIEN_KIEM'),
     async (req, res) => {
-        const pool = await poolPromise;
-        await pool.request()
-            .input('PhieuKiemId', sql.Int, req.body.phieuKiemId)
-            .input('ChiSoId', sql.Int, req.body.chiSoId)
-            .input('GiaTri', sql.NVarChar, req.body.giaTri)
-            .input('Dat', sql.Bit, req.body.dat)
-            .execute('sp_KQChiSoKiem_Save');
+        const { phieuKiemId } = req.body;
 
-        res.json({ success: true });
-    }
-);
+        if (!phieuKiemId) {
+            return res.status(400).json({
+                message: 'Missing phieuKiemId'
+            });
+        }
 
-router.get(
-    '/:id/tieu-chi',
-    authenticateToken,
-    async (req, res) => {
         try {
             const pool = await poolPromise;
 
-            const result = await pool.request()
-                .input('PhieuKiemId', sql.Int, req.params.id)
-                .execute('sp_PhieuKiem_GetTieuChiChiSo');
+            await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .execute('sp_PhieuKiem_Complete');
 
-            // Gom dữ liệu theo tiêu chí
-            const map = {};
-
-            result.recordset.forEach(row => {
-                if (!map[row.TieuChiId]) {
-                    map[row.TieuChiId] = {
-                        tieuChiId: row.TieuChiId,
-                        tenTieuChi: row.TenTieuChi,
-                        chiSo: []
-                    };
-                }
-
-                map[row.TieuChiId].chiSo.push({
-                    chiSoId: row.ChiSoId,
-                    tenChiSo: row.TenChiSo,
-                    kieuDuLieu: row.KieuDuLieu,
-                    giaTri: row.GiaTri ?? null,
-                    dat: row.Dat ?? null
-                });
+            res.json({
+                success: true
             });
 
-            res.json(Object.values(map));
         } catch (err) {
-            console.error('GetTieuChiChiSo error:', err);
+            console.error('CompletePhieuKiem error:', err);
             res.status(500).json({
-                message: 'Không lấy được tiêu chí kiểm'
+                message: 'Hoàn tất phiếu kiểm thất bại'
             });
         }
     }
 );
 
-
+/* =========================================================
+   POST /phieu-kiem/ket-luan
+   Permission : KET_LUAN
+========================================================= */
 router.post(
     '/ket-luan',
     authenticateToken,
-    authorize('THUC_HIEN_KIEM'),
+    authorize('KET_LUAN'),
     async (req, res) => {
-        const pool = await poolPromise;
-        await pool.request()
-            .input('PhieuKiemId', sql.Int, req.body.phieuKiemId)
-            .input('KetLuan', sql.NVarChar, req.body.ketLuan)
-            .execute('sp_PhieuKiem_KCS_KetLuan');
+        const { phieuKiemId, ketLuan } = req.body;
 
-        res.json({ success: true });
-    }
-);
+        if (!phieuKiemId || !ketLuan) {
+            return res.status(400).json({
+                message: 'Missing required fields'
+            });
+        }
 
-router.post(
-    '/lap',
-    authenticateToken,
-    authorize('LAP_BIEN_BAN'),
-    async (req, res) => {
         try {
             const pool = await poolPromise;
 
-            const result = await pool.request()
-                .input('PhieuKiemId', sql.Int, req.body.phieuKiemId)
-                .input('LoaiTrachNhiem', sql.NVarChar, req.body.loaiTrachNhiem)
-                .input('MoTaLoi', sql.NVarChar, req.body.moTaLoi)
-                .input('NguoiLapId', sql.Int, req.user.userId)
-                .execute('sp_BienBan_Lap');
+            await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('KetLuan', sql.NVarChar, ketLuan)
+                .execute('sp_PhieuKiem_KetLuan');
 
-            res.json({
-                success: true,
-                soBienBan: result.recordset[0].SoBienBan
-            });
+            res.json({ success: true });
+
         } catch (err) {
-            if (err.message.includes('PHIEU_CHUA_KHONG_DAT')) {
-                return res.status(400).json({ message: 'Phiếu chưa không đạt' });
-            }
-            if (err.message.includes('BIEN_BAN_DA_TON_TAI')) {
-                return res.status(409).json({ message: 'Biên bản đã tồn tại' });
-            }
-            res.status(500).json({ message: 'Lập biên bản thất bại' });
+            console.error('KetLuan error:', err);
+            res.status(500).json({
+                message: 'Kết luận thất bại'
+            });
         }
     }
 );

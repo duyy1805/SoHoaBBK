@@ -1,53 +1,76 @@
-import axiosClient from './axiosClient';
+import axiosClient from "./axiosClient";
 
-/* ================================
-   PHIẾU KIỂM – WEB
-   ================================ */
 
-// Lấy danh sách phiếu kiểm (web)
-export const getPhieuKiemList = (params = {}) => {
-    return axiosClient.get('/phieu-kiem', { params });
+// Lấy danh sách sản phẩm
+export const getSanPhamLookup = () => {
+    return axiosClient.get("/lookup/san-pham");
 };
 
-// Lấy chi tiết phiếu kiểm
+// Lấy danh sách loại kiểm
+export const getLoaiKiemLookup = () => {
+    return axiosClient.get("/lookup/loai-kiem");
+};
+
+// Lấy danh sách KCS
+export const getKCSLookup = () => {
+    return axiosClient.get("/lookup/kcs");
+};
+/* =========================================================
+   DANH SÁCH & CHI TIẾT
+========================================================= */
+
+// Danh sách phiếu kiểm
+export const getPhieuKiemList = (params) => {
+    return axiosClient.get("/phieu-kiem", { params });
+};
+
+// Chi tiết phiếu kiểm
 export const getPhieuKiemDetail = (id) => {
     return axiosClient.get(`/phieu-kiem/${id}`);
 };
 
-// Phân bổ phiếu kiểm (Tổ trưởng)
+export const createPhieuKiem = (data) => {
+    return axiosClient.post("/phieu-kiem/create", data);
+};
+
+/* =========================================================
+   PHÂN BỔ (TO_TRUONG_KCS)
+========================================================= */
+
 export const phanBoPhieuKiem = (data) => {
-    return axiosClient.post('/phieu-kiem/phan-bo', data);
+    return axiosClient.post("/phieu-kiem/phan-bo", data);
 };
 
-/* ================================
-   MOBILE – KIỂM TRA
-   ================================ */
 
-// Lấy tiêu chí + chỉ số theo phiếu kiểm
-export const getTieuChiChiSo = (phieuKiemId) => {
-    return axiosClient.get(`/phieu-kiem/${phieuKiemId}/tieu-chi`);
+/* =========================================================
+   THỰC HIỆN KIỂM (KCS)
+========================================================= */
+
+// Tạo section + load AQL + clone checklist
+export const createAllSection = (data) => {
+    return axiosClient.post("/phieu-kiem/section", data);
 };
 
-// Lưu kết quả 1 chỉ số kiểm
-export const saveKQChiSo = (data) => {
-    /**
-     * data = {
-     *   phieuKiemId,
-     *   chiSoId,
-     *   giaTri,
-     *   dat
-     * }
-     */
-    return axiosClient.post('/phieu-kiem/kq-chi-so', data);
+// Lưu kết quả check item
+export const saveCheckItem = (data) => {
+    return axiosClient.post("/phieu-kiem/check-item", data);
 };
 
-// KCS kết luận phiếu kiểm
+// Tính AQL
+export const calculateAQL = (sectionId) => {
+    return axiosClient.post("/phieu-kiem/calculate-aql", { sectionId });
+};
+
+// Hoàn tất phiếu kiểm
+export const completePhieuKiem = (phieuKiemId) => {
+    return axiosClient.post("/phieu-kiem/complete", { phieuKiemId });
+};
+
+
+/* =========================================================
+   KẾT LUẬN (TP_B8 / LANH_DAO)
+========================================================= */
+
 export const ketLuanPhieuKiem = (data) => {
-    /**
-     * data = {
-     *   phieuKiemId,
-     *   ketLuan: 'Đạt' | 'Không đạt'
-     * }
-     */
-    return axiosClient.post('/phieu-kiem/ket-luan', data);
+    return axiosClient.post("/phieu-kiem/ket-luan", data);
 };
