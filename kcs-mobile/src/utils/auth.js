@@ -1,48 +1,18 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// src/utils/auth.js
 
-const TOKEN_KEY = 'token';
-const REMEMBERED_USERNAME_KEY = 'rememberedUsername';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-/* ================================
-   TOKEN STORAGE
-   ================================ */
-
-export const saveToken = async (token) => {
-    await AsyncStorage.setItem(TOKEN_KEY, token);
+export const saveAuth = async (data) => {
+    await AsyncStorage.setItem("token", data.token);
+    await AsyncStorage.setItem("user", JSON.stringify(data.user));
 };
 
-export const getToken = async () => {
-    return AsyncStorage.getItem(TOKEN_KEY);
+export const getUser = async () => {
+    const user = await AsyncStorage.getItem("user");
+    return user ? JSON.parse(user) : null;
 };
-
-export const removeToken = async () => {
-    await AsyncStorage.removeItem(TOKEN_KEY);
-};
-
-/* ================================
-   REMEMBER ME (Username + Password)
-   ================================ */
-
-export const saveRememberedCredentials = async (username, password) => {
-    await AsyncStorage.setItem(REMEMBERED_USERNAME_KEY, username);
-    await AsyncStorage.setItem('rememberedPassword', password);
-};
-
-export const getRememberedCredentials = async () => {
-    const username = await AsyncStorage.getItem(REMEMBERED_USERNAME_KEY);
-    const password = await AsyncStorage.getItem('rememberedPassword');
-    return { username, password };
-};
-
-export const removeRememberedCredentials = async () => {
-    await AsyncStorage.removeItem(REMEMBERED_USERNAME_KEY);
-    await AsyncStorage.removeItem('rememberedPassword');
-};
-
-/* ================================
-   LOGOUT
-   ================================ */
 
 export const logout = async () => {
-    await AsyncStorage.removeItem(TOKEN_KEY);
+    await AsyncStorage.removeItem("token");
+    await AsyncStorage.removeItem("user");
 };

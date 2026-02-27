@@ -38,6 +38,27 @@ router.get(
     }
 );
 
+router.get(
+    '/my',
+    authenticateToken,
+    authorize('THUC_HIEN_KIEM'),
+    async (req, res) => {
+        try {
+            const pool = await poolPromise;
+
+            const result = await pool.request()
+                .input('NguoiKiemId', sql.Int, req.user.userId)
+                .execute('SP_PhieuKiem_My'); // 👈 gọi stored
+
+            res.json(result.recordset);
+
+        } catch (error) {
+            console.error('API /my error:', error);
+            res.status(500).json({ message: 'Internal Server Error' });
+        }
+    }
+);
+
 /* =========================================================
    GET /phieu-kiem/:id
    Permission : XEM_PHIEU_KIEM
@@ -202,44 +223,26 @@ router.post(
    Permission : THUC_HIEN_KIEM
 ========================================================= */
 router.post(
-    '/check-item',
+    "/check-item",
     authenticateToken,
-    authorize('THUC_HIEN_KIEM'),
+    authorize("THUC_HIEN_KIEM"),
     async (req, res) => {
-        const {
-            checkItemId,
-            ketQua,
-            soLuongLoi,
-            defectId,
-            defectType
-        } = req.body;
-
-        if (!checkItemId || !ketQua) {
-            return res.status(400).json({
-                message: 'Missing required fields'
-            });
-        }
+        const { checkItemId, ketQua, soLuongLoi, defectId } = req.body;
 
         try {
             const pool = await poolPromise;
 
             await pool.request()
-                .input('CheckItemId', sql.Int, checkItemId)
-                .input('KetQua', sql.NVarChar, ketQua)
-                .input('SoLuongLoi', sql.Int, soLuongLoi || 0)
-                .input('DefectId', sql.Int, defectId || null)
-                .input('DefectType', sql.NVarChar, defectType || null)
-                .execute('sp_PhieuKiem_SaveCheckItem');
+                .input("CheckItemId", sql.Int, checkItemId)
+                .input("KetQua", sql.NVarChar, ketQua)
+                .input("SoLuongLoi", sql.Int, soLuongLoi)
+                .input("DefectId", sql.Int, defectId)
+                .execute("sp_PhieuKiem_SaveCheckItem");
 
-            res.json({
-                success: true
-            });
-
+            res.json({ success: true });
         } catch (err) {
-            console.error('SaveCheckItem error:', err);
-            res.status(500).json({
-                message: 'Lưu check item thất bại'
-            });
+            console.error(err);
+            res.status(500).json({ message: "Lưu thất bại" });
         }
     }
 );

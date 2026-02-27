@@ -308,7 +308,7 @@ export default function PhieuKiemList() {
                         <TableBody>
                             {filteredData.map((row, index) => (
                                 <TableRow
-                                    key={row.Id}
+                                    key={row.Id + index}
                                     hover
                                     sx={{
                                         transition: 'all 0.2s',

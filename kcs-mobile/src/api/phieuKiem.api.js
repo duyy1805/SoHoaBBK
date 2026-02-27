@@ -1,74 +1,47 @@
-import axiosClient from './axiosClient';
+// src/api/phieuKiem.api.js
+
+import axiosClient from "./axiosClient";
 
 /* ================================
-   AUTH
-   ================================ */
+   Lấy danh sách phiếu của KCS
+================================ */
 
-// Login
-export const login = (data) => {
-    return axiosClient.post('/auth/login', data);
-};
-
-/* ================================
-   PHIẾU KIỂM – MOBILE
-   ================================ */
-
-/**
- * Lấy danh sách phiếu kiểm được phân cho KCS đang đăng nhập
- * API backend đề xuất:
- *   GET /phieu-kiem/my
- */
 export const getMyPhieuKiem = () => {
-    return axiosClient.get('/phieu-kiem/');
+    return axiosClient.get("/phieu-kiem/my");
 };
 
-/**
- * Lấy thông tin chung phiếu kiểm
- * Dùng cho header màn hình kiểm
- *   GET /phieu-kiem/:id
- */
+/* ================================
+   Lấy chi tiết phiếu
+================================ */
+
 export const getPhieuKiemDetail = (id) => {
     return axiosClient.get(`/phieu-kiem/${id}`);
 };
 
-/**
- * Lấy tiêu chí + chỉ số + kết quả kiểm (nếu có)
- * Dùng cho màn hình kiểm
- *   GET /phieu-kiem/:id/tieu-chi
- */
-export const getTieuChiChiSo = (phieuKiemId) => {
-    return axiosClient.get(`/phieu-kiem/${phieuKiemId}/tieu-chi`);
+/* ================================
+   Lưu kết quả 1 mục kiểm
+================================ */
+
+export const saveCheckItem = (data) => {
+    /*
+      data = {
+        checkItemId,
+        ketQua,        // DAT | KHONG_DAT
+        soLuongLoi,
+        defects: [
+          { defectType, soLuong }
+        ]
+      }
+    */
+    return axiosClient.post("/phieu-kiem/check-item", data);
 };
 
-/**
- * Lưu kết quả kiểm từng chỉ số (LƯU TẠM)
- * API backend đề xuất:
- *   POST /phieu-kiem/chi-so-ket-qua
- */
-export const saveChiSoKetQua = (data) => {
-    /**
-     * data = {
-     *   phieuKiemId,
-     *   chiSoId,
-     *   giaTri,
-     *   dat
-     * }
-     */
-    return axiosClient.post('/phieu-kiem/chi-so-ket-qua', data);
-};
+/* ================================
+   Complete phiếu
+================================ */
 
-/**
- * Hoàn thành kiểm tra
- * (KCS kết luận đạt / không đạt)
- * API backend:
- *   POST /phieu-kiem/ket-luan
- */
-export const ketLuanPhieuKiem = (data) => {
-    /**
-     * data = {
-     *   phieuKiemId,
-     *   ketLuan: 'Đạt' | 'Không đạt'
-     * }
-     */
-    return axiosClient.post('/phieu-kiem/ket-luan', data);
+export const completePhieuKiem = (phieuKiemId) => {
+    return axiosClient.post("/phieu-kiem/complete", {
+        phieuKiemId
+    });
 };

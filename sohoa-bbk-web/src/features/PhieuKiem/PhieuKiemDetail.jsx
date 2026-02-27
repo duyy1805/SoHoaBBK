@@ -36,7 +36,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
     getPhieuKiemDetail,
     getTieuChiChiSo,
-    ketLuanPhieuKiem
+    // ketLuanPhieuKiem
 } from '../../api/phieuKiem.api';
 
 export default function PhieuKiemDetail() {
@@ -46,7 +46,7 @@ export default function PhieuKiemDetail() {
     const [info, setInfo] = useState(null);
     const [tieuChi, setTieuChi] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [submitting, setSubmitting] = useState(false);
+    // const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
         loadData();
@@ -58,6 +58,7 @@ export default function PhieuKiemDetail() {
                 getPhieuKiemDetail(id),
                 getTieuChiChiSo(id)
             ]);
+            console.log(detailRes.data)
             setInfo(detailRes.data);
             setTieuChi(tcRes.data);
         } catch (err) {
@@ -66,19 +67,19 @@ export default function PhieuKiemDetail() {
             setLoading(false);
         }
     };
-
-    const handleKetLuan = async (ketLuan) => {
-        setSubmitting(true);
-        try {
-            await ketLuanPhieuKiem({
-                phieuKiemId: id,
-                ketLuan
-            });
-            loadData();
-        } finally {
-            setSubmitting(false);
-        }
-    };
+    console.log("duy")
+    // const handleKetLuan = async (ketLuan) => {
+    //     setSubmitting(true);
+    //     try {
+    //         await ketLuanPhieuKiem({
+    //             phieuKiemId: id,
+    //             ketLuan
+    //         });
+    //         loadData();
+    //     } finally {
+    //         setSubmitting(false);
+    //     }
+    // };
 
     if (loading) {
         return (
@@ -423,7 +424,7 @@ export default function PhieuKiemDetail() {
                 ))}
 
                 {/* Actions */}
-                {!info?.KetLuan && (
+                {/* {!info?.KetLuan && (
                     <Card
                         sx={{
                             mt: 4,
@@ -475,7 +476,7 @@ export default function PhieuKiemDetail() {
                             </Button>
                         </Stack>
                     </Card>
-                )}
+                )} */}
 
                 {info?.KetLuan === 'Không đạt' && (
                     <Button

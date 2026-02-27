@@ -29,7 +29,7 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
 import {
     getPhieuKiemDetail,
-    ketLuanPhieuKiem,
+    // ketLuanPhieuKiem,
     createAllSection
 } from "../../../api/phieuKiem.api";
 import { hasPermission } from "../../../utils/auth";
@@ -57,6 +57,7 @@ export default function PhieuKiemDetail() {
         try {
             const res = await getPhieuKiemDetail(id);
             setPhieu(res.data.phieu);
+            console.log(res.data.phieu)
             setSections(res.data.sections);
             setCheckItems(res.data.checkItems);
             setDefects(res.data.defects);
@@ -87,13 +88,13 @@ export default function PhieuKiemDetail() {
         }
     };
 
-    const handleKetLuan = async (ketLuan) => {
-        await ketLuanPhieuKiem({
-            phieuKiemId: id,
-            ketLuan
-        });
-        loadData();
-    };
+    // const handleKetLuan = async (ketLuan) => {
+    //     await ketLuanPhieuKiem({
+    //         phieuKiemId: id,
+    //         ketLuan
+    //     });
+    //     loadData();
+    // };
 
     if (loading) {
         return (
@@ -132,22 +133,42 @@ export default function PhieuKiemDetail() {
                 <Card sx={{ mb: 4, borderRadius: 3 }}>
                     <CardContent>
                         <Grid container spacing={3}>
-                            <Grid size={{ xs: 6 }}>
+                            <Grid size={{ xs: 3 }}>
                                 <Typography variant="subtitle2">Số phiếu</Typography>
                                 <Typography fontWeight={600}>{phieu?.SoPhieu}</Typography>
                             </Grid>
 
-                            <Grid size={{ xs: 6 }}>
+                            <Grid size={{ xs: 3 }}>
+                                <Typography variant="subtitle2">Tên sản phẩm</Typography>
+                                <Typography fontWeight={600}>{phieu?.TenSanPham}</Typography>
+                            </Grid>
+
+                            <Grid size={{ xs: 3 }}>
+                                <Typography variant="subtitle2">Itemcode</Typography>
+                                <Typography fontWeight={600}>{phieu?.MaSanPham}</Typography>
+                            </Grid>
+
+                            <Grid size={{ xs: 3 }}>
                                 <Typography variant="subtitle2">LOT</Typography>
                                 <Typography fontWeight={600}>{phieu?.Lot}</Typography>
                             </Grid>
 
-                            <Grid size={{ xs: 6 }}>
+                            <Grid size={{ xs: 3 }}>
+                                <Typography variant="subtitle2">Số lượng kế hoạch</Typography>
+                                <Typography fontWeight={600}>{phieu?.SoLuong}</Typography>
+                            </Grid>
+
+                            <Grid size={{ xs: 3 }}>
+                                <Typography variant="subtitle2">Số lượng kiểm (AQL)</Typography>
+                                <Typography fontWeight={600}>{phieu?.SoLuongKiem}</Typography>
+                            </Grid>
+
+                            <Grid size={{ xs: 3 }}>
                                 <Typography variant="subtitle2">Người kiểm</Typography>
                                 <Typography fontWeight={600}>{phieu?.TenNguoiKiem}</Typography>
                             </Grid>
 
-                            <Grid size={{ xs: 6 }}>
+                            <Grid size={{ xs: 3 }}>
                                 <Typography variant="subtitle2">Kết luận</Typography>
                                 {renderKetLuanChip(phieu?.KetLuan)}
                             </Grid>
@@ -332,7 +353,7 @@ export default function PhieuKiemDetail() {
                 })}
 
                 {/* KẾT LUẬN */}
-                {phieu?.TrangThai === "HOAN_TAT" &&
+                {/* {phieu?.TrangThai === "HOAN_TAT" &&
                     hasPermission("KET_LUAN") && (
                         <Stack direction="row" spacing={2} sx={{ mt: 4 }}>
                             <Button
@@ -351,7 +372,7 @@ export default function PhieuKiemDetail() {
                                 Kết luận Không đạt
                             </Button>
                         </Stack>
-                    )}
+                    )} */}
             </Box>
         </Fade>
     );

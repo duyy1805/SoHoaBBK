@@ -1,13 +1,24 @@
-import { StatusBar } from 'expo-status-bar';
-import { Provider as PaperProvider } from 'react-native-paper';
-import AppNavigator from './src/navigation/AppNavigator';
-import theme from './src/theme/theme';
+import { useEffect, useState } from "react";
+import { NavigationContainer } from "@react-navigation/native";
+import AppNavigator from "./src/navigation/AppNavigator";
+import { getUser } from "./src/utils/auth";
 
 export default function App() {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      await getUser();
+      setReady(true);
+    };
+    checkAuth();
+  }, []);
+
+  if (!ready) return null;
+
   return (
-    <PaperProvider theme={theme}>
-      <StatusBar style="dark" />
+    <NavigationContainer>
       <AppNavigator />
-    </PaperProvider>
+    </NavigationContainer>
   );
 }
