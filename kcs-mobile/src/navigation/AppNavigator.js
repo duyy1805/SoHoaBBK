@@ -1,13 +1,15 @@
-// src/navigation/AppNavigator.jsx
-
 import { useEffect, useState } from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import LoginScreen from "../screens/LoginScreen";
+import HomeScreen, { homeHeaderOptions } from "../screens/HomeScreen";
 import PhieuListScreen from "../screens/PhieuListScreen";
 import PhieuDetailScreen from "../screens/PhieuDetailScreen";
 import CheckItemScreen from "../screens/CheckItemScreen";
+
+// (Sau này thêm BienBanListScreen)
+// import BienBanListScreen from "../screens/BienBanListScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -29,12 +31,10 @@ export default function AppNavigator() {
 
     return (
         <Stack.Navigator
-            initialRouteName={isLoggedIn ? "PhieuList" : "Login"}
+            initialRouteName={isLoggedIn ? "Home" : "Login"}
             screenOptions={{
-                headerShown: true,
                 headerBackTitleVisible: false,
-                headerBackTitle: "",
-                headerBackButtonDisplayMode: "minimal", // 👈 QUAN TRỌNG
+                headerBackButtonDisplayMode: "minimal",
                 headerTitleAlign: "center"
             }}
         >
@@ -45,9 +45,15 @@ export default function AppNavigator() {
             />
 
             <Stack.Screen
+                name="Home"
+                component={HomeScreen}
+                options={{ headerShown: false }}
+            />
+
+            <Stack.Screen
                 name="PhieuList"
                 component={PhieuListScreen}
-                options={{ title: "Phiếu kiểm của tôi" }}
+                options={{ title: "Phiếu kiểm" }}
             />
 
             <Stack.Screen
@@ -61,6 +67,12 @@ export default function AppNavigator() {
                 component={CheckItemScreen}
                 options={{ title: "Kiểm tra mục" }}
             />
+
+            {/* <Stack.Screen
+                name="BienBanList"
+                component={BienBanListScreen}
+                options={{ title: "Biên bản kiểm" }}
+            /> */}
         </Stack.Navigator>
     );
 }

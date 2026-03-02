@@ -352,27 +352,6 @@ export default function PhieuKiemDetail() {
                     );
                 })}
 
-                {/* KẾT LUẬN */}
-                {/* {phieu?.TrangThai === "HOAN_TAT" &&
-                    hasPermission("KET_LUAN") && (
-                        <Stack direction="row" spacing={2} sx={{ mt: 4 }}>
-                            <Button
-                                variant="contained"
-                                color="success"
-                                onClick={() => handleKetLuan("DAT")}
-                            >
-                                Kết luận Đạt
-                            </Button>
-
-                            <Button
-                                variant="contained"
-                                color="error"
-                                onClick={() => handleKetLuan("KHONG_DAT")}
-                            >
-                                Kết luận Không đạt
-                            </Button>
-                        </Stack>
-                    )} */}
             </Box>
         </Fade>
     );

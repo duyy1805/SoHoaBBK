@@ -7,7 +7,7 @@ import axiosClient from "./axiosClient";
 ================================ */
 
 export const getMyPhieuKiem = () => {
-    return axiosClient.get("/phieu-kiem/my");
+  return axiosClient.get("/phieu-kiem/my");
 };
 
 /* ================================
@@ -15,33 +15,30 @@ export const getMyPhieuKiem = () => {
 ================================ */
 
 export const getPhieuKiemDetail = (id) => {
-    return axiosClient.get(`/phieu-kiem/${id}`);
+  return axiosClient.get(`/phieu-kiem/${id}`);
 };
 
-/* ================================
-   Lưu kết quả 1 mục kiểm
-================================ */
+export const getDefectList = (defectType = null) => {
+  return axiosClient.get("/lookup/defect-list", {
+    params: defectType
+      ? { defectType }
+      : {}
+  });
+};
 
 export const saveCheckItem = (data) => {
-    /*
-      data = {
-        checkItemId,
-        ketQua,        // DAT | KHONG_DAT
-        soLuongLoi,
-        defects: [
-          { defectType, soLuong }
-        ]
-      }
-    */
-    return axiosClient.post("/phieu-kiem/check-item", data);
+  return axiosClient.post("/phieu-kiem/check-item", data);
 };
 
+export const calculateAQL = (sectionId) => {
+  return axiosClient.post("phieu-kiem/calculate-aql", { sectionId });
+};
 /* ================================
    Complete phiếu
 ================================ */
 
 export const completePhieuKiem = (phieuKiemId) => {
-    return axiosClient.post("/phieu-kiem/complete", {
-        phieuKiemId
-    });
+  return axiosClient.post("/phieu-kiem/complete", {
+    phieuKiemId
+  });
 };

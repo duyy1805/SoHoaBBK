@@ -247,6 +247,27 @@ router.post(
     }
 );
 
+router.post(
+    "/calculate-aql",
+    authenticateToken,
+    authorize("THUC_HIEN_KIEM"),
+    async (req, res) => {
+        const { sectionId } = req.body;
+
+        try {
+            const pool = await poolPromise;
+
+            await pool.request()
+                .input("SectionId", sql.Int, sectionId)
+                .execute("sp_PhieuKiem_CalculateAQL");
+
+            res.json({ success: true });
+        } catch (err) {
+            console.error(err);
+            res.status(500).json({ message: "Tính AQL thất bại" });
+        }
+    }
+);
 /* =========================================================
    POST /phieu-kiem/complete
    Role       : KCS
@@ -285,10 +306,7 @@ router.post(
     }
 );
 
-/* =========================================================
-   POST /phieu-kiem/ket-luan
-   Permission : KET_LUAN
-========================================================= */
+
 router.post(
     '/ket-luan',
     authenticateToken,

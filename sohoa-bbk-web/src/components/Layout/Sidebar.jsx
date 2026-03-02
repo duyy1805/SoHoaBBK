@@ -5,54 +5,51 @@ import {
     ListItemIcon,
     ListItemText,
     Toolbar,
-    Divider,
     Box,
     Typography,
-    alpha
+    Tooltip
 } from '@mui/material';
+import DashboardIcon from '@mui/icons-material/Dashboard';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import DescriptionIcon from '@mui/icons-material/Description';
-import DashboardIcon from '@mui/icons-material/Dashboard';
 import FactoryIcon from '@mui/icons-material/Factory';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { hasPermission } from '../../utils/auth';
 
-export default function Sidebar({ drawerWidth, mobileOpen, onClose }) {
+export default function Sidebar({
+    collapsed,
+    drawerWidth,
+    collapsedWidth,
+    mobileOpen,
+    onMobileClose
+}) {
     const location = useLocation();
     const navigate = useNavigate();
 
     const menus = [
-        {
-            label: 'Dashboard',
-            icon: <DashboardIcon />,
-            path: '/dashboard',
-            permission: 'XEM_BAO_CAO'
-        },
-        {
-            label: 'Phiếu kiểm',
-            icon: <AssignmentIcon />,
-            path: '/phieu-kiem',
-            permission: 'THUC_HIEN_KIEM'
-        },
-        {
-            label: 'Biên bản',
-            icon: <DescriptionIcon />,
-            path: '/bien-ban',
-            permission: 'LAP_BIEN_BAN'
-        }
+        { label: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
+        { label: 'Phiếu kiểm', icon: <AssignmentIcon />, path: '/phieu-kiem' },
+        { label: 'Biên bản', icon: <DescriptionIcon />, path: '/bien-ban' },
+        { label: 'Danh mục', icon: <FactoryIcon />, path: '/danh-muc' }
     ];
 
-    const content = (
-        <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            {/* Logo Area */}
+    const renderContent = () => (
+        <Box
+            sx={{
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column'
+            }}
+        >
+            {/* ================= LOGO AREA ================= */}
             <Toolbar
                 sx={{
-                    py: 3,
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 1.5,
-                    borderBottom: '1px solid',
-                    borderColor: 'divider'
+                    justifyContent: collapsed ? 'center' : 'flex-start',
+                    gap: collapsed ? 0 : 1.5,
+                    px: collapsed ? 0 : 2,
+                    minHeight: 72,
+                    transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)'
                 }}
             >
                 <Box
@@ -60,170 +57,195 @@ export default function Sidebar({ drawerWidth, mobileOpen, onClose }) {
                         width: 44,
                         height: 44,
                         borderRadius: 2,
-                        background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                        background:
+                            'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+                        boxShadow:
+                            '0 4px 12px rgba(99, 102, 241, 0.3)',
+                        flexShrink: 0,
+                        cursor: 'pointer'
                     }}
+                    onClick={() => navigate('/dashboard')}
                 >
-                    <FactoryIcon sx={{ color: 'white', fontSize: 24 }} />
+                    <FactoryIcon sx={{ color: '#fff', fontSize: 22 }} />
                 </Box>
-                <Box>
-                    <Typography
-                        variant="h6"
+
+                {!collapsed && (
+                    <Box
                         sx={{
-                            fontWeight: 700,
-                            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-                            backgroundClip: 'text',
-                            WebkitBackgroundClip: 'text',
-                            WebkitTextFillColor: 'transparent',
-                            lineHeight: 1.2
+                            overflow: 'hidden',
+                            whiteSpace: 'nowrap',
+                            transition: 'opacity 0.2s ease'
                         }}
                     >
-                        SoHoa BBK
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                        Hệ thống KCS
-                    </Typography>
-                </Box>
+                        <Typography
+                            variant="h6"
+                            sx={{
+                                fontWeight: 700,
+                                background:
+                                    'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                                backgroundClip: 'text',
+                                WebkitBackgroundClip: 'text',
+                                WebkitTextFillColor: 'transparent',
+                                lineHeight: 1.2
+                            }}
+                        >
+                            Số hoá BBK
+                        </Typography>
+
+                        <Typography
+                            variant="caption"
+                            color="text.secondary"
+                        >
+                            Hệ thống KCS
+                        </Typography>
+                    </Box>
+                )}
             </Toolbar>
 
-            {/* Navigation Menu */}
-            <Box sx={{ flex: 1, py: 2, px: 1.5 }}>
-                <Typography
-                    variant="overline"
-                    sx={{
-                        px: 2,
-                        py: 1,
-                        display: 'block',
-                        color: 'text.secondary',
-                        fontWeight: 600,
-                        letterSpacing: 1
-                    }}
-                >
-                    Menu chính
-                </Typography>
+            {/* ================= MENU ================= */}
+            <Box sx={{ flex: 1, px: 1 }}>
+                <List sx={{ py: 1 }}>
+                    {menus.map(m => {
+                        const selected =
+                            location.pathname === m.path ||
+                            location.pathname.startsWith(m.path + '/');
 
-                <List sx={{ py: 0 }}>
-                    {menus
-                        .filter(m => hasPermission(m.permission))
-                        .map(m => {
-                            const isSelected = location.pathname.startsWith(m.path);
-
-                            return (
-                                <ListItemButton
-                                    key={m.path}
-                                    selected={isSelected}
-                                    onClick={() => navigate(m.path)}
-                                    sx={{
-                                        borderRadius: 2,
-                                        mb: 0.5,
-                                        py: 1.2,
-                                        transition: 'all 0.2s ease',
-                                        '&:hover': {
-                                            bgcolor: alpha('#6366f1', 0.08),
-                                            '& .MuiListItemIcon-root': {
-                                                color: '#6366f1'
-                                            }
-                                        },
-                                        '&.Mui-selected': {
-                                            bgcolor: alpha('#6366f1', 0.12),
-                                            '&:hover': {
-                                                bgcolor: alpha('#6366f1', 0.16)
-                                            },
-                                            '& .MuiListItemIcon-root': {
-                                                color: '#6366f1'
-                                            },
-                                            '& .MuiListItemText-primary': {
-                                                color: '#6366f1',
-                                                fontWeight: 600
-                                            }
-                                        }
-                                    }}
-                                >
-                                    <ListItemIcon
+                        const item = (
+                            <ListItemButton
+                                onClick={() => navigate(m.path)}
+                                selected={selected}
+                                sx={{
+                                    borderRadius: 2,
+                                    mb: 0.5,
+                                    justifyContent: collapsed
+                                        ? 'center'
+                                        : 'flex-start',
+                                    px: collapsed ? 1 : 2,
+                                    position: 'relative',
+                                    transition:
+                                        'all 0.2s ease'
+                                }}
+                            >
+                                {/* Active Indicator */}
+                                {selected && (
+                                    <Box
                                         sx={{
-                                            minWidth: 40,
-                                            color: isSelected ? '#6366f1' : 'text.secondary'
-                                        }}
-                                    >
-                                        {m.icon}
-                                    </ListItemIcon>
-                                    <ListItemText
-                                        primary={m.label}
-                                        primaryTypographyProps={{
-                                            fontWeight: isSelected ? 600 : 500,
-                                            color: isSelected ? '#6366f1' : 'text.primary'
+                                            position: 'absolute',
+                                            left: 0,
+                                            top: 8,
+                                            bottom: 8,
+                                            width: 4,
+                                            borderRadius: 2,
+                                            bgcolor: '#6366f1'
                                         }}
                                     />
-                                    {isSelected && (
-                                        <Box
-                                            sx={{
-                                                width: 6,
-                                                height: 6,
-                                                borderRadius: '50%',
-                                                bgcolor: '#6366f1'
-                                            }}
-                                        />
-                                    )}
-                                </ListItemButton>
-                            );
-                        })}
+                                )}
+
+                                <ListItemIcon
+                                    sx={{
+                                        minWidth: 0,
+                                        mr: collapsed ? 0 : 2,
+                                        justifyContent: 'center',
+                                        color: selected
+                                            ? '#6366f1'
+                                            : 'text.secondary'
+                                    }}
+                                >
+                                    {m.icon}
+                                </ListItemIcon>
+
+                                {!collapsed && (
+                                    <ListItemText
+                                        primary={m.label}
+                                        sx={{
+                                            opacity: collapsed ? 0 : 1,
+                                            whiteSpace: 'nowrap',
+                                            transition: 'opacity 0.2s ease',
+                                            ml: collapsed ? 0 : 2
+                                        }}
+                                        primaryTypographyProps={{
+                                            fontWeight: selected ? 600 : 500,
+                                            noWrap: true
+                                        }}
+                                    />
+                                )}
+                            </ListItemButton>
+                        );
+
+                        return collapsed ? (
+                            <Tooltip
+                                title={m.label}
+                                placement="right"
+                                key={m.path}
+                            >
+                                <Box>{item}</Box>
+                            </Tooltip>
+                        ) : (
+                            <Box key={m.path}>{item}</Box>
+                        );
+                    })}
                 </List>
             </Box>
 
-            {/* Footer */}
-            <Box
-                sx={{
-                    p: 2,
-                    borderTop: '1px solid',
-                    borderColor: 'divider',
-                    textAlign: 'center'
-                }}
-            >
-                <Typography variant="caption" color="text.disabled">
-                    © 2026 SoHoa BBK v1.0
-                </Typography>
-            </Box>
+            {/* ================= FOOTER ================= */}
+            {!collapsed && (
+                <Box
+                    sx={{
+                        p: 2,
+                        borderTop: '1px solid',
+                        borderColor: 'divider',
+                        textAlign: 'center'
+                    }}
+                >
+                    <Typography
+                        variant="caption"
+                        color="text.disabled"
+                    >
+                        © 2026 SoHoa BBK v1.0
+                    </Typography>
+                </Box>
+            )}
         </Box>
     );
 
     return (
         <>
-            {/* MOBILE */}
+            {/* ========== MOBILE ========== */}
             <Drawer
                 variant="temporary"
                 open={mobileOpen}
-                onClose={onClose}
+                onClose={onMobileClose}
                 ModalProps={{ keepMounted: true }}
                 sx={{
-                    display: { xs: 'block', sm: 'none' },
-                    '& .MuiDrawer-paper': {
-                        width: drawerWidth,
-                        boxSizing: 'border-box',
-                        border: 'none'
-                    }
+                    display: { xs: 'block', sm: 'none' }
                 }}
             >
-                {content}
+                {renderContent()}
             </Drawer>
 
-            {/* DESKTOP */}
+            {/* ========== DESKTOP ========== */}
             <Drawer
                 variant="permanent"
+                open
                 sx={{
                     display: { xs: 'none', sm: 'block' },
                     '& .MuiDrawer-paper': {
-                        width: drawerWidth,
-                        boxSizing: 'border-box',
+                        width: collapsed
+                            ? collapsedWidth
+                            : drawerWidth,
+                        transition:
+                            'width 0.3s cubic-bezier(0.4,0,0.2,1)',
+                        overflowX: 'hidden',
                         border: 'none',
-                        boxShadow: '4px 0 24px rgba(0, 0, 0, 0.04)'
+                        boxShadow:
+                            '4px 0 20px rgba(0,0,0,0.05)'
                     }
                 }}
-                open
             >
-                {content}
+                {renderContent()}
             </Drawer>
         </>
     );

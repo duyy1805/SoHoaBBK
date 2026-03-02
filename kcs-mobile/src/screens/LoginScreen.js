@@ -37,7 +37,7 @@ export default function LoginScreen({ navigation }) {
 
             await saveAuth(res.data);
 
-            navigation.replace("PhieuList");
+            navigation.replace("Home");
         } catch (err) {
             Alert.alert("Đăng nhập thất bại", "Sai tài khoản hoặc mật khẩu");
         } finally {
