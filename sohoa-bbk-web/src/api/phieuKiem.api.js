@@ -66,7 +66,6 @@ export const completePhieuKiem = (phieuKiemId) => {
     return axiosClient.post("/phieu-kiem/complete", { phieuKiemId });
 };
 
-
 /* =========================================================
    KẾT LUẬN (TP_B8 / LANH_DAO)
 ========================================================= */
@@ -74,3 +73,4 @@ export const completePhieuKiem = (phieuKiemId) => {
 export const ketLuanPhieuKiem = (data) => {
     return axiosClient.post("/phieu-kiem/ket-luan", data);
 };
+

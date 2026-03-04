@@ -5,6 +5,7 @@ import PhieuKiemList from '../features/PhieuKiem/pages/PhieuKiemList';
 import PhieuKiemDetail from '../features/PhieuKiem/pages/PhieuKiemDetail';
 import PhieuKiemCreate from '../features/PhieuKiem/pages/PhieuKiemCreate';
 import ProtectedRoute from './ProtectedRoute';
+import DanhMucManager from '../features/DanhMuc/DanhMucManager'
 
 export default function AppRoutes() {
     return (
@@ -18,6 +19,7 @@ export default function AppRoutes() {
                     <Route path="/phieu-kiem" element={<PhieuKiemList />} />
                     <Route path="/phieu-kiem/:id" element={<PhieuKiemDetail />} />
                     <Route path="/phieu-kiem/create" element={<PhieuKiemCreate />} />
+                    <Route path="/danh-muc" element={<DanhMucManager />} />
                 </Route>
             </Route>
 
