@@ -1,72 +1,178 @@
 // src/screens/PhieuDetailScreen.jsx
 
-import { useEffect, useState, useCallback } from "react"
-import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-native";
-import { getPhieuKiemDetail, calculateAQL, completePhieuKiem } from "../api/phieuKiem.api";
-import { ActivityIndicator, Alert } from "react-native";
+import { useState, useCallback } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import {
+    View,
+    Text,
+    ScrollView,
+    TouchableOpacity,
+    StyleSheet,
+    ActivityIndicator,
+    Alert
+} from "react-native";
+
+import {
+    getPhieuKiemDetail,
+    calculateAQL,
+    completePhieuKiem,
+    confirmPX,
+    confirmKN
+} from "../api/phieuKiem.api";
+
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function PhieuDetailScreen({ route, navigation }) {
+
     const { id } = route.params;
 
     const [sections, setSections] = useState([]);
     const [checkItems, setCheckItems] = useState([]);
+    const [permissions, setPermissions] = useState([]);
 
     const [loadingAQL, setLoadingAQL] = useState(null);
-    const [loadingComplete, setLoadingComplete] = useState(false);
+    const [loadingAction, setLoadingAction] = useState(false);
+
     const [trangThai, setTrangThai] = useState(null);
 
-    const isAllConfirmed =
-        sections.length > 0 &&
-        sections.every(s => s.KetLuan);
-
-    const hasReject = sections.some(s => s.KetLuan === "REJECT");
-    const finalResult = hasReject ? "KHONG_DAT" : "DAT";
-    const isCompleted = trangThai === "HOAN_TAT";
     useFocusEffect(
         useCallback(() => {
+            loadUser();
             loadData();
         }, [])
     );
 
+    const loadUser = async () => {
+        const userStr = await AsyncStorage.getItem("user");
+        if (!userStr) return;
+
+        const user = JSON.parse(userStr);
+        setPermissions(user.permissions || []);
+    };
+
     const loadData = async () => {
         const res = await getPhieuKiemDetail(id);
+
         setSections(res.data.sections);
         setCheckItems(res.data.checkItems);
         setTrangThai(res.data.phieu?.TrangThai);
     };
 
+    const hasPermission = (p) => permissions.includes(p);
+
+    const isKCS = hasPermission("THUC_HIEN_KIEM");
+    const isPX = hasPermission("XAC_NHAN_PX");
+    const isKN = hasPermission("XAC_NHAN_KIEM_NGHIEM");
+    const isAllConfirmed =
+        sections.length > 0 &&
+        sections.every(s => s.KetLuan);
+
+    const hasReject = sections.some(s => s.KetLuan === "REJECT");
+
+    const finalResult = hasReject ? "KHONG_DAT" : "DAT";
+
+    const isCompleted = trangThai === "HOAN_TAT";
+
     const handleCalculateAQL = async (sectionId) => {
+
         try {
+
             setLoadingAQL(sectionId);
+
             await calculateAQL(sectionId);
 
             Alert.alert("Thành công", "Đã tính AQL");
-            await loadData(); // reload lại dữ liệu
-        } catch (err) {
+
+            await loadData();
+
+        } catch {
+
             Alert.alert("Lỗi", "Không thể tính AQL");
+
         } finally {
+
             setLoadingAQL(null);
+
         }
+
     };
 
     const handleComplete = async () => {
+
         try {
-            setLoadingComplete(true);
+
+            setLoadingAction(true);
 
             await completePhieuKiem(Number(id));
 
             Alert.alert("Thành công", "Phiếu đã hoàn tất");
-            navigation.goBack(); // về danh sách
-        } catch (err) {
+
+            navigation.goBack();
+
+        } catch {
+
             Alert.alert("Lỗi", "Không thể hoàn tất phiếu");
+
         } finally {
-            setLoadingComplete(false);
+
+            setLoadingAction(false);
+
         }
+
+    };
+
+    const handleConfirmPX = async () => {
+
+        try {
+
+            setLoadingAction(true);
+
+            await confirmPX(id);
+
+            Alert.alert("Thành công", "PX đã xác nhận");
+
+            navigation.goBack();
+
+        } catch {
+
+            Alert.alert("Lỗi", "Không thể xác nhận PX");
+
+        } finally {
+
+            setLoadingAction(false);
+
+        }
+
+    };
+
+    const handleConfirmKN = async () => {
+
+        try {
+
+            setLoadingAction(true);
+
+            await confirmKN(id);
+
+            Alert.alert("Thành công", "Đã xác nhận kiểm nghiệm");
+
+            navigation.goBack();
+
+        } catch {
+
+            Alert.alert("Lỗi", "Không thể xác nhận");
+
+        } finally {
+
+            setLoadingAction(false);
+
+        }
+
     };
 
     return (
+
         <View style={{ flex: 1 }}>
+
             {isCompleted && (
                 <View style={styles.completedBanner}>
                     <Text style={styles.completedText}>
@@ -74,20 +180,27 @@ export default function PhieuDetailScreen({ route, navigation }) {
                     </Text>
                 </View>
             )}
+
             <ScrollView style={styles.container}>
+
                 {sections.map((section) => {
+
                     const items = checkItems.filter(
                         (i) => i.SectionId === section.Id
                     );
 
                     return (
+
                         <View key={section.Id} style={styles.section}>
+
                             <View style={styles.sectionHeader}>
+
                                 <Text style={styles.sectionTitle}>
                                     {section.TenNhom}
                                 </Text>
 
                                 {section.KetLuan && (
+
                                     <View
                                         style={[
                                             styles.badge,
@@ -96,25 +209,31 @@ export default function PhieuDetailScreen({ route, navigation }) {
                                                 : styles.badgeReject
                                         ]}
                                     >
+
                                         <Text style={styles.badgeText}>
                                             {section.KetLuan}
                                         </Text>
+
                                     </View>
+
                                 )}
+
                             </View>
 
                             {items.map((item) => (
+
                                 <TouchableOpacity
                                     key={item.Id}
                                     style={[
                                         styles.itemRow,
-                                        section.KetLuan && styles.itemDisabled
+                                        (!isKCS || section.KetLuan) && styles.itemDisabled
                                     ]}
-                                    disabled={!!section.KetLuan}
+                                    disabled={!isKCS || !!section.KetLuan}
                                     onPress={() =>
                                         navigation.navigate("CheckItem", { item })
                                     }
                                 >
+
                                     <Text style={styles.itemName}>
                                         {item.TenMucKiem}
                                     </Text>
@@ -128,7 +247,9 @@ export default function PhieuDetailScreen({ route, navigation }) {
                                     >
                                         {item.KetQua || "Chưa kiểm"}
                                     </Text>
+
                                 </TouchableOpacity>
+
                             ))}
                             <View style={styles.aqlInfoBox}>
                                 <Text style={styles.aqlLevel}>
@@ -170,91 +291,149 @@ export default function PhieuDetailScreen({ route, navigation }) {
                                     </Text>
                                 </View>
                             </View>
-                            {!section.KetLuan && (
+                            {!section.KetLuan && isKCS && (
+
                                 <TouchableOpacity
                                     style={styles.aqlButton}
                                     onPress={() => handleCalculateAQL(section.Id)}
                                     disabled={loadingAQL === section.Id}
                                 >
-                                    {loadingAQL === section.Id ? (
-                                        <ActivityIndicator color="#fff" />
-                                    ) : (
-                                        <Text style={styles.aqlButtonText}>
-                                            Xác nhận
-                                        </Text>
-                                    )}
+
+                                    {loadingAQL === section.Id
+                                        ? <ActivityIndicator color="#fff" />
+                                        : <Text style={styles.aqlButtonText}>Xác nhận</Text>
+                                    }
+
                                 </TouchableOpacity>
+
                             )}
+
                         </View>
+
                     );
+
                 })}
+
             </ScrollView>
-            {isAllConfirmed && !isCompleted && (
-                <View style={styles.completeWrapper}>
+
+            {/* KCS hoàn tất */}
+
+            {isAllConfirmed && !isCompleted && isKCS && (
+
+                <View style={styles.actionWrapper}>
+
                     <TouchableOpacity
                         style={[
-                            styles.completeButton,
+                            styles.actionButton,
                             hasReject
-                                ? styles.completeReject
-                                : styles.completeAccept
+                                ? styles.reject
+                                : styles.accept
                         ]}
                         onPress={handleComplete}
-                        disabled={loadingComplete}
+                        disabled={loadingAction}
                     >
-                        {loadingComplete ? (
-                            <ActivityIndicator color="#fff" />
-                        ) : (
-                            <Text style={styles.completeText}>
+
+                        {loadingAction
+                            ? <ActivityIndicator color="#fff" />
+                            : <Text style={styles.actionText}>
                                 Xác nhận - {finalResult}
                             </Text>
-                        )}
+                        }
+
                     </TouchableOpacity>
+
                 </View>
+
             )}
+
+            {/* PX xác nhận */}
+
+            {trangThai === "CHO_XUONG_XAC_NHAN" && isPX && (
+
+                <View style={styles.actionWrapper}>
+
+                    <TouchableOpacity
+                        style={[styles.actionButton, { backgroundColor: "#2563eb" }]}
+                        onPress={handleConfirmPX}
+                    >
+
+                        <Text style={styles.actionText}>
+                            Xác nhận phân xưởng
+                        </Text>
+
+                    </TouchableOpacity>
+
+                </View>
+
+            )}
+
+            {/* Kiểm nghiệm xác nhận */}
+
+            {trangThai === "CHO_KIEM_NGHIEM" && isKN && (
+
+                <View style={styles.actionWrapper}>
+
+                    <TouchableOpacity
+                        style={[styles.actionButton, { backgroundColor: "#7c3aed" }]}
+                        onPress={handleConfirmKN}
+                    >
+
+                        <Text style={styles.actionText}>
+                            Xác nhận kiểm nghiệm
+                        </Text>
+
+                    </TouchableOpacity>
+
+                </View>
+
+            )}
+
         </View>
+
     );
 }
 
 const styles = StyleSheet.create({
+
     container: {
         flex: 1,
         backgroundColor: "#f1f5f9",
         padding: 16
     },
+
     section: {
         marginBottom: 20
     },
-    sectionTitle: {
-        fontWeight: "bold",
-        fontSize: 16,
-        marginBottom: 8,
-        color: "#1e293b"
-    },
+
     sectionHeader: {
         flexDirection: "row",
         justifyContent: "space-between",
-        alignItems: "center",
         marginBottom: 8
     },
+
+    sectionTitle: {
+        fontWeight: "bold",
+        fontSize: 16
+    },
+
     badge: {
         paddingHorizontal: 10,
         paddingVertical: 4,
         borderRadius: 20
     },
+
     badgeAccept: {
         backgroundColor: "#dcfce7"
     },
+
     badgeReject: {
         backgroundColor: "#fee2e2"
     },
+
     badgeText: {
-        fontSize: 12,
-        fontWeight: "700",
-        color: "#1e293b"
+        fontWeight: "700"
     },
-    itemDisabled: {
-        opacity: 0.5
-    },
+
     itemRow: {
         backgroundColor: "#fff",
         padding: 14,
@@ -263,16 +442,23 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         justifyContent: "space-between"
     },
+
+    itemDisabled: {
+        opacity: 0.5
+    },
+
     itemName: {
         fontWeight: "500"
     },
+
     result: {
-        fontSize: 13,
-        color: "#64748b"
+        fontSize: 13
     },
+
     success: {
         color: "#16a34a"
     },
+
     error: {
         color: "#dc2626"
     },
@@ -308,45 +494,48 @@ const styles = StyleSheet.create({
         backgroundColor: "#2563eb",
         padding: 12,
         borderRadius: 10,
-        alignItems: "center",
-        marginTop: 8
+        alignItems: "center"
     },
+
     aqlButtonText: {
         color: "#fff",
         fontWeight: "600"
     },
-    completeWrapper: {
+
+    actionWrapper: {
         padding: 16,
-        backgroundColor: "#fff",
-        borderTopWidth: 1,
-        borderColor: "#e2e8f0"
+        backgroundColor: "#fff"
     },
-    completeAccept: {
-        backgroundColor: "#16a34a"
-    },
-    completeReject: {
-        backgroundColor: "#dc2626"
-    },
-    completeButton: {
-        backgroundColor: "#16a34a",
+
+    actionButton: {
         padding: 16,
         borderRadius: 14,
         alignItems: "center"
     },
-    completeText: {
+
+    accept: {
+        backgroundColor: "#16a34a"
+    },
+
+    reject: {
+        backgroundColor: "#dc2626"
+    },
+
+    actionText: {
         color: "#fff",
         fontWeight: "700",
         fontSize: 16
     },
+
     completedBanner: {
         backgroundColor: "#dcfce7",
         padding: 12,
-        borderRadius: 12,
-        marginBottom: 12,
         alignItems: "center"
     },
+
     completedText: {
         color: "#166534",
         fontWeight: "700"
     }
+
 });

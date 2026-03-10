@@ -41,21 +41,42 @@ router.get(
 router.get(
     '/my',
     authenticateToken,
-    authorize('THUC_HIEN_KIEM'),
     async (req, res) => {
+
         try {
+
             const pool = await poolPromise;
 
+            const permissions = req.user.permissions;
+
+            let mode = 'VIEW';
+
+            if (permissions.includes('THUC_HIEN_KIEM'))
+                mode = 'KCS';
+
+            if (permissions.includes('XAC_NHAN_PX'))
+                mode = 'PX';
+
+            if (permissions.includes('XAC_NHAN_KIEM_NGHIEM'))
+                mode = 'KIEM_NGHIEM';
+
             const result = await pool.request()
-                .input('NguoiKiemId', sql.Int, req.user.userId)
-                .execute('SP_PhieuKiem_My'); // 👈 gọi stored
+                .input('UserId', sql.Int, req.user.userId)
+                .input('Mode', sql.NVarChar, mode)
+                .execute('SP_PhieuKiem_My');
 
             res.json(result.recordset);
 
         } catch (error) {
+
             console.error('API /my error:', error);
-            res.status(500).json({ message: 'Internal Server Error' });
+
+            res.status(500).json({
+                message: 'Internal Server Error'
+            });
+
         }
+
     }
 );
 
@@ -156,45 +177,59 @@ router.post(
    Permission : THUC_HIEN_KIEM
 ========================================================= */
 router.post(
-    '/section',
+    "/section",
     authenticateToken,
-    authorize('PHAN_BO_KIEM'),
+    authorize("PHAN_BO_KIEM"),
     async (req, res) => {
-        const {
-            phieuKiemId,
-            // nhomKiemId,
-            // tenNhom,
-            lotSize,
-            inspectionLevel
-        } = req.body;
 
-        if (!phieuKiemId || !lotSize || !inspectionLevel) {
+        const { phieuKiemId, sections } = req.body;
+
+        if (!phieuKiemId || !sections || !sections.length) {
             return res.status(400).json({
-                message: 'Missing required fields'
+                message: "Missing required fields"
             });
         }
-        console.log('CreateAllSection data:', req.body);
+
+        console.log("CreateAllSection data:", req.body);
+
         try {
+
             const pool = await poolPromise;
 
+            const table = new sql.Table();
+
+            table.columns.add("NhomKiemId", sql.Int);
+            table.columns.add("LotSize", sql.Int);
+            table.columns.add("InspectionLevel", sql.NVarChar(10));
+
+            sections.forEach(s => {
+
+                table.rows.add(
+                    s.nhomKiemId,
+                    s.lotSize,
+                    s.inspectionLevel
+                );
+
+            });
+
             const result = await pool.request()
-                .input('PhieuKiemId', sql.Int, phieuKiemId)
-                // .input('NhomKiemId', sql.Int, nhomKiemId)
-                // .input('TenNhom', sql.NVarChar, tenNhom)
-                .input('LotSize', sql.Int, lotSize)
-                .input('InspectionLevel', sql.NVarChar, inspectionLevel)
-                .execute('sp_PhieuKiem_CreateAllSection');
+                .input("PhieuKiemId", sql.Int, phieuKiemId)
+                .input("Sections", table)
+                .execute("sp_PhieuKiem_CreateAllSection");
 
             res.json({
                 success: true,
-                sectionId: result.recordset[0].SectionId
+                sections: result.recordset
             });
 
         } catch (err) {
-            console.error('CreateSection error:', err);
+
+            console.error("CreateSection error:", err);
+
             res.status(500).json({
-                message: 'Tạo section thất bại'
+                message: "Tạo section thất bại"
             });
+
         }
     }
 );
@@ -306,6 +341,101 @@ router.post(
     }
 );
 
+/* =========================================================
+   POST /phieu-kiem/xac-nhan-px
+   Role       : PX
+   Permission : XAC_NHAN_PX
+========================================================= */
+
+router.post(
+    '/xac-nhan-px',
+    authenticateToken,
+    authorize('XAC_NHAN_PX'),
+    async (req, res) => {
+
+        const { phieuKiemId } = req.body;
+        const userId = req.user.id;
+
+        if (!phieuKiemId) {
+            return res.status(400).json({
+                message: 'Missing phieuKiemId'
+            });
+        }
+
+        try {
+
+            const pool = await poolPromise;
+
+            await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('UserId', sql.Int, userId)
+                .execute('sp_PhieuKiem_XacNhanPX');
+
+            res.json({
+                success: true,
+                message: 'Phân xưởng đã xác nhận'
+            });
+
+        } catch (err) {
+
+            console.error('XacNhanPX error:', err);
+
+            res.status(500).json({
+                message: 'Xác nhận phân xưởng thất bại'
+            });
+
+        }
+
+    }
+);
+
+/* =========================================================
+   POST /phieu-kiem/xac-nhan-kiem-nghiem
+   Role       : KIEM_NGHIEM
+   Permission : XAC_NHAN_KIEM_NGHIEM
+========================================================= */
+
+router.post(
+    '/xac-nhan-kiem-nghiem',
+    authenticateToken,
+    authorize('XAC_NHAN_KIEM_NGHIEM'),
+    async (req, res) => {
+
+        const { phieuKiemId } = req.body;
+        const userId = req.user.id;
+
+        if (!phieuKiemId) {
+            return res.status(400).json({
+                message: 'Missing phieuKiemId'
+            });
+        }
+
+        try {
+
+            const pool = await poolPromise;
+
+            await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('UserId', sql.Int, userId)
+                .execute('sp_PhieuKiem_XacNhanKiemNghiem');
+
+            res.json({
+                success: true,
+                message: 'Phòng kiểm nghiệm đã xác nhận'
+            });
+
+        } catch (err) {
+
+            console.error('XacNhanKiemNghiem error:', err);
+
+            res.status(500).json({
+                message: 'Xác nhận phòng kiểm nghiệm thất bại'
+            });
+
+        }
+
+    }
+);
 
 router.post(
     '/ket-luan',

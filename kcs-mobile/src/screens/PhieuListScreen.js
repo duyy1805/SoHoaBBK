@@ -41,13 +41,22 @@ export default function PhieuListScreen({ navigation }) {
     const getStatusStyle = (status) => {
         switch (status) {
             case "HOAN_TAT":
-                return { backgroundColor: "#dcfce7", color: "#15803d" };
+                return { backgroundColor: "#dcfce7", color: "#15803d", text: "Hoàn tất" };
+
             case "DANG_KIEM":
-                return { backgroundColor: "#fef9c3", color: "#a16207" };
-            case "TAO_MOI":
-                return { backgroundColor: "#e0f2fe", color: "#0369a1" };
+                return { backgroundColor: "#fef9c3", color: "#a16207", text: "Đang kiểm" };
+
+            case "DA_TAO_SECTION":
+                return { backgroundColor: "#e0f2fe", color: "#0369a1", text: "Chưa kiểm" };
+
+            case "CHO_XUONG_XAC_NHAN":
+                return { backgroundColor: "#fef3c7", color: "#b45309", text: "Chờ PX" };
+
+            case "CHO_KIEM_NGHIEM":
+                return { backgroundColor: "#ede9fe", color: "#6d28d9", text: "Chờ kiểm nghiệm" };
+
             default:
-                return { backgroundColor: "#e2e8f0", color: "#475569" };
+                return { backgroundColor: "#e2e8f0", color: "#475569", text: status };
         }
     };
 
@@ -71,7 +80,7 @@ export default function PhieuListScreen({ navigation }) {
                         ]}
                     >
                         <Text style={[styles.badgeText, { color: statusStyle.color }]}>
-                            {item.TrangThai}
+                            {statusStyle.text}
                         </Text>
                     </View>
                 </View>

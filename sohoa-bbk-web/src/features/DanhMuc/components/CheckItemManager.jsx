@@ -184,6 +184,12 @@ export default function CheckItemManager() {
                                         Tên mục kiểm
                                     </TableCell>
                                     <TableCell sx={{ fontWeight: 600 }}>
+                                        Tham chiếu
+                                    </TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>
+                                        Phương pháp kiểm
+                                    </TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>
                                         Tiêu chuẩn
                                     </TableCell>
                                     <TableCell />
@@ -195,6 +201,8 @@ export default function CheckItemManager() {
                                     <TableRow key={row.Id} hover>
                                         <TableCell>{row.ThuTu}</TableCell>
                                         <TableCell>{row.TenMucKiem}</TableCell>
+                                        <TableCell>{row.ThamChieu}</TableCell>
+                                        <TableCell>{row.PhuongPhapKiem}</TableCell>
                                         <TableCell>{row.TieuChuan}</TableCell>
                                         <TableCell align="right">
                                             <IconButton
@@ -240,6 +248,22 @@ export default function CheckItemManager() {
                             value={form.TenMucKiem || ""}
                             onChange={(e) =>
                                 setForm({ ...form, TenMucKiem: e.target.value })
+                            }
+                        />
+                        <TextField
+                            label="Tham chiếu"
+                            fullWidth
+                            value={form.ThamChieu || ""}
+                            onChange={(e) =>
+                                setForm({ ...form, ThamChieu: e.target.value })
+                            }
+                        />
+                        <TextField
+                            label="Phương pháp kiểm"
+                            fullWidth
+                            value={form.PhuongPhapKiem || ""}
+                            onChange={(e) =>
+                                setForm({ ...form, PhuongPhapKiem: e.target.value })
                             }
                         />
                         <TextField

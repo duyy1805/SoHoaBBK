@@ -121,7 +121,32 @@ export default function CheckItemScreen({ route, navigation }) {
     return (
         <View style={styles.container}>
             <Text style={styles.title}>{item.TenMucKiem}</Text>
-            <Text style={styles.standard}>{item.TieuChuan}</Text>
+
+            <View style={styles.infoCard}>
+                <View style={styles.infoRow}>
+                    <Text style={styles.label}>Tham chiếu</Text>
+                    <Text style={styles.value}>
+                        {item.ThamChieu || "--"}
+                    </Text>
+                </View>
+
+                <View style={styles.infoRow}>
+                    <Text style={styles.label}>Phương pháp</Text>
+                    <Text style={styles.value}>
+                        {item.PhuongPhapKiem || "--"}
+                    </Text>
+                </View>
+            </View>
+
+            <View style={styles.standardCard}>
+                <Text style={styles.standardTitle}>
+                    Tiêu chuẩn kỹ thuật
+                </Text>
+
+                <Text style={styles.standard}>
+                    {item.TieuChuan}
+                </Text>
+            </View>
 
             {/* Chọn kết quả */}
             <View style={styles.row}>
@@ -372,5 +397,38 @@ const styles = StyleSheet.create({
         borderRadius: 14,
         alignItems: "center",
         marginTop: 10
-    }
+    },
+    infoCard: {
+        backgroundColor: "#fff",
+        borderRadius: 14,
+        padding: 14,
+        marginTop: 10,
+        marginBottom: 10
+    },
+
+    infoRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        marginBottom: 6
+    },
+
+    label: {
+        color: "#64748b",
+        fontSize: 13
+    },
+    value: {
+        fontWeight: "600",
+        color: "#0f172a"
+    },
+    standardCard: {
+        backgroundColor: "#fff",
+        padding: 14,
+        borderRadius: 14,
+        marginBottom: 20
+    },
+    standardTitle: {
+        fontWeight: "600",
+        marginBottom: 6,
+        color: "#0f172a"
+    },
 });

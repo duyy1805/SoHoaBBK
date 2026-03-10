@@ -6,16 +6,6 @@ const { poolPromise } = require('../db');
 const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
 
-// router.get('/san-pham', authenticateToken, async (req, res) => {
-//   const pool = await poolPromise;
-//   const result = await pool.request().query(`
-//       SELECT Id, TenSanPham 
-//       FROM DM_SAN_PHAM 
-//       WHERE TrangThai = 1
-//   `);
-//   res.json(result.recordset);
-// });
-
 router.get('/loai-kiem', authenticateToken, async (req, res) => {
   const pool = await poolPromise;
   const result = await pool.request().query(`
@@ -238,7 +228,7 @@ router.post(
   authenticateToken,
   // authorize("ADMIN"),
   async (req, res) => {
-    const { NhomKiemId, TenMucKiem, TieuChuan, ThuTu } = req.body;
+    const { NhomKiemId, TenMucKiem, ThamChieu, PhuongPhapKiem, TieuChuan, ThuTu } = req.body;
 
     try {
       const pool = await poolPromise;
@@ -246,6 +236,8 @@ router.post(
       await pool.request()
         .input("NhomKiemId", sql.Int, NhomKiemId)
         .input("TenMucKiem", sql.NVarChar(255), TenMucKiem)
+        .input("ThamChieu", sql.NVarChar(sql.MAX), ThamChieu)
+        .input("PhuongPhapKiem", sql.NVarChar(sql.MAX), PhuongPhapKiem)
         .input("TieuChuan", sql.NVarChar(sql.MAX), TieuChuan)
         .input("ThuTu", sql.Int, ThuTu)
         .execute("sp_DM_CreateCheckItem");
@@ -265,7 +257,7 @@ router.put(
   // authorize("ADMIN"),
   async (req, res) => {
     const { id } = req.params;
-    const { TenMucKiem, TieuChuan, ThuTu, TrangThai } = req.body;
+    const { TenMucKiem, ThamChieu, PhuongPhapKiem, TieuChuan, ThuTu, TrangThai } = req.body;
 
     try {
       const pool = await poolPromise;
@@ -273,6 +265,8 @@ router.put(
       await pool.request()
         .input("Id", sql.Int, id)
         .input("TenMucKiem", sql.NVarChar(255), TenMucKiem)
+        .input("ThamChieu", sql.NVarChar(sql.MAX), ThamChieu)
+        .input("PhuongPhapKiem", sql.NVarChar(sql.MAX), PhuongPhapKiem)
         .input("TieuChuan", sql.NVarChar(sql.MAX), TieuChuan)
         .input("ThuTu", sql.Int, ThuTu)
         .input("TrangThai", sql.Bit, TrangThai)

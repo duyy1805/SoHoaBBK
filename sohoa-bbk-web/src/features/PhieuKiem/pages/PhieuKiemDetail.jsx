@@ -12,7 +12,6 @@ import {
     Accordion,
     AccordionSummary,
     AccordionDetails,
-    Divider,
     CircularProgress,
     Button,
     Fade,
@@ -20,21 +19,24 @@ import {
     TextField,
     MenuItem
 } from "@mui/material";
+
 import { useNavigate, useParams } from "react-router-dom";
+
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import AssignmentIcon from "@mui/icons-material/Assignment";
-import BugReportIcon from "@mui/icons-material/BugReport";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import CancelIcon from "@mui/icons-material/Cancel";
+
 import {
     getPhieuKiemDetail,
-    // ketLuanPhieuKiem,
     createAllSection
 } from "../../../api/phieuKiem.api";
+
+import { getSanPhamNhomKiem } from "../../../api/lookup.api"
+
 import { hasPermission } from "../../../utils/auth";
 
 export default function PhieuKiemDetail() {
+
     const { id } = useParams();
     const navigate = useNavigate();
 
@@ -42,11 +44,10 @@ export default function PhieuKiemDetail() {
     const [sections, setSections] = useState([]);
     const [checkItems, setCheckItems] = useState([]);
     const [defects, setDefects] = useState([]);
-    const [loading, setLoading] = useState(true);
 
-    // Section config state
-    const [lotSize, setLotSize] = useState("");
-    const [inspectionLevel, setInspectionLevel] = useState("II");
+    const [nhomConfigs, setNhomConfigs] = useState([]);
+
+    const [loading, setLoading] = useState(true);
     const [creatingSection, setCreatingSection] = useState(false);
 
     useEffect(() => {
@@ -54,69 +55,133 @@ export default function PhieuKiemDetail() {
     }, [id]);
 
     const loadData = async () => {
+
         try {
+
             const res = await getPhieuKiemDetail(id);
-            setPhieu(res.data.phieu);
-            console.log(res.data.phieu)
-            setSections(res.data.sections);
-            setCheckItems(res.data.checkItems);
-            setDefects(res.data.defects);
+
+            const data = res.data;
+
+            setPhieu(data.phieu);
+            setSections(data.sections);
+            setCheckItems(data.checkItems);
+            setDefects(data.defects);
+
+            if (data.phieu?.SanPhamId && data.phieu.TrangThai === "TAO_MOI") {
+
+                const nhomRes = await getSanPhamNhomKiem(data.phieu.SanPhamId);
+
+                const configs = nhomRes.data.map(n => ({
+                    nhomKiemId: n.NhomKiemId,
+                    tenNhom: n.TenNhom,
+                    lotSize: "",
+                    inspectionLevel: "II"
+                }));
+                console.log(configs)
+                setNhomConfigs(configs);
+            }
+
         } catch (err) {
+
             console.error(err);
+
         } finally {
+
             setLoading(false);
+
         }
+
+    };
+
+    const updateConfig = (index, field, value) => {
+
+        const newConfigs = [...nhomConfigs];
+        newConfigs[index][field] = value;
+        setNhomConfigs(newConfigs);
+
     };
 
     const handleCreateSection = async () => {
-        if (!lotSize || !inspectionLevel) return;
 
         try {
+
             setCreatingSection(true);
 
-            await createAllSection({
+            const payload = {
+
                 phieuKiemId: id,
-                lotSize: Number(lotSize),
-                inspectionLevel
-            });
+
+                sections: nhomConfigs.map(n => ({
+                    nhomKiemId: n.nhomKiemId,
+                    lotSize: Number(n.lotSize),
+                    inspectionLevel: n.inspectionLevel
+                }))
+
+            };
+
+            await createAllSection(payload);
 
             await loadData();
+
         } catch (err) {
+
             console.error(err);
+
         } finally {
+
             setCreatingSection(false);
+
         }
+
     };
 
-    // const handleKetLuan = async (ketLuan) => {
-    //     await ketLuanPhieuKiem({
-    //         phieuKiemId: id,
-    //         ketLuan
-    //     });
-    //     loadData();
-    // };
-
     if (loading) {
+
         return (
             <Box sx={{ display: "flex", justifyContent: "center", mt: 6 }}>
                 <CircularProgress />
             </Box>
         );
+
     }
 
     const renderKetLuanChip = (value) => {
+
         if (value === "DAT")
-            return <Chip icon={<CheckCircleIcon />} label="Đạt" color="success" />;
+            return <Chip label="Đạt" color="success" size="small" />;
+
         if (value === "KHONG_DAT")
-            return <Chip icon={<CancelIcon />} label="Không đạt" color="error" />;
-        return <Chip label="Chưa kết luận" />;
+            return <Chip label="Không đạt" color="error" size="small" />;
+
+        return <Chip label="Chưa kết luận" size="small" />;
+
+    };
+
+    const renderTrangThaiChip = (trangThai) => {
+        switch (trangThai) {
+            case "DA_TAO_SECTION":
+                return <Chip label="Chưa kiểm" size="small" />;
+            case "DANG_KIEM":
+                return <Chip label="Đang kiểm" color="warning" size="small" />;
+            case "CHO_XUONG_XAC_NHAN":
+                return <Chip label="Chờ PX xác nhận" color="info" size="small" />;
+            case "CHO_KIEM_NGHIEM":
+                return <Chip label="Chờ kiểm nghiệm" color="secondary" size="small" />;
+            case "HOAN_TAT":
+                return <Chip label="Hoàn tất" color="success" size="small" />;
+            default:
+                return <Chip label={trangThai} size="small" />;
+        }
     };
 
     return (
         <Fade in timeout={300}>
             <Box>
+
                 {/* HEADER */}
+
                 <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 3 }}>
+
                     <Button
                         startIcon={<ArrowBackIcon />}
                         onClick={() => navigate(-1)}
@@ -127,12 +192,16 @@ export default function PhieuKiemDetail() {
                     <Typography variant="h4" sx={{ fontWeight: 700 }}>
                         Chi tiết Phiếu kiểm
                     </Typography>
+
                 </Stack>
 
                 {/* THÔNG TIN PHIẾU */}
+
                 <Card sx={{ mb: 4, borderRadius: 3 }}>
                     <CardContent>
+
                         <Grid container spacing={3}>
+
                             <Grid size={{ xs: 3 }}>
                                 <Typography variant="subtitle2">Số phiếu</Typography>
                                 <Typography fontWeight={600}>{phieu?.SoPhieu}</Typography>
@@ -159,115 +228,130 @@ export default function PhieuKiemDetail() {
                             </Grid>
 
                             <Grid size={{ xs: 3 }}>
-                                <Typography variant="subtitle2">Số lượng kiểm (AQL)</Typography>
-                                <Typography fontWeight={600}>{phieu?.SoLuongKiem}</Typography>
-                            </Grid>
-
-                            <Grid size={{ xs: 3 }}>
                                 <Typography variant="subtitle2">Người kiểm</Typography>
                                 <Typography fontWeight={600}>{phieu?.TenNguoiKiem}</Typography>
                             </Grid>
-
+                            <Grid size={{ xs: 3 }}>
+                                <Typography variant="subtitle2">Trạng thái</Typography>
+                                {renderTrangThaiChip(phieu?.TrangThai)}
+                            </Grid>
                             <Grid size={{ xs: 3 }}>
                                 <Typography variant="subtitle2">Kết luận</Typography>
                                 {renderKetLuanChip(phieu?.KetLuan)}
                             </Grid>
                         </Grid>
+
                     </CardContent>
                 </Card>
 
-                {/* TẠO SECTION (CHỈ TỔ TRƯỞNG) */}
+                {/* CẤU HÌNH AQL */}
+
                 {phieu?.TrangThai === "TAO_MOI" &&
                     hasPermission("PHAN_BO_KIEM") && (
+
                         <Card sx={{ mb: 4, p: 3 }}>
-                            <Typography variant="h6" sx={{ mb: 2 }}>
-                                Cấu hình kiểm
+
+                            <Typography variant="h6" sx={{ mb: 3 }}>
+                                Cấu hình AQL theo nhóm kiểm
                             </Typography>
 
-                            <Grid container spacing={3}>
-                                <Grid size={{ xs: 6 }}>
-                                    <TextField
-                                        label="Lot Size"
-                                        type="number"
-                                        fullWidth
-                                        value={lotSize}
-                                        onChange={(e) => setLotSize(e.target.value)}
-                                    />
+                            {nhomConfigs.map((n, index) => (
+
+                                <Grid container spacing={2} key={n.nhomKiemId} sx={{ mb: 2 }}>
+
+                                    <Grid size={{ xs: 4 }}>
+                                        <Typography sx={{ mt: 1 }}>
+                                            {n.tenNhom}
+                                        </Typography>
+                                    </Grid>
+
+                                    <Grid size={{ xs: 4 }}>
+                                        <TextField
+                                            label="Lot Size"
+                                            type="number"
+                                            fullWidth
+                                            value={n.lotSize}
+                                            onChange={(e) =>
+                                                updateConfig(index, "lotSize", e.target.value)
+                                            }
+                                        />
+                                    </Grid>
+
+                                    <Grid size={{ xs: 4 }}>
+                                        <TextField
+                                            select
+                                            label="Inspection Level"
+                                            fullWidth
+                                            value={n.inspectionLevel}
+                                            onChange={(e) =>
+                                                updateConfig(index, "inspectionLevel", e.target.value)
+                                            }
+                                        >
+                                            <MenuItem value="I">I</MenuItem>
+                                            <MenuItem value="II">II</MenuItem>
+                                            <MenuItem value="S-2">S-2</MenuItem>
+                                        </TextField>
+                                    </Grid>
+
                                 </Grid>
 
-                                <Grid size={{ xs: 6 }}>
-                                    <TextField
-                                        select
-                                        label="Inspection Level"
-                                        fullWidth
-                                        value={inspectionLevel}
-                                        onChange={(e) =>
-                                            setInspectionLevel(e.target.value)
-                                        }
-                                    >
-                                        <MenuItem value="I">I</MenuItem>
-                                        <MenuItem value="II">II</MenuItem>
-                                        <MenuItem value="S-2">S-2</MenuItem>
-                                    </TextField>
-                                </Grid>
+                            ))}
 
-                                <Grid size={{ xs: 12 }}>
-                                    <Button
-                                        variant="contained"
-                                        onClick={handleCreateSection}
-                                        disabled={creatingSection}
-                                    >
-                                        {creatingSection
-                                            ? "Đang tạo..."
-                                            : "Tạo Section"}
-                                    </Button>
-                                </Grid>
-                            </Grid>
+                            <Button
+                                variant="contained"
+                                onClick={handleCreateSection}
+                                disabled={creatingSection}
+                            >
+                                {creatingSection ? "Đang tạo..." : "Tạo Section"}
+                            </Button>
+
                         </Card>
+
                     )}
 
-                {/* HIỂN THỊ SECTION */}
-                {sections.map((section) => {
-                    const sectionCheckItems = checkItems.filter(
-                        (ci) => ci.SectionId === section.Id
+                {/* SECTION */}
+
+                {sections.map(section => {
+
+                    const sectionItems = checkItems.filter(
+                        c => c.SectionId === section.Id
                     );
 
                     return (
+
                         <Accordion defaultExpanded key={section.Id} sx={{ mb: 3 }}>
+
                             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+
                                 <Stack direction="row" spacing={2} alignItems="center">
+
                                     <AssignmentIcon color="primary" />
+
                                     <Typography fontWeight={600}>
                                         {section.TenNhom}
                                     </Typography>
+
+                                    <Chip
+                                        label={`Sample: ${section.SoLuongKiem}`}
+                                        size="small"
+                                    />
+
                                 </Stack>
+
                             </AccordionSummary>
 
                             <AccordionDetails>
-                                {sectionCheckItems.map((item) => {
+
+                                {sectionItems.map(item => {
+
                                     const itemDefects = defects.filter(
-                                        (d) => d.CheckItemId === item.Id
+                                        d => d.CheckItemId === item.Id
                                     );
-
-                                    const critical = itemDefects
-                                        .filter(d => d.DefectType === "CRITICAL")
-                                        .reduce((sum, d) => sum + d.SoLuong, 0);
-
-                                    const major = itemDefects
-                                        .filter(d => d.DefectType === "MAJOR")
-                                        .reduce((sum, d) => sum + d.SoLuong, 0);
-
-                                    const minor = itemDefects
-                                        .filter(d => d.DefectType === "MINOR")
-                                        .reduce((sum, d) => sum + d.SoLuong, 0);
 
                                     const totalLoi = item.SoLuongLoi || 0;
 
-                                    const isChuaKiem = !item.KetQua;
-                                    const isDat = item.KetQua === "DAT";
-                                    const isKhongDat = item.KetQua === "KHONG_DAT";
-
                                     return (
+
                                         <Card
                                             key={item.Id}
                                             sx={{
@@ -277,82 +361,62 @@ export default function PhieuKiemDetail() {
                                                 borderRadius: 3,
                                                 border: "1px solid",
                                                 borderColor:
-                                                    totalLoi > 0 ? "error.light" : "success.light",
+                                                    totalLoi > 0
+                                                        ? "error.light"
+                                                        : "success.light",
                                                 bgcolor:
                                                     totalLoi > 0
                                                         ? alpha("#ef4444", 0.05)
                                                         : alpha("#22c55e", 0.05)
                                             }}
                                         >
+
                                             <Grid container alignItems="center">
 
-                                                {/* TÊN MỤC */}
-                                                <Grid size={{ xs: 4 }}>
+                                                <Grid size={{ xs: 6 }}>
                                                     <Typography fontWeight={500}>
                                                         {item.TenMucKiem}
                                                     </Typography>
                                                 </Grid>
 
-                                                {/* TỔNG LỖI */}
-                                                <Grid size={{ xs: 2 }}>
+                                                <Grid size={{ xs: 3 }}>
                                                     <Chip
                                                         label={`Tổng lỗi: ${totalLoi}`}
                                                         size="small"
                                                     />
                                                 </Grid>
 
-                                                {/* CRITICAL */}
-                                                <Grid size={{ xs: 1.5 }}>
-                                                    <Chip
-                                                        label={`Critical: ${critical}`}
-                                                        size="small"
-                                                        color={critical > 0 ? "error" : "default"}
-                                                    />
-                                                </Grid>
+                                                <Grid size={{ xs: 3 }}>
 
-                                                {/* MAJOR */}
-                                                <Grid size={{ xs: 1.5 }}>
-                                                    <Chip
-                                                        label={`Major: ${major}`}
-                                                        size="small"
-                                                        color={major > 0 ? "warning" : "default"}
-                                                    />
-                                                </Grid>
+                                                    {!item.KetQua &&
+                                                        <Chip label="Chưa kiểm tra" size="small" />}
 
-                                                {/* MINOR */}
-                                                <Grid size={{ xs: 1.5 }}>
-                                                    <Chip
-                                                        label={`Minor: ${minor}`}
-                                                        size="small"
-                                                        color={minor > 0 ? "info" : "default"}
-                                                    />
-                                                </Grid>
+                                                    {item.KetQua === "DAT" &&
+                                                        <Chip label="Đạt" color="success" size="small" />}
 
-                                                {/* TRẠNG THÁI */}
-                                                <Grid size={{ xs: 1.5 }}>
-                                                    {isChuaKiem && (
-                                                        <Chip label="Chưa kiểm tra" size="small" />
-                                                    )}
+                                                    {item.KetQua === "KHONG_DAT" &&
+                                                        <Chip label="Có lỗi" color="error" size="small" />}
 
-                                                    {isDat && (
-                                                        <Chip label="Đạt" color="success" size="small" />
-                                                    )}
-
-                                                    {isKhongDat && (
-                                                        <Chip label="Có lỗi" color="error" size="small" />
-                                                    )}
                                                 </Grid>
 
                                             </Grid>
+
                                         </Card>
+
                                     );
+
                                 })}
+
                             </AccordionDetails>
+
                         </Accordion>
+
                     );
+
                 })}
 
             </Box>
         </Fade>
     );
+
 }

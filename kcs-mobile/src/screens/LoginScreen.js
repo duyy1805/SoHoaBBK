@@ -30,10 +30,10 @@ export default function LoginScreen({ navigation }) {
             const res = await loginApi({ username, password });
 
             // Chỉ cho KCS đăng nhập app
-            if (!res.data.user.permissions.includes("THUC_HIEN_KIEM")) {
-                Alert.alert("Không có quyền", "Tài khoản không được phép dùng app kiểm");
-                return;
-            }
+            // if (!res.data.user.permissions.includes("THUC_HIEN_KIEM")) {
+            //     Alert.alert("Không có quyền", "Tài khoản không được phép dùng app kiểm");
+            //     return;
+            // }
 
             await saveAuth(res.data);
 

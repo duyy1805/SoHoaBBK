@@ -10,6 +10,7 @@ app.use(cors());
 
 app.use('/api/auth', authRouter);
 app.use('/api/phieu-kiem', require('./routes/phieuKiem'));
+app.use('/api/bien-ban', require('./routes/bienBan'));
 app.use('/api/lookup', require('./routes/lookup.routes'));
 
 app.get('/', (req, res) => res.send('Hello from server!'));

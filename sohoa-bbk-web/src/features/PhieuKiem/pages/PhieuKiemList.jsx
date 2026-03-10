@@ -50,8 +50,25 @@ export default function PhieuKiemList() {
         return <Chip label="Chưa kết luận" size="small" />;
     };
 
+    const renderTrangThaiChip = (trangThai) => {
+        switch (trangThai) {
+            case "DA_TAO_SECTION":
+                return <Chip label="Chưa kiểm" size="small" />;
+            case "DANG_KIEM":
+                return <Chip label="Đang kiểm" color="warning" size="small" />;
+            case "CHO_XUONG_XAC_NHAN":
+                return <Chip label="Chờ PX xác nhận" color="info" size="small" />;
+            case "CHO_KIEM_NGHIEM":
+                return <Chip label="Chờ kiểm nghiệm" color="secondary" size="small" />;
+            case "HOAN_TAT":
+                return <Chip label="Hoàn tất" color="success" size="small" />;
+            default:
+                return <Chip label={trangThai} size="small" />;
+        }
+    };
+
     const filteredData = filterStatus
-        ? data.filter((d) => d.KetLuan === filterStatus)
+        ? data.filter((d) => d.TrangThai === filterStatus)
         : data;
 
     if (loading)
@@ -96,14 +113,17 @@ export default function PhieuKiemList() {
 
                 <TextField
                     select
-                    label="Lọc theo kết luận"
+                    label="Lọc theo trạng thái"
                     value={filterStatus}
                     onChange={(e) => setFilterStatus(e.target.value)}
-                    sx={{ mb: 3, width: 250 }}
+                    sx={{ mb: 3, width: 260 }}
                 >
                     <MenuItem value="">Tất cả</MenuItem>
-                    <MenuItem value="DAT">Đạt</MenuItem>
-                    <MenuItem value="KHONG_DAT">Không đạt</MenuItem>
+                    <MenuItem value="DA_TAO_SECTION">Chưa kiểm</MenuItem>
+                    <MenuItem value="DANG_KIEM">Đang kiểm</MenuItem>
+                    <MenuItem value="CHO_XUONG_XAC_NHAN">Chờ PX xác nhận</MenuItem>
+                    <MenuItem value="CHO_KIEM_NGHIEM">Chờ kiểm nghiệm</MenuItem>
+                    <MenuItem value="HOAN_TAT">Hoàn tất</MenuItem>
                 </TextField>
 
                 <Grid container spacing={3}>
@@ -129,7 +149,7 @@ export default function PhieuKiemList() {
                                         sx={{ mb: 2 }}
                                     >
                                         <AssignmentIcon sx={{ color: "#6366f1" }} />
-                                        {renderKetLuanChip(item.KetLuan)}
+                                        {renderTrangThaiChip(item.TrangThai)}
                                     </Stack>
 
                                     <Typography variant="h6" fontWeight={600}>
@@ -139,7 +159,11 @@ export default function PhieuKiemList() {
                                     <Typography variant="body2" color="text.secondary">
                                         LOT: {item.Lot || "—"}
                                     </Typography>
-
+                                    {item.TrangThai === "HOAN_TAT" && (
+                                        <Box mt={1}>
+                                            {renderKetLuanChip(item.KetLuan)}
+                                        </Box>
+                                    )}
                                     <Typography variant="body2" color="text.secondary">
                                         Người kiểm: {item.TenNguoiKiem}
                                     </Typography>

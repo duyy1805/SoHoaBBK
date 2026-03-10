@@ -9,7 +9,8 @@ import PhieuDetailScreen from "../screens/PhieuDetailScreen";
 import CheckItemScreen from "../screens/CheckItemScreen";
 
 // (Sau này thêm BienBanListScreen)
-// import BienBanListScreen from "../screens/BienBanListScreen";
+import BienBanListScreen from "../screens/BienBanListScreen";
+import BienBanDetailScreen from "../screens/BienBanDetailScreen"
 
 const Stack = createNativeStackNavigator();
 
@@ -68,11 +69,18 @@ export default function AppNavigator() {
                 options={{ title: "Kiểm tra mục" }}
             />
 
-            {/* <Stack.Screen
+            <Stack.Screen
                 name="BienBanList"
                 component={BienBanListScreen}
                 options={{ title: "Biên bản kiểm" }}
-            /> */}
+            />
+
+            <Stack.Screen
+                name="BienBanDetail"
+                component={BienBanDetailScreen}
+                options={{ title: "Chi tiết biên bản" }}
+            />
+
         </Stack.Navigator>
     );
 }

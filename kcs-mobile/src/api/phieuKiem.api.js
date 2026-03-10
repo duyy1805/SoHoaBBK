@@ -42,3 +42,15 @@ export const completePhieuKiem = (phieuKiemId) => {
     phieuKiemId
   });
 };
+
+export const confirmPX = (phieuKiemId) => {
+  return axiosClient.post("/phieu-kiem/xac-nhan-px", {
+    phieuKiemId
+  });
+};
+
+export const confirmKN = (phieuKiemId) => {
+  return axiosClient.post("/phieu-kiem/xac-nhan-kiem-nghiem", {
+    phieuKiemId
+  });
+};
