@@ -535,4 +535,58 @@ router.delete(
   }
 );
 
+router.get(
+  "/de-nghi-xu-ly",
+  authenticateToken,
+  async (req, res) => {
+
+    try {
+
+      const pool = await poolPromise;
+
+      const result = await pool.request()
+        .execute("sp_DM_DeNghiXuLy_Get");
+
+      res.json(result.recordset);
+
+    } catch (err) {
+
+      console.error("GetDeNghiXuLy error:", err);
+
+      res.status(500).json({
+        message: "Không tải được danh mục đề nghị xử lý"
+      });
+
+    }
+
+  }
+);
+
+router.get(
+  "/bo-phan",
+  authenticateToken,
+  async (req, res) => {
+
+    try {
+
+      const pool = await poolPromise;
+
+      const result = await pool.request()
+        .execute("sp_DM_BoPhan_Get");
+
+      res.json(result.recordset);
+
+    } catch (err) {
+
+      console.error("GetBoPhan error:", err);
+
+      res.status(500).json({
+        message: "Không tải được danh mục bộ phận"
+      });
+
+    }
+
+  }
+);
+
 module.exports = router;

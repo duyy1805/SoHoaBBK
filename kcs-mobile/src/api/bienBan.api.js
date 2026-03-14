@@ -71,6 +71,8 @@ export const addChiPhi = (data) => {
     return axiosClient.post("/bien-ban/chi-phi", data);
 };
 
+export const confirmUser = (bienBanId) =>
+    axiosClient.post("/bien-ban/xac-nhan", { bienBanId });
 /* ================================
    Hoàn thành biên bản
 ================================ */
@@ -79,4 +81,12 @@ export const completeBienBan = (bienBanId) => {
     return axiosClient.post("/bien-ban/complete", {
         bienBanId
     });
+};
+
+export const getDeNghiXuLy = () => {
+    return axiosClient.get("/lookup/de-nghi-xu-ly");
+};
+
+export const getBoPhan = () => {
+    return axiosClient.get("/lookup/bo-phan");
 };

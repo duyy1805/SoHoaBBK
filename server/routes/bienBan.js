@@ -84,11 +84,10 @@ router.get(
 /* =========================================================
    POST /bien-ban/xu-ly
 ========================================================= */
-
 router.post(
     "/xu-ly",
     authenticateToken,
-    authorize("XAC_NHAN_LOI"),
+    // authorize("XAC_NHAN_LOI"),
     async (req, res) => {
 
         try {
@@ -96,10 +95,9 @@ router.post(
             const {
                 bienBanId,
                 noiDung,
-                deNghiXuLy,
-                trachNhiem,
-                thoiHan,
-                theoDoi
+                deNghiXuLyId,
+                currentUserId,
+                thoiHan
             } = req.body;
 
             const pool = await poolPromise;
@@ -107,18 +105,17 @@ router.post(
             await pool.request()
                 .input("BienBanId", sql.Int, bienBanId)
                 .input("NoiDung", sql.NVarChar, noiDung)
-                .input("DeNghiXuLy", sql.NVarChar, deNghiXuLy)
-                .input("TrachNhiem", sql.NVarChar, trachNhiem)
+                .input("DeNghiXuLyId", sql.Int, deNghiXuLyId)
                 .input("ThoiHan", sql.Date, thoiHan)
-                .input("TheoDoi", sql.NVarChar, theoDoi)
-                .input("UserId", sql.Int, req.user.userId)
+                .input("UserId", sql.Int, currentUserId)
+                .input("BoPhanId", sql.Int, req.user.boPhanId)
                 .execute("sp_BienBan_AddXuLy");
 
             res.json({ success: true });
 
         } catch (err) {
 
-            console.error("AddXuLy error:", err);
+            console.error(err);
 
             res.status(500).json({
                 message: "Thêm đề xuất xử lý thất bại"
@@ -128,7 +125,6 @@ router.post(
 
     }
 );
-
 /* =========================================================
    POST /bien-ban/complete
 ========================================================= */
@@ -156,7 +152,7 @@ router.post(
             console.error("CompleteBienBan error:", err);
 
             res.status(500).json({
-                message: "Hoàn thành biên bản thất bại"
+                message: err.message
             });
 
         }
@@ -206,6 +202,7 @@ router.get(
 router.post(
     "/:id/confirm-assign",
     authenticateToken,
+    authorize("XAC_NHAN_NGUOI_XU_LY"),
     async (req, res) => {
 
         const bienBanId = parseInt(req.params.id, 10)
@@ -221,4 +218,75 @@ router.post(
     }
 )
 
+router.post(
+    "/chi-phi",
+    authenticateToken,
+    async (req, res) => {
+
+        try {
+
+            const {
+                bienBanId,
+                loaiChiPhi,
+                giaTri,
+                boPhanId,
+                thoiHan
+            } = req.body;
+            console.log(req.body)
+            const pool = await poolPromise;
+
+            await pool.request()
+                .input("BienBanId", bienBanId)
+                .input("LoaiChiPhi", loaiChiPhi)
+                .input("GiaTri", giaTri)
+                .input("BoPhanId", boPhanId)
+                .input("ThoiHan", thoiHan)
+                .input("CreatedBy", req.user.id)
+                .execute("sp_BienBan_AddChiPhi");
+
+            res.json({ success: true });
+
+        } catch (err) {
+
+            console.error("AddChiPhi error:", err);
+
+            res.status(500).json({
+                message: "Không thể thêm chi phí"
+            });
+
+        }
+
+    });
+
+router.post(
+    "/xac-nhan",
+    authenticateToken,
+    async (req, res) => {
+
+        try {
+
+            const { bienBanId } = req.body
+            const userId = req.user.userId
+            console.log(req.user)
+            const pool = await poolPromise
+
+            await pool.request()
+                .input("BienBanId", sql.Int, bienBanId)
+                .input("NguoiXacNhanId", sql.Int, userId)
+                .execute("sp_BienBan_XacNhan1")
+
+            res.json({
+                message: "Đã xác nhận"
+            })
+
+        } catch (err) {
+
+            res.status(500).json({
+                message: "Không thể xác nhận"
+            })
+
+        }
+
+    }
+)
 module.exports = router;

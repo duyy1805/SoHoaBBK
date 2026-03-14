@@ -4,7 +4,7 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const axiosClient = axios.create({
-    baseURL: "http://192.168.88.3:5001/api", // ⚠ đổi thành IP máy chạy server
+    baseURL: "http://localhost:5001/api", // ⚠ đổi thành IP máy chạy server
     timeout: 10000
 });
 

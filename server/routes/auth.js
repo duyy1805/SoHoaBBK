@@ -120,6 +120,7 @@ router.post('/login', async (req, res) => {
                 username: user.Username,
                 fullName: user.FullName,
                 boPhan: user.BoPhan,
+                boPhanId: user.BoPhanId,
                 roles,
                 permissions
             }

@@ -1,5 +1,3 @@
-// src/screens/BienBanDetailScreen.jsx
-
 import { useEffect, useState } from "react";
 import {
     View,
@@ -7,17 +5,21 @@ import {
     ScrollView,
     TouchableOpacity,
     StyleSheet,
-    ActivityIndicator
+    ActivityIndicator,
+    Alert
 } from "react-native";
 
 import {
     getBienBanDetail,
     completeBienBan,
-    confirmAssign
+    confirmAssign,
+    confirmUser
 } from "../api/bienBan.api";
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import AssignUserModal from "../components/AssignUserModal";
-
+import XuLyModal from "../components/XuLyModal";
+import ChiPhiModal from "../components/ChiPhiModal";
 export default function BienBanDetailScreen({ route, navigation }) {
 
     const { bienBanId } = route.params;
@@ -31,27 +33,45 @@ export default function BienBanDetailScreen({ route, navigation }) {
 
     const [loading, setLoading] = useState(true);
     const [showAssignModal, setShowAssignModal] = useState(false);
+    const [showXuLyModal, setShowXuLyModal] = useState(false);
+    const [showChiPhiModal, setShowChiPhiModal] = useState(false);
+    const [currentUserId, setCurrentUserId] = useState(null);
+
+    /* LOAD DATA */
 
     useEffect(() => {
+        loadUser();
         loadData();
     }, []);
+
+    const loadUser = async () => {
+        const userStr = await AsyncStorage.getItem("user");
+        if (!userStr) return;
+        const user = JSON.parse(userStr);
+        setCurrentUserId(user.id);
+    };
 
     const loadData = async () => {
 
         try {
 
+            setLoading(true);
+
             const res = await getBienBanDetail(bienBanId);
 
             setInfo(res.data.info);
-            setDefects(res.data.defects);
-            setAssigns(res.data.assigns);
-            setXuLy(res.data.xuLy);
-            setChiPhi(res.data.chiPhi);
-            setXacNhan(res.data.xacNhan);
+            setDefects(res.data.defects || []);
+            setAssigns(res.data.assigns || []);
+            setXuLy(res.data.xuLy || []);
+            setChiPhi(res.data.chiPhi || []);
+            setXacNhan(res.data.xacNhan || []);
 
         } catch (err) {
 
-            console.log("LoadBienBanDetail error:", err);
+            Alert.alert(
+                "Lỗi",
+                err?.response?.data?.message || "Không tải được biên bản"
+            );
 
         } finally {
 
@@ -60,159 +80,229 @@ export default function BienBanDetailScreen({ route, navigation }) {
         }
 
     };
+    const getDefectColor = (type) => {
+
+        if (!type) return "#95a5a6";
+
+        const t = type.toLowerCase();
+
+        if (t.includes("critical")) return "#e74c3c";
+        if (t.includes("major")) return "#e67e22";
+        if (t.includes("minor")) return "#f1c40f";
+
+        return "#3498db";
+
+    };
+    /* CONFIRM ASSIGN */
+
     const handleConfirmAssign = async () => {
 
         try {
 
             await confirmAssign(bienBanId);
 
+            Alert.alert("Thành công", "Đã xác nhận phân công");
+
             loadData();
 
         } catch (err) {
 
-            console.log("ConfirmAssign error:", err);
+            Alert.alert(
+                "Lỗi",
+                err?.response?.data?.message || "Không thể xác nhận phân công"
+            );
 
         }
 
     };
+
+    /* COMPLETE */
+
     const handleComplete = async () => {
 
         try {
 
             await completeBienBan(bienBanId);
 
+            Alert.alert("Thành công", "Biên bản đã hoàn thành");
+
             navigation.goBack();
 
         } catch (err) {
 
-            console.log("CompleteBienBan error:", err);
+            Alert.alert(
+                "Lỗi",
+                err?.response?.data?.message || "Không thể hoàn thành biên bản"
+            );
 
         }
 
     };
 
+    /* STATUS */
+
+    const getStatusText = (nguoiXuLyId) => {
+        const done = xuLy.find(x => x.NguoiXuLyId === nguoiXuLyId);
+        return done ? "✓" : "Chờ";
+    };
+
+    const isAssigned = assigns.some(a => a.NguoiXuLyId === currentUserId);
+    const hasXuLy = xuLy.some(x => x.NguoiXuLyId === currentUserId);
+    const isConfirmed = xacNhan.some(
+        x => x.NguoiXacNhanId === currentUserId
+    );
+    const allConfirmed =
+        assigns.length > 0 &&
+        assigns.every(a =>
+            xacNhan.some(x => x.NguoiXacNhanId === a.NguoiXuLyId)
+        );
+    const handleConfirmUser = async () => {
+
+        try {
+
+            await confirmUser(bienBanId);
+
+            Alert.alert("Thành công", "Đã xác nhận thông tin");
+
+            loadData();
+
+        } catch (err) {
+
+            Alert.alert(
+                "Lỗi",
+                err?.response?.data?.message || "Không thể xác nhận"
+            );
+
+        }
+
+    };
+
+    /* LOADING */
     if (loading) {
         return (
-            <ActivityIndicator style={{ marginTop: 40 }} />
+            <ActivityIndicator size="large" style={{ marginTop: 40 }} />
         );
     }
+
+    /* UI */
 
     return (
 
         <ScrollView style={styles.container}>
 
-            {/* ===============================
-          THÔNG TIN BIÊN BẢN
-      =============================== */}
+            {/* HEADER */}
 
-            <View style={styles.card}>
+            <View style={styles.headerCard}>
 
-                <Text style={styles.title}>
-                    {info.SoPhieu}
-                </Text>
+                <Text style={styles.soPhieu}>{info.SoPhieu}</Text>
 
-                <Text style={styles.text}>
-                    {info.TenSanPham}
-                </Text>
+                <Text style={styles.product}>{info.TenSanPham}</Text>
 
-                <Text style={styles.text}>
-                    Lot: {info.Lot}
-                </Text>
+                <View style={styles.rowBetween}>
+                    <Text style={styles.meta}>Lot: {info.Lot}</Text>
+                    <Text style={styles.meta}>Người lập: {info.NguoiLap}</Text>
+                </View>
 
-                <Text style={styles.text}>
-                    Người lập: {info.NguoiLap}
-                </Text>
-
-                <Text style={styles.status}>
-                    {info.TrangThai}
-                </Text>
+                <View style={styles.statusBadge}>
+                    <Text style={styles.statusText}>{info.TrangThai}</Text>
+                </View>
 
             </View>
 
-            {/* ===============================
-          DANH SÁCH LỖI
-      =============================== */}
+            {/* DEFECTS */}
 
             <Text style={styles.section}>Danh sách lỗi</Text>
 
-            <View style={styles.card}>
+            <View style={styles.table}>
 
-                {defects.map((d, i) => (
+                <View style={styles.tableHeader}>
+                    <Text style={[styles.th, { flex: 1 }]}>Tên lỗi</Text>
+                    <Text style={[styles.th, { width: 90, textAlign: "center" }]}>Mức độ</Text>
+                    <Text style={[styles.th, { width: 40, textAlign: "right" }]}>SL</Text>
+                </View>
 
-                    <View key={i} style={styles.defectRow}>
+                {defects.map((d, i) => {
 
-                        <Text style={styles.defectCode}>
-                            {d.MaLoi}
-                        </Text>
-
-                        <Text style={styles.defectName}>
-                            {d.TenLoi}
-                        </Text>
-
-                        <Text style={styles.defectQty}>
-                            {d.SoLuong}
-                        </Text>
-
-                    </View>
-
-                ))}
-
-            </View>
-
-            {/* ===============================
-          NGƯỜI XỬ LÝ
-      =============================== */}
-
-            <Text style={styles.section}>Người xử lý</Text>
-
-            <View style={styles.card}>
-
-                {assigns.map((a, i) => {
-
-                    const done = xuLy.find(
-                        x => x.CreatedBy === a.NguoiXuLyId
-                    );
+                    const color = getDefectColor(d.DefectType);
 
                     return (
 
-                        <View key={i} style={styles.assignRow}>
+                        <View key={i} style={styles.tableRow}>
 
-                            <View>
+                            <Text style={[styles.td, { flex: 1 }]}>
+                                {d.TenLoi}
+                            </Text>
 
-                                <Text style={styles.assignName}>
-                                    {a.FullName}
+                            <View style={[styles.badge, { backgroundColor: color }]}>
+                                <Text style={styles.badgeText}>
+                                    {d.DefectType}
                                 </Text>
-
-                                <Text style={styles.assignRole}>
-                                    {a.RoleName}
-                                </Text>
-
                             </View>
 
-                            <Text
-                                style={[
-                                    styles.assignStatus,
-                                    done ? styles.done : styles.pending
-                                ]}
-                            >
-                                {done ? "✓" : "Chờ"}
+                            <Text style={[styles.td, { width: 40, textAlign: "right" }]}>
+                                {d.SoLuong}
                             </Text>
 
                         </View>
 
-                    );
+                    )
 
                 })}
 
             </View>
 
+            {/* ASSIGN */}
+
+            <Text style={styles.section}>Người xử lý</Text>
+
+            <View style={styles.card}>
+
+                {assigns.map((a, i) => (
+                    <View key={i} style={styles.assignRow}>
+
+                        <View>
+                            <Text style={styles.assignName}>{a.FullName}</Text>
+                            <Text style={styles.assignRole}>{a.RoleName}</Text>
+                        </View>
+
+                        <Text style={[
+                            styles.assignStatus,
+                            getStatusText(a.NguoiXuLyId) === "✓"
+                                ? styles.done
+                                : styles.pending
+                        ]}>
+                            {getStatusText(a.NguoiXuLyId)}
+                        </Text>
+
+                    </View>
+                ))}
+
+            </View>
+
+            {/* BUTTONS */}
+
+            {info.AssignConfirmed && isAssigned && !isConfirmed && (
+
+                <TouchableOpacity
+                    style={styles.commentBtn}
+                    onPress={() => setShowXuLyModal(true)}
+                >
+                    <Text style={styles.btnText}>
+                        Nhập ý kiến xử lý
+                    </Text>
+                </TouchableOpacity>
+
+            )}
+
             {!info.AssignConfirmed && (
+
                 <>
+
                     <TouchableOpacity
                         style={styles.assignBtn}
                         onPress={() => setShowAssignModal(true)}
                     >
-                        <Text style={{ color: "#fff" }}>
+                        <Text style={styles.btnText}>
                             Chọn người xử lý
                         </Text>
                     </TouchableOpacity>
@@ -221,97 +311,110 @@ export default function BienBanDetailScreen({ route, navigation }) {
                         style={styles.confirmBtn}
                         onPress={handleConfirmAssign}
                     >
-                        <Text style={{ color: "#fff" }}>
+                        <Text style={styles.btnText}>
                             Xác nhận phân công
                         </Text>
                     </TouchableOpacity>
+
                 </>
+
             )}
 
-            {/* ===============================
-          ĐỀ XUẤT XỬ LÝ
-      =============================== */}
+            {/* XU LY */}
 
             <Text style={styles.section}>Đề xuất xử lý</Text>
 
-            {xuLy.map((x, i) => (
+            <View style={styles.table}>
 
-                <View key={i} style={styles.card}>
+                {xuLy.map((x, i) => (
+                    <View key={i} style={styles.xuLyRow}>
 
-                    <Text style={styles.label}>Nội dung</Text>
-                    <Text>{x.NoiDung}</Text>
+                        <Text style={styles.noiDung}>{x.NoiDung}</Text>
 
-                    <Text style={styles.label}>Đề nghị</Text>
-                    <Text>{x.DeNghiXuLy}</Text>
+                        <Text style={styles.deNghi}>
+                            Đề nghị: {x.DeNghiXuLy}
+                        </Text>
 
-                    <Text style={styles.label}>Trách nhiệm</Text>
-                    <Text>{x.TrachNhiem}</Text>
+                        <View style={styles.rowBetween}>
+                            <Text style={styles.boPhan}>
+                                {x.MaBoPhan} - {x.TenBoPhan}
+                            </Text>
 
-                    <Text style={styles.label}>Thời hạn</Text>
-                    <Text>{x.ThoiHan}</Text>
+                            <Text style={styles.deadline}>
+                                {new Date(x.ThoiHan).toLocaleDateString("vi-VN")}
+                            </Text>
+                        </View>
 
-                </View>
+                    </View>
+                ))}
 
-            ))}
+            </View>
 
-            {/* ===============================
-          CHI PHÍ
-      =============================== */}
+            {/* CHI PHI */}
 
             <Text style={styles.section}>Chi phí phát sinh</Text>
 
             {chiPhi.map((c, i) => (
-
-                <View key={i} style={styles.card}>
-
-                    <Text>{c.LoaiChiPhi}</Text>
-
-                    <Text style={styles.cost}>
-                        {c.GiaTri}
+                <View key={i} style={styles.cardRow}>
+                    <Text style={{ flex: 1 }}>{c.LoaiChiPhi}</Text>
+                    <Text style={styles.department}>
+                        {c.TenBoPhan}
                     </Text>
-
+                    <Text style={styles.cost}>
+                        {c.GiaTri?.toLocaleString("vi-VN")}
+                    </Text>
                 </View>
-
             ))}
+            {info.AssignConfirmed && isAssigned && !isConfirmed && (
 
-            {/* ===============================
-          XÁC NHẬN
-      =============================== */}
+                <TouchableOpacity
+                    style={styles.costBtn}
+                    onPress={() => setShowChiPhiModal(true)}
+                >
+                    <Text style={styles.btnText}>
+                        Thêm chi phí
+                    </Text>
+                </TouchableOpacity>
+
+            )}
+            {/* XAC NHAN */}
 
             <Text style={styles.section}>Xác nhận</Text>
 
             {xacNhan.map((x, i) => (
-
-                <View key={i} style={styles.card}>
-
-                    <Text style={styles.text}>
-                        {x.FullName}
-                    </Text>
-
-                    <Text style={styles.text}>
-                        {x.VaiTro}
-                    </Text>
-
-                    <Text style={styles.time}>
-                        {x.ThoiGian}
-                    </Text>
-
+                <View key={i} style={styles.cardRow}>
+                    <Text>{x.FullName}</Text>
+                    <Text style={styles.meta}>{x.ThoiGian}</Text>
                 </View>
-
             ))}
 
-            {/* ===============================
-          COMPLETE
-      =============================== */}
+            {/* COMPLETE */}
+            {info.AssignConfirmed && isAssigned && !isConfirmed && (
 
-            <TouchableOpacity
-                style={styles.completeBtn}
-                onPress={handleComplete}
-            >
-                <Text style={{ color: "#fff" }}>
-                    Hoàn thành biên bản
-                </Text>
-            </TouchableOpacity>
+                <TouchableOpacity
+                    style={styles.confirmUserBtn}
+                    onPress={handleConfirmUser}
+                >
+                    <Text style={styles.btnText}>
+                        Xác nhận thông tin
+                    </Text>
+                </TouchableOpacity>
+
+            )}
+            {allConfirmed && (
+
+                <TouchableOpacity
+                    style={styles.completeBtn}
+                    onPress={handleComplete}
+                >
+                    <Text style={styles.btnText}>
+                        Hoàn thành biên bản
+                    </Text>
+                </TouchableOpacity>
+
+            )}
+
+            {/* MODALS */}
 
             <AssignUserModal
                 visible={showAssignModal}
@@ -321,71 +424,137 @@ export default function BienBanDetailScreen({ route, navigation }) {
                 reload={loadData}
             />
 
+            <XuLyModal
+                visible={showXuLyModal}
+                bienBanId={bienBanId}
+                currentUserId={currentUserId}
+                reload={loadData}
+                onClose={() => setShowXuLyModal(false)}
+            />
+            <ChiPhiModal
+                visible={showChiPhiModal}
+                bienBanId={bienBanId}
+                reload={loadData}
+                onClose={() => setShowChiPhiModal(false)}
+            />
         </ScrollView>
 
     );
+
 }
 
 const styles = StyleSheet.create({
 
     container: {
         flex: 1,
+        backgroundColor: "#f4f6fa",
+        padding: 16
+    },
+
+    headerCard: {
+        backgroundColor: "#fff",
+        borderRadius: 14,
         padding: 16,
-        backgroundColor: "#f5f6fa"
+        marginBottom: 10
+    },
+
+    soPhieu: {
+        fontSize: 18,
+        fontWeight: "700"
+    },
+
+    product: {
+        marginTop: 4,
+        fontSize: 15
+    },
+
+    meta: {
+        color: "#666",
+        fontSize: 13
+    },
+
+    rowBetween: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        marginTop: 6
+    },
+
+    statusBadge: {
+        marginTop: 8,
+        alignSelf: "flex-start",
+        backgroundColor: "#eaf3ff",
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 8
+    },
+
+    statusText: {
+        color: "#2980b9",
+        fontWeight: "600"
+    },
+
+    section: {
+        marginTop: 20,
+        fontWeight: "700",
+        fontSize: 16
+    },
+
+    table: {
+        backgroundColor: "#fff",
+        borderRadius: 12,
+        marginTop: 8,
+        overflow: "hidden"
+    },
+
+    tableHeader: {
+        flexDirection: "row",
+        backgroundColor: "#eef1f5",
+        paddingVertical: 10,
+        paddingHorizontal: 10
+    },
+
+    tableRow: {
+        flexDirection: "row",
+        paddingVertical: 10,
+        paddingHorizontal: 10,
+        borderTopWidth: 1,
+        borderColor: "#eee"
+    },
+    badge: {
+        width: 90,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: 3,
+        borderRadius: 6
+    },
+
+    badgeText: {
+        color: "#fff",
+        fontSize: 12,
+        fontWeight: "600"
+    },
+    th: {
+        fontWeight: "700",
+        fontSize: 13
+    },
+
+    td: {
+        fontSize: 14
     },
 
     card: {
         backgroundColor: "#fff",
-        padding: 14,
         borderRadius: 12,
-        marginTop: 8
-    },
-
-    title: {
-        fontSize: 18,
-        fontWeight: "bold"
-    },
-
-    section: {
-        marginTop: 24,
-        fontWeight: "bold",
-        fontSize: 16
-    },
-
-    text: {
-        marginTop: 4
-    },
-
-    status: {
-        marginTop: 6,
-        fontWeight: "bold",
-        color: "#2980b9"
-    },
-
-    defectRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        marginBottom: 6
-    },
-
-    defectCode: {
-        width: 80,
-        fontWeight: "bold"
-    },
-
-    defectName: {
-        flex: 1
-    },
-
-    defectQty: {
-        width: 40,
-        textAlign: "right"
+        marginTop: 8,
+        padding: 12
     },
 
     assignRow: {
         flexDirection: "row",
         justifyContent: "space-between",
-        marginBottom: 8
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderColor: "#eee"
     },
 
     assignName: {
@@ -393,11 +562,12 @@ const styles = StyleSheet.create({
     },
 
     assignRole: {
-        color: "#666"
+        color: "#666",
+        fontSize: 13
     },
 
     assignStatus: {
-        fontWeight: "bold"
+        fontWeight: "700"
     },
 
     done: {
@@ -408,6 +578,57 @@ const styles = StyleSheet.create({
         color: "#e67e22"
     },
 
+    xuLyRow: {
+        padding: 12,
+        borderBottomWidth: 1,
+        borderColor: "#eee"
+    },
+
+    noiDung: {
+        fontWeight: "600"
+    },
+
+    deNghi: {
+        marginTop: 3,
+        color: "#555"
+    },
+
+    boPhan: {
+        fontSize: 13,
+        color: "#666"
+    },
+
+    deadline: {
+        fontSize: 13,
+        color: "#e67e22",
+        fontWeight: "600"
+    },
+
+    cardRow: {
+        backgroundColor: "#fff",
+        borderRadius: 12,
+        padding: 12,
+        marginTop: 8,
+        flexDirection: "row",
+        justifyContent: "space-between"
+    },
+    department: {
+        fontWeight: "600",
+        color: "#16a085",
+        textAlign: "right"
+    },
+    cost: {
+        fontWeight: "700",
+        textAlign: "right",
+        width: 30
+    },
+    costBtn: {
+        backgroundColor: "#16a085",
+        padding: 12,
+        borderRadius: 10,
+        alignItems: "center",
+        marginTop: 10
+    },
     assignBtn: {
         backgroundColor: "#3498db",
         padding: 12,
@@ -415,6 +636,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         marginTop: 10
     },
+
     confirmBtn: {
         backgroundColor: "#e67e22",
         padding: 12,
@@ -422,28 +644,33 @@ const styles = StyleSheet.create({
         alignItems: "center",
         marginTop: 10
     },
-    label: {
-        marginTop: 10,
-        fontWeight: "600"
-    },
 
-    cost: {
-        fontWeight: "bold",
-        marginTop: 4
+    commentBtn: {
+        backgroundColor: "#8e44ad",
+        padding: 12,
+        borderRadius: 10,
+        alignItems: "center",
+        marginTop: 10
     },
-
-    time: {
-        color: "#888",
-        marginTop: 4
+    confirmUserBtn: {
+        backgroundColor: "#f39c12",
+        padding: 12,
+        borderRadius: 10,
+        alignItems: "center",
+        marginTop: 10
     },
-
     completeBtn: {
         backgroundColor: "#27ae60",
-        padding: 14,
+        padding: 16,
         borderRadius: 12,
         alignItems: "center",
         marginTop: 30,
         marginBottom: 30
+    },
+
+    btnText: {
+        color: "#fff",
+        fontWeight: "600"
     }
 
 });
