@@ -313,7 +313,7 @@ router.post(
     authenticateToken,
     authorize('THUC_HIEN_KIEM'),
     async (req, res) => {
-        const { phieuKiemId } = req.body;
+        const { phieuKiemId, userId } = req.body;
 
         if (!phieuKiemId) {
             return res.status(400).json({
@@ -326,6 +326,7 @@ router.post(
 
             await pool.request()
                 .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('UserId', sql.Int, userId)
                 .execute('sp_PhieuKiem_Complete');
 
             res.json({

@@ -1,5 +1,3 @@
-// src/api/bienBan.api.js
-
 import axiosClient from "./axiosClient";
 
 /* ================================
@@ -55,6 +53,7 @@ export const assignUsers = (bienBanId, userIds) => {
 export const confirmAssign = (bienBanId) => {
     return axiosClient.post(`/bien-ban/${bienBanId}/confirm-assign`);
 };
+
 /* ================================
    Thêm ý kiến xử lý
 ================================ */
@@ -76,6 +75,7 @@ export const confirmUser = (bienBanId) =>
 
 export const addHanhDong = (data) =>
     axiosClient.post("/bien-ban/hanh-dong", data);
+
 /* ================================
    Hoàn thành biên bản
 ================================ */

@@ -20,6 +20,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import AssignUserModal from "../components/AssignUserModal";
 import XuLyModal from "../components/XuLyModal";
 import ChiPhiModal from "../components/ChiPhiModal";
+import HanhDongModal from "../components/HanhDongModal";
 export default function BienBanDetailScreen({ route, navigation }) {
 
     const { bienBanId } = route.params;
@@ -30,11 +31,13 @@ export default function BienBanDetailScreen({ route, navigation }) {
     const [xuLy, setXuLy] = useState([]);
     const [chiPhi, setChiPhi] = useState([]);
     const [xacNhan, setXacNhan] = useState([]);
+    const [hanhDong, setHanhDong] = useState([]);
 
     const [loading, setLoading] = useState(true);
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [showXuLyModal, setShowXuLyModal] = useState(false);
     const [showChiPhiModal, setShowChiPhiModal] = useState(false);
+    const [showHanhDongModal, setShowHanhDongModal] = useState(false);
     const [currentUserId, setCurrentUserId] = useState(null);
 
     /* LOAD DATA */
@@ -65,6 +68,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
             setXuLy(res.data.xuLy || []);
             setChiPhi(res.data.chiPhi || []);
             setXacNhan(res.data.xacNhan || []);
+            setHanhDong(res.data.hanhDong || []);
 
         } catch (err) {
 
@@ -355,17 +359,22 @@ export default function BienBanDetailScreen({ route, navigation }) {
             <Text style={styles.section}>Chi phí phát sinh</Text>
 
             {chiPhi.map((c, i) => (
-                <View key={i} style={styles.cardRow}>
-                    <Text style={{ flex: 1 }}>{c.LoaiChiPhi}</Text>
-                    <Text style={styles.department}>
-                        {c.TenBoPhan}
-                    </Text>
-                    <Text style={styles.cost}>
-                        {c.GiaTri?.toLocaleString("vi-VN")}
-                    </Text>
+                <View key={i} style={styles.table}>
+                    <View key={i} style={styles.xuLyRow}>
+                        <Text style={styles.noiDung}>{c.LoaiChiPhi}</Text>
+                        <View style={styles.rowBetween}>
+                            <Text style={styles.department}>
+                                {c.TenBoPhan}
+                            </Text>
+                            <Text style={styles.cost}>
+                                {c.GiaTri?.toLocaleString("vi-VN")} VND
+                            </Text>
+                        </View>
+                    </View>
                 </View>
             ))}
-            {info.AssignConfirmed && isAssigned && !isConfirmed && (
+
+            {info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy && (
 
                 <TouchableOpacity
                     style={styles.costBtn}
@@ -373,6 +382,42 @@ export default function BienBanDetailScreen({ route, navigation }) {
                 >
                     <Text style={styles.btnText}>
                         Thêm chi phí
+                    </Text>
+                </TouchableOpacity>
+
+            )}
+            <Text style={styles.section}>
+                Hành động khắc phục
+            </Text>
+            <ScrollView style={styles.table}>
+                {hanhDong.map((h, i) => (
+
+                    <View key={i} style={styles.xuLyRow}>
+
+                        <Text style={styles.noiDung}>{h.NoiDung}</Text>
+
+                        <View style={styles.rowBetween}>
+                            <Text style={styles.boPhan}>
+                                {h.MaBoPhan} - {h.TenBoPhan}
+                            </Text>
+
+                            <Text style={styles.deadline}>
+                                {new Date(h.ThoiHan).toLocaleDateString("vi-VN")}
+                            </Text>
+                        </View>
+
+                    </View>
+
+                ))}
+            </ScrollView>
+            {info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy && (
+
+                <TouchableOpacity
+                    style={styles.costBtn}
+                    onPress={() => setShowHanhDongModal(true)}
+                >
+                    <Text style={styles.btnText}>
+                        Thêm hành động
                     </Text>
                 </TouchableOpacity>
 
@@ -389,7 +434,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
             ))}
 
             {/* COMPLETE */}
-            {info.AssignConfirmed && isAssigned && !isConfirmed && (
+            {info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy && (
 
                 <TouchableOpacity
                     style={styles.confirmUserBtn}
@@ -436,6 +481,12 @@ export default function BienBanDetailScreen({ route, navigation }) {
                 bienBanId={bienBanId}
                 reload={loadData}
                 onClose={() => setShowChiPhiModal(false)}
+            />
+            <HanhDongModal
+                visible={showHanhDongModal}
+                bienBanId={bienBanId}
+                reload={loadData}
+                onClose={() => setShowHanhDongModal(false)}
             />
         </ScrollView>
 
@@ -614,13 +665,10 @@ const styles = StyleSheet.create({
     },
     department: {
         fontWeight: "600",
-        color: "#16a085",
-        textAlign: "right"
+        color: "#16a085"
     },
     cost: {
-        fontWeight: "700",
-        textAlign: "right",
-        width: 30
+        fontWeight: "700"
     },
     costBtn: {
         backgroundColor: "#16a085",

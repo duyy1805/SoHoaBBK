@@ -41,7 +41,7 @@ export default function HomeScreen({ navigation }) {
             }
         ]);
     };
-
+    console.log(user)
     return (
         <View style={styles.container}>
             <StatusBar barStyle="light-content" />
@@ -56,7 +56,7 @@ export default function HomeScreen({ navigation }) {
                         {user?.fullName || "Người dùng"}
                     </Text>
                     <Text style={styles.subText}>
-                        {user?.boPhan || ""}
+                        {user?.tenBoPhan || ""}
                     </Text>
                 </View>
 

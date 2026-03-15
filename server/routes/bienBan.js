@@ -65,7 +65,8 @@ router.get(
                 assigns: rs[2] || [],
                 xuLy: rs[3] || [],
                 chiPhi: rs[4] || [],
-                xacNhan: rs[5] || []
+                xacNhan: rs[5] || [],
+                hanhDong: rs[6] || []
             });
 
         } catch (err) {
@@ -184,6 +185,7 @@ router.post(
 router.get(
     "/:id/assign-users",
     authenticateToken,
+    authorize("XAC_NHAN_NGUOI_XU_LY"),
     async (req, res) => {
 
         const bienBanId = parseInt(req.params.id, 10);
@@ -257,6 +259,49 @@ router.post(
         }
 
     });
+
+router.post(
+    "/hanh-dong",
+    authenticateToken,
+    async (req, res) => {
+
+        try {
+
+            const {
+                bienBanId,
+                noiDung,
+                boPhanId,
+                thoiHan,
+                theoDoi
+            } = req.body;
+
+            const userId = req.user.id;
+
+            const pool = await poolPromise;
+
+            await pool.request()
+                .input("BienBanId", sql.Int, bienBanId)
+                .input("NoiDung", sql.NVarChar, noiDung)
+                .input("BoPhanId", sql.Int, boPhanId)
+                .input("ThoiHan", sql.Date, thoiHan)
+                .input("TheoDoi", sql.NVarChar, theoDoi)
+                .input("CreatedBy", sql.Int, userId)
+                .execute("sp_BienBan_HanhDong_Add");
+
+            res.json({
+                message: "Đã thêm hành động"
+            });
+
+        } catch (err) {
+
+            res.status(500).json({
+                message: "Không thể thêm hành động"
+            });
+
+        }
+
+    }
+);
 
 router.post(
     "/xac-nhan",
