@@ -314,13 +314,19 @@ router.post(
     authorize('THUC_HIEN_KIEM'),
     async (req, res) => {
         const { phieuKiemId } = req.body;
-        const userId = req.user.id;
+        const userId = req.user.userId;
+
         if (!phieuKiemId) {
             return res.status(400).json({
                 message: 'Missing phieuKiemId'
             });
         }
 
+        if (!userId) {
+            return res.status(400).json({
+                message: 'Missing userId'
+            });
+        }
         try {
             const pool = await poolPromise;
 

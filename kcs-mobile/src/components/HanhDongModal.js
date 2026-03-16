@@ -90,54 +90,34 @@ export default function HanhDongModal({
     /* SUBMIT */
 
     const handleSubmit = async () => {
-
         if (!noiDung.trim()) {
-
             Alert.alert("Thiếu dữ liệu", "Nhập nội dung");
-
             return;
-
         }
-
         if (!boPhanId) {
-
             Alert.alert("Thiếu dữ liệu", "Chọn bộ phận");
-
             return;
-
         }
-
         try {
-
+            console.log(bienBanId)
             setLoading(true);
-
             await addHanhDong({
-
                 bienBanId,
                 noiDung,
                 boPhanId,
                 thoiHan
-
             });
-
             Alert.alert("Thành công", "Đã thêm hành động");
-
             reload();
             onClose();
-
         } catch (err) {
-
             Alert.alert(
                 "Lỗi",
                 err?.response?.data?.message || "Không thể thêm hành động"
             );
-
         } finally {
-
             setLoading(false);
-
         }
-
     };
 
 
@@ -187,7 +167,7 @@ export default function HanhDongModal({
 
                     {/* BỘ PHẬN */}
 
-                    <Text style={styles.label}>
+                    {/* <Text style={styles.label}>
                         Bộ phận chịu trách nhiệm
                     </Text>
 
@@ -202,7 +182,7 @@ export default function HanhDongModal({
                             {boPhanText || "Chọn bộ phận"}
                         </Text>
 
-                    </TouchableOpacity>
+                    </TouchableOpacity> */}
 
 
                     {/* THỜI HẠN */}

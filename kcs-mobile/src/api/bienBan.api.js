@@ -46,9 +46,9 @@ export const getAssignableUsers = (bienBanId) => {
    Phân công xử lý
 ================================ */
 
-export const assignUsers = (bienBanId, userIds) => {
+export const assignDepartments = (bienBanId, boPhanIds) => {
     return axiosClient.post(`/bien-ban/${bienBanId}/assign`, {
-        userIds
+        boPhanIds
     });
 };
 

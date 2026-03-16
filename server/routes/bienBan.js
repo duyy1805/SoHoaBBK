@@ -166,18 +166,30 @@ router.post(
     authenticateToken,
     async (req, res) => {
 
-        const bienBanId = parseInt(req.params.id, 10);
-        const { userIds } = req.body;
+        try {
 
-        const pool = await poolPromise;
+            const bienBanId = parseInt(req.params.id, 10);
+            const { boPhanIds } = req.body;
 
-        await pool.request()
-            .input("BienBanId", sql.Int, bienBanId)
-            .input("UserIds", sql.NVarChar, userIds.join(","))
-            .input("AssignedBy", sql.Int, req.user.userId)
-            .execute("sp_BienBan_AssignUser");
+            const pool = await poolPromise;
 
-        res.json({ success: true });
+            await pool.request()
+                .input("BienBanId", sql.Int, bienBanId)
+                .input("BoPhanIds", sql.NVarChar, boPhanIds.join(","))
+                .input("AssignedBy", sql.Int, req.user.userId)
+                .execute("sp_BienBan_AssignBoPhan");
+
+            res.json({ success: true });
+
+        } catch (err) {
+
+            console.error(err);
+
+            res.status(500).json({
+                message: "Không thể phân công bộ phận"
+            });
+
+        }
 
     }
 );
@@ -241,9 +253,9 @@ router.post(
                 .input("BienBanId", bienBanId)
                 .input("LoaiChiPhi", loaiChiPhi)
                 .input("GiaTri", giaTri)
-                .input("BoPhanId", boPhanId)
+                .input("BoPhanId", req.user.boPhanId)
                 .input("ThoiHan", thoiHan)
-                .input("CreatedBy", req.user.id)
+                .input("CreatedBy", req.user.userId)
                 .execute("sp_BienBan_AddChiPhi");
 
             res.json({ success: true });
@@ -275,14 +287,14 @@ router.post(
                 theoDoi
             } = req.body;
 
-            const userId = req.user.id;
+            const userId = req.user.userId;
 
             const pool = await poolPromise;
 
             await pool.request()
                 .input("BienBanId", sql.Int, bienBanId)
                 .input("NoiDung", sql.NVarChar, noiDung)
-                .input("BoPhanId", sql.Int, boPhanId)
+                .input("BoPhanId", sql.Int, req.user.boPhanId)
                 .input("ThoiHan", sql.Date, thoiHan)
                 .input("TheoDoi", sql.NVarChar, theoDoi)
                 .input("CreatedBy", sql.Int, userId)

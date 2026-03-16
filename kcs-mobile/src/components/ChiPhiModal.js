@@ -217,7 +217,7 @@ export default function ChiPhiModal({
 
                     {/* BỘ PHẬN */}
 
-                    <Text style={styles.label}>
+                    {/* <Text style={styles.label}>
                         Bộ phận chịu trách nhiệm
                     </Text>
 
@@ -232,7 +232,7 @@ export default function ChiPhiModal({
                             {boPhanText || "Chọn bộ phận"}
                         </Text>
 
-                    </TouchableOpacity>
+                    </TouchableOpacity> */}
 
 
                     {/* THỜI HẠN */}

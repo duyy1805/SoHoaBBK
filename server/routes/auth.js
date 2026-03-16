@@ -106,6 +106,7 @@ router.post('/login', async (req, res) => {
             {
                 userId: user.Id,
                 username: user.Username,
+                boPhanId: user.BoPhanId,
                 roles,
                 permissions
             },

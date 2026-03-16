@@ -13,8 +13,8 @@ import {
 } from "react-native";
 
 import {
-    getAssignableUsers,
-    assignUsers,
+    getBoPhan,
+    assignDepartments
 } from "../api/bienBan.api";
 
 export default function AssignUserModal({
@@ -25,27 +25,27 @@ export default function AssignUserModal({
     reload
 }) {
 
-    const [users, setUsers] = useState([]);
+    const [departments, setDepartments] = useState([]);
     const [selected, setSelected] = useState([]);
     const [search, setSearch] = useState("");
 
-    /* load users */
+    /* LOAD DEPARTMENTS */
 
     useEffect(() => {
 
         if (visible) {
-            loadUsers();
+            loadDepartments();
         }
 
     }, [visible]);
 
-    /* set selected ban đầu */
+    /* SET SELECTED BAN ĐẦU */
 
     useEffect(() => {
 
         if (assignedUsers?.length) {
 
-            const ids = assignedUsers.map(x => x.NguoiXuLyId);
+            const ids = assignedUsers.map(x => x.BoPhanId);
 
             setSelected(ids);
 
@@ -53,13 +53,13 @@ export default function AssignUserModal({
 
     }, [assignedUsers]);
 
-    const loadUsers = async () => {
+    const loadDepartments = async () => {
 
         try {
 
-            const res = await getAssignableUsers(bienBanId);
+            const res = await getBoPhan();
 
-            setUsers(res.data || []);
+            setDepartments(res.data || []);
 
         } catch (err) {
 
@@ -69,59 +69,63 @@ export default function AssignUserModal({
 
     };
 
-    /* toggle */
+    /* TOGGLE */
 
-    const toggleUser = (id) => {
+    const toggleDepartment = (id) => {
 
         if (selected.includes(id)) {
+
             setSelected(selected.filter(x => x !== id));
+
         } else {
+
             setSelected([...selected, id]);
+
         }
 
     };
 
-    /* submit */
+    /* SUBMIT */
 
     const handleSubmit = async () => {
 
-        await assignUsers(bienBanId, selected);
+        await assignDepartments(bienBanId, selected);
 
         reload();
         onClose();
 
     };
 
-    /* filter */
+    /* FILTER */
 
-    const filteredUsers = users.filter(u => {
+    const filteredDepartments = departments.filter(d => {
 
         const keyword = search.toLowerCase();
 
         return (
-            u.FullName?.toLowerCase().includes(keyword) ||
-            u.RoleName?.toLowerCase().includes(keyword)
+            d.TenBoPhan?.toLowerCase().includes(keyword) ||
+            d.MaBoPhan?.toLowerCase().includes(keyword)
         );
 
     });
 
-    /* render */
+    /* RENDER ITEM */
 
-    const renderUser = ({ item }) => (
+    const renderDepartment = ({ item }) => (
 
         <TouchableOpacity
             style={styles.user}
-            onPress={() => toggleUser(item.Id)}
+            onPress={() => toggleDepartment(item.Id)}
         >
 
             <View>
 
                 <Text style={styles.name}>
-                    {item.FullName}
+                    {item.TenBoPhan}
                 </Text>
 
                 <Text style={styles.role}>
-                    {item.RoleName}
+                    {item.MaBoPhan}
                 </Text>
 
             </View>
@@ -154,7 +158,7 @@ export default function AssignUserModal({
                     </TouchableOpacity>
 
                     <Text style={styles.title}>
-                        Chọn người xử lý
+                        Chọn bộ phận xử lý
                     </Text>
 
                     <View style={{ width: 30 }} />
@@ -164,17 +168,17 @@ export default function AssignUserModal({
                 {/* SEARCH */}
 
                 <TextInput
-                    placeholder="Tìm người xử lý..."
+                    placeholder="Tìm bộ phận..."
                     value={search}
                     onChangeText={setSearch}
                     style={styles.search}
                 />
 
-                {/* USER LIST */}
+                {/* LIST */}
 
                 <FlatList
-                    data={filteredUsers}
-                    renderItem={renderUser}
+                    data={filteredDepartments}
+                    renderItem={renderDepartment}
                     keyExtractor={(item) => item.Id.toString()}
                     contentContainerStyle={{ paddingBottom: 100 }}
                 />

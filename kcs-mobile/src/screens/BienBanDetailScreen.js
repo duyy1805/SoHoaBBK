@@ -39,7 +39,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
     const [showChiPhiModal, setShowChiPhiModal] = useState(false);
     const [showHanhDongModal, setShowHanhDongModal] = useState(false);
     const [currentUserId, setCurrentUserId] = useState(null);
-
+    const [currentUserBoPhanId, setCurrentUserBoPhanId] = useState(null);
     /* LOAD DATA */
 
     useEffect(() => {
@@ -52,8 +52,8 @@ export default function BienBanDetailScreen({ route, navigation }) {
         if (!userStr) return;
         const user = JSON.parse(userStr);
         setCurrentUserId(user.id);
+        setCurrentUserBoPhanId(user.boPhanId);
     };
-
     const loadData = async () => {
 
         try {
@@ -145,20 +145,20 @@ export default function BienBanDetailScreen({ route, navigation }) {
 
     /* STATUS */
 
-    const getStatusText = (nguoiXuLyId) => {
-        const done = xuLy.find(x => x.NguoiXuLyId === nguoiXuLyId);
+    const getStatusText = (boPhanId) => {
+        const done = xuLy.find(x => x.BoPhanId === boPhanId);
         return done ? "✓" : "Chờ";
     };
 
-    const isAssigned = assigns.some(a => a.NguoiXuLyId === currentUserId);
-    const hasXuLy = xuLy.some(x => x.NguoiXuLyId === currentUserId);
+    const isAssigned = assigns.some(a => a.BoPhanId === currentUserBoPhanId);
+    const hasXuLy = xuLy.some(x => x.BoPhanId === currentUserBoPhanId);
     const isConfirmed = xacNhan.some(
-        x => x.NguoiXacNhanId === currentUserId
+        x => x.BoPhanId === currentUserBoPhanId
     );
     const allConfirmed =
         assigns.length > 0 &&
         assigns.every(a =>
-            xacNhan.some(x => x.NguoiXacNhanId === a.NguoiXuLyId)
+            xacNhan.some(x => x.BoPhanId === a.BoPhanId)
         );
     const handleConfirmUser = async () => {
 
@@ -257,7 +257,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
 
             {/* ASSIGN */}
 
-            <Text style={styles.section}>Người xử lý</Text>
+            <Text style={styles.section}>Bộ phận xử lý</Text>
 
             <View style={styles.card}>
 
@@ -265,17 +265,17 @@ export default function BienBanDetailScreen({ route, navigation }) {
                     <View key={i} style={styles.assignRow}>
 
                         <View>
-                            <Text style={styles.assignName}>{a.FullName}</Text>
-                            <Text style={styles.assignRole}>{a.RoleName}</Text>
+                            <Text style={styles.assignName}>{a.MaBoPhan}</Text>
+                            <Text style={styles.assignRole}>{a.TenBoPhan}</Text>
                         </View>
 
                         <Text style={[
                             styles.assignStatus,
-                            getStatusText(a.NguoiXuLyId) === "✓"
+                            getStatusText(a.BoPhanId) === "✓"
                                 ? styles.done
                                 : styles.pending
                         ]}>
-                            {getStatusText(a.NguoiXuLyId)}
+                            {getStatusText(a.BoPhanId)}
                         </Text>
 
                     </View>
@@ -284,19 +284,6 @@ export default function BienBanDetailScreen({ route, navigation }) {
             </View>
 
             {/* BUTTONS */}
-
-            {info.AssignConfirmed && isAssigned && !isConfirmed && (
-
-                <TouchableOpacity
-                    style={styles.commentBtn}
-                    onPress={() => setShowXuLyModal(true)}
-                >
-                    <Text style={styles.btnText}>
-                        Nhập ý kiến xử lý
-                    </Text>
-                </TouchableOpacity>
-
-            )}
 
             {!info.AssignConfirmed && (
 
@@ -341,7 +328,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
 
                         <View style={styles.rowBetween}>
                             <Text style={styles.boPhan}>
-                                {x.MaBoPhan} - {x.TenBoPhan}
+                                {x.NguoiXuLy} - {x.MaBoPhan} - {x.TenBoPhan}
                             </Text>
 
                             <Text style={styles.deadline}>
@@ -353,22 +340,47 @@ export default function BienBanDetailScreen({ route, navigation }) {
                 ))}
 
             </View>
+            {info.AssignConfirmed && isAssigned && !isConfirmed && (
 
+                <TouchableOpacity
+                    style={styles.commentBtn}
+                    onPress={() => setShowXuLyModal(true)}
+                >
+                    <Text style={styles.btnText}>
+                        Nhập ý kiến xử lý
+                    </Text>
+                </TouchableOpacity>
+
+            )}
             {/* CHI PHI */}
 
             <Text style={styles.section}>Chi phí phát sinh</Text>
 
             {chiPhi.map((c, i) => (
-                <View key={i} style={styles.table}>
-                    <View key={i} style={styles.xuLyRow}>
-                        <Text style={styles.noiDung}>{c.LoaiChiPhi}</Text>
-                        <View style={styles.rowBetween}>
-                            <Text style={styles.department}>
-                                {c.TenBoPhan}
-                            </Text>
-                            <Text style={styles.cost}>
-                                {c.GiaTri?.toLocaleString("vi-VN")} VND
-                            </Text>
+                // Ưu tiên dùng c.id nếu có, nếu không thì dùng index i
+                <View key={c.id || i} style={styles.expenseCard}>
+                    {/* Phần trên: Loại chi phí & Số tiền */}
+                    <View style={styles.expenseHeader}>
+                        <View style={styles.expenseTypeWrapper}>
+                            <Text style={styles.expenseLabel}>Loại chi phí</Text>
+                            <Text style={styles.expenseType}>{c.LoaiChiPhi}</Text>
+                        </View>
+                        <Text style={styles.expenseCost}>
+                            {c.GiaTri?.toLocaleString("vi-VN")} <Text style={styles.currency}>₫</Text>
+                        </Text>
+                    </View>
+
+                    {/* Đường kẻ ngang phân cách */}
+                    <View style={styles.divider} />
+
+                    {/* Phần dưới: Người theo dõi & Bộ phận */}
+                    <View style={styles.expenseFooter}>
+                        <View style={styles.assigneeWrapper}>
+                            <Text style={styles.footerLabel}>Theo dõi</Text>
+                            <Text style={styles.assignName}>{c.NguoiXuLy}</Text>
+                        </View>
+                        <View style={styles.departmentBadge}>
+                            <Text style={styles.departmentText}>{c.TenBoPhan}</Text>
                         </View>
                     </View>
                 </View>
@@ -608,10 +620,6 @@ const styles = StyleSheet.create({
         borderColor: "#eee"
     },
 
-    assignName: {
-        fontWeight: "600"
-    },
-
     assignRole: {
         color: "#666",
         fontSize: 13
@@ -676,6 +684,95 @@ const styles = StyleSheet.create({
         borderRadius: 10,
         alignItems: "center",
         marginTop: 10
+    },
+    // Thêm các style mới này vào StyleSheet của bạn
+    expenseCard: {
+        backgroundColor: "#fff",
+        borderRadius: 12,
+        marginTop: 12,
+        padding: 16,
+        // Thêm shadow để card nổi lên trông xịn hơn
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+
+    expenseHeader: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+    },
+
+    expenseTypeWrapper: {
+        flex: 1,
+        paddingRight: 10,
+    },
+
+    expenseLabel: {
+        fontSize: 12,
+        color: "#888",
+        marginBottom: 2,
+    },
+
+    expenseType: {
+        fontSize: 15,
+        fontWeight: "600",
+        color: "#2c3e50",
+    },
+
+    expenseCost: {
+        fontSize: 16,
+        fontWeight: "700",
+        color: "#e74c3c", // Màu đỏ cam nhấn mạnh chi phí (hoặc đổi thành #27ae60 nếu là thu nhập)
+    },
+
+    currency: {
+        fontSize: 13,
+        fontWeight: "600",
+        color: "#e74c3c",
+    },
+
+    divider: {
+        height: 1,
+        backgroundColor: "#f0f0f0",
+        marginVertical: 12,
+    },
+
+    expenseFooter: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+    },
+
+    assigneeWrapper: {
+        flexDirection: "column",
+    },
+
+    footerLabel: {
+        fontSize: 11,
+        color: "#888",
+        marginBottom: 2,
+    },
+
+    assignName: {
+        fontSize: 14,
+        fontWeight: "500",
+        color: "#34495e",
+    },
+
+    departmentBadge: {
+        backgroundColor: "#eaf3ff",
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 8,
+    },
+
+    departmentText: {
+        fontSize: 12,
+        fontWeight: "600",
+        color: "#2980b9",
     },
     assignBtn: {
         backgroundColor: "#3498db",
