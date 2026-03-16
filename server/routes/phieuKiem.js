@@ -313,8 +313,8 @@ router.post(
     authenticateToken,
     authorize('THUC_HIEN_KIEM'),
     async (req, res) => {
-        const { phieuKiemId, userId } = req.body;
-
+        const { phieuKiemId } = req.body;
+        const userId = req.user.id;
         if (!phieuKiemId) {
             return res.status(400).json({
                 message: 'Missing phieuKiemId'

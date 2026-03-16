@@ -62,8 +62,8 @@ export const calculateAQL = (sectionId) => {
 };
 
 // Hoàn tất phiếu kiểm
-export const completePhieuKiem = (data) => {
-    return axiosClient.post("/phieu-kiem/complete", { data });
+export const completePhieuKiem = (phieuKiemId) => {
+    return axiosClient.post("/phieu-kiem/complete", { phieuKiemId });
 };
 
 /* =========================================================

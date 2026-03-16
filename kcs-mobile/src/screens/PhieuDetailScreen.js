@@ -34,7 +34,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
     const [loadingAction, setLoadingAction] = useState(false);
 
     const [trangThai, setTrangThai] = useState(null);
-    const [currentUserId, setCurrentUserId] = useState(null);
+
     useFocusEffect(
         useCallback(() => {
             loadUser();
@@ -47,7 +47,6 @@ export default function PhieuDetailScreen({ route, navigation }) {
         if (!userStr) return;
 
         const user = JSON.parse(userStr);
-        setCurrentUserId(user.id);
         setPermissions(user.permissions || []);
     };
 
@@ -103,11 +102,8 @@ export default function PhieuDetailScreen({ route, navigation }) {
         try {
 
             setLoadingAction(true);
-            const data = {
-                phieuKiemId: id,
-                userId: currentUserId
-            };
-            await completePhieuKiem(data);
+
+            await completePhieuKiem(id);
 
             Alert.alert("Thành công", "Phiếu đã hoàn tất");
 
