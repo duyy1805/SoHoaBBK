@@ -10,33 +10,21 @@ import {
     Modal,
     ScrollView
 } from "react-native";
+
 import {
     saveCheckItem,
     getDefectList
 } from "../api/phieuKiem.api";
 
 export default function CheckItemScreen({ route, navigation }) {
+
     const { item } = route.params;
 
     const [ketQua, setKetQua] = useState(item.KetQua || null);
-    const [soLuongLoi, setSoLuongLoi] = useState(
-        item.SoLuongLoi ? item.SoLuongLoi.toString() : ""
-    );
 
     const [defects, setDefects] = useState([]);
-    const [defectId, setDefectId] = useState(
-        item.DefectId ? item.DefectId.toString() : ""
-    );
-    const [selectedDefect, setSelectedDefect] = useState(
-        item.DefectId
-            ? {
-                Id: item.DefectId,
-                MaLoi: item.MaLoi,
-                TenLoi: item.TenLoi,
-                DefectType: item.DefectType
-            }
-            : null
-    );
+    const [selectedDefects, setSelectedDefects] = useState([]);
+
     const [searchText, setSearchText] = useState("");
     const [filteredDefects, setFilteredDefects] = useState([]);
 
@@ -44,10 +32,29 @@ export default function CheckItemScreen({ route, navigation }) {
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
+
         loadDefects();
+
+        /* load defect hiện có */
+
+        if (item.Defects && item.Defects.length > 0) {
+
+            const mapped = item.Defects.map(d => ({
+                defectId: d.DefectId,
+                MaLoi: d.MaLoi,
+                TenLoi: d.TenLoi,
+                DefectType: d.DefectType,
+                soLuong: d.SoLuong
+            }));
+
+            setSelectedDefects(mapped);
+
+        }
+
     }, []);
 
     useEffect(() => {
+
         if (!searchText) {
             setFilteredDefects(defects);
             return;
@@ -62,142 +69,202 @@ export default function CheckItemScreen({ route, navigation }) {
         );
 
         setFilteredDefects(filtered);
+
     }, [searchText, defects]);
 
     const loadDefects = async () => {
+
         try {
+
             const res = await getDefectList(item.DefectType || null);
             const data = res.data || [];
+
             setDefects(data);
             setFilteredDefects(data);
+
         } catch (err) {
-            console.log("Load defect error:", err);
+
+            console.log(err);
+
         }
+
+    };
+
+    const handleAddDefect = (d) => {
+
+        const exists = selectedDefects.find(x => x.defectId === d.Id);
+
+        if (exists) {
+            Alert.alert("Thông báo", "Lỗi đã được chọn");
+            return;
+        }
+
+        setSelectedDefects(prev => [
+            ...prev,
+            {
+                defectId: d.Id,
+                MaLoi: d.MaLoi,
+                TenLoi: d.TenLoi,
+                DefectType: d.DefectType,
+                soLuong: 1
+            }
+        ]);
+
+        setShowModal(false);
+        setSearchText("");
+
+    };
+
+    const updateQty = (index, value) => {
+
+        const updated = [...selectedDefects];
+        updated[index].soLuong = Number(value) || 0;
+
+        setSelectedDefects(updated);
+
+    };
+
+    const removeDefect = (defectId) => {
+
+        setSelectedDefects(
+            selectedDefects.filter(x => x.defectId !== defectId)
+        );
+
     };
 
     const handleSave = async () => {
+
         if (!ketQua) {
             Alert.alert("Thiếu thông tin", "Vui lòng chọn kết quả");
             return;
         }
 
         if (ketQua === "KHONG_DAT") {
-            if (!defectId) {
-                Alert.alert("Thiếu thông tin", "Vui lòng chọn lỗi");
+
+            if (selectedDefects.length === 0) {
+                Alert.alert("Thiếu thông tin", "Chọn ít nhất 1 lỗi");
                 return;
             }
 
-            if (!soLuongLoi || Number(soLuongLoi) <= 0) {
-                Alert.alert("Thiếu thông tin", "Nhập số lượng lỗi hợp lệ");
-                return;
-            }
         }
 
         try {
+
             setLoading(true);
 
             await saveCheckItem({
+
                 checkItemId: Number(item.Id),
                 ketQua,
-                soLuongLoi:
-                    ketQua === "KHONG_DAT"
-                        ? Number(soLuongLoi)
-                        : 0,
-                defectId:
-                    ketQua === "KHONG_DAT"
-                        ? Number(defectId)
-                        : null
+                defects: selectedDefects.map(d => ({
+                    defectId: d.defectId,
+                    soLuong: d.soLuong
+                }))
+
             });
 
             Alert.alert("Thành công", "Đã lưu kết quả");
             navigation.goBack();
+
         } catch (err) {
+
             Alert.alert("Lỗi", "Không thể lưu dữ liệu");
+
         } finally {
+
             setLoading(false);
+
         }
+
     };
 
     return (
+
         <View style={styles.container}>
+
             <Text style={styles.title}>{item.TenMucKiem}</Text>
 
+            {/* info */}
+
             <View style={styles.infoCard}>
+
                 <View style={styles.infoRow}>
                     <Text style={styles.label}>Tham chiếu</Text>
-                    <Text style={styles.value}>
-                        {item.ThamChieu || "--"}
-                    </Text>
+                    <Text style={styles.value}>{item.ThamChieu || "--"}</Text>
                 </View>
 
                 <View style={styles.infoRow}>
                     <Text style={styles.label}>Phương pháp</Text>
-                    <Text style={styles.value}>
-                        {item.PhuongPhapKiem || "--"}
-                    </Text>
+                    <Text style={styles.value}>{item.PhuongPhapKiem || "--"}</Text>
                 </View>
+
             </View>
 
             <View style={styles.standardCard}>
-                <Text style={styles.standardTitle}>
-                    Tiêu chuẩn kỹ thuật
-                </Text>
-
-                <Text style={styles.standard}>
-                    {item.TieuChuan}
-                </Text>
+                <Text style={styles.standardTitle}>Tiêu chuẩn kỹ thuật</Text>
+                <Text style={styles.standard}>{item.TieuChuan}</Text>
             </View>
 
-            {/* Chọn kết quả */}
+            {/* chọn kết quả */}
+
             <View style={styles.row}>
+
                 <TouchableOpacity
-                    style={[
-                        styles.option,
-                        ketQua === "DAT" && styles.success
-                    ]}
+                    style={[styles.option, ketQua === "DAT" && styles.success]}
                     onPress={() => {
                         setKetQua("DAT");
-                        setDefectId(null);
-                        setSelectedDefect(null);
-                        setSoLuongLoi("");
+                        setSelectedDefects([]);
                     }}
                 >
                     <Text style={styles.optionText}>Đạt</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                    style={[
-                        styles.option,
-                        ketQua === "KHONG_DAT" && styles.error
-                    ]}
+                    style={[styles.option, ketQua === "KHONG_DAT" && styles.error]}
                     onPress={() => setKetQua("KHONG_DAT")}
                 >
                     <Text style={styles.optionText}>Không đạt</Text>
                 </TouchableOpacity>
+
             </View>
 
-            {/* Nếu không đạt */}
+            {/* defects */}
+
             {ketQua === "KHONG_DAT" && (
+
                 <>
+
                     <TouchableOpacity
                         style={styles.selectBox}
                         onPress={() => setShowModal(true)}
                     >
-                        <Text style={styles.selectText}>
-                            {selectedDefect
-                                ? `${selectedDefect.MaLoi} - ${selectedDefect.TenLoi}`
-                                : "-- Chọn lỗi --"}
-                        </Text>
+                        <Text style={styles.selectText}>+ Thêm lỗi</Text>
                     </TouchableOpacity>
 
-                    <TextInput
-                        placeholder="Số lượng lỗi"
-                        keyboardType="numeric"
-                        value={soLuongLoi}
-                        onChangeText={setSoLuongLoi}
-                        style={styles.input}
-                    />
+                    {selectedDefects.map((d, index) => (
+                        <View key={index} style={styles.defectRow}>
+
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.defectCode}>{d.MaLoi}</Text>
+                                <Text style={styles.defectName}>{d.TenLoi}</Text>
+                            </View>
+
+                            <TextInput
+                                style={styles.qtyInput}
+                                keyboardType="numeric"
+                                value={String(d.soLuong)}
+                                onChangeText={(val) => updateQty(index, val)}
+                            />
+
+                            <TouchableOpacity onPress={() => removeDefect(d.defectId)}>
+                                <Text style={{ color: "#ef4444", fontWeight: "bold" }}>X</Text>
+                            </TouchableOpacity>
+
+                        </View>
+                    ))}
+
                 </>
+
             )}
 
             <TouchableOpacity
@@ -205,60 +272,47 @@ export default function CheckItemScreen({ route, navigation }) {
                 onPress={handleSave}
                 disabled={loading}
             >
-                {loading ? (
-                    <ActivityIndicator color="#fff" />
-                ) : (
-                    <Text style={styles.saveText}>Lưu kết quả</Text>
-                )}
+
+                {loading
+                    ? <ActivityIndicator color="#fff" />
+                    : <Text style={styles.saveText}>Lưu kết quả</Text>
+                }
+
             </TouchableOpacity>
 
-            {/* Modal chọn lỗi */}
+            {/* modal chọn lỗi */}
+
             <Modal visible={showModal} transparent animationType="slide">
+
                 <View style={styles.modalOverlay}>
+
                     <View style={styles.modalContent}>
+
                         <Text style={styles.modalTitle}>Chọn lỗi</Text>
 
                         <TextInput
-                            placeholder="Tìm kiếm mã lỗi / tên lỗi..."
+                            placeholder="Tìm mã lỗi / tên lỗi..."
                             value={searchText}
                             onChangeText={setSearchText}
                             style={styles.searchInput}
                         />
 
-                        <ScrollView keyboardShouldPersistTaps="handled">
+                        <ScrollView>
+
                             {filteredDefects.map((d) => (
                                 <TouchableOpacity
                                     key={d.Id}
-                                    style={[
-                                        styles.defectItem,
-                                        selectedDefect?.Id === d.Id && styles.defectActive
-                                    ]}
-                                    onPress={() => {
-                                        setSelectedDefect(d);
-                                        setDefectId(d.Id);
-                                        setShowModal(false);
-                                        setSearchText("");
-                                    }}
+                                    style={styles.defectItem}
+                                    onPress={() => handleAddDefect(d)}
                                 >
-                                    <Text style={styles.defectCode}>
-                                        {d.MaLoi}
-                                    </Text>
 
-                                    <Text style={styles.defectName}>
-                                        {d.TenLoi}
-                                    </Text>
+                                    <Text style={styles.defectCode}>{d.MaLoi}</Text>
+                                    <Text style={styles.defectName}>{d.TenLoi}</Text>
+                                    <Text style={styles.defectType}>{d.DefectType}</Text>
 
-                                    <Text style={styles.defectType}>
-                                        {d.DefectType}
-                                    </Text>
                                 </TouchableOpacity>
                             ))}
 
-                            {filteredDefects.length === 0 && (
-                                <Text style={styles.noResult}>
-                                    Không tìm thấy lỗi
-                                </Text>
-                            )}
                         </ScrollView>
 
                         <TouchableOpacity
@@ -267,137 +321,31 @@ export default function CheckItemScreen({ route, navigation }) {
                         >
                             <Text style={{ color: "#fff" }}>Đóng</Text>
                         </TouchableOpacity>
+
                     </View>
                 </View>
             </Modal>
+
         </View>
+
     );
+
 }
 
 const styles = StyleSheet.create({
+
     container: {
         flex: 1,
         padding: 20,
         backgroundColor: "#f1f5f9"
     },
+
     title: {
         fontSize: 18,
         fontWeight: "bold",
         color: "#0f172a"
     },
-    standard: {
-        marginTop: 6,
-        marginBottom: 20,
-        color: "#475569"
-    },
-    row: {
-        flexDirection: "row",
-        gap: 12,
-        marginBottom: 20
-    },
-    option: {
-        flex: 1,
-        padding: 14,
-        borderRadius: 12,
-        backgroundColor: "#e2e8f0",
-        alignItems: "center"
-    },
-    optionText: {
-        fontWeight: "600",
-        color: "#0f172a"
-    },
-    success: {
-        backgroundColor: "#22c55e"
-    },
-    error: {
-        backgroundColor: "#ef4444"
-    },
-    selectBox: {
-        backgroundColor: "#fff",
-        padding: 14,
-        borderRadius: 12,
-        marginBottom: 12
-    },
-    selectText: {
-        color: "#0f172a"
-    },
-    input: {
-        backgroundColor: "#fff",
-        padding: 12,
-        borderRadius: 12,
-        marginBottom: 20
-    },
-    saveBtn: {
-        backgroundColor: "#2563eb",
-        padding: 16,
-        borderRadius: 16,
-        alignItems: "center"
-    },
-    saveText: {
-        color: "#fff",
-        fontWeight: "600"
-    },
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: "rgba(0,0,0,0.4)",
-        justifyContent: "flex-end"
-    },
-    modalContent: {
-        backgroundColor: "#fff",
-        padding: 20,
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-        maxHeight: "60%"
-    },
-    modalTitle: {
-        fontWeight: "bold",
-        fontSize: 16,
-        marginBottom: 15
-    },
-    defectItem: {
-        padding: 14,
-        borderRadius: 12,
-        marginBottom: 8,
-        backgroundColor: "#f1f5f9"
-    },
-    defectActive: {
-        backgroundColor: "#dbeafe"
-    },
-    defectText: {
-        fontSize: 14
-    },
 
-    searchInput: {
-        backgroundColor: "#f1f5f9",
-        padding: 12,
-        borderRadius: 12,
-        marginBottom: 12
-    },
-    defectCode: {
-        fontWeight: "bold",
-        color: "#1e293b"
-    },
-    defectName: {
-        marginTop: 4,
-        color: "#334155"
-    },
-    defectType: {
-        marginTop: 2,
-        fontSize: 12,
-        color: "#64748b"
-    },
-    noResult: {
-        textAlign: "center",
-        marginTop: 20,
-        color: "#94a3b8"
-    },
-    closeBtn: {
-        backgroundColor: "#2563eb",
-        padding: 14,
-        borderRadius: 14,
-        alignItems: "center",
-        marginTop: 10
-    },
     infoCard: {
         backgroundColor: "#fff",
         borderRadius: 14,
@@ -416,19 +364,150 @@ const styles = StyleSheet.create({
         color: "#64748b",
         fontSize: 13
     },
+
     value: {
         fontWeight: "600",
         color: "#0f172a"
     },
+
     standardCard: {
         backgroundColor: "#fff",
         padding: 14,
         borderRadius: 14,
         marginBottom: 20
     },
+
     standardTitle: {
         fontWeight: "600",
         marginBottom: 6,
         color: "#0f172a"
     },
+
+    standard: {
+        color: "#475569"
+    },
+
+    row: {
+        flexDirection: "row",
+        gap: 12,
+        marginBottom: 20
+    },
+
+    option: {
+        flex: 1,
+        padding: 14,
+        borderRadius: 12,
+        backgroundColor: "#e2e8f0",
+        alignItems: "center"
+    },
+
+    optionText: {
+        fontWeight: "600"
+    },
+
+    success: {
+        backgroundColor: "#22c55e"
+    },
+
+    error: {
+        backgroundColor: "#ef4444"
+    },
+
+    selectBox: {
+        backgroundColor: "#fff",
+        padding: 14,
+        borderRadius: 12,
+        marginBottom: 10
+    },
+
+    selectText: {
+        fontWeight: "600"
+    },
+
+    defectRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#fff",
+        padding: 12,
+        borderRadius: 12,
+        marginBottom: 8
+    },
+
+    defectCode: {
+        fontWeight: "bold"
+    },
+
+    defectName: {
+        color: "#475569"
+    },
+
+    qtyInput: {
+        width: 60,
+        backgroundColor: "#f1f5f9",
+        padding: 8,
+        borderRadius: 8,
+        textAlign: "center",
+        marginRight: 10
+    },
+
+    saveBtn: {
+        backgroundColor: "#2563eb",
+        padding: 16,
+        borderRadius: 16,
+        alignItems: "center",
+        marginTop: 20
+    },
+
+    saveText: {
+        color: "#fff",
+        fontWeight: "600"
+    },
+
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.4)",
+        justifyContent: "flex-end"
+    },
+
+    modalContent: {
+        backgroundColor: "#fff",
+        padding: 20,
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        maxHeight: "60%"
+    },
+
+    modalTitle: {
+        fontWeight: "bold",
+        fontSize: 16,
+        marginBottom: 15
+    },
+
+    searchInput: {
+        backgroundColor: "#f1f5f9",
+        padding: 12,
+        borderRadius: 12,
+        marginBottom: 12
+    },
+
+    defectItem: {
+        padding: 14,
+        borderRadius: 12,
+        marginBottom: 8,
+        backgroundColor: "#f1f5f9"
+    },
+
+    defectType: {
+        fontSize: 12,
+        color: "#64748b"
+    },
+
+    closeBtn: {
+        backgroundColor: "#2563eb",
+        padding: 14,
+        borderRadius: 14,
+        alignItems: "center",
+        marginTop: 10
+    }
+
 });

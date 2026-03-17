@@ -34,6 +34,10 @@ export const updateBienBan = (data) => {
     return axiosClient.post("/bien-ban/update", data);
 };
 
+export const updateMoTaChung = (data) => {
+    return axiosClient.post("/bien-ban/update-mo-ta", data);
+};
+
 /* ================================
    Danh sách user có thể xử lý
 ================================ */

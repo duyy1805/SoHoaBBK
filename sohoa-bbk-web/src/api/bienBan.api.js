@@ -1,3 +1,5 @@
+// src/api/bienBan.api.js
+
 import axiosClient from "./axiosClient";
 
 /* ================================
@@ -32,6 +34,10 @@ export const updateBienBan = (data) => {
     return axiosClient.post("/bien-ban/update", data);
 };
 
+export const updateMoTaChung = (data) => {
+    return axiosClient.post("/bien-ban/update-mo-ta", data);
+};
+
 /* ================================
    Danh sách user có thể xử lý
 ================================ */
@@ -44,16 +50,15 @@ export const getAssignableUsers = (bienBanId) => {
    Phân công xử lý
 ================================ */
 
-export const assignUsers = (bienBanId, userIds) => {
+export const assignDepartments = (bienBanId, boPhanIds) => {
     return axiosClient.post(`/bien-ban/${bienBanId}/assign`, {
-        userIds
+        boPhanIds
     });
 };
 
 export const confirmAssign = (bienBanId) => {
     return axiosClient.post(`/bien-ban/${bienBanId}/confirm-assign`);
 };
-
 /* ================================
    Thêm ý kiến xử lý
 ================================ */
@@ -75,7 +80,6 @@ export const confirmUser = (bienBanId) =>
 
 export const addHanhDong = (data) =>
     axiosClient.post("/bien-ban/hanh-dong", data);
-
 /* ================================
    Hoàn thành biên bản
 ================================ */

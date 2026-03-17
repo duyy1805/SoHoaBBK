@@ -67,7 +67,6 @@ export default function PhieuKiemCreate() {
 
     const handleSubmit = async () => {
         try {
-            console.log(form);
             setLoading(true);
             await createPhieuKiem(form);
             navigate("/phieu-kiem");

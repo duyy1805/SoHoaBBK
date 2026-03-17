@@ -212,7 +212,7 @@ export default function BienBanDetail() {
                 >
                     Quay lại
                 </Button>
-                
+
                 <Button
                     variant="outlined"
                     startIcon={<PrintIcon />}
@@ -394,8 +394,8 @@ export default function BienBanDetail() {
 
 
             {/* Print Preview Modal */}
-            <Dialog 
-                open={openPrintModal} 
+            <Dialog
+                open={openPrintModal}
                 onClose={() => setOpenPrintModal(false)}
                 maxWidth="lg"
                 fullWidth
@@ -404,7 +404,7 @@ export default function BienBanDetail() {
                 <DialogContent dividers sx={{ bgcolor: '#f0f0f0', p: 3 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                         <Paper sx={{ width: '210mm', minHeight: '297mm', p: 0, boxShadow: 3 }}>
-                             <BienBanPrintTemplate 
+                            <BienBanPrintTemplate
                                 ref={componentRef}
                                 info={info}
                                 defects={defects}
@@ -412,14 +412,14 @@ export default function BienBanDetail() {
                                 chiPhi={chiPhi}
                                 hanhDong={hanhDong}
                                 xacNhan={xacNhan}
-                             />
+                            />
                         </Paper>
                     </Box>
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setOpenPrintModal(false)}>Hủy</Button>
-                    <Button 
-                        startIcon={<PrintIcon />} 
+                    <Button
+                        startIcon={<PrintIcon />}
                         onClick={handlePrint}
                         variant="contained"
                         color="primary"

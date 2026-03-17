@@ -1,5 +1,5 @@
 import axios from 'axios';
-
+import { getToken, removeToken } from '../utils/auth';
 const axiosClient = axios.create({
     baseURL: 'http://localhost:5001/api', // backend của bạn
     timeout: 15000
@@ -8,7 +8,7 @@ const axiosClient = axios.create({
 // Gắn token vào header
 axiosClient.interceptors.request.use(
     (config) => {
-        const token = localStorage.getItem('token');
+        const token = getToken();
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
@@ -23,10 +23,9 @@ axiosClient.interceptors.response.use(
     (error) => {
         const status = error.response?.status;
         const url = error.config?.url;
-
         // ⭐ chỉ redirect khi KHÔNG phải login
         if (status === 401 && !url?.includes('/auth/login')) {
-            localStorage.removeItem('token');
+            removeToken();
             window.location.href = '/login';
         }
 

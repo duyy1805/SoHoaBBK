@@ -100,9 +100,30 @@ router.get(
 
             const phieu = result.recordsets[0][0] || null;
             const sections = result.recordsets[1] || [];
-            const checkItems = result.recordsets[2] || [];
+            // const checkItems = result.recordsets[2] || [];
             const defects = result.recordsets[3] || [];
 
+            const rows = result.recordsets[2];
+            const map = {};
+
+            rows.forEach(r => {
+
+                if (!map[r.Id]) {
+                    map[r.Id] = { ...r, Defects: [] };
+                }
+
+                if (r.DefectId) {
+                    map[r.Id].Defects.push({
+                        DefectId: r.DefectId,
+                        MaLoi: r.MaLoi,
+                        TenLoi: r.TenLoi,
+                        SoLuong: r.SoLuong
+                    });
+                }
+
+            });
+
+            const checkItems = Object.values(map);
             res.json({
                 phieu,
                 sections,
@@ -190,8 +211,6 @@ router.post(
             });
         }
 
-        console.log("CreateAllSection data:", req.body);
-
         try {
 
             const pool = await poolPromise;
@@ -262,25 +281,29 @@ router.post(
     authenticateToken,
     authorize("THUC_HIEN_KIEM"),
     async (req, res) => {
-        const { checkItemId, ketQua, soLuongLoi, defectId } = req.body;
+
+        const { checkItemId, ketQua, defects } = req.body;
 
         try {
+
             const pool = await poolPromise;
 
             await pool.request()
                 .input("CheckItemId", sql.Int, checkItemId)
                 .input("KetQua", sql.NVarChar, ketQua)
-                .input("SoLuongLoi", sql.Int, soLuongLoi)
-                .input("DefectId", sql.Int, defectId)
+                .input("Defects", sql.NVarChar(sql.MAX), JSON.stringify(defects))
                 .execute("sp_PhieuKiem_SaveCheckItem");
 
             res.json({ success: true });
+
         } catch (err) {
+
             console.error(err);
             res.status(500).json({ message: "Lưu thất bại" });
+
         }
-    }
-);
+
+    });
 
 router.post(
     "/calculate-aql",

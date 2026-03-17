@@ -99,7 +99,6 @@ export default function HanhDongModal({
             return;
         }
         try {
-            console.log(bienBanId)
             setLoading(true);
             await addHanhDong({
                 bienBanId,

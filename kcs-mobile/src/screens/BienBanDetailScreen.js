@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
     View,
     Text,
+    TextInput,
     ScrollView,
     TouchableOpacity,
     StyleSheet,
@@ -11,6 +12,7 @@ import {
 
 import {
     getBienBanDetail,
+    updateMoTaChung,
     completeBienBan,
     confirmAssign,
     confirmUser
@@ -26,6 +28,8 @@ export default function BienBanDetailScreen({ route, navigation }) {
     const { bienBanId } = route.params;
 
     const [info, setInfo] = useState(null);
+    const [moTaChung, setMoTaChung] = useState("");
+    const [moTaConfirmed, setMoTaConfirmed] = useState(false);
     const [defects, setDefects] = useState([]);
     const [assigns, setAssigns] = useState([]);
     const [xuLy, setXuLy] = useState([]);
@@ -69,7 +73,10 @@ export default function BienBanDetailScreen({ route, navigation }) {
             setChiPhi(res.data.chiPhi || []);
             setXacNhan(res.data.xacNhan || []);
             setHanhDong(res.data.hanhDong || []);
+            const moTa = res.data.info?.MoTaChung || "";
 
+            setMoTaChung(moTa);
+            setMoTaConfirmed(!!moTa);
         } catch (err) {
 
             Alert.alert(
@@ -113,13 +120,43 @@ export default function BienBanDetailScreen({ route, navigation }) {
 
             Alert.alert(
                 "Lỗi",
-                err?.response?.data?.message || "Không thể xác nhận phân công"
+                err.status = 403 ? "Không được cấp quyền" : err?.response?.data?.message || "Không thể xác nhận phân công"
             );
 
         }
 
     };
 
+    const handleConfirmMoTa = async () => {
+
+        if (!moTaChung.trim()) {
+            Alert.alert("Thiếu thông tin", "Vui lòng nhập mô tả");
+            return;
+        }
+
+        try {
+
+            await updateMoTaChung({
+                bienBanId,
+                moTaChung
+            });
+
+            setMoTaConfirmed(true);
+
+            Alert.alert("Thành công", "Đã xác nhận mô tả");
+
+            loadData();
+
+        } catch (err) {
+
+            Alert.alert(
+                "Lỗi",
+                err?.response?.data?.message || "Không thể lưu mô tả"
+            );
+
+        }
+
+    };
     /* COMPLETE */
 
     const handleComplete = async () => {
@@ -213,6 +250,35 @@ export default function BienBanDetailScreen({ route, navigation }) {
 
             </View>
 
+            {/* MÔ TẢ CHUNG */}
+
+            <Text style={styles.section}>Mô tả chung</Text>
+
+            <View style={styles.moTaBox}>
+
+                <TextInput
+                    style={styles.moTaInput}
+                    multiline
+                    placeholder="Nhập mô tả chung về lỗi..."
+                    value={moTaChung}
+                    onChangeText={setMoTaChung}
+                    editable={!moTaConfirmed}
+                />
+
+                {!moTaConfirmed && (
+
+                    <TouchableOpacity
+                        style={styles.moTaButton}
+                        onPress={handleConfirmMoTa}
+                    >
+                        <Text style={styles.btnText}>
+                            Xác nhận mô tả
+                        </Text>
+                    </TouchableOpacity>
+
+                )}
+
+            </View>
             {/* DEFECTS */}
 
             <Text style={styles.section}>Danh sách lỗi</Text>
@@ -285,7 +351,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
 
             {/* BUTTONS */}
 
-            {!info.AssignConfirmed && (
+            {!info.AssignConfirmed && moTaConfirmed && (
 
                 <>
 
@@ -555,7 +621,27 @@ const styles = StyleSheet.create({
         color: "#2980b9",
         fontWeight: "600"
     },
+    moTaBox: {
+        backgroundColor: "#fff",
+        borderRadius: 12,
+        padding: 12,
+        marginTop: 8
+    },
+    moTaInput: {
+        backgroundColor: "#f4f6fa",
+        borderRadius: 10,
+        padding: 12,
+        minHeight: 80,
+        textAlignVertical: "top"
+    },
 
+    moTaButton: {
+        backgroundColor: "#2980b9",
+        marginTop: 10,
+        padding: 12,
+        borderRadius: 10,
+        alignItems: "center"
+    },
     section: {
         marginTop: 20,
         fontWeight: "700",

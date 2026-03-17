@@ -49,7 +49,6 @@ router.get(
     async (req, res) => {
 
         try {
-
             const { id } = req.params;
             const pool = await poolPromise;
 
@@ -76,11 +75,39 @@ router.get(
             res.status(500).json({
                 message: "Lỗi tải chi tiết biên bản"
             });
-
         }
     }
 );
 
+router.post(
+    "/update-mo-ta",
+    authenticateToken,
+    async (req, res) => {
+
+        const { bienBanId, moTaChung } = req.body;
+
+        try {
+
+            const pool = await poolPromise;
+
+            await pool.request()
+                .input("BienBanId", sql.Int, bienBanId)
+                .input("MoTaChung", sql.NVarChar(sql.MAX), moTaChung)
+                .execute("sp_BienBan_UpdateMoTaChung");
+
+            res.json({ success: true });
+
+        } catch (err) {
+
+            console.error(err);
+
+            res.status(500).json({
+                message: "Không thể cập nhật mô tả"
+            });
+
+        }
+
+    });
 
 /* =========================================================
    POST /bien-ban/xu-ly
@@ -164,6 +191,7 @@ router.post(
 router.post(
     "/:id/assign",
     authenticateToken,
+    authorize("XAC_NHAN_NGUOI_XU_LY"),
     async (req, res) => {
 
         try {
@@ -246,7 +274,6 @@ router.post(
                 boPhanId,
                 thoiHan
             } = req.body;
-            console.log(req.body)
             const pool = await poolPromise;
 
             await pool.request()
@@ -318,13 +345,13 @@ router.post(
 router.post(
     "/xac-nhan",
     authenticateToken,
+    authorize("DUYET_Y_KIEN"),
     async (req, res) => {
 
         try {
 
             const { bienBanId } = req.body
             const userId = req.user.userId
-            console.log(req.user)
             const pool = await poolPromise
 
             await pool.request()

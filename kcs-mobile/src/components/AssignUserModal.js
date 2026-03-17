@@ -9,7 +9,8 @@ import {
     TouchableOpacity,
     StyleSheet,
     SafeAreaView,
-    TextInput
+    TextInput,
+    Alert
 } from "react-native";
 
 import {
@@ -89,11 +90,13 @@ export default function AssignUserModal({
 
     const handleSubmit = async () => {
 
-        await assignDepartments(bienBanId, selected);
-
-        reload();
-        onClose();
-
+        try {
+            const res = await assignDepartments(bienBanId, selected);
+            reload();
+            onClose();
+        } catch (err) {
+            err.status = 403 ? Alert.alert("Không thể xác nhận", "Không được cấp quyền") : console.log(err);
+        }
     };
 
     /* FILTER */

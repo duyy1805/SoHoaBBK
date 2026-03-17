@@ -119,13 +119,6 @@ export default function ChiPhiModal({
         try {
 
             setLoading(true);
-            console.log({
-                bienBanId,
-                loaiChiPhi,
-                giaTri: Number(unformatMoney(giaTri)),
-                boPhanId,
-                thoiHan
-            });
             await addChiPhi({
                 bienBanId,
                 loaiChiPhi,

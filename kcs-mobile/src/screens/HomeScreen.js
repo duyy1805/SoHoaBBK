@@ -41,7 +41,6 @@ export default function HomeScreen({ navigation }) {
             }
         ]);
     };
-    console.log(user)
     return (
         <View style={styles.container}>
             <StatusBar barStyle="light-content" />

@@ -7,7 +7,8 @@ import {
     FlatList,
     TouchableOpacity,
     StyleSheet,
-    RefreshControl
+    RefreshControl,
+    Alert
 } from "react-native";
 
 import { useFocusEffect } from "@react-navigation/native";
@@ -33,6 +34,7 @@ export default function BienBanListScreen({ navigation }) {
 
         } catch (err) {
             console.log("Load BienBan error:", err);
+            Alert.alert("Lỗi", "Không thể tải danh sách biên bản");
         }
     };
 
