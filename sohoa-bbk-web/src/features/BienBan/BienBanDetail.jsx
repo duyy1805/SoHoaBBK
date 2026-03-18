@@ -1,9 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import PrintIcon from "@mui/icons-material/Print";
 import { useReactToPrint } from "react-to-print";
 
+// --- MUI Core ---
 import {
     Box,
     Card,
@@ -32,23 +31,39 @@ import {
     Select,
     FormControl,
     InputLabel,
+    Divider,
+    Container
 } from "@mui/material";
 
+// --- MUI Icons ---
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import PrintIcon from "@mui/icons-material/Print";
+import DescriptionIcon from '@mui/icons-material/Description';
+import BugReportIcon from '@mui/icons-material/BugReport';
+import GroupWorkIcon from '@mui/icons-material/GroupWork';
+import LightbulbCircleIcon from '@mui/icons-material/LightbulbCircle';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import BuildCircleIcon from '@mui/icons-material/BuildCircle';
+import VerifiedIcon from '@mui/icons-material/Verified';
+import AddIcon from '@mui/icons-material/Add';
+import SaveIcon from '@mui/icons-material/Save';
+import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
+
+// --- API & Utils ---
 import {
     getBienBanDetail,
+    updateMoTaChung,
     completeBienBan,
     confirmAssign,
     confirmUser,
-    getAssignableUsers,
-    assignUsers,
+    getBoPhan,
+    assignDepartments,
     addXuLy,
     addChiPhi,
     addHanhDong,
-    getDeNghiXuLy,
-    getBoPhan
+    getDeNghiXuLy
 } from "../../api/bienBan.api";
-
-import { getCurrentUser } from "../../utils/auth";
+import { decodeToken } from "../../utils/auth";
 import ConfirmDialog from "../../components/common/ConfirmDialog";
 import { BienBanPrintTemplate } from "./components/BienBanPrintTemplate";
 
@@ -58,6 +73,9 @@ export default function BienBanDetail() {
     const componentRef = useRef();
 
     const [info, setInfo] = useState(null);
+    const [moTaChung, setMoTaChung] = useState("");
+    const [moTaConfirmed, setMoTaConfirmed] = useState(false);
+
     const [defects, setDefects] = useState([]);
     const [assigns, setAssigns] = useState([]);
     const [xuLy, setXuLy] = useState([]);
@@ -66,7 +84,9 @@ export default function BienBanDetail() {
     const [hanhDong, setHanhDong] = useState([]);
 
     const [loading, setLoading] = useState(true);
+
     const [currentUserId, setCurrentUserId] = useState(null);
+    const [currentUserBoPhanId, setCurrentUserBoPhanId] = useState(null);
 
     // Modals state
     const [openAssignModal, setOpenAssignModal] = useState(false);
@@ -85,9 +105,10 @@ export default function BienBanDetail() {
     });
 
     useEffect(() => {
-        const user = getCurrentUser();
-        if (user) {
-            setCurrentUserId(user.userId);
+        const decoded = decodeToken();
+        if (decoded) {
+            setCurrentUserId(decoded.userId);
+            setCurrentUserBoPhanId(decoded.boPhanId);
         }
         loadData();
     }, [bienBanId]);
@@ -96,6 +117,7 @@ export default function BienBanDetail() {
         try {
             setLoading(true);
             const res = await getBienBanDetail(bienBanId);
+
             setInfo(res.data.info);
             setDefects(res.data.defects || []);
             setAssigns(res.data.assigns || []);
@@ -103,8 +125,14 @@ export default function BienBanDetail() {
             setChiPhi(res.data.chiPhi || []);
             setXacNhan(res.data.xacNhan || []);
             setHanhDong(res.data.hanhDong || []);
+
+            const moTa = res.data.info?.MoTaChung || "";
+            setMoTaChung(moTa);
+            setMoTaConfirmed(!!moTa);
+
         } catch (err) {
             console.error("Lỗi tải biên bản:", err);
+            alert(err?.response?.data?.message || "Không tải được biên bản");
         } finally {
             setLoading(false);
         }
@@ -120,12 +148,25 @@ export default function BienBanDetail() {
     };
 
     // --- Actions ---
+    const handleConfirmMoTa = async () => {
+        if (!moTaChung.trim()) {
+            alert("Vui lòng nhập mô tả chung!");
+            return;
+        }
+        try {
+            await updateMoTaChung({ bienBanId, moTaChung });
+            setMoTaConfirmed(true);
+            loadData();
+        } catch (err) {
+            alert(err?.response?.data?.message || "Không thể lưu mô tả");
+        }
+    };
 
     const handleConfirmAssign = () => {
         setConfirmDialog({
             open: true,
             title: 'Xác nhận phân công',
-            message: 'Bạn có chắc chắn muốn xác nhận phân công này?',
+            message: 'Bạn có chắc chắn muốn xác nhận danh sách bộ phận xử lý này?',
             type: 'warning',
             onConfirm: async () => {
                 try {
@@ -134,6 +175,24 @@ export default function BienBanDetail() {
                     setConfirmDialog(prev => ({ ...prev, open: false }));
                 } catch (err) {
                     alert(err?.response?.data?.message || "Lỗi xác nhận phân công");
+                }
+            }
+        });
+    };
+
+    const handleConfirmUser = () => {
+        setConfirmDialog({
+            open: true,
+            title: 'Xác nhận thông tin',
+            message: 'Bạn xác nhận các thông tin xử lý của bộ phận là chính xác?',
+            type: 'info',
+            onConfirm: async () => {
+                try {
+                    await confirmUser(bienBanId);
+                    loadData();
+                    setConfirmDialog(prev => ({ ...prev, open: false }));
+                } catch (err) {
+                    alert(err?.response?.data?.message || "Lỗi xác nhận thông tin");
                 }
             }
         });
@@ -156,257 +215,383 @@ export default function BienBanDetail() {
         });
     };
 
-    const handleConfirmUser = () => {
-        setConfirmDialog({
-            open: true,
-            title: 'Xác nhận thông tin',
-            message: 'Bạn xác nhận các thông tin xử lý là chính xác?',
-            type: 'info',
-            onConfirm: async () => {
-                try {
-                    await confirmUser(bienBanId);
-                    loadData();
-                    setConfirmDialog(prev => ({ ...prev, open: false }));
-                } catch (err) {
-                    alert(err?.response?.data?.message || "Lỗi xác nhận thông tin");
-                }
-            }
-        });
-    };
-
-    const handlePrintPreview = () => {
-        setOpenPrintModal(true);
-    };
-
+    const handlePrintPreview = () => setOpenPrintModal(true);
     const handlePrint = useReactToPrint({
-        content: () => componentRef.current,
+        contentRef: componentRef,
         documentTitle: info ? `BienBan_${info.SoPhieu}` : 'BienBan',
     });
 
-    // --- UI Helpers ---
+    // --- UI Helpers & Conditions ---
+    const getStatusText = (boPhanId) => xuLy.some(x => x.BoPhanId === boPhanId) ? "Đã xử lý" : "Đang chờ";
+    const getStatusColor = (boPhanId) => xuLy.some(x => x.BoPhanId === boPhanId) ? "success" : "warning";
 
-    const isAssigned = assigns.some(a => a.NguoiXuLyId === currentUserId);
-    const hasXuLy = xuLy.some(x => x.NguoiXuLyId === currentUserId);
-    const isConfirmed = xacNhan.some(x => x.NguoiXacNhanId === currentUserId);
-    const allConfirmed = assigns.length > 0 && assigns.every(a => xacNhan.some(x => x.NguoiXacNhanId === a.NguoiXuLyId));
-
-    const getStatusText = (nguoiXuLyId) =>
-        xuLy.some(x => x.NguoiXuLyId === nguoiXuLyId) ? "✓" : "Chờ";
+    const isAssigned = assigns.some(a => a.BoPhanId === currentUserBoPhanId);
+    const hasXuLy = xuLy.some(x => x.BoPhanId === currentUserBoPhanId);
+    const isConfirmed = xacNhan.some(x => x.BoPhanId === currentUserBoPhanId);
+    const allConfirmed = assigns.length > 0 && assigns.every(a => xacNhan.some(x => x.BoPhanId === a.BoPhanId));
 
     if (loading) {
         return (
-            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-                <CircularProgress />
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+                <Stack alignItems="center" spacing={2}>
+                    <CircularProgress />
+                    <Typography color="text.secondary">Đang tải dữ liệu biên bản...</Typography>
+                </Stack>
             </Box>
         );
     }
 
-    if (!info) return <Typography>Không tìm thấy biên bản</Typography>;
+    if (!info) return <Typography align="center" mt={4}>Không tìm thấy thông tin biên bản</Typography>;
 
     return (
-        <Box sx={{ p: 3 }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-                <Button
-                    startIcon={<ArrowBackIcon />}
-                    onClick={() => navigate(-1)}
-                >
-                    Quay lại
-                </Button>
-
-                <Button
-                    variant="outlined"
-                    startIcon={<PrintIcon />}
-                    onClick={handlePrintPreview}
-                >
-                    In biên bản
-                </Button>
-            </Stack>
-
-            {/* Header Info */}
-            <Card sx={{ mb: 3 }}>
-                <CardContent>
-                    <Grid container spacing={2}>
-                        <Grid item xs={12} md={8}>
-                            <Typography variant="h5" fontWeight="bold">{info.SoPhieu}</Typography>
-                            <Typography variant="subtitle1" color="text.secondary">{info.TenSanPham}</Typography>
-                            <Typography variant="body2">Lot: {info.Lot}</Typography>
-                            <Typography variant="body2">Người lập: {info.NguoiLap}</Typography>
-                        </Grid>
-                        <Grid item xs={12} md={4} sx={{ textAlign: { md: 'right' } }}>
-                            <Chip label={info.TrangThai} color="primary" variant="outlined" />
-                        </Grid>
-                    </Grid>
-                </CardContent>
-            </Card>
-
-            {/* Defects Table */}
-            <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>Danh sách lỗi</Typography>
-            <TableContainer component={Paper} sx={{ mb: 3 }}>
-                <Table>
-                    <TableHead sx={{ bgcolor: 'action.hover' }}>
-                        <TableRow>
-                            <TableCell>Tên lỗi</TableCell>
-                            <TableCell align="center">Mức độ</TableCell>
-                            <TableCell align="right">SL</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {defects.map((d, i) => (
-                            <TableRow key={i}>
-                                <TableCell>{d.TenLoi}</TableCell>
-                                <TableCell align="center">
-                                    <Chip label={d.DefectType} color={getDefectColor(d.DefectType)} size="small" />
-                                </TableCell>
-                                <TableCell align="right">{d.SoLuong}</TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </TableContainer>
-
-            {/* Assign Section */}
-            <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>Người xử lý</Typography>
-            <Card sx={{ mb: 3 }}>
-                <CardContent>
-                    {assigns.map((a, i) => (
-                        <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', py: 1, borderBottom: i < assigns.length - 1 ? '1px solid #eee' : 'none' }}>
-                            <Box>
-                                <Typography fontWeight="bold">{a.FullName}</Typography>
-                                <Typography variant="caption" color="text.secondary">{a.RoleName}</Typography>
-                            </Box>
-                            <Typography
-                                fontWeight="bold"
-                                color={getStatusText(a.NguoiXuLyId) === "✓" ? "success.main" : "warning.main"}
+        <Box sx={{ bgcolor: '#f4f6f8', minHeight: '100vh', pb: 5 }}>
+            {/* Top Toolbar */}
+            <Paper elevation={0} sx={{ p: 2, mb: 3, borderBottom: '1px solid #e0e0e0', position: 'sticky', top: 0, zIndex: 10 }}>
+                <Container maxWidth="xl">
+                    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems="center" spacing={2}>
+                        <Button
+                            startIcon={<ArrowBackIcon />}
+                            onClick={() => navigate(-1)}
+                            color="inherit"
+                        >
+                            Danh sách biên bản
+                        </Button>
+                        <Stack direction="row" spacing={2}>
+                            <Button
+                                variant="outlined"
+                                startIcon={<PrintIcon />}
+                                onClick={handlePrintPreview}
+                                sx={{ bgcolor: 'white' }}
                             >
-                                {getStatusText(a.NguoiXuLyId)}
-                            </Typography>
-                        </Box>
-                    ))}
-                    {!info.AssignConfirmed && (
-                        <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
-                            <Button variant="contained" onClick={() => setOpenAssignModal(true)}>Chọn người xử lý</Button>
-                            <Button variant="contained" color="warning" onClick={handleConfirmAssign}>Xác nhận phân công</Button>
+                                In PDF
+                            </Button>
                         </Stack>
-                    )}
-                </CardContent>
-            </Card>
+                    </Stack>
+                </Container>
+            </Paper>
 
-            {/* Xu Ly Section */}
-            <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>Đề xuất xử lý</Typography>
-            <TableContainer component={Paper} sx={{ mb: 3 }}>
-                <Table>
-                    <TableBody>
-                        {xuLy.map((x, i) => (
-                            <TableRow key={i}>
-                                <TableCell>
-                                    <Typography fontWeight="bold">{x.NoiDung}</Typography>
-                                    <Typography variant="body2" color="text.secondary">Đề nghị: {x.DeNghiXuLy}</Typography>
-                                </TableCell>
-                                <TableCell>
-                                    <Typography variant="body2">{x.TenBoPhan}</Typography>
-                                    <Typography variant="caption" color="error">{new Date(x.ThoiHan).toLocaleDateString("vi-VN")}</Typography>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </TableContainer>
+            <Box sx={{ px: { xs: 2, md: 4 } }}>
+                {/* <Container > */}
+                <Grid container spacing={3}>
+                    {/* LEFT COLUMN: Thông tin chung & Lỗi */}
+                    <Grid item xs={12} lg={4}>
+                        <Stack spacing={3}>
+                            {/* Card Header Info */}
+                            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                                <CardContent>
+                                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={2}>
+                                        <Typography variant="h5" color="primary.main" fontWeight="bold">
+                                            {info.SoPhieu}
+                                        </Typography>
+                                        <Chip label={info.TrangThai} color="primary" variant="filled" size="small" />
+                                    </Stack>
+                                    <Divider sx={{ mb: 2 }} />
+                                    <Stack spacing={1.5}>
+                                        <Box>
+                                            <Typography variant="caption" color="text.secondary">Sản phẩm</Typography>
+                                            <Typography variant="body1" fontWeight="500">{info.TenSanPham}</Typography>
+                                        </Box>
+                                        <Stack direction="row" spacing={4}>
+                                            <Box>
+                                                <Typography variant="caption" color="text.secondary">Lot</Typography>
+                                                <Typography variant="body2">{info.Lot}</Typography>
+                                            </Box>
+                                            <Box>
+                                                <Typography variant="caption" color="text.secondary">Người lập</Typography>
+                                                <Typography variant="body2">{info.NguoiLap}</Typography>
+                                            </Box>
+                                        </Stack>
+                                    </Stack>
+                                </CardContent>
+                            </Card>
 
-            {/* Actions for Assigned User */}
-            {info.AssignConfirmed && isAssigned && !isConfirmed && (
-                <Button variant="contained" color="secondary" onClick={() => setOpenXuLyModal(true)} sx={{ mb: 2 }}>
-                    Nhập ý kiến xử lý
-                </Button>
-            )}
+                            {/* Card Mô Tả Chung */}
+                            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                                <CardContent>
+                                    <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                                        <DescriptionIcon color="action" /> Mô tả chung
+                                    </Typography>
+                                    <TextField
+                                        fullWidth
+                                        multiline
+                                        minRows={4}
+                                        placeholder="Nhập mô tả chi tiết về tình trạng lỗi..."
+                                        value={moTaChung}
+                                        onChange={(e) => setMoTaChung(e.target.value)}
+                                        disabled={moTaConfirmed}
+                                        sx={{
+                                            bgcolor: moTaConfirmed ? '#f5f5f5' : '#fff',
+                                            '& .MuiInputBase-root': { borderRadius: 1.5 }
+                                        }}
+                                    />
+                                    {!moTaConfirmed && (
+                                        <Box sx={{ mt: 2, textAlign: 'right' }}>
+                                            <Button variant="contained" startIcon={<SaveIcon />} onClick={handleConfirmMoTa}>
+                                                Lưu mô tả
+                                            </Button>
+                                        </Box>
+                                    )}
+                                </CardContent>
+                            </Card>
 
+                            {/* Card Danh Sách Lỗi */}
+                            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                                <CardContent sx={{ p: 0 }}>
+                                    <Box sx={{ p: 2, pb: 1 }}>
+                                        <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            <BugReportIcon color="error" /> Chi tiết lỗi
+                                        </Typography>
+                                    </Box>
+                                    <TableContainer>
+                                        <Table size="small">
+                                            <TableHead sx={{ bgcolor: '#f8fafc' }}>
+                                                <TableRow>
+                                                    <TableCell>Tên lỗi</TableCell>
+                                                    <TableCell align="center">Mức độ</TableCell>
+                                                    <TableCell align="right">SL</TableCell>
+                                                </TableRow>
+                                            </TableHead>
+                                            <TableBody>
+                                                {defects.length === 0 ? (
+                                                    <TableRow>
+                                                        <TableCell colSpan={3} align="center" sx={{ py: 3, color: 'text.secondary' }}>Chưa có dữ liệu lỗi</TableCell>
+                                                    </TableRow>
+                                                ) : (
+                                                    defects.map((d, i) => (
+                                                        <TableRow key={i} hover>
+                                                            <TableCell>{d.TenLoi}</TableCell>
+                                                            <TableCell align="center">
+                                                                <Chip label={d.DefectType} color={getDefectColor(d.DefectType)} size="small" variant="outlined" />
+                                                            </TableCell>
+                                                            <TableCell align="right" fontWeight="bold">{d.SoLuong}</TableCell>
+                                                        </TableRow>
+                                                    ))
+                                                )}
+                                            </TableBody>
+                                        </Table>
+                                    </TableContainer>
+                                </CardContent>
+                            </Card>
+                        </Stack>
+                    </Grid>
 
-            {/* Chi Phi Section */}
-            <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>Chi phí phát sinh</Typography>
-            {chiPhi.map((c, i) => (
-                <Paper key={i} sx={{ p: 2, mb: 1 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography>{c.LoaiChiPhi}</Typography>
-                        <Box sx={{ textAlign: 'right' }}>
-                            <Typography color="success.main" fontWeight="bold">
-                                {c.TenBoPhan}
-                            </Typography>
-                            <Typography fontWeight="bold">
-                                {c.GiaTri?.toLocaleString("vi-VN")} VND
-                            </Typography>
-                        </Box>
-                    </Box>
-                </Paper>
-            ))}
-            {info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy && (
-                <Button variant="outlined" color="success" onClick={() => setOpenChiPhiModal(true)} sx={{ mt: 1 }}>
-                    Thêm chi phí
-                </Button>
-            )}
+                    {/* RIGHT COLUMN: Các luồng xử lý */}
+                    <Grid item xs={12} lg={12}>
+                        <Stack spacing={3}>
 
+                            {/* Phân công xử lý */}
+                            {moTaConfirmed && (
+                                <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                                    <CardContent>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+                                            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                <GroupWorkIcon color="primary" /> Bộ phận phối hợp xử lý
+                                            </Typography>
+                                            {!info.AssignConfirmed && (
+                                                <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => setOpenAssignModal(true)}>
+                                                    Cập nhật
+                                                </Button>
+                                            )}
+                                        </Stack>
+                                        <Divider sx={{ mb: 2 }} />
 
-            {/* Hanh Dong Section */}
-            <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>Hành động khắc phục</Typography>
-            <TableContainer component={Paper} sx={{ mb: 3 }}>
-                <Table>
-                    <TableBody>
-                        {hanhDong.map((h, i) => (
-                            <TableRow key={i}>
-                                <TableCell>{h.NoiDung}</TableCell>
-                                <TableCell>
-                                    <Typography variant="body2">{h.TenBoPhan}</Typography>
-                                    <Typography variant="caption" color="error">{new Date(h.ThoiHan).toLocaleDateString("vi-VN")}</Typography>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </TableContainer>
-            {info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy && (
-                <Button variant="outlined" color="info" onClick={() => setOpenHanhDongModal(true)} sx={{ mt: 1 }}>
-                    Thêm hành động
-                </Button>
-            )}
+                                        {assigns.length === 0 ? (
+                                            <Typography color="text.secondary" fontStyle="italic">Chưa có bộ phận được phân công.</Typography>
+                                        ) : (
+                                            <Grid container spacing={2}>
+                                                {assigns.map((a, i) => (
+                                                    <Grid item xs={12} sm={6} md={4} key={i}>
+                                                        <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: '#f8fafc' }}>
+                                                            <Box>
+                                                                <Typography variant="body2" fontWeight="bold">{a.TenBoPhan}</Typography>
+                                                                <Typography variant="caption" color="text.secondary">Mã: {a.MaBoPhan}</Typography>
+                                                            </Box>
+                                                            <Chip size="small" label={getStatusText(a.BoPhanId)} color={getStatusColor(a.BoPhanId)} />
+                                                        </Paper>
+                                                    </Grid>
+                                                ))}
+                                            </Grid>
+                                        )}
 
+                                        {!info.AssignConfirmed && assigns.length > 0 && (
+                                            <Box sx={{ mt: 3, textAlign: 'right' }}>
+                                                <Button variant="contained" color="warning" onClick={handleConfirmAssign} startIcon={<AssignmentTurnedInIcon />}>
+                                                    Chốt phân công
+                                                </Button>
+                                            </Box>
+                                        )}
+                                    </CardContent>
+                                </Card>
+                            )}
 
-            {/* Xac Nhan Section */}
-            <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>Xác nhận</Typography>
-            {xacNhan.map((x, i) => (
-                <Paper key={i} sx={{ p: 2, mb: 1, display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography>{x.FullName}</Typography>
-                    <Typography color="text.secondary">{x.ThoiGian}</Typography>
-                </Paper>
-            ))}
+                            {/* Ý kiến xử lý */}
+                            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                                <CardContent sx={{ p: 0 }}>
+                                    <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            <LightbulbCircleIcon color="warning" /> Ý kiến / Đề xuất xử lý
+                                        </Typography>
+                                        {info.AssignConfirmed && isAssigned && !isConfirmed && (
+                                            <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => setOpenXuLyModal(true)}>
+                                                Thêm ý kiến
+                                            </Button>
+                                        )}
+                                    </Box>
+                                    <TableContainer>
+                                        <Table>
+                                            <TableHead sx={{ bgcolor: '#f8fafc' }}>
+                                                <TableRow>
+                                                    <TableCell>Nội dung & Đề nghị</TableCell>
+                                                    <TableCell sx={{ width: '30%' }}>Người xử lý & Thời hạn</TableCell>
+                                                </TableRow>
+                                            </TableHead>
+                                            <TableBody>
+                                                {xuLy.length === 0 ? (
+                                                    <TableRow><TableCell colSpan={2} align="center" sx={{ py: 3, color: 'text.secondary' }}>Chưa có ý kiến xử lý</TableCell></TableRow>
+                                                ) : (
+                                                    xuLy.map((x, i) => (
+                                                        <TableRow key={i} hover>
+                                                            <TableCell>
+                                                                <Typography variant="body2" fontWeight="500">{x.NoiDung}</Typography>
+                                                                <Chip size="small" label={`Đề nghị: ${x.DeNghiXuLy}`} sx={{ mt: 1 }} />
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <Typography variant="body2" fontWeight="bold">{x.NguoiXuLy}</Typography>
+                                                                <Typography variant="caption" color="text.secondary" display="block">{x.MaBoPhan}</Typography>
+                                                                <Typography variant="caption" color="error.main">Hạn: {new Date(x.ThoiHan).toLocaleDateString("vi-VN")}</Typography>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))
+                                                )}
+                                            </TableBody>
+                                        </Table>
+                                    </TableContainer>
+                                </CardContent>
+                            </Card>
 
+                            {/* Group: Chi phí & Hành động khắc phục (2 Cột) */}
+                            <Grid container spacing={3}>
+                                <Grid item xs={12} md={6}>
+                                    <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2, height: '100%' }}>
+                                        <CardContent>
+                                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+                                                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '1.1rem' }}>
+                                                    <AttachMoneyIcon color="success" /> Chi phí phát sinh
+                                                </Typography>
+                                                {info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy && (
+                                                    <Button size="small" color="success" onClick={() => setOpenChiPhiModal(true)}><AddIcon /></Button>
+                                                )}
+                                            </Stack>
+                                            <Divider sx={{ mb: 2 }} />
+                                            {chiPhi.length === 0 ? (
+                                                <Typography color="text.secondary" variant="body2">Không ghi nhận chi phí.</Typography>
+                                            ) : (
+                                                <Stack spacing={1.5}>
+                                                    {chiPhi.map((c, i) => (
+                                                        <Paper key={i} variant="outlined" sx={{ p: 1.5, bgcolor: '#fbfdf8' }}>
+                                                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                                                                <Typography variant="body2" fontWeight="500">{c.LoaiChiPhi}</Typography>
+                                                                <Typography variant="body2" color="success.main" fontWeight="bold">
+                                                                    {c.GiaTri?.toLocaleString("vi-VN")} đ
+                                                                </Typography>
+                                                            </Box>
+                                                            <Typography variant="caption" color="text.secondary">{c.TenBoPhan}</Typography>
+                                                        </Paper>
+                                                    ))}
+                                                </Stack>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
 
-            {/* Bottom Actions */}
-            <Box sx={{ mt: 4, mb: 4, display: 'flex', gap: 2 }}>
-                {info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy && (
-                    <Button variant="contained" color="warning" onClick={handleConfirmUser}>
-                        Xác nhận thông tin
-                    </Button>
+                                <Grid item xs={12} md={6}>
+                                    <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2, height: '100%' }}>
+                                        <CardContent>
+                                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+                                                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '1.1rem' }}>
+                                                    <BuildCircleIcon color="info" /> Hành động khắc phục
+                                                </Typography>
+                                                {info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy && (
+                                                    <Button size="small" color="info" onClick={() => setOpenHanhDongModal(true)}><AddIcon /></Button>
+                                                )}
+                                            </Stack>
+                                            <Divider sx={{ mb: 2 }} />
+                                            {hanhDong.length === 0 ? (
+                                                <Typography color="text.secondary" variant="body2">Chưa có hành động cụ thể.</Typography>
+                                            ) : (
+                                                <Stack spacing={1.5}>
+                                                    {hanhDong.map((h, i) => (
+                                                        <Paper key={i} variant="outlined" sx={{ p: 1.5, bgcolor: '#f8fafc' }}>
+                                                            <Typography variant="body2" fontWeight="500" mb={1}>{h.NoiDung}</Typography>
+                                                            <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                                                <Typography variant="caption" color="text.secondary">{h.TenBoPhan}</Typography>
+                                                                <Typography variant="caption" color="error.main">Hạn: {new Date(h.ThoiHan).toLocaleDateString("vi-VN")}</Typography>
+                                                            </Stack>
+                                                        </Paper>
+                                                    ))}
+                                                </Stack>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                            </Grid>
+
+                            {/* Lịch sử xác nhận */}
+                            {xacNhan.length > 0 && (
+                                <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                                    <CardContent>
+                                        <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                                            <VerifiedIcon color="success" /> Lịch sử xác nhận
+                                        </Typography>
+                                        <Grid container spacing={2}>
+                                            {xacNhan.map((x, i) => (
+                                                <Grid item xs={12} sm={6} key={i}>
+                                                    <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', justifyContent: 'space-between', borderLeft: '4px solid #4caf50' }}>
+                                                        <Typography variant="body2" fontWeight="bold">{x.FullName}</Typography>
+                                                        <Typography variant="caption" color="text.secondary">{x.ThoiGian}</Typography>
+                                                    </Paper>
+                                                </Grid>
+                                            ))}
+                                        </Grid>
+                                    </CardContent>
+                                </Card>
+                            )}
+                        </Stack>
+                    </Grid>
+                </Grid>
+
+                {/* Floating Bottom Action Bar */}
+                {((info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy) || allConfirmed) && (
+                    <Paper elevation={4} sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, p: 2, bgcolor: 'white', zIndex: 100, borderTop: '1px solid #e0e0e0' }}>
+                        <Container maxWidth="xl">
+                            <Stack direction="row" justifyContent="flex-end" spacing={2}>
+                                {info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy && (
+                                    <Button variant="contained" color="warning" size="large" onClick={handleConfirmUser} startIcon={<VerifiedIcon />}>
+                                        Xác nhận tiến độ xử lý của bộ phận
+                                    </Button>
+                                )}
+                                {allConfirmed && (
+                                    <Button variant="contained" color="success" size="large" onClick={handleComplete} startIcon={<SaveIcon />}>
+                                        Hoàn tất Biên Bản
+                                    </Button>
+                                )}
+                            </Stack>
+                        </Container>
+                    </Paper>
                 )}
-                {allConfirmed && (
-                    <Button variant="contained" color="success" size="large" onClick={handleComplete}>
-                        Hoàn thành biên bản
-                    </Button>
-                )}
+                {/* </Container> */}
             </Box>
-
+            {/* --- Dialogs (Giữ nguyên logic, chỉnh nhẹ CSS) --- */}
 
             {/* Print Preview Modal */}
-            <Dialog
-                open={openPrintModal}
-                onClose={() => setOpenPrintModal(false)}
-                maxWidth="lg"
-                fullWidth
-            >
+            <Dialog open={openPrintModal} onClose={() => setOpenPrintModal(false)} maxWidth="lg" fullWidth>
                 <DialogTitle>Xem trước bản in</DialogTitle>
-                <DialogContent dividers sx={{ bgcolor: '#f0f0f0', p: 3 }}>
+                <DialogContent dividers sx={{ bgcolor: '#525659', p: 3 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                         <Paper sx={{ width: '210mm', minHeight: '297mm', p: 0, boxShadow: 3 }}>
                             <BienBanPrintTemplate
                                 ref={componentRef}
-                                info={info}
+                                info={{ ...info, MoTaChung: moTaChung }}
                                 defects={defects}
                                 xuLy={xuLy}
                                 chiPhi={chiPhi}
@@ -416,50 +601,24 @@ export default function BienBanDetail() {
                         </Paper>
                     </Box>
                 </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setOpenPrintModal(false)}>Hủy</Button>
-                    <Button
-                        startIcon={<PrintIcon />}
-                        onClick={handlePrint}
-                        variant="contained"
-                        color="primary"
-                    >
-                        In / Lưu PDF
+                <DialogActions sx={{ p: 2 }}>
+                    <Button onClick={() => setOpenPrintModal(false)} color="inherit">Đóng</Button>
+                    <Button startIcon={<PrintIcon />} onClick={handlePrint} variant="contained" color="primary">
+                        Tiến hành In
                     </Button>
                 </DialogActions>
             </Dialog>
 
-
-            {/* --- Modals (Inline for simplicity) --- */}
-
-            <AssignUserDialog
+            <AssignDepartmentDialog
                 open={openAssignModal}
                 onClose={() => setOpenAssignModal(false)}
                 bienBanId={bienBanId}
                 reload={loadData}
-                assignedIds={assigns.map(a => a.NguoiXuLyId)}
+                assignedIds={assigns.map(a => a.BoPhanId)}
             />
-
-            <XuLyDialog
-                open={openXuLyModal}
-                onClose={() => setOpenXuLyModal(false)}
-                bienBanId={bienBanId}
-                reload={loadData}
-            />
-
-            <ChiPhiDialog
-                open={openChiPhiModal}
-                onClose={() => setOpenChiPhiModal(false)}
-                bienBanId={bienBanId}
-                reload={loadData}
-            />
-
-            <HanhDongDialog
-                open={openHanhDongModal}
-                onClose={() => setOpenHanhDongModal(false)}
-                bienBanId={bienBanId}
-                reload={loadData}
-            />
+            <XuLyDialog open={openXuLyModal} onClose={() => setOpenXuLyModal(false)} bienBanId={bienBanId} currentUserId={currentUserId} reload={loadData} />
+            <ChiPhiDialog open={openChiPhiModal} onClose={() => setOpenChiPhiModal(false)} bienBanId={bienBanId} reload={loadData} />
+            <HanhDongDialog open={openHanhDongModal} onClose={() => setOpenHanhDongModal(false)} bienBanId={bienBanId} reload={loadData} />
 
             {/* Confirm Dialog */}
             <ConfirmDialog
@@ -470,32 +629,30 @@ export default function BienBanDetail() {
                 message={confirmDialog.message}
                 type={confirmDialog.type}
             />
-
         </Box>
     );
 }
 
 // --- Sub-components (Dialogs) ---
 
-function AssignUserDialog({ open, onClose, bienBanId, reload, assignedIds }) {
-    const [users, setUsers] = useState([]);
+function AssignDepartmentDialog({ open, onClose, bienBanId, reload, assignedIds }) {
+    const [departments, setDepartments] = useState([]);
     const [selected, setSelected] = useState([]);
 
     useEffect(() => {
         if (open) {
-            getAssignableUsers(bienBanId).then(res => {
-                setUsers(res.data);
-            });
+            getBoPhan().then(res => setDepartments(res.data));
+            setSelected(assignedIds);
         }
-    }, [open, bienBanId]);
+    }, [open, assignedIds]);
 
     const handleSubmit = async () => {
         try {
-            await assignUsers(bienBanId, selected);
+            await assignDepartments(bienBanId, selected);
             reload();
             onClose();
         } catch (err) {
-            alert("Lỗi phân công");
+            alert(err?.response?.data?.message || "Lỗi phân công");
         }
     };
 
@@ -505,63 +662,68 @@ function AssignUserDialog({ open, onClose, bienBanId, reload, assignedIds }) {
     };
 
     return (
-        <Dialog open={open} onClose={onClose} fullWidth>
-            <DialogTitle>Chọn người xử lý</DialogTitle>
-            <DialogContent>
+        <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+            <DialogTitle fontWeight="bold">Chọn bộ phận xử lý</DialogTitle>
+            <DialogContent dividers>
                 <FormControl fullWidth sx={{ mt: 1 }}>
-                    <InputLabel>Người xử lý</InputLabel>
+                    <InputLabel>Danh sách bộ phận</InputLabel>
                     <Select
                         multiple
                         value={selected}
                         onChange={handleChange}
-                        renderValue={(selected) => selected.map(id => users.find(u => u.Id === id)?.FullName).join(', ')}
+                        label="Danh sách bộ phận"
+                        renderValue={(selected) => selected.map(id => departments.find(d => d.Id === id)?.TenBoPhan).join(', ')}
                     >
-                        {users.map((user) => (
-                            <MenuItem key={user.Id} value={user.Id}>
-                                <Checkbox checked={selected.indexOf(user.Id) > -1} />
-                                <ListItemText primary={user.FullName} secondary={user.RoleName} />
+                        {departments.map((dep) => (
+                            <MenuItem key={dep.Id} value={dep.Id}>
+                                <Checkbox checked={selected.indexOf(dep.Id) > -1} />
+                                <ListItemText primary={dep.TenBoPhan} secondary={dep.MaBoPhan} />
                             </MenuItem>
                         ))}
                     </Select>
                 </FormControl>
             </DialogContent>
-            <DialogActions>
-                <Button onClick={onClose}>Hủy</Button>
-                <Button onClick={handleSubmit} variant="contained">Lưu</Button>
+            <DialogActions sx={{ p: 2 }}>
+                <Button onClick={onClose} color="inherit">Hủy</Button>
+                <Button onClick={handleSubmit} variant="contained" color="primary">Lưu thay đổi</Button>
             </DialogActions>
         </Dialog>
     );
 }
 
-function XuLyDialog({ open, onClose, bienBanId, reload }) {
-    const [form, setForm] = useState({ NoiDung: '', DeNghiXuLy: '', MaBoPhan: '', ThoiHan: '' });
-    const [boPhans, setBoPhans] = useState([]);
+function XuLyDialog({ open, onClose, bienBanId, currentUserId, reload }) {
+    const [form, setForm] = useState({ NoiDung: '', DeNghiXuLyId: '', ThoiHan: '' });
     const [deNghis, setDeNghis] = useState([]);
 
     useEffect(() => {
         if (open) {
-            getBoPhan().then(res => setBoPhans(res.data));
             getDeNghiXuLy().then(res => setDeNghis(res.data));
         }
     }, [open]);
 
     const handleSubmit = async () => {
         try {
-            await addXuLy({ ...form, BienBanId: bienBanId });
+            await addXuLy({
+                bienBanId,
+                noiDung: form.NoiDung,
+                deNghiXuLyId: form.DeNghiXuLyId,
+                thoiHan: form.ThoiHan,
+                currentUserId
+            });
             reload();
             onClose();
         } catch (err) {
-            alert("Lỗi thêm xử lý");
+            alert(err?.response?.data?.message || "Lỗi thêm xử lý");
         }
     };
 
     return (
-        <Dialog open={open} onClose={onClose} fullWidth>
-            <DialogTitle>Ý kiến xử lý</DialogTitle>
-            <DialogContent>
-                <Stack spacing={2} sx={{ mt: 1 }}>
+        <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+            <DialogTitle fontWeight="bold">Nhập ý kiến xử lý</DialogTitle>
+            <DialogContent dividers>
+                <Stack spacing={3} sx={{ mt: 1 }}>
                     <TextField
-                        label="Nội dung"
+                        label="Nội dung ý kiến"
                         fullWidth
                         multiline
                         rows={3}
@@ -569,31 +731,19 @@ function XuLyDialog({ open, onClose, bienBanId, reload }) {
                         onChange={e => setForm({ ...form, NoiDung: e.target.value })}
                     />
                     <FormControl fullWidth>
-                        <InputLabel>Đề nghị xử lý</InputLabel>
+                        <InputLabel>Hình thức đề nghị xử lý</InputLabel>
                         <Select
-                            value={form.DeNghiXuLy}
-                            label="Đề nghị xử lý"
-                            onChange={e => setForm({ ...form, DeNghiXuLy: e.target.value })}
+                            value={form.DeNghiXuLyId}
+                            label="Hình thức đề nghị xử lý"
+                            onChange={e => setForm({ ...form, DeNghiXuLyId: e.target.value })}
                         >
                             {deNghis.map(d => (
-                                <MenuItem key={d.Code} value={d.Name}>{d.Name}</MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                    <FormControl fullWidth>
-                        <InputLabel>Bộ phận chịu trách nhiệm</InputLabel>
-                        <Select
-                            value={form.MaBoPhan}
-                            label="Bộ phận chịu trách nhiệm"
-                            onChange={e => setForm({ ...form, MaBoPhan: e.target.value })}
-                        >
-                            {boPhans.map(b => (
-                                <MenuItem key={b.MaBoPhan} value={b.MaBoPhan}>{b.TenBoPhan}</MenuItem>
+                                <MenuItem key={d.Id} value={d.Id}>{d.Ten}</MenuItem>
                             ))}
                         </Select>
                     </FormControl>
                     <TextField
-                        label="Thời hạn"
+                        label="Hạn hoàn thành"
                         type="date"
                         InputLabelProps={{ shrink: true }}
                         fullWidth
@@ -602,41 +752,39 @@ function XuLyDialog({ open, onClose, bienBanId, reload }) {
                     />
                 </Stack>
             </DialogContent>
-            <DialogActions>
-                <Button onClick={onClose}>Hủy</Button>
-                <Button onClick={handleSubmit} variant="contained">Lưu</Button>
+            <DialogActions sx={{ p: 2 }}>
+                <Button onClick={onClose} color="inherit">Hủy</Button>
+                <Button onClick={handleSubmit} variant="contained" color="primary">Ghi nhận</Button>
             </DialogActions>
         </Dialog>
     );
 }
 
 function ChiPhiDialog({ open, onClose, bienBanId, reload }) {
-    const [form, setForm] = useState({ LoaiChiPhi: '', GiaTri: '', MaBoPhan: '' });
-    const [boPhans, setBoPhans] = useState([]);
-
-    useEffect(() => {
-        if (open) {
-            getBoPhan().then(res => setBoPhans(res.data));
-        }
-    }, [open]);
+    const [form, setForm] = useState({ LoaiChiPhi: '', GiaTri: '', ThoiHan: '' });
 
     const handleSubmit = async () => {
         try {
-            await addChiPhi({ ...form, BienBanId: bienBanId });
+            await addChiPhi({
+                bienBanId,
+                loaiChiPhi: form.LoaiChiPhi,
+                giaTri: Number(form.GiaTri),
+                thoiHan: form.ThoiHan
+            });
             reload();
             onClose();
         } catch (err) {
-            alert("Lỗi thêm chi phí");
+            alert(err?.response?.data?.message || "Lỗi thêm chi phí");
         }
     };
 
     return (
-        <Dialog open={open} onClose={onClose} fullWidth>
-            <DialogTitle>Thêm chi phí</DialogTitle>
-            <DialogContent>
-                <Stack spacing={2} sx={{ mt: 1 }}>
+        <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+            <DialogTitle fontWeight="bold">Ghi nhận chi phí phát sinh</DialogTitle>
+            <DialogContent dividers>
+                <Stack spacing={3} sx={{ mt: 1 }}>
                     <TextField
-                        label="Loại chi phí"
+                        label="Tên/Loại chi phí"
                         fullWidth
                         value={form.LoaiChiPhi}
                         onChange={e => setForm({ ...form, LoaiChiPhi: e.target.value })}
@@ -648,75 +796,8 @@ function ChiPhiDialog({ open, onClose, bienBanId, reload }) {
                         value={form.GiaTri}
                         onChange={e => setForm({ ...form, GiaTri: e.target.value })}
                     />
-                    <FormControl fullWidth>
-                        <InputLabel>Bộ phận chịu phí</InputLabel>
-                        <Select
-                            value={form.MaBoPhan}
-                            label="Bộ phận chịu phí"
-                            onChange={e => setForm({ ...form, MaBoPhan: e.target.value })}
-                        >
-                            {boPhans.map(b => (
-                                <MenuItem key={b.MaBoPhan} value={b.MaBoPhan}>{b.TenBoPhan}</MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                </Stack>
-            </DialogContent>
-            <DialogActions>
-                <Button onClick={onClose}>Hủy</Button>
-                <Button onClick={handleSubmit} variant="contained">Lưu</Button>
-            </DialogActions>
-        </Dialog>
-    );
-}
-
-function HanhDongDialog({ open, onClose, bienBanId, reload }) {
-    const [form, setForm] = useState({ NoiDung: '', MaBoPhan: '', ThoiHan: '' });
-    const [boPhans, setBoPhans] = useState([]);
-
-    useEffect(() => {
-        if (open) {
-            getBoPhan().then(res => setBoPhans(res.data));
-        }
-    }, [open]);
-
-    const handleSubmit = async () => {
-        try {
-            await addHanhDong({ ...form, BienBanId: bienBanId });
-            reload();
-            onClose();
-        } catch (err) {
-            alert("Lỗi thêm hành động");
-        }
-    };
-
-    return (
-        <Dialog open={open} onClose={onClose} fullWidth>
-            <DialogTitle>Thêm hành động khắc phục</DialogTitle>
-            <DialogContent>
-                <Stack spacing={2} sx={{ mt: 1 }}>
                     <TextField
-                        label="Nội dung"
-                        fullWidth
-                        multiline
-                        rows={3}
-                        value={form.NoiDung}
-                        onChange={e => setForm({ ...form, NoiDung: e.target.value })}
-                    />
-                    <FormControl fullWidth>
-                        <InputLabel>Bộ phận thực hiện</InputLabel>
-                        <Select
-                            value={form.MaBoPhan}
-                            label="Bộ phận thực hiện"
-                            onChange={e => setForm({ ...form, MaBoPhan: e.target.value })}
-                        >
-                            {boPhans.map(b => (
-                                <MenuItem key={b.MaBoPhan} value={b.MaBoPhan}>{b.TenBoPhan}</MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                    <TextField
-                        label="Thời hạn"
+                        label="Thời hạn dự kiến"
                         type="date"
                         InputLabelProps={{ shrink: true }}
                         fullWidth
@@ -725,9 +806,57 @@ function HanhDongDialog({ open, onClose, bienBanId, reload }) {
                     />
                 </Stack>
             </DialogContent>
-            <DialogActions>
-                <Button onClick={onClose}>Hủy</Button>
-                <Button onClick={handleSubmit} variant="contained">Lưu</Button>
+            <DialogActions sx={{ p: 2 }}>
+                <Button onClick={onClose} color="inherit">Hủy</Button>
+                <Button onClick={handleSubmit} variant="contained" color="primary">Lưu chi phí</Button>
+            </DialogActions>
+        </Dialog>
+    );
+}
+
+function HanhDongDialog({ open, onClose, bienBanId, reload }) {
+    const [form, setForm] = useState({ NoiDung: '', ThoiHan: '' });
+
+    const handleSubmit = async () => {
+        try {
+            await addHanhDong({
+                bienBanId,
+                noiDung: form.NoiDung,
+                thoiHan: form.ThoiHan
+            });
+            reload();
+            onClose();
+        } catch (err) {
+            alert(err?.response?.data?.message || "Lỗi thêm hành động");
+        }
+    };
+
+    return (
+        <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+            <DialogTitle fontWeight="bold">Thêm hành động khắc phục</DialogTitle>
+            <DialogContent dividers>
+                <Stack spacing={3} sx={{ mt: 1 }}>
+                    <TextField
+                        label="Nội dung hành động"
+                        fullWidth
+                        multiline
+                        rows={3}
+                        value={form.NoiDung}
+                        onChange={e => setForm({ ...form, NoiDung: e.target.value })}
+                    />
+                    <TextField
+                        label="Thời hạn hoàn thành"
+                        type="date"
+                        InputLabelProps={{ shrink: true }}
+                        fullWidth
+                        value={form.ThoiHan}
+                        onChange={e => setForm({ ...form, ThoiHan: e.target.value })}
+                    />
+                </Stack>
+            </DialogContent>
+            <DialogActions sx={{ p: 2 }}>
+                <Button onClick={onClose} color="inherit">Hủy</Button>
+                <Button onClick={handleSubmit} variant="contained" color="primary">Cập nhật</Button>
             </DialogActions>
         </Dialog>
     );

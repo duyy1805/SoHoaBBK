@@ -1,27 +1,43 @@
-
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
     Box,
     Typography,
-    Grid,
     Card,
-    CardContent,
     Chip,
     CircularProgress,
     Stack,
     Fade,
     TextField,
     MenuItem,
-    LinearProgress
+    LinearProgress,
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
+    TablePagination,
+    InputAdornment,
+    IconButton,
+    Tooltip
 } from "@mui/material";
-import DescriptionIcon from "@mui/icons-material/Description";
+import {
+    Search as SearchIcon,
+    Visibility as VisibilityIcon
+} from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
-import { getMyBienBan } from "../../api/bienBan.api";
+import { getMyBienBan } from "../../api/bienBan.api"; // Giữ nguyên import của bạn
 
 export default function BienBanList() {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
+
+    // Filters & Pagination state
     const [filterStatus, setFilterStatus] = useState("");
+    const [searchText, setSearchText] = useState("");
+    const [page, setPage] = useState(0);
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -30,8 +46,9 @@ export default function BienBanList() {
 
     const loadData = async () => {
         try {
+            setLoading(true);
             const res = await getMyBienBan();
-            setData(res.data);
+            setData(res.data || []);
         } catch (err) {
             console.error(err);
         } finally {
@@ -40,142 +57,218 @@ export default function BienBanList() {
     };
 
     const renderTrangThaiChip = (trangThai) => {
-        switch (trangThai) {
-            case "BB_MOI":
-                return <Chip label="Mới tạo" size="small" />;
-            case "DANG_XU_LY":
-                return <Chip label="Đang xử lý" color="warning" size="small" />;
-            case "CHO_XAC_NHAN":
-                return <Chip label="Chờ xác nhận" color="info" size="small" />;
-            case "HOAN_TAT":
-                return <Chip label="Hoàn tất" color="success" size="small" />;
-            default:
-                return <Chip label={trangThai || "Mới tạo"} size="small" />;
-        }
+        const statusMap = {
+            "BB_MOI": { label: "Mới tạo", color: "default" },
+            "CHO_PHAN_BO_XY_LY": { label: "Xin ý kiến", color: "warning" },
+            "CHO_TP_B8": { label: "Chờ kết luận TP B8", color: "secondary" },
+            "DA_KET_LUAN": { label: "Đã kết luận", color: "primary" },
+            "CHO_XAC_NHAN": { label: "Chờ xác nhận", color: "info" },
+            "DA_XAC_NHAN": { label: "Đã xác nhận", color: "success" }
+        };
+        const status = statusMap[trangThai] || { label: trangThai || "Mới tạo", color: "default" };
+
+        return <Chip label={status.label} color={status.color} size="small" sx={{ fontWeight: 500 }} />;
     };
 
-    const filteredData = filterStatus
-        ? data.filter((d) => d.TrangThai === filterStatus)
-        : data;
+    // Lọc dữ liệu bằng useMemo để tối ưu hiệu năng
+    const filteredData = useMemo(() => {
+        return data.filter((item) => {
+            // Lọc theo trạng thái
+            if (filterStatus && item.TrangThai !== filterStatus) return false;
 
-    if (loading)
+            // Lọc theo text (Tìm kiếm trên nhiều cột)
+            if (searchText) {
+                const searchLower = searchText.toLowerCase();
+                const matchSoPhieu = item.SoPhieu?.toLowerCase().includes(searchLower);
+                const matchSanPham = item.TenSanPham?.toLowerCase().includes(searchLower);
+                const matchLot = item.Lot?.toLowerCase().includes(searchLower);
+                const matchNguoiLap = item.NguoiLap?.toLowerCase().includes(searchLower);
+
+                if (!matchSoPhieu && !matchSanPham && !matchLot && !matchNguoiLap) {
+                    return false;
+                }
+            }
+            return true;
+        });
+    }, [data, filterStatus, searchText]);
+
+    // Xử lý phân trang
+    const paginatedData = useMemo(() => {
+        const startIndex = page * rowsPerPage;
+        return filteredData.slice(startIndex, startIndex + rowsPerPage);
+    }, [filteredData, page, rowsPerPage]);
+
+    const handleChangePage = (event, newPage) => setPage(newPage);
+
+    const handleChangeRowsPerPage = (event) => {
+        setRowsPerPage(parseInt(event.target.value, 10));
+        setPage(0);
+    };
+
+    if (loading) {
         return (
-            <Box sx={{ display: "flex", justifyContent: "center", mt: 6 }}>
+            <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "50vh" }}>
                 <CircularProgress />
             </Box>
         );
+    }
 
     return (
         <Fade in timeout={400}>
             <Box>
+                {/* Header & Filters */}
                 <Stack
-                    direction="row"
+                    direction={{ xs: "column", md: "row" }}
                     justifyContent="space-between"
-                    alignItems="center"
+                    alignItems={{ xs: "stretch", md: "center" }}
+                    spacing={2}
                     sx={{ mb: 4 }}
                 >
                     <Typography
-                        variant="h4"
+                        variant="h5"
                         sx={{
                             fontWeight: 700,
-                            background:
-                                "linear-gradient(135deg, #1e293b 0%, #475569 100%)",
+                            background: "linear-gradient(135deg, #1e293b 0%, #475569 100%)",
                             backgroundClip: "text",
                             WebkitTextFillColor: "transparent"
                         }}
                     >
                         Danh sách Biên bản
                     </Typography>
+
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                        <TextField
+                            size="small"
+                            placeholder="Tìm số phiếu, sản phẩm..."
+                            value={searchText}
+                            onChange={(e) => {
+                                setSearchText(e.target.value);
+                                setPage(0);
+                            }}
+                            InputProps={{
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon fontSize="small" />
+                                    </InputAdornment>
+                                ),
+                            }}
+                            sx={{ minWidth: { xs: '100%', sm: 260 } }}
+                        />
+                        <TextField
+                            select
+                            size="small"
+                            label="Trạng thái"
+                            value={filterStatus}
+                            onChange={(e) => {
+                                setFilterStatus(e.target.value);
+                                setPage(0);
+                            }}
+                            sx={{ minWidth: { xs: '100%', sm: 180 } }}
+                        >
+                            <MenuItem value="">Tất cả</MenuItem>
+                            <MenuItem value="BB_MOI">Mới tạo</MenuItem>
+                            <MenuItem value="CHO_PHAN_BO_XY_LY">Xin ý kiến</MenuItem>
+                            <MenuItem value="CHO_TP_B8">Chờ kết luận</MenuItem>
+                            <MenuItem value="DA_KET_LUAN">Đã kết luận</MenuItem>
+                            <MenuItem value="CHO_XAC_NHAN">Chờ xác nhận</MenuItem>
+                            <MenuItem value="DA_XAC_NHAN">Đã xác nhận</MenuItem>
+                        </TextField>
+                    </Stack>
                 </Stack>
 
-                <TextField
-                    select
-                    label="Lọc theo trạng thái"
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value)}
-                    sx={{ mb: 3, width: 260 }}
-                >
-                    <MenuItem value="">Tất cả</MenuItem>
-                    <MenuItem value="BB_MOI">Mới tạo</MenuItem>
-                    <MenuItem value="DANG_XU_LY">Đang xử lý</MenuItem>
-                    <MenuItem value="CHO_XAC_NHAN">Chờ xác nhận</MenuItem>
-                    <MenuItem value="HOAN_TAT">Hoàn tất</MenuItem>
-                </TextField>
-
-                <Grid container spacing={3}>
-                    {filteredData.length === 0 ? (
-                        <Grid item xs={12}>
-                            <Typography color="text.secondary" align="center" sx={{ mt: 4 }}>
-                                Không có biên bản nào.
-                            </Typography>
-                        </Grid>
-                    ) : (
-                        filteredData.map((item) => (
-                            <Grid item xs={12} md={6} lg={4} key={item.BienBanId}>
-                                <Card
-                                    onClick={() => navigate(`/bien-ban/${item.BienBanId}`)}
-                                    sx={{
-                                        borderRadius: 3,
-                                        cursor: "pointer",
-                                        boxShadow: "0 4px 20px rgba(0,0,0,0.05)",
-                                        transition: "0.3s",
-                                        "&:hover": {
-                                            transform: "translateY(-4px)",
-                                            boxShadow: "0 8px 30px rgba(0,0,0,0.1)"
-                                        }
-                                    }}
-                                >
-                                    <CardContent>
-                                        <Stack
-                                            direction="row"
-                                            justifyContent="space-between"
-                                            sx={{ mb: 2 }}
+                {/* Data Table */}
+                <Card sx={{ borderRadius: 2, boxShadow: "0 4px 20px rgba(0,0,0,0.05)" }}>
+                    <TableContainer sx={{ maxHeight: 'calc(100vh - 240px)' }}>
+                        <Table stickyHeader hover>
+                            <TableHead>
+                                <TableRow>
+                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Số Phiếu</TableCell>
+                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Sản Phẩm</TableCell>
+                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Lot</TableCell>
+                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Người Lập</TableCell>
+                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Ngày Tạo</TableCell>
+                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper', width: 200 }}>Tiến Độ</TableCell>
+                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }} align="center">Trạng Thái</TableCell>
+                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }} align="center">Thao tác</TableCell>
+                                </TableRow>
+                            </TableHead>
+                            <TableBody>
+                                {paginatedData.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
+                                            <Typography color="text.secondary">
+                                                Không tìm thấy biên bản nào phù hợp.
+                                            </Typography>
+                                        </TableCell>
+                                    </TableRow>
+                                ) : (
+                                    paginatedData.map((item) => (
+                                        <TableRow
+                                            key={item.BienBanId}
+                                            hover
+                                            onClick={() => navigate(`/bien-ban/${item.BienBanId}`)}
+                                            sx={{ cursor: "pointer", transition: "0.2s" }}
                                         >
-                                            <DescriptionIcon sx={{ color: "#6366f1" }} />
-                                            {renderTrangThaiChip(item.TrangThai)}
-                                        </Stack>
+                                            <TableCell sx={{ fontWeight: 500, color: 'primary.main' }}>
+                                                {item.SoPhieu}
+                                            </TableCell>
+                                            <TableCell>{item.TenSanPham || "—"}</TableCell>
+                                            <TableCell>{item.Lot || "—"}</TableCell>
+                                            <TableCell>{item.NguoiLap || "—"}</TableCell>
+                                            <TableCell>
+                                                {item.CreatedAt ? new Date(item.CreatedAt).toLocaleDateString('vi-VN') : "—"}
+                                            </TableCell>
+                                            <TableCell onClick={(e) => e.stopPropagation() /* Tránh click bar làm trigger row click */}>
+                                                <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {item.DaCoYKien}/{item.SoBoPhan} bộ phận
+                                                    </Typography>
+                                                    <Typography variant="caption" fontWeight="bold" color="primary">
+                                                        {item.ProgressPercent}%
+                                                    </Typography>
+                                                </Stack>
+                                                <LinearProgress
+                                                    variant="determinate"
+                                                    value={item.ProgressPercent || 0}
+                                                    sx={{ height: 6, borderRadius: 3 }}
+                                                />
+                                            </TableCell>
+                                            <TableCell align="center">
+                                                {renderTrangThaiChip(item.TrangThai)}
+                                            </TableCell>
+                                            <TableCell align="center">
+                                                <Tooltip title="Xem chi tiết">
+                                                    <IconButton
+                                                        size="small"
+                                                        color="primary"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            navigate(`/bien-ban/${item.BienBanId}`);
+                                                        }}
+                                                    >
+                                                        <VisibilityIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Tooltip>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
 
-                                        <Typography variant="h6" fontWeight={600} gutterBottom>
-                                            {item.SoPhieu}
-                                        </Typography>
-
-                                        <Typography variant="body2" color="text.primary" sx={{ mb: 0.5 }}>
-                                            Sản phẩm: {item.TenSanPham || "N/A"}
-                                        </Typography>
-
-                                        <Typography variant="body2" color="text.secondary">
-                                            Lot: {item.Lot || "—"}
-                                        </Typography>
-
-                                        <Typography variant="body2" color="text.secondary">
-                                            Ngày tạo: {item.CreatedAt ? new Date(item.CreatedAt).toLocaleDateString('vi-VN') : "—"}
-                                        </Typography>
-
-                                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                                            Người lập: {item.NguoiLap || "—"}
-                                        </Typography>
-
-                                        <Box sx={{ mt: 2 }}>
-                                            <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
-                                                <Typography variant="caption" color="text.secondary">
-                                                    Tiến độ: {item.DaCoYKien}/{item.SoBoPhan} bộ phận
-                                                </Typography>
-                                                <Typography variant="caption" fontWeight="bold" color="primary">
-                                                    {item.ProgressPercent}%
-                                                </Typography>
-                                            </Stack>
-                                            <LinearProgress 
-                                                variant="determinate" 
-                                                value={item.ProgressPercent || 0} 
-                                                sx={{ height: 6, borderRadius: 3 }}
-                                            />
-                                        </Box>
-                                    </CardContent>
-                                </Card>
-                            </Grid>
-                        ))
-                    )}
-                </Grid>
+                    <TablePagination
+                        component="div"
+                        count={filteredData.length}
+                        page={page}
+                        onPageChange={handleChangePage}
+                        rowsPerPage={rowsPerPage}
+                        onRowsPerPageChange={handleChangeRowsPerPage}
+                        labelRowsPerPage="Số dòng/trang:"
+                        labelDisplayedRows={({ from, to, count }) => `${from}-${to} trên ${count}`}
+                        rowsPerPageOptions={[5, 10, 25, 50]}
+                    />
+                </Card>
             </Box>
         </Fade>
     );

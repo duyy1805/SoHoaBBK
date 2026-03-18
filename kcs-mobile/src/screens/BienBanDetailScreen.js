@@ -59,11 +59,9 @@ export default function BienBanDetailScreen({ route, navigation }) {
         setCurrentUserBoPhanId(user.boPhanId);
     };
     const loadData = async () => {
-
         try {
 
             setLoading(true);
-
             const res = await getBienBanDetail(bienBanId);
 
             setInfo(res.data.info);
