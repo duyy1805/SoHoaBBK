@@ -7,7 +7,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
     xuLy = [],
     chiPhi = [],
     hanhDong = [],
-    xacNhan
+    // xacNhan
 }, ref) => {
     if (!info) return null;
 

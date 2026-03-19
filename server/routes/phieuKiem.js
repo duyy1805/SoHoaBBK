@@ -38,6 +38,52 @@ router.get(
     }
 );
 
+// =========================================================
+// GET /phieu-kiem/lich-dong-cont/chua-kiem
+// =========================================================
+router.get(
+    '/lich-dong-cont/chua-kiem',
+    authenticateToken,
+    authorize('XEM_PHIEU_KIEM'),
+    async (req, res) => {
+
+        try {
+            const pool = await poolPromise;
+
+            const result = await pool.request()
+                .execute('sp_LichDongCont_GetList');
+
+            res.json(result.recordset);
+
+        } catch (err) {
+            console.error('GetLichDongCont error:', err);
+            res.status(500).json({ message: 'Lỗi lấy lịch đóng cont' });
+        }
+    }
+);
+
+router.get(
+    '/chung-tu-nhap/chua-kiem',
+    authenticateToken,
+    authorize('XEM_PHIEU_KIEM'),
+    async (req, res) => {
+        try {
+            const pool = await poolPromise;
+
+            const result = await pool.request()
+                .execute('sp_ChungTuNhapChiTiet_GetList_ChuaKiem');
+
+            res.json(result.recordset);
+
+        } catch (err) {
+            console.error(err);
+            res.status(500).json({
+                message: 'Lỗi lấy chứng từ nhập'
+            });
+        }
+    }
+);
+
 router.get(
     '/my',
     authenticateToken,
@@ -48,15 +94,14 @@ router.get(
             const pool = await poolPromise;
 
             const permissions = req.user.permissions;
-
+            console.log(permissions)
             let mode = 'VIEW';
-
+            if (permissions.includes('PHAN_BO_KIEM'))
+                mode = 'TO_TRUONG_KCS';
             if (permissions.includes('THUC_HIEN_KIEM'))
                 mode = 'KCS';
-
             if (permissions.includes('XAC_NHAN_PX'))
                 mode = 'PX';
-
             if (permissions.includes('XAC_NHAN_KIEM_NGHIEM'))
                 mode = 'KIEM_NGHIEM';
 
@@ -156,10 +201,12 @@ router.post(
             loaiKiemId,
             lot,
             doiTuong,
-            nguoiKiemId
+            nguoiKiemId,
+            sourceId,
+            soLuong
         } = req.body;
 
-        if (!sanPhamId || !loaiKiemId || !nguoiKiemId) {
+        if (!sanPhamId || !loaiKiemId || !nguoiKiemId || !sourceId || !soLuong) {
             return res.status(400).json({
                 message: 'Thiếu thông tin bắt buộc'
             });
@@ -173,8 +220,10 @@ router.post(
                 .input('LoaiKiemId', sql.Int, loaiKiemId)
                 .input('Lot', sql.NVarChar, lot)
                 .input('DoiTuong', sql.NVarChar, doiTuong)
+                .input('SourceId', sql.Int, sourceId)
                 .input('NguoiKiemId', sql.Int, nguoiKiemId)
-                // .input('NguoiTaoId', sql.Int, req.user.userId)
+                .input('SoLuong', sql.Int, soLuong)
+                .input('NguoiLapId', sql.Int, req.user.userId)
                 .execute('sp_PhieuKiem_Create');
 
             res.json({

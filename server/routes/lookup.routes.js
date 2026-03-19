@@ -7,12 +7,18 @@ const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
 
 router.get('/loai-kiem', authenticateToken, async (req, res) => {
-  const pool = await poolPromise;
-  const result = await pool.request().query(`
-      SELECT Id, TenLoai 
-      FROM DM_LOAI_KIEM
-  `);
-  res.json(result.recordset);
+  try {
+    const pool = await poolPromise;
+
+    const result = await pool.request()
+      .execute("sp_DM_GetLoaiKiem");
+
+    res.json(result.recordset);
+
+  } catch (err) {
+    console.error("Loai kiem error:", err);
+    res.status(500).json({ message: "Không lấy được loại kiểm" });
+  }
 });
 
 router.get(

@@ -21,7 +21,11 @@ export const getKCSLookup = () => {
 
 // Danh sách phiếu kiểm
 export const getPhieuKiemList = (params) => {
-    return axiosClient.get("/phieu-kiem", { params });
+    return axiosClient.get("/phieu-kiem/my", { params });
+};
+
+export const getPhieuKiem = () => {
+    return axiosClient.get("/phieu-kiem/my");
 };
 
 // Chi tiết phiếu kiểm
@@ -33,6 +37,12 @@ export const createPhieuKiem = (data) => {
     return axiosClient.post("/phieu-kiem/create", data);
 };
 
+export const getLichDongContChuaKiem = () =>
+    axiosClient.get("/phieu-kiem/lich-dong-cont/chua-kiem");
+
+
+export const getChungTuNhapChuaKiem = () =>
+    axiosClient.get("/phieu-kiem/chung-tu-nhap/chua-kiem");
 /* =========================================================
    PHÂN BỔ (TO_TRUONG_KCS)
 ========================================================= */

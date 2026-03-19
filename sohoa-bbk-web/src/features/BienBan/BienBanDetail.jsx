@@ -546,9 +546,9 @@ export default function BienBanDetail() {
                                         <Grid container spacing={2}>
                                             {xacNhan.map((x, i) => (
                                                 <Grid item xs={12} sm={6} key={i}>
-                                                    <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', justifyContent: 'space-between', borderLeft: '4px solid #4caf50' }}>
+                                                    <Paper variant="outlined" sx={{ p: 1.5, borderLeft: '4px solid #4caf50' }}>
                                                         <Typography variant="body2" fontWeight="bold">{x.FullName}</Typography>
-                                                        <Typography variant="caption" color="text.secondary">{x.ThoiGian}</Typography>
+                                                        <Typography variant="caption" color="text.secondary">{new Date(x.ThoiGian).toLocaleString("vi-VN")}</Typography>
                                                     </Paper>
                                                 </Grid>
                                             ))}

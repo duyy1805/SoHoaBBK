@@ -2,6 +2,9 @@
 
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { logout } from "../utils/auth";
+import { navigationRef } from "../navigation/navigationRef";
+import Toast from "react-native-toast-message";
 
 const axiosClient = axios.create({
     baseURL: "http://localhost:5001/api", // ⚠ đổi thành IP máy chạy server
@@ -19,6 +22,28 @@ axiosClient.interceptors.request.use(
         return config;
     },
     (error) => Promise.reject(error)
+);
+
+axiosClient.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+        if (error.response && error.response.status === 401) {
+            // Auto logout khi token hết hạn
+            await logout();
+            Toast.show({
+                type: "error",
+                text1: "Hết hạn phiên đăng nhập",
+                text2: "Vui lòng đăng nhập lại",
+            });
+            if (navigationRef.isReady()) {
+                navigationRef.reset({
+                    index: 0,
+                    routes: [{ name: "Login" }],
+                });
+            }
+        }
+        return Promise.reject(error);
+    }
 );
 
 export default axiosClient;
