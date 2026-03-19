@@ -274,7 +274,7 @@ export default function BienBanDetail() {
                 {/* <Container > */}
                 <Grid container spacing={3}>
                     {/* LEFT COLUMN: Thông tin chung & Lỗi */}
-                    <Grid item xs={12} lg={4}>
+                    <Grid size={{ xs: 12, lg: 4 }}>
                         <Stack spacing={3}>
                             {/* Card Header Info */}
                             <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
@@ -376,7 +376,7 @@ export default function BienBanDetail() {
                     </Grid>
 
                     {/* RIGHT COLUMN: Các luồng xử lý */}
-                    <Grid item xs={12} lg={12}>
+                    <Grid size={{ xs: 8 }}>
                         <Stack spacing={3}>
 
                             {/* Phân công xử lý */}
@@ -400,7 +400,7 @@ export default function BienBanDetail() {
                                         ) : (
                                             <Grid container spacing={2}>
                                                 {assigns.map((a, i) => (
-                                                    <Grid item xs={12} sm={6} md={4} key={i}>
+                                                    <Grid size={{ xs: 12, sm: 6, md: 4 }} key={i}>
                                                         <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: '#f8fafc' }}>
                                                             <Box>
                                                                 <Typography variant="body2" fontWeight="bold">{a.TenBoPhan}</Typography>
@@ -637,14 +637,24 @@ export default function BienBanDetail() {
 
 function AssignDepartmentDialog({ open, onClose, bienBanId, reload, assignedIds }) {
     const [departments, setDepartments] = useState([]);
-    const [selected, setSelected] = useState([]);
+    // 1. Khởi tạo state với giá trị từ prop
+    const [selected, setSelected] = useState(assignedIds || []);
 
+    // 2. Lưu lại prop cũ để so sánh
+    const [prevAssignedIds, setPrevAssignedIds] = useState(assignedIds);
+
+    // 3. Cập nhật state ngay trong lúc render nếu prop thay đổi
+    if (assignedIds !== prevAssignedIds) {
+        setPrevAssignedIds(assignedIds);
+        setSelected(assignedIds);
+    }
+
+    // 4. useEffect giờ ĐƠN THUẦN chỉ dùng để gọi API (tác vụ bất đồng bộ)
     useEffect(() => {
         if (open) {
             getBoPhan().then(res => setDepartments(res.data));
-            setSelected(assignedIds);
         }
-    }, [open, assignedIds]);
+    }, [open]);
 
     const handleSubmit = async () => {
         try {

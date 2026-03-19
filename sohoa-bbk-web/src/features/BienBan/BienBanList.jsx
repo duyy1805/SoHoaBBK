@@ -179,7 +179,14 @@ export default function BienBanList() {
                 {/* Data Table */}
                 <Card sx={{ borderRadius: 2, boxShadow: "0 4px 20px rgba(0,0,0,0.05)" }}>
                     <TableContainer sx={{ maxHeight: 'calc(100vh - 240px)' }}>
-                        <Table stickyHeader hover>
+                        <Table
+                            stickyHeader
+                            sx={{
+                                "& tbody tr:hover": {
+                                    backgroundColor: "#f5f5f5"
+                                }
+                            }}
+                        >
                             <TableHead>
                                 <TableRow>
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Số Phiếu</TableCell>
