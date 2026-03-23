@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
     Box,
     Typography,
@@ -21,11 +21,14 @@ import {
     TableCell,
     TableBody,
     Chip,
-    Divider
+    Divider,
+    InputAdornment
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import AssignmentIcon from "@mui/icons-material/Assignment";
+import SearchIcon from "@mui/icons-material/Search";
 import { useNavigate } from "react-router-dom";
+import { useToast } from "../../../components/common/ToastContext";
 
 import {
     createPhieuKiem,
@@ -38,7 +41,7 @@ import {
 
 export default function PhieuKiemCreate() {
     const navigate = useNavigate();
-
+    const { showToast } = useToast();
     const [form, setForm] = useState({
         sanPhamId: "",
         loaiKiemId: "",
@@ -56,6 +59,7 @@ export default function PhieuKiemCreate() {
     const [selectedLich, setSelectedLich] = useState(null);
 
     const [lichList, setLichList] = useState([]);
+    const [searchTerm, setSearchTerm] = useState("");
     const [openModal, setOpenModal] = useState(false);
     const [loadingModal, setLoadingModal] = useState(false);
 
@@ -80,6 +84,34 @@ export default function PhieuKiemCreate() {
         }
     };
 
+    // 🔥 XỬ LÝ LỌC DỮ LIỆU TÌM KIẾM
+    const filteredLichList = useMemo(() => {
+        if (!searchTerm) return lichList;
+        const lower = searchTerm.toLowerCase();
+
+        return lichList.filter((row) => {
+            if (selectedLoai?.MaLoai === "KIEM_DONG_CONT") {
+                return (
+                    row.So_Cont?.toLowerCase().includes(lower) ||
+                    row.ItemCode?.toLowerCase().includes(lower) ||
+                    row.Ten_Hang?.toLowerCase().includes(lower) ||
+                    row.Ma_KhachHang?.toLowerCase().includes(lower) ||
+                    row.So_Invoice?.toLowerCase().includes(lower)
+                );
+            }
+            if (selectedLoai?.MaLoai === "DAU_VAO") {
+                return (
+                    row.So_Invoice?.toLowerCase().includes(lower) ||
+                    row.Ma_DonHang?.toLowerCase().includes(lower) ||
+                    row.Ma_VatTu?.toLowerCase().includes(lower) ||
+                    row.QuyCach?.toLowerCase().includes(lower) ||
+                    row.Ten_NhaCungCap?.toLowerCase().includes(lower)
+                );
+            }
+            return false;
+        });
+    }, [lichList, searchTerm, selectedLoai]);
+
     // 🔥 HANDLE CHANGE
     const handleChange = async (e) => {
         const { name, value } = e.target;
@@ -90,6 +122,7 @@ export default function PhieuKiemCreate() {
 
             // reset
             setSelectedLich(null);
+            setSearchTerm(""); // Reset thanh tìm kiếm
             setForm(prev => ({
                 ...prev,
                 loaiKiemId: value,
@@ -138,7 +171,7 @@ export default function PhieuKiemCreate() {
             );
 
             if (!sp) {
-                alert(`Không map được sản phẩm: ${row.ItemCode}`);
+                showToast(`Sản phẩm chưa có trong danh mục: ${row.ItemCode}`, "error");
                 return;
             }
 
@@ -159,14 +192,14 @@ export default function PhieuKiemCreate() {
             );
 
             if (!sp) {
-                alert(`Không map được sản phẩm: ${row.Ma_VatTu}`);
+                showToast(`Vật tư chưa có trong danh mục: ${row.Ma_VatTu}`, "error");
                 return;
             }
 
             setForm(prev => ({
                 ...prev,
                 sanPhamId: sp.Id,
-                lot: row.So_Invoice,          // 👈 LOT = Invoice
+                lot: row.So_Invoice,
                 doiTuong: row.Ma_DonHang || row.ID_NhaCungCap,
                 sourceId: row.ID_ChungTuNhap_ChiTiet,
                 soLuong: row.SoLuong
@@ -181,7 +214,7 @@ export default function PhieuKiemCreate() {
     const handleSubmit = async () => {
         try {
             if (!form.loaiKiemId || !form.nguoiKiemId) {
-                alert("Vui lòng nhập đầy đủ thông tin");
+                showToast("Vui lòng nhập đầy đủ thông tin", "error");
                 return;
             }
 
@@ -189,7 +222,7 @@ export default function PhieuKiemCreate() {
             await createPhieuKiem(form);
             navigate("/phieu-kiem");
         } catch (err) {
-            alert(err?.response?.data?.message || "Lỗi tạo phiếu");
+            showToast(err?.response?.data?.message || "Lỗi tạo phiếu", "error");
         } finally {
             setLoading(false);
         }
@@ -310,13 +343,13 @@ export default function PhieuKiemCreate() {
                                         <AssignmentIcon color="primary" />
 
                                         <Typography>
-                                            Cont: <b>{selectedLich.So_Cont}</b>
+                                            Cont/Invoice: <b>{selectedLich.So_Cont || selectedLich.So_Invoice}</b>
                                         </Typography>
 
                                         <Chip label={`SL: ${selectedLich.SoLuong}`} />
 
                                         <Chip
-                                            label={new Date(selectedLich.Ngay_Giao).toLocaleDateString()}
+                                            label={new Date(selectedLich.Ngay_Giao || selectedLich.Ngay_Invoice).toLocaleDateString()}
                                             color="warning"
                                         />
 
@@ -346,100 +379,127 @@ export default function PhieuKiemCreate() {
                 </Paper>
 
                 {/* MODAL */}
-                <Dialog open={openModal} onClose={() => setOpenModal(false)} maxWidth="lg" fullWidth>
-                    <DialogTitle>Chọn kế hoạch đóng cont</DialogTitle>
-                    <DialogContent>
+                <Dialog open={openModal} onClose={() => setOpenModal(false)} maxWidth="lg" fullWidth scroll="paper">
+                    <DialogTitle>Chọn kế hoạch kiểm tra</DialogTitle>
+                    <DialogContent dividers>
 
                         {loadingModal ? (
                             <Box sx={{ textAlign: "center", p: 4 }}>
                                 <CircularProgress />
                             </Box>
                         ) : (
+                            <Box>
+                                {/* THANH TÌM KIẾM */}
+                                <TextField
+                                    fullWidth
+                                    placeholder="Tìm kiếm theo mã, tên, số cont, invoice..."
+                                    variant="outlined"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    sx={{ mb: 3 }}
+                                    InputProps={{
+                                        startAdornment: (
+                                            <InputAdornment position="start">
+                                                <SearchIcon color="action" />
+                                            </InputAdornment>
+                                        )
+                                    }}
+                                />
 
-                            <Table stickyHeader>
-                                <TableHead>
-                                    <TableRow>
+                                <Table stickyHeader>
+                                    <TableHead>
+                                        <TableRow>
 
-                                        {selectedLoai?.MaLoai === "KIEM_DONG_CONT" && (
-                                            <>
-                                                <TableCell>Cont</TableCell>
-                                                <TableCell>Item Code</TableCell>
-                                                <TableCell>Tên sản phẩm</TableCell>
-                                                <TableCell>Khách hàng</TableCell>
-                                                <TableCell>Invoice</TableCell>
-                                            </>
-                                        )}
-
-                                        {selectedLoai?.MaLoai === "DAU_VAO" && (
-                                            <>
-                                                <TableCell>Invoice</TableCell>
-                                                <TableCell>Đơn hàng</TableCell>
-                                                <TableCell>Mã vật tư</TableCell>
-                                                <TableCell>Quy cách</TableCell>
-                                                <TableCell>Nhà cung cấp</TableCell>
-                                            </>
-                                        )}
-
-                                        <TableCell>SL</TableCell>
-                                        <TableCell>Ngày</TableCell>
-
-                                    </TableRow>
-                                </TableHead>
-
-                                <TableBody>
-                                    {lichList.map((row) => (
-                                        <TableRow
-                                            key={
-                                                selectedLoai?.MaLoai === "KIEM_DONG_CONT"
-                                                    ? row.ID_Lich
-                                                    : row.ID_ChungTuNhap_ChiTiet
-                                            }
-                                            hover
-                                            sx={{ cursor: "pointer" }}
-                                            onClick={() => handleSelectLich(row)}
-                                        >
-
-                                            {/* DONG CONT */}
                                             {selectedLoai?.MaLoai === "KIEM_DONG_CONT" && (
                                                 <>
-                                                    <TableCell><b>{row.So_Cont}</b></TableCell>
-                                                    <TableCell>{row.ItemCode}</TableCell>
-                                                    <TableCell>{row.Ten_Hang}</TableCell>
-                                                    <TableCell>
-                                                        <Chip label={row.Ma_KhachHang} size="small" />
-                                                    </TableCell>
-                                                    <TableCell>{row.So_Invoice}</TableCell>
+                                                    <TableCell>Cont</TableCell>
+                                                    <TableCell>Item Code</TableCell>
+                                                    <TableCell>Tên sản phẩm</TableCell>
+                                                    <TableCell>Khách hàng</TableCell>
+                                                    <TableCell>Invoice</TableCell>
                                                 </>
                                             )}
 
-                                            {/* NHẬP */}
                                             {selectedLoai?.MaLoai === "DAU_VAO" && (
                                                 <>
-                                                    <TableCell><b>{row.So_Invoice}</b></TableCell>
-                                                    <TableCell>{row.Ma_DonHang}</TableCell>
-                                                    <TableCell>
-                                                        <Typography fontWeight={600}>
-                                                            {row.Ma_VatTu}
-                                                        </Typography>
-                                                    </TableCell>
-                                                    <TableCell>{row.QuyCach}</TableCell>
-                                                    <TableCell>{row.Ten_NhaCungCap}</TableCell>
+                                                    <TableCell>Invoice</TableCell>
+                                                    <TableCell>Đơn hàng</TableCell>
+                                                    <TableCell>Mã vật tư</TableCell>
+                                                    <TableCell>Quy cách</TableCell>
+                                                    <TableCell>Nhà cung cấp</TableCell>
                                                 </>
                                             )}
 
-                                            <TableCell><b>{row.SoLuong}</b></TableCell>
-
-                                            <TableCell>
-                                                {new Date(
-                                                    row.Ngay_Giao || row.Ngay_Invoice
-                                                ).toLocaleDateString()}
-                                            </TableCell>
+                                            <TableCell>SL</TableCell>
+                                            <TableCell>Ngày</TableCell>
 
                                         </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
+                                    </TableHead>
 
+                                    <TableBody>
+                                        {filteredLichList.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
+                                                    <Typography color="text.secondary">
+                                                        Không tìm thấy kết quả phù hợp.
+                                                    </Typography>
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            filteredLichList.map((row) => (
+                                                <TableRow
+                                                    key={
+                                                        selectedLoai?.MaLoai === "KIEM_DONG_CONT"
+                                                            ? row.ID_Lich
+                                                            : row.ID_ChungTuNhap_ChiTiet
+                                                    }
+                                                    hover
+                                                    sx={{ cursor: "pointer" }}
+                                                    onClick={() => handleSelectLich(row)}
+                                                >
+
+                                                    {/* DONG CONT */}
+                                                    {selectedLoai?.MaLoai === "KIEM_DONG_CONT" && (
+                                                        <>
+                                                            <TableCell><b>{row.So_Cont}</b></TableCell>
+                                                            <TableCell>{row.ItemCode}</TableCell>
+                                                            <TableCell>{row.Ten_Hang}</TableCell>
+                                                            <TableCell>
+                                                                <Chip label={row.Ma_KhachHang} size="small" />
+                                                            </TableCell>
+                                                            <TableCell>{row.So_Invoice}</TableCell>
+                                                        </>
+                                                    )}
+
+                                                    {/* NHẬP */}
+                                                    {selectedLoai?.MaLoai === "DAU_VAO" && (
+                                                        <>
+                                                            <TableCell><b>{row.So_Invoice}</b></TableCell>
+                                                            <TableCell>{row.Ma_DonHang}</TableCell>
+                                                            <TableCell>
+                                                                <Typography fontWeight={600}>
+                                                                    {row.Ma_VatTu}
+                                                                </Typography>
+                                                            </TableCell>
+                                                            <TableCell>{row.QuyCach}</TableCell>
+                                                            <TableCell>{row.Ten_NhaCungCap}</TableCell>
+                                                        </>
+                                                    )}
+
+                                                    <TableCell><b>{row.SoLuong}</b></TableCell>
+
+                                                    <TableCell>
+                                                        {new Date(
+                                                            row.Ngay_Giao || row.Ngay_Invoice
+                                                        ).toLocaleDateString()}
+                                                    </TableCell>
+
+                                                </TableRow>
+                                            ))
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </Box>
                         )}
 
                     </DialogContent>

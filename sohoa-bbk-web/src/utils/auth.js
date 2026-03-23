@@ -36,6 +36,8 @@ export const login = async (username, password, rememberMe = true) => {
 
     if (res.data?.token) {
         setToken(res.data.token, rememberMe);
+        const storage = rememberMe ? localStorage : sessionStorage;
+        storage.setItem("user", JSON.stringify(res.data.user));
     }
 
     return res.data;
@@ -71,17 +73,30 @@ export const decodeToken = () => {
    USER INFO
    ================================ */
 
-export const getCurrentUser = () => {
-    const decoded = decodeToken();
-    if (!decoded) return null;
+// export const getCurrentUser = () => {
+//     const decoded = decodeToken();
+//     if (!decoded) return null;
 
-    return {
-        userId: decoded.userId,
-        username: decoded.username,
-        fullName: decoded.fullName,
-        roles: decoded.roles || [],
-        permissions: decoded.permissions || []
-    };
+//     return {
+//         userId: decoded.userId,
+//         username: decoded.username,
+//         fullName: decoded.fullName,
+//         roles: decoded.roles || [],
+//         permissions: decoded.permissions || []
+//     };
+// };
+export const getCurrentUser = () => {
+    const userStr =
+        localStorage.getItem("user") ||
+        sessionStorage.getItem("user");
+
+    if (!userStr) return null;
+
+    try {
+        return JSON.parse(userStr);
+    } catch {
+        return null;
+    }
 };
 
 /* ================================

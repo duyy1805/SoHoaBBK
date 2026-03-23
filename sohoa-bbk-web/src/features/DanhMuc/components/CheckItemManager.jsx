@@ -4,12 +4,17 @@ import {
     TableRow, TableCell, TableBody,
     IconButton, Button, Dialog,
     DialogTitle, DialogContent, DialogActions,
-    TextField, Stack, Alert, MenuItem,
-    Box, Typography, CircularProgress
+    TextField, Stack, Alert,
+    Box, Typography, CircularProgress,
+    Autocomplete, TableContainer, Paper, Tooltip,
+    Chip
 } from "@mui/material";
 
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import AddIcon from "@mui/icons-material/Add";
+import ChecklistRtlIcon from "@mui/icons-material/ChecklistRtl";
+import TouchAppIcon from "@mui/icons-material/TouchApp";
 
 import {
     getNhomKiemList,
@@ -35,11 +40,7 @@ export default function CheckItemManager() {
             const res = await getNhomKiemList();
             setNhomList(res?.data || []);
         } catch (error) {
-            const message =
-                error?.response?.data?.message ||
-                error?.message ||
-                "Có lỗi xảy ra";
-
+            const message = error?.response?.data?.message || error?.message || "Có lỗi xảy ra";
             setError(message);
         }
     }, []);
@@ -55,12 +56,9 @@ export default function CheckItemManager() {
             setLoading(true);
             const res = await getCheckItemByNhom(selectedNhom);
             setData(res?.data || []);
+            setError("");
         } catch (error) {
-            const message =
-                error?.response?.data?.message ||
-                error?.message ||
-                "Có lỗi xảy ra";
-
+            const message = error?.response?.data?.message || error?.message || "Có lỗi xảy ra";
             setError(message);
         } finally {
             setLoading(false);
@@ -79,6 +77,8 @@ export default function CheckItemManager() {
 
     // ================= SAVE =================
     const handleSave = async () => {
+        if (!form.TenMucKiem) return;
+
         try {
             if (form.Id) {
                 await updateCheckItem(form.Id, form);
@@ -91,7 +91,6 @@ export default function CheckItemManager() {
 
             setOpen(false);
             await loadData();
-
         } catch (err) {
             setError(err.response?.data?.message || "Có lỗi khi lưu");
         }
@@ -99,6 +98,8 @@ export default function CheckItemManager() {
 
     // ================= DELETE =================
     const handleDelete = async (id) => {
+        if (!window.confirm("Bạn có chắc chắn muốn xóa mục kiểm này?")) return;
+
         try {
             await deleteCheckItem(id);
             await loadData();
@@ -107,57 +108,100 @@ export default function CheckItemManager() {
         }
     };
 
+    // Lấy object nhóm hiện tại cho Autocomplete
+    const selectedNhomObj = nhomList.find(n => n.Id === selectedNhom) || null;
+
     return (
-        <Box sx={{ p: 0 }}>
+        <Box sx={{ p: { xs: 2, md: 3 } }}>
+
+            <Typography variant="h5" fontWeight="bold" sx={{ mb: 3 }}>
+                Quản lý Chi tiết Mục kiểm
+            </Typography>
 
             {error && (
-                <Alert severity="error" sx={{ mb: 2 }}>
+                <Alert severity="error" onClose={() => setError("")} sx={{ mb: 3 }}>
                     {error}
                 </Alert>
             )}
 
-            {/* HEADER SELECT */}
-            <Box
-                sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 2,
-                    mb: 3
-                }}
+            {/* HEADER SELECT & ACTION */}
+            <Stack
+                direction={{ xs: "column", sm: "row" }}
+                spacing={2}
+                justifyContent="space-between"
+                alignItems={{ xs: "stretch", sm: "flex-start" }}
+                sx={{ mb: 3 }}
             >
-                <TextField
-                    select
-                    label="Chọn nhóm kiểm"
-                    value={selectedNhom}
-                    onChange={(e) => setSelectedNhom(e.target.value)}
-                    sx={{ width: 300 }}
+                <Box sx={{ width: { xs: "100%", sm: 400 } }}>
+                    <Autocomplete
+                        options={nhomList}
+                        value={selectedNhomObj}
+                        onChange={(_, newValue) => setSelectedNhom(newValue?.Id || "")}
+                        getOptionLabel={(option) => option.TenNhom || ""}
+                        isOptionEqualToValue={(opt, val) => opt.Id === val.Id}
+                        sx={{ bgcolor: "background.paper" }}
+                        renderOption={(props, option) => (
+                            <Box component="li" {...props} sx={{ borderBottom: '1px solid #eee', py: 1.5 }}>
+                                <Box>
+                                    <Typography variant="body1" fontWeight={500}>
+                                        {option.TenNhom}
+                                    </Typography>
+                                    {option.MoTa && (
+                                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                                            {option.MoTa}
+                                        </Typography>
+                                    )}
+                                </Box>
+                            </Box>
+                        )}
+                        renderInput={(params) => (
+                            <TextField
+                                {...params}
+                                label="Chọn nhóm kiểm để xem/thêm mục kiểm..."
+                                variant="outlined"
+                            />
+                        )}
+                    />
+                    {selectedNhomObj?.MoTa && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1, ml: 0.5 }}>
+                            <strong>Mô tả:</strong> {selectedNhomObj.MoTa}
+                        </Typography>
+                    )}
+                </Box>
+
+                <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    disabled={!selectedNhom}
+                    onClick={() => {
+                        // Mặc định thứ tự tiếp theo
+                        const nextThuTu = data.length > 0 ? Math.max(...data.map(d => d.ThuTu || 0)) + 1 : 1;
+                        setForm({ ThuTu: nextThuTu });
+                        setOpen(true);
+                    }}
+                    sx={{ height: 56 }}
                 >
-                    {nhomList.map(n => (
-                        <MenuItem key={n.Id} value={n.Id}>
-                            {n.TenNhom}
-                        </MenuItem>
-                    ))}
-                </TextField>
+                    Thêm mục kiểm
+                </Button>
+            </Stack>
 
-                {selectedNhom && (
-                    <Button
-                        variant="contained"
-                        onClick={() => {
-                            setForm({});
-                            setOpen(true);
-                        }}
-                    >
-                        Thêm mục kiểm
-                    </Button>
-                )}
-            </Box>
-
-            {/* TABLE */}
-            {selectedNhom && (
+            {/* MAIN CONTENT AREA */}
+            {!selectedNhom ? (
+                // Empty state khi chưa chọn nhóm
+                <Card elevation={1} sx={{ py: 10, textAlign: "center", bgcolor: "#f8fafc", borderRadius: 2 }}>
+                    <TouchAppIcon sx={{ fontSize: 60, color: "text.disabled", mb: 2 }} />
+                    <Typography variant="h6" color="text.secondary" fontWeight={600}>
+                        Chưa chọn Nhóm kiểm
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                        Vui lòng chọn một nhóm kiểm ở phía trên để xem và quản lý danh sách mục kiểm.
+                    </Typography>
+                </Card>
+            ) : (
                 <Card elevation={2}>
-                    <CardContent sx={{ p: 0, position: "relative" }}>
+                    <TableContainer component={Paper} sx={{ position: "relative" }}>
 
+                        {/* Loading Overlay */}
                         {loading && (
                             <Box
                                 sx={{
@@ -166,7 +210,7 @@ export default function CheckItemManager() {
                                     display: "flex",
                                     justifyContent: "center",
                                     alignItems: "center",
-                                    background: "rgba(255,255,255,0.6)",
+                                    background: "rgba(255, 255, 255, 0.7)",
                                     zIndex: 10
                                 }}
                             >
@@ -174,128 +218,128 @@ export default function CheckItemManager() {
                             </Box>
                         )}
 
-                        <Table>
+                        <Table sx={{ minWidth: 800 }}>
                             <TableHead>
-                                <TableRow sx={{ backgroundColor: "#f5f5f5" }}>
-                                    <TableCell sx={{ fontWeight: 600 }}>
-                                        Thứ tự
-                                    </TableCell>
-                                    <TableCell sx={{ fontWeight: 600 }}>
-                                        Tên mục kiểm
-                                    </TableCell>
-                                    <TableCell sx={{ fontWeight: 600 }}>
-                                        Tham chiếu
-                                    </TableCell>
-                                    <TableCell sx={{ fontWeight: 600 }}>
-                                        Phương pháp kiểm
-                                    </TableCell>
-                                    <TableCell sx={{ fontWeight: 600 }}>
-                                        Tiêu chuẩn
-                                    </TableCell>
-                                    <TableCell />
+                                <TableRow sx={{ backgroundColor: "#f8fafc" }}>
+                                    <TableCell sx={{ fontWeight: 600, width: 80 }} align="center">Thứ tự</TableCell>
+                                    <TableCell sx={{ fontWeight: 600, width: '25%' }}>Tên mục kiểm</TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>Tham chiếu</TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>Phương pháp kiểm</TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>Tiêu chuẩn</TableCell>
+                                    <TableCell sx={{ fontWeight: 600, width: 120 }} align="right">Thao tác</TableCell>
                                 </TableRow>
                             </TableHead>
 
                             <TableBody>
-                                {data.map(row => (
-                                    <TableRow key={row.Id} hover>
-                                        <TableCell>{row.ThuTu}</TableCell>
-                                        <TableCell>{row.TenMucKiem}</TableCell>
-                                        <TableCell>{row.ThamChieu}</TableCell>
-                                        <TableCell>{row.PhuongPhapKiem}</TableCell>
-                                        <TableCell>{row.TieuChuan}</TableCell>
-                                        <TableCell align="right">
-                                            <IconButton
-                                                onClick={() => {
-                                                    setForm(row);
-                                                    setOpen(true);
-                                                }}
-                                            >
-                                                <EditIcon />
-                                            </IconButton>
-
-                                            <IconButton
-                                                onClick={() => handleDelete(row.Id)}
-                                            >
-                                                <DeleteIcon color="error" />
-                                            </IconButton>
+                                {data.length === 0 && !loading ? (
+                                    <TableRow>
+                                        <TableCell colSpan={6} align="center" sx={{ py: 5 }}>
+                                            <ChecklistRtlIcon sx={{ fontSize: 48, color: "text.disabled", mb: 1 }} />
+                                            <Typography color="text.secondary">Nhóm này chưa có mục kiểm nào.</Typography>
                                         </TableCell>
                                     </TableRow>
-                                ))}
+                                ) : (
+                                    data.sort((a, b) => (a.ThuTu || 0) - (b.ThuTu || 0)).map(row => (
+                                        <TableRow key={row.Id} hover>
+                                            <TableCell align="center">
+                                                <Typography fontWeight="bold" color="text.secondary">
+                                                    #{row.ThuTu}
+                                                </Typography>
+                                            </TableCell>
+                                            <TableCell sx={{ fontWeight: 500 }}>{row.TenMucKiem}</TableCell>
+                                            <TableCell>
+                                                {row.ThamChieu ? <Chip label={row.ThamChieu} size="small" variant="outlined" /> : "--"}
+                                            </TableCell>
+                                            <TableCell>{row.PhuongPhapKiem || "--"}</TableCell>
+                                            <TableCell sx={{ color: "text.secondary" }}>{row.TieuChuan || "--"}</TableCell>
+                                            <TableCell align="right">
+                                                <Stack direction="row" spacing={0.5} justifyContent="flex-end" sx={{ whiteSpace: "nowrap" }}>
+                                                    <Tooltip title="Chỉnh sửa">
+                                                        <IconButton color="primary" onClick={() => { setForm({ ...row }); setOpen(true); }}>
+                                                            <EditIcon fontSize="small" />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                    <Tooltip title="Xóa">
+                                                        <IconButton color="error" onClick={() => handleDelete(row.Id)}>
+                                                            <DeleteIcon fontSize="small" />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                </Stack>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
                             </TableBody>
                         </Table>
-
-                    </CardContent>
+                    </TableContainer>
                 </Card>
             )}
 
-            {/* DIALOG */}
-            <Dialog
-                open={open}
-                onClose={() => setOpen(false)}
-                maxWidth="sm"
-                fullWidth
-            >
-                <DialogTitle>
-                    {form.Id ? "Cập nhật mục kiểm" : "Thêm mục kiểm"}
+            {/* DIALOG THÊM / SỬA */}
+            <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+                <DialogTitle sx={{ fontWeight: "bold", pb: 1 }}>
+                    {form.Id ? "Cập nhật mục kiểm" : "Thêm mục kiểm mới"}
                 </DialogTitle>
 
                 <DialogContent dividers>
-                    <Stack spacing={3} sx={{ mt: 1 }}>
+                    <Stack spacing={2.5} sx={{ mt: 1 }}>
                         <TextField
                             label="Tên mục kiểm"
+                            required
                             fullWidth
                             value={form.TenMucKiem || ""}
-                            onChange={(e) =>
-                                setForm({ ...form, TenMucKiem: e.target.value })
-                            }
+                            onChange={(e) => setForm({ ...form, TenMucKiem: e.target.value })}
+                            placeholder="Nhập tên nội dung cần kiểm tra..."
                         />
-                        <TextField
-                            label="Tham chiếu"
-                            fullWidth
-                            value={form.ThamChieu || ""}
-                            onChange={(e) =>
-                                setForm({ ...form, ThamChieu: e.target.value })
-                            }
-                        />
+
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                            <TextField
+                                label="Tham chiếu"
+                                fullWidth
+                                value={form.ThamChieu || ""}
+                                onChange={(e) => setForm({ ...form, ThamChieu: e.target.value })}
+                                placeholder="VD: ISO, Bản vẽ..."
+                            />
+                            <TextField
+                                label="Thứ tự"
+                                type="number"
+                                sx={{ width: { xs: "100%", sm: 120 } }}
+                                value={form.ThuTu || ""}
+                                onChange={(e) => setForm({ ...form, ThuTu: Number(e.target.value) })}
+                                InputProps={{ inputProps: { min: 1 } }}
+                            />
+                        </Stack>
+
                         <TextField
                             label="Phương pháp kiểm"
                             fullWidth
                             value={form.PhuongPhapKiem || ""}
-                            onChange={(e) =>
-                                setForm({ ...form, PhuongPhapKiem: e.target.value })
-                            }
+                            onChange={(e) => setForm({ ...form, PhuongPhapKiem: e.target.value })}
+                            placeholder="VD: Bằng mắt thường, Thước kẹp..."
                         />
+
                         <TextField
-                            label="Tiêu chuẩn"
+                            label="Tiêu chuẩn (Yêu cầu/Dung sai)"
                             fullWidth
+                            multiline
+                            rows={2}
                             value={form.TieuChuan || ""}
-                            onChange={(e) =>
-                                setForm({ ...form, TieuChuan: e.target.value })
-                            }
-                        />
-                        <TextField
-                            label="Thứ tự"
-                            type="number"
-                            fullWidth
-                            value={form.ThuTu || ""}
-                            onChange={(e) =>
-                                setForm({ ...form, ThuTu: e.target.value })
-                            }
+                            onChange={(e) => setForm({ ...form, TieuChuan: e.target.value })}
+                            placeholder="Mô tả tiêu chuẩn đạt..."
                         />
                     </Stack>
                 </DialogContent>
 
-                <DialogActions sx={{ p: 2 }}>
-                    <Button onClick={() => setOpen(false)}>
-                        Huỷ
+                <DialogActions sx={{ px: 3, py: 2, bgcolor: "#f8fafc" }}>
+                    <Button onClick={() => setOpen(false)} color="inherit">
+                        Huỷ bỏ
                     </Button>
-
                     <Button
                         variant="contained"
                         onClick={handleSave}
+                        disabled={!form.TenMucKiem}
                     >
-                        Lưu
+                        {form.Id ? "Cập nhật" : "Lưu mục kiểm"}
                     </Button>
                 </DialogActions>
             </Dialog>

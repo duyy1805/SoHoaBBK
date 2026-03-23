@@ -200,7 +200,7 @@ export default function ChiPhiModal({
                     <TextInput
                         style={styles.input}
                         placeholder="Nhập số tiền"
-                        keyboardType="numeric"
+                        // keyboardType="numeric"
                         value={giaTri}
                         onChangeText={(text) => {
                             const formatted = formatMoney(text);

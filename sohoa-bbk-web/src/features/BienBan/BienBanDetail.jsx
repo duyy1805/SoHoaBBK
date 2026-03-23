@@ -66,11 +66,13 @@ import {
 import { decodeToken } from "../../utils/auth";
 import ConfirmDialog from "../../components/common/ConfirmDialog";
 import { BienBanPrintTemplate } from "./components/BienBanPrintTemplate";
+import { useToast } from "../../components/common/ToastContext";
 
 export default function BienBanDetail() {
     const { id: bienBanId } = useParams();
     const navigate = useNavigate();
     const componentRef = useRef();
+    const { showToast } = useToast();
 
     const [info, setInfo] = useState(null);
     const [moTaChung, setMoTaChung] = useState("");
@@ -132,7 +134,7 @@ export default function BienBanDetail() {
 
         } catch (err) {
             console.error("Lỗi tải biên bản:", err);
-            alert(err?.response?.data?.message || "Không tải được biên bản");
+            showToast(err?.response?.data?.message || "Không tải được biên bản", "error");
         } finally {
             setLoading(false);
         }
@@ -150,15 +152,16 @@ export default function BienBanDetail() {
     // --- Actions ---
     const handleConfirmMoTa = async () => {
         if (!moTaChung.trim()) {
-            alert("Vui lòng nhập mô tả chung!");
+            showToast("Vui lòng nhập mô tả chung!", "warning");
             return;
         }
         try {
             await updateMoTaChung({ bienBanId, moTaChung });
             setMoTaConfirmed(true);
+            showToast("Đã lưu mô tả chung", "success");
             loadData();
         } catch (err) {
-            alert(err?.response?.data?.message || "Không thể lưu mô tả");
+            showToast(err?.response?.data?.message || "Không thể lưu mô tả", "error");
         }
     };
 
@@ -171,10 +174,11 @@ export default function BienBanDetail() {
             onConfirm: async () => {
                 try {
                     await confirmAssign(bienBanId);
+                    showToast("Đã chốt phân công xử lý", "success");
                     loadData();
                     setConfirmDialog(prev => ({ ...prev, open: false }));
                 } catch (err) {
-                    alert(err?.response?.data?.message || "Lỗi xác nhận phân công");
+                    showToast(err?.response?.data?.message || "Lỗi xác nhận phân công", "error");
                 }
             }
         });
@@ -189,10 +193,11 @@ export default function BienBanDetail() {
             onConfirm: async () => {
                 try {
                     await confirmUser(bienBanId);
+                    showToast("Xác nhận thông tin thành công", "success");
                     loadData();
                     setConfirmDialog(prev => ({ ...prev, open: false }));
                 } catch (err) {
-                    alert(err?.response?.data?.message || "Lỗi xác nhận thông tin");
+                    showToast(err?.response?.data?.message || "Lỗi xác nhận thông tin", "error");
                 }
             }
         });
@@ -207,9 +212,10 @@ export default function BienBanDetail() {
             onConfirm: async () => {
                 try {
                     await completeBienBan(bienBanId);
+                    showToast("Đã hoàn thành biên bản", "success");
                     navigate(-1);
                 } catch (err) {
-                    alert(err?.response?.data?.message || "Lỗi hoàn thành biên bản");
+                    showToast(err?.response?.data?.message || "Lỗi hoàn thành biên bản", "error");
                 }
             }
         });

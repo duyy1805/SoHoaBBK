@@ -208,9 +208,9 @@ export default function PhieuKiemList() {
                 {/* Table Data Section */}
                 <Card sx={{ borderRadius: 2, boxShadow: "0 4px 20px rgba(0,0,0,0.05)" }}>
                     <TableContainer sx={{ maxHeight: 'calc(100vh - 280px)' }}>
-                        <Table stickyHeader hover>
+                        <Table stickyHeader >
                             <TableHead>
-                                <TableRow>
+                                <TableRow hover>
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Số phiếu</TableCell>
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Sản phẩm</TableCell>
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>LOT</TableCell>

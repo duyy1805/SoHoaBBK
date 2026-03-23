@@ -104,7 +104,8 @@ router.get(
                 mode = 'PX';
             if (permissions.includes('XAC_NHAN_KIEM_NGHIEM'))
                 mode = 'KIEM_NGHIEM';
-
+            if (permissions.includes('QUAN_TRI_DM'))
+                mode = 'VIEW';
             const result = await pool.request()
                 .input('UserId', sql.Int, req.user.userId)
                 .input('Mode', sql.NVarChar, mode)
@@ -433,7 +434,7 @@ router.post(
     async (req, res) => {
 
         const { phieuKiemId } = req.body;
-        const userId = req.user.id;
+        const userId = req.user.userId;
 
         if (!phieuKiemId) {
             return res.status(400).json({
@@ -481,7 +482,7 @@ router.post(
     async (req, res) => {
 
         const { phieuKiemId } = req.body;
-        const userId = req.user.id;
+        const userId = req.user.userId;
 
         if (!phieuKiemId) {
             return res.status(400).json({

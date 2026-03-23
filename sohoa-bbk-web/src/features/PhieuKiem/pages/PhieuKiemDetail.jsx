@@ -17,9 +17,15 @@ import {
     Fade,
     alpha,
     TextField,
-    MenuItem
+    MenuItem,
+    Paper,
+    Container
 } from "@mui/material";
-
+import { PhieuKiemPrintTemplate } from "../components/PhieuKiemPrintTemplate";
+import PrintIcon from "@mui/icons-material/Print";
+import { useReactToPrint } from "react-to-print";
+import { Dialog, DialogTitle, DialogContent, DialogActions } from "@mui/material";
+import { useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -49,6 +55,13 @@ export default function PhieuKiemDetail() {
 
     const [loading, setLoading] = useState(true);
     const [creatingSection, setCreatingSection] = useState(false);
+    const componentRef = useRef();
+    const [openPrintModal, setOpenPrintModal] = useState(false);
+
+    const handlePrint = useReactToPrint({
+        contentRef: componentRef,
+        documentTitle: phieu ? `PhieuKiem_${phieu.SoPhieu}` : 'PhieuKiem',
+    });
 
     useEffect(() => {
         loadData();
@@ -92,6 +105,7 @@ export default function PhieuKiemDetail() {
         }
 
     };
+
 
     const updateConfig = (index, field, value) => {
 
@@ -180,21 +194,24 @@ export default function PhieuKiemDetail() {
 
                 {/* HEADER */}
 
-                <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 3 }}>
-
-                    <Button
-                        startIcon={<ArrowBackIcon />}
-                        onClick={() => navigate(-1)}
-                    >
-                        Quay lại
-                    </Button>
-
-                    <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                        Chi tiết Phiếu kiểm
-                    </Typography>
-
-                </Stack>
-
+                <Paper elevation={0} sx={{ p: 2, mb: 3, borderBottom: '1px solid #e0e0e0', position: 'sticky', top: 0, zIndex: 10 }}>
+                    <Container maxWidth="xl">
+                        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems="center" spacing={2}>
+                            <Button
+                                startIcon={<ArrowBackIcon />}
+                                onClick={() => navigate(-1)}
+                                color="inherit"
+                            >
+                                Danh sách biên bản
+                            </Button>
+                            <Stack direction="row" spacing={2}>
+                                <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => setOpenPrintModal(true)}>
+                                    In phiếu kiểm
+                                </Button>
+                            </Stack>
+                        </Stack>
+                    </Container>
+                </Paper>
                 {/* THÔNG TIN PHIẾU */}
 
                 <Card sx={{ mb: 4, borderRadius: 3 }}>
@@ -414,7 +431,27 @@ export default function PhieuKiemDetail() {
                     );
 
                 })}
-
+                {/* Print Preview Modal */}
+                <Dialog open={openPrintModal} onClose={() => setOpenPrintModal(false)} maxWidth="lg" fullWidth>
+                    <DialogTitle>Xem trước bản in</DialogTitle>
+                    <DialogContent dividers sx={{ bgcolor: '#f0f0f0', p: 3 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                            <PhieuKiemPrintTemplate
+                                ref={componentRef}
+                                phieu={phieu}
+                                sections={sections}
+                                checkItems={checkItems}
+                                defects={defects}
+                            />
+                        </Box>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setOpenPrintModal(false)}>Hủy</Button>
+                        <Button startIcon={<PrintIcon />} onClick={handlePrint} variant="contained" color="primary">
+                            In / Lưu PDF
+                        </Button>
+                    </DialogActions>
+                </Dialog>
             </Box>
         </Fade>
     );

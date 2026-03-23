@@ -251,7 +251,7 @@ export default function CheckItemScreen({ route, navigation }) {
 
                             <TextInput
                                 style={styles.qtyInput}
-                                keyboardType="numeric"
+                                // keyboardType="numeric"
                                 value={String(d.soLuong)}
                                 onChangeText={(val) => updateQty(index, val)}
                             />
