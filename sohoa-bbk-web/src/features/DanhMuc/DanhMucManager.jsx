@@ -5,7 +5,8 @@ import DefectManager from "./components/DefectManager";
 import NhomKiemManager from "./components/NhomKiemManager";
 import CheckItemManager from "./components/CheckItemManager";
 import SanPhamManger from "./components/SanPhamManager"
-
+import InspectionLevelManager
+    from "./components/InspectionLevelManager";
 export default function DanhMucManager() {
     const [type, setType] = useState("DEFECT");
 
@@ -26,12 +27,14 @@ export default function DanhMucManager() {
                 <MenuItem value="NHOM_KIEM">Nhóm kiểm</MenuItem>
                 <MenuItem value="CHECK_ITEM">Mục kiểm</MenuItem>
                 <MenuItem value="SAN_PHAM">Sản phẩm</MenuItem>
+                <MenuItem value="INSPECTION_LEVEL">Inspection Level</MenuItem>
             </TextField>
 
             {type === "DEFECT" && <DefectManager />}
             {type === "NHOM_KIEM" && <NhomKiemManager />}
             {type === "CHECK_ITEM" && <CheckItemManager />}
             {type === "SAN_PHAM" && <SanPhamManger />}
+            {type === "INSPECTION_LEVEL" && <InspectionLevelManager />}
         </Box>
     );
 }

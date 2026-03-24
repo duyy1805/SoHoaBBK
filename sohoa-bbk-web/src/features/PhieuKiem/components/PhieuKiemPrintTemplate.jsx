@@ -11,9 +11,16 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
     phieu = {},
     sections = [],
     checkItems = [],
-    defects = []
+    defects = [],
+    dynamicFields = [] // Bổ sung prop nhận dữ liệu động từ API
 }, ref) => {
     if (!phieu) return null;
+
+    // Chuyển array dynamicFields thành object để dễ map vào thẻ input
+    const customData = (dynamicFields || []).reduce((acc, field) => {
+        if (field?.FieldName) acc[field.FieldName] = field.FieldValue;
+        return acc;
+    }, {});
 
     const styles = {
         previewBackground: {
@@ -42,7 +49,8 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
         headerTd: { border: '1px solid #000', padding: '6px', textAlign: 'center', verticalAlign: 'middle' },
         signatureBlock: { display: 'flex', justifyContent: 'space-between', marginTop: '30px', textAlign: 'center', width: '100%' },
         signatureCol: { flex: 1, padding: '0 10px' },
-        flexBetween: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
+        flexBetween: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+        inputField: { width: '100%', border: 'none', outline: 'none', backgroundColor: 'transparent', fontSize: 'inherit', fontFamily: 'inherit', padding: 0, margin: 0, color: 'inherit' }
     };
 
     const renderCheckbox = (checked) => (
@@ -147,16 +155,16 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                     {/* Khung 2 ô Thông tin & Hình ảnh */}
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                         {/* Cột trái: Thông tin sản phẩm & Phê duyệt */}
-                        <Box sx={{ width: '35%', border: '1px solid #000', display: 'flex', flexDirection: 'column' }}>
+                        <Box sx={{ width: '49%', border: '1px solid #000', display: 'flex', flexDirection: 'column' }}>
                             <Box sx={{ p: 1, flex: 1 }}>
                                 <Typography style={{ ...styles.text, fontSize: '10pt' }}>
-                                    Sản phẩm: <b>{phieu.TenSanPham || '.......................................................'}</b>
+                                    Sản phẩm: <b>{phieu.TenSanPham || '...........................................................................'}</b>
                                 </Typography>
                                 <Typography style={{ ...styles.text, fontSize: '10pt' }}>
-                                    Phiên bản: <b>{phieu.PhienBan || '........................................................'}</b>
+                                    Phiên bản: <b>{phieu.PhienBan || '...........................................................................'}</b>
                                 </Typography>
                                 <Typography style={{ ...styles.text, fontSize: '10pt' }}>
-                                    Tham chiếu tiêu chuẩn: <b>{phieu.MaSanPham || '...........................................'}</b>
+                                    Tham chiếu tiêu chuẩn: <b>{phieu.MaSanPham || '...........................................................................'}</b>
                                 </Typography>
                             </Box>
                             <Box sx={{ borderTop: '1px solid #000', p: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', minHeight: '120px' }}>
@@ -170,7 +178,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                         </Box>
                     </Box>
 
-                    {/* Bảng Thông tin Lô hàng */}
+                    {/* Bảng Thông tin Lô hàng có class "custom-field" để lấy giá trị động */}
                     <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '15px' }}>
                         <colgroup>
                             <col style={{ width: '16%' }} />
@@ -185,51 +193,81 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                         <tbody>
                             <tr>
                                 <td style={{ padding: '4px 4px 4px 0', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Nhà cung cấp</td>
-                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', height: '26px' }}>{phieu.NhaCungCap}</td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', height: '26px' }}>
+                                    <input name="NhaCungCap" className="custom-field" type="text" defaultValue={customData.NhaCungCap || phieu.NhaCungCap || ''} style={styles.inputField} />
+                                </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Khách hàng</td>
-                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>{phieu.KhachHang}</td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
+                                    <input name="KhachHang" className="custom-field" type="text" defaultValue={customData.KhachHang || phieu.KhachHang || ''} style={styles.inputField} />
+                                </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Số đơn hàng/</td>
-                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>{phieu.SoDonHang}</td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
+                                    <input name="SoDonHang" className="custom-field" type="text" defaultValue={customData.SoDonHang || phieu.SoDonHang || ''} style={styles.inputField} />
+                                </td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', textAlign: 'right' }}>cái</td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', textAlign: 'right' }}>hộp</td>
                             </tr>
                             <tr>
                                 <td style={{ padding: '4px 4px 4px 0', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>NV Kiểm hàng</td>
-                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', height: '26px' }}>{phieu.TenNguoiKiem}</td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', height: '26px' }}>
+                                    <input name="NVienKiemHang" className="custom-field" type="text" defaultValue={customData.NVienKiemHang || phieu.TenNguoiKiem || ''} style={styles.inputField} />
+                                </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Tên sản phẩm</td>
-                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>{phieu.TenSanPham}</td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
+                                    <input name="TenSanPham" className="custom-field" type="text" defaultValue={customData.TenSanPham || phieu.TenSanPham || ''} style={styles.inputField} />
+                                </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Số lượng</td>
-                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>{phieu.SoLuong}</td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
+                                    <input name="SoLuong" className="custom-field" type="text" defaultValue={customData.SoLuong || phieu.SoLuong || ''} style={styles.inputField} />
+                                </td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', textAlign: 'right' }}>cái</td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', textAlign: 'right' }}>hộp</td>
                             </tr>
                             <tr>
                                 <td style={{ padding: '4px 4px 4px 0', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Mức độ kiểm tra</td>
-                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', height: '26px' }}>{phieu.MucDoKiemTra}</td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', height: '26px' }}>
+                                    <input name="MucDoKiemTra" className="custom-field" type="text" defaultValue={customData.MucDoKiemTra || phieu.MucDoKiemTra || ''} style={styles.inputField} />
+                                </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Kích thước SP</td>
-                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>{phieu.KichThuoc}</td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
+                                    <input name="KichThuocSP" className="custom-field" type="text" defaultValue={customData.KichThuocSP || phieu.KichThuoc || ''} style={styles.inputField} />
+                                </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>hàng xuất</td>
-                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>{phieu.HangXuat}</td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
+                                    <input name="HangXuat" className="custom-field" type="text" defaultValue={customData.HangXuat || phieu.HangXuat || ''} style={styles.inputField} />
+                                </td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', textAlign: 'right' }}>cái</td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', textAlign: 'right' }}>hộp</td>
                             </tr>
                             <tr>
                                 <td style={{ padding: '4px 4px 4px 0', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Kế hoạch kiểm hàng</td>
-                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', height: '26px' }}>{phieu.KeHoachKiemHang}</td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', height: '26px' }}>
+                                    <input name="KeHoachKiemHang" className="custom-field" type="text" defaultValue={customData.KeHoachKiemHang || phieu.KeHoachKiemHang || ''} style={styles.inputField} />
+                                </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Ngày kiểm tra</td>
-                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>{phieu.NgayKiem ? new Date(phieu.NgayKiem).toLocaleDateString('vi-VN') : ''}</td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
+                                    <input name="NgayKiemTra" className="custom-field" type="text" defaultValue={customData.NgayKiemTra || (phieu.NgayKiem ? new Date(phieu.NgayKiem).toLocaleDateString('vi-VN') : '')} style={styles.inputField} />
+                                </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}></td>
-                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}></td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
+                                    <input name="Extra1" className="custom-field" type="text" defaultValue={customData.Extra1 || ''} style={styles.inputField} />
+                                </td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', textAlign: 'right' }}>cái</td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', textAlign: 'right' }}>hộp</td>
                             </tr>
                             <tr>
                                 <td style={{ padding: '4px 4px 4px 0', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}></td>
-                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', height: '26px' }}></td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', height: '26px' }}>
+                                    <input name="Extra2" className="custom-field" type="text" defaultValue={customData.Extra2 || ''} style={styles.inputField} />
+                                </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Nơi đến</td>
-                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>{phieu.NoiDen}</td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
+                                    <input name="NoiDen" className="custom-field" type="text" defaultValue={customData.NoiDen || phieu.NoiDen || ''} style={styles.inputField} />
+                                </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Tổng SL</td>
-                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>{phieu.TongSL}</td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
+                                    <input name="TongSL" className="custom-field" type="text" defaultValue={customData.TongSL || phieu.TongSL || ''} style={styles.inputField} />
+                                </td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}></td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}></td>
                             </tr>
@@ -270,7 +308,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                                     {toRoman(sIndex + 1)}. {section.TenNhom.toUpperCase()}
                                                 </Typography>
                                                 <Box style={{ display: 'flex', gap: '40px', paddingRight: '20px' }}>
-                                                    <span>Tổng số: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: '1px dotted #000', textAlign: 'center' }}><b>{section.TongSo}</b></span> Pcs</span>
+                                                    <span>Tổng số: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: '1px dotted #000', textAlign: 'center' }}><b>{section.LotSize}</b></span> Pcs</span>
                                                     <span>Số lượng kiểm: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: '1px dotted #000', textAlign: 'center' }}><b>{section.SoLuongKiem}</b></span> Pcs</span>
                                                 </Box>
                                             </Box>
@@ -346,7 +384,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
 
                     <Box style={{ ...styles.signatureBlock, marginTop: '20px' }}>
                         <Box style={styles.signatureCol}>
-                            <Typography style={{ ...styles.text, minHeight: '40px' }}><b>Phòng Kiểm nghiệm</b></Typography>
+                            <Typography style={{ ...styles.text, minHeight: '40px' }}><b>Phòng Kiểm<br />nghiệm</b></Typography>
                             <Box height="70px"></Box>
                         </Box>
                         <Box style={styles.signatureCol}>

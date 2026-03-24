@@ -106,18 +106,49 @@ const theme = createTheme({
                 }
             }
         },
+        // 🔥 CẬP NHẬT: Ép Chip nhỏ lại trên toàn hệ thống
         MuiChip: {
             styleOverrides: {
                 root: {
-                    fontWeight: 500
+                    fontWeight: 500,
+                    fontSize: '0.75rem',
+                    height: 24
                 }
             }
         },
+        // 🔥 THÊM MỚI: Cấu hình mặc định cho Table là size="small"
+        MuiTable: {
+            defaultProps: {
+                size: 'small', // Mặc định mọi bảng đều là bản nhỏ
+            }
+        },
+        // 🔥 CẬP NHẬT: Ép font chữ và padding cho từng ô trong bảng
         MuiTableCell: {
             styleOverrides: {
+                root: {
+                    fontSize: '0.85rem', // Chữ nhỏ gọn
+                    padding: '8px 16px', // Giảm khoảng cách trên dưới
+                },
                 head: {
                     fontWeight: 600,
-                    backgroundColor: '#f8fafc'
+                    backgroundColor: '#f8fafc',
+                    paddingTop: '12px',
+                    paddingBottom: '12px',
+                    lineHeight: 1.2
+                }
+            }
+        },
+        // 🔥 THÊM MỚI: Cấu hình lại thanh phân trang cho mỏng gọn
+        MuiTablePagination: {
+            styleOverrides: {
+                toolbar: {
+                    minHeight: '40px', // Ép chiều cao thanh phân trang
+                },
+                selectLabel: {
+                    fontSize: '0.85rem',
+                },
+                displayedRows: {
+                    fontSize: '0.85rem',
                 }
             }
         },

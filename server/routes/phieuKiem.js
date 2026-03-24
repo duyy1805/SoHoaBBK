@@ -94,7 +94,6 @@ router.get(
             const pool = await poolPromise;
 
             const permissions = req.user.permissions;
-            console.log(permissions)
             let mode = 'VIEW';
             if (permissions.includes('PHAN_BO_KIEM'))
                 mode = 'TO_TRUONG_KCS';
@@ -145,6 +144,17 @@ router.get(
                 .execute('sp_PhieuKiem_GetDetail');
 
             const phieu = result.recordsets[0][0] || null;
+            let dynamicFields = [];
+            if (phieu && phieu.DynamicFieldsJSON) {
+                try {
+                    dynamicFields = JSON.parse(phieu.DynamicFieldsJSON);
+                } catch (e) {
+                    console.error("Lỗi parse DynamicFieldsJSON:", e);
+                }
+                // Xóa trường string thô để API trả về nhẹ và sạch sẽ
+                delete phieu.DynamicFieldsJSON;
+            }
+
             const sections = result.recordsets[1] || [];
             // const checkItems = result.recordsets[2] || [];
             const defects = result.recordsets[3] || [];
@@ -174,7 +184,8 @@ router.get(
                 phieu,
                 sections,
                 checkItems,
-                defects
+                defects,
+                dynamicFields
             });
 
         } catch (err) {
@@ -321,6 +332,36 @@ router.post(
         res.json({ success: true });
     }
 );
+
+router.post(
+    "/update-lot",
+    authenticateToken,
+    async (req, res) => {
+
+        const { phieuKiemId, lot } = req.body;
+        try {
+
+            const pool = await poolPromise;
+
+            await pool.request()
+                .input("PhieuKiemId", sql.Int, phieuKiemId)
+                .input("Lot", sql.NVarChar, lot)
+                .execute("sp_PhieuKiem_UpdateLot");
+
+            res.json({ success: true });
+
+        } catch (err) {
+
+            console.error(err);
+
+            res.status(500).json({
+                message: "Không thể cập nhật số lot"
+            });
+
+        }
+
+    });
+
 /* =========================================================
    POST /phieu-kiem/check-item
    Role       : KCS
@@ -549,4 +590,24 @@ router.post(
     }
 );
 
+
+router.post('/custom-fields', async (req, res) => {
+    try {
+        const { phieuKiemId, fields } = req.body;
+
+        // fields nhận được từ UI sẽ có dạng object: { NhaCungCap: "Cty A", KhachHang: "Cty B" }
+        // Chuyển object fields thành string JSON để đẩy vào Stored
+        const jsonString = JSON.stringify(fields);
+        const pool = await poolPromise;
+        await pool.request()
+            .input('PhieuKiemId', sql.Int, phieuKiemId)
+            .input('JsonData', sql.NVarChar(sql.MAX), jsonString)
+            .execute('SP_Upsert_PhieuKiem_CustomFields');
+
+        res.status(200).json({ success: true, message: 'Đã lưu thông tin fields' });
+    } catch (error) {
+        console.error("Lỗi lưu custom fields:", error);
+        res.status(500).json({ success: false, message: 'Lỗi server' });
+    }
+});
 module.exports = router;

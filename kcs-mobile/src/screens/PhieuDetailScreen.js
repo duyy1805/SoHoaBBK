@@ -9,7 +9,8 @@ import {
     TouchableOpacity,
     StyleSheet,
     ActivityIndicator,
-    Alert
+    Alert,
+    TextInput
 } from "react-native";
 
 import {
@@ -17,7 +18,8 @@ import {
     calculateAQL,
     completePhieuKiem,
     confirmPX,
-    confirmKN
+    confirmKN,
+    updateLot
 } from "../api/phieuKiem.api";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -26,6 +28,8 @@ export default function PhieuDetailScreen({ route, navigation }) {
 
     const { id } = route.params;
 
+    const [lot, setLot] = useState("");
+    const [lotConfirmed, setLotConfirmed] = useState(false);
     const [sections, setSections] = useState([]);
     const [checkItems, setCheckItems] = useState([]);
     const [permissions, setPermissions] = useState([]);
@@ -56,6 +60,9 @@ export default function PhieuDetailScreen({ route, navigation }) {
         setSections(res.data.sections);
         setCheckItems(res.data.checkItems);
         setTrangThai(res.data.phieu?.TrangThai);
+        const lot = res.data.phieu?.Lot;
+        setLot(lot);
+        setLotConfirmed(!!lot);
     };
 
     const hasPermission = (p) => permissions.includes(p);
@@ -73,6 +80,29 @@ export default function PhieuDetailScreen({ route, navigation }) {
 
     const isCompleted = trangThai === "HOAN_TAT";
 
+    const handleConfirmLot = async () => {
+
+        if (!lot.trim()) {
+            Alert.alert("Thiếu thông tin", "Vui lòng nhập số lot");
+            return;
+        }
+        try {
+
+            await updateLot({
+                phieuKiemId: id,
+                lot
+            });
+            setLotConfirmed(true)
+            Alert.alert("Thành công", "Đã xác nhận số lot");
+            loadData();
+        } catch (err) {
+
+            Alert.alert(
+                "Lỗi",
+                err?.response?.data?.message || "Không thể lưu số lot"
+            );
+        }
+    };
     const handleCalculateAQL = async (sectionId) => {
 
         try {
@@ -183,6 +213,33 @@ export default function PhieuDetailScreen({ route, navigation }) {
 
             <ScrollView style={styles.container}>
 
+                <Text style={styles.sectionLot}>Số lot</Text>
+
+                <View style={styles.lotBox}>
+
+                    <TextInput
+                        style={styles.lotInput}
+                        multiline
+                        placeholder="Nhập số LOT"
+                        value={lot}
+                        onChangeText={setLot}
+                        editable={!lotConfirmed}
+                    />
+
+                    {!lotConfirmed && (
+
+                        <TouchableOpacity
+                            style={styles.lotButton}
+                            onPress={handleConfirmLot}
+                        >
+                            <Text style={styles.btnText}>
+                                Xác nhận số LOT
+                            </Text>
+                        </TouchableOpacity>
+
+                    )}
+
+                </View>
                 {sections.map((section) => {
 
                     const items = checkItems.filter(
@@ -400,7 +457,35 @@ const styles = StyleSheet.create({
         backgroundColor: "#f1f5f9",
         padding: 16
     },
+    sectionLot: {
+        fontWeight: "700",
+        fontSize: 16
+    },
+    lotBox: {
+        backgroundColor: "#fff",
+        borderRadius: 12,
+        padding: 12,
+        marginTop: 8
+    },
+    lotInput: {
+        backgroundColor: "#f4f6fa",
+        borderRadius: 10,
+        padding: 12,
+        minHeight: 80,
+        textAlignVertical: "top"
+    },
 
+    lotButton: {
+        backgroundColor: "#2980b9",
+        marginTop: 10,
+        padding: 12,
+        borderRadius: 10,
+        alignItems: "center"
+    },
+    btnText: {
+        color: "#fff",
+        fontWeight: "600"
+    },
     section: {
         marginBottom: 20
     },

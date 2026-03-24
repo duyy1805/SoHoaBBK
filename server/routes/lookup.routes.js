@@ -292,13 +292,22 @@ router.get(
   authenticateToken,
   async (req, res) => {
     try {
+      const page = parseInt(req.query.page) || 0;
+      const pageSize = Math.min(parseInt(req.query.pageSize) || 20, 100);
+      const keyword = req.query.keyword || null;
 
       const pool = await poolPromise;
 
       const result = await pool.request()
+        .input("Page", page)
+        .input("PageSize", pageSize)
+        .input("Keyword", keyword)
         .execute("sp_DM_GetSanPhamList");
 
-      res.json(result.recordset);
+      res.json({
+        data: result.recordsets[0],
+        total: result.recordsets[1][0].Total
+      });
 
     } catch (err) {
       console.error("Get san pham error:", err);
@@ -592,6 +601,225 @@ router.get(
 
     }
 
+  }
+);
+
+router.post(
+  "/inspection-level",
+  authenticateToken,
+  async (req, res) => {
+
+    const {
+      InspectionLevel,
+      LotMin,
+      LotMax,
+      SampleSize,
+      Ac_Critical,
+      Re_Critical,
+      Ac_Major,
+      Re_Major,
+      Ac_Minor,
+      Re_Minor
+    } = req.body;
+
+    try {
+
+      const pool = await poolPromise;
+
+      const result = await pool.request()
+        .input("InspectionLevel", sql.NVarChar(10), InspectionLevel)
+        .input("LotMin", sql.Int, LotMin)
+        .input("LotMax", sql.Int, LotMax)
+        .input("SampleSize", sql.Int, SampleSize)
+        .input("Ac_Critical", sql.Int, Ac_Critical)
+        .input("Re_Critical", sql.Int, Re_Critical)
+        .input("Ac_Major", sql.Int, Ac_Major)
+        .input("Re_Major", sql.Int, Re_Major)
+        .input("Ac_Minor", sql.Int, Ac_Minor)
+        .input("Re_Minor", sql.Int, Re_Minor)
+        .execute("sp_DM_AQL_PLAN_Create");
+
+      res.json({
+        success: true,
+        id: result.recordset?.[0]?.Id
+      });
+
+    } catch (err) {
+
+      if (err.message.includes("trùng")) {
+        return res.status(409).json({ message: err.message });
+      }
+
+      console.error("Create AQL error:", err);
+
+      res.status(500).json({
+        message: "Không thể tạo Inspection Level"
+      });
+    }
+  }
+);
+
+router.put(
+  "/inspection-level/:id",
+  authenticateToken,
+  async (req, res) => {
+
+    const { id } = req.params;
+
+    const {
+      InspectionLevel,
+      LotMin,
+      LotMax,
+      SampleSize,
+      Ac_Critical,
+      Re_Critical,
+      Ac_Major,
+      Re_Major,
+      Ac_Minor,
+      Re_Minor
+    } = req.body;
+
+    try {
+
+      const pool = await poolPromise;
+
+      await pool.request()
+        .input("Id", sql.Int, id)
+        .input("InspectionLevel", sql.NVarChar(10), InspectionLevel)
+        .input("LotMin", sql.Int, LotMin)
+        .input("LotMax", sql.Int, LotMax)
+        .input("SampleSize", sql.Int, SampleSize)
+        .input("Ac_Critical", sql.Int, Ac_Critical)
+        .input("Re_Critical", sql.Int, Re_Critical)
+        .input("Ac_Major", sql.Int, Ac_Major)
+        .input("Re_Major", sql.Int, Re_Major)
+        .input("Ac_Minor", sql.Int, Ac_Minor)
+        .input("Re_Minor", sql.Int, Re_Minor)
+        .execute("sp_DM_AQL_PLAN_Update");
+
+      res.json({ success: true });
+
+    } catch (err) {
+
+      if (err.message.includes("trùng")) {
+        return res.status(409).json({ message: err.message });
+      }
+
+      console.error("Update AQL error:", err);
+
+      res.status(500).json({
+        message: "Không thể cập nhật"
+      });
+    }
+  }
+);
+
+router.delete(
+  "/inspection-level/:id",
+  authenticateToken,
+  async (req, res) => {
+
+    const { id } = req.params;
+
+    try {
+
+      const pool = await poolPromise;
+
+      await pool.request()
+        .input("Id", sql.Int, id)
+        .execute("sp_DM_AQL_PLAN_Delete");
+
+      res.json({ success: true });
+
+    } catch (err) {
+
+      console.error("Delete AQL error:", err);
+
+      res.status(500).json({
+        message: "Không thể xoá"
+      });
+    }
+  }
+);
+
+router.get(
+  "/inspection-level",
+  authenticateToken,
+  async (req, res) => {
+
+    const { inspectionLevel } = req.query;
+
+    try {
+
+      const pool = await poolPromise;
+
+      const result = await pool.request()
+        .input("InspectionLevel", sql.NVarChar(10), inspectionLevel || null)
+        .execute("sp_DM_AQL_PLAN_GetList");
+
+      res.json(result.recordset);
+
+    } catch (err) {
+
+      console.error("Get list AQL error:", err);
+
+      res.status(500).json({
+        message: "Không thể lấy danh sách"
+      });
+    }
+  }
+);
+
+router.get(
+  "/inspection-level/:id",
+  authenticateToken,
+  async (req, res) => {
+
+    const { id } = req.params;
+
+    try {
+
+      const pool = await poolPromise;
+
+      const result = await pool.request()
+        .input("Id", sql.Int, id)
+        .execute("sp_DM_AQL_PLAN_GetById");
+
+      res.json(result.recordset[0]);
+
+    } catch (err) {
+
+      console.error("Get detail AQL error:", err);
+
+      res.status(500).json({
+        message: "Không thể lấy dữ liệu"
+      });
+    }
+  }
+);
+
+router.get(
+  "/inspection-levels",
+  authenticateToken,
+  async (req, res) => {
+
+    try {
+
+      const pool = await poolPromise;
+
+      const result = await pool.request()
+        .execute("sp_DM_AQL_PLAN_GetLevels");
+
+      res.json(result.recordset);
+
+    } catch (err) {
+
+      console.error("Get levels error:", err);
+
+      res.status(500).json({
+        message: "Không thể lấy Inspection Level"
+      });
+    }
   }
 );
 

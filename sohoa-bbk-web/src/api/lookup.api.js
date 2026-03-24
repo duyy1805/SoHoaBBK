@@ -78,9 +78,10 @@ export const deleteCheckItem = (id) => {
     return axiosClient.delete(`/lookup/check-item/${id}`);
 };
 
-export const getSanPhamList = () =>
-    axiosClient.get("/lookup/san-pham");
-
+export const getSanPhamList = (page = 0, pageSize = 20, keyword = "") =>
+    axiosClient.get("/lookup/san-pham", {
+        params: { page, pageSize, keyword }
+    });
 export const createSanPham = (data) =>
     axiosClient.post("/lookup/san-pham", data);
 
@@ -101,3 +102,17 @@ export const updateSanPhamNhomKiem = (id, data) =>
 
 export const deleteSanPhamNhomKiem = (id) =>
     axiosClient.delete(`/lookup/san-pham-nhom-kiem/${id}`);
+
+
+export const getInspectionLevelList = () => axiosClient.get("/lookup/inspection-level");
+
+export const createInspectionLevel = (data) =>
+    axiosClient.post("/lookup/inspection-level", data);
+
+export const updateInspectionLevel = (id, data) =>
+    axiosClient.put(`/lookup/inspection-level/${id}`, data);
+
+export const deleteInspectionLevel = (id) =>
+    axiosClient.delete(`/lookup/inspection-level/${id}`);
+
+export const getInspectionLevels = () => axiosClient.get("/lookup/inspection-levels");

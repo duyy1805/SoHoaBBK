@@ -26,6 +26,10 @@ export const getDefectList = (defectType = null) => {
   });
 };
 
+export const updateLot = (data) => {
+  return axiosClient.post("/phieu-kiem/update-lot", data);
+};
+
 export const saveCheckItem = (data) => {
   return axiosClient.post("/phieu-kiem/check-item", data);
 };

@@ -34,10 +34,11 @@ import AssignmentIcon from "@mui/icons-material/Assignment";
 
 import {
     getPhieuKiemDetail,
-    createAllSection
+    createAllSection,
+    saveCustomFields
 } from "../../../api/phieuKiem.api";
 
-import { getSanPhamNhomKiem } from "../../../api/lookup.api"
+import { getSanPhamNhomKiem, getInspectionLevels } from "../../../api/lookup.api"
 
 import { hasPermission } from "../../../utils/auth";
 
@@ -50,18 +51,48 @@ export default function PhieuKiemDetail() {
     const [sections, setSections] = useState([]);
     const [checkItems, setCheckItems] = useState([]);
     const [defects, setDefects] = useState([]);
-
+    const [dynamicFields, setDynamicFields] = useState([]);
     const [nhomConfigs, setNhomConfigs] = useState([]);
+    const [levels, setLevels] = useState([]);
 
     const [loading, setLoading] = useState(true);
     const [creatingSection, setCreatingSection] = useState(false);
     const componentRef = useRef();
     const [openPrintModal, setOpenPrintModal] = useState(false);
 
-    const handlePrint = useReactToPrint({
+    // Đổi tên hàm của thư viện thành triggerPrint
+    const triggerPrint = useReactToPrint({
         contentRef: componentRef,
         documentTitle: phieu ? `PhieuKiem_${phieu.SoPhieu}` : 'PhieuKiem',
     });
+
+    const handlePrint = async () => {
+        try {
+            // 1. Gom dữ liệu từ các thẻ input có className="custom-field"
+            const inputs = document.querySelectorAll('.custom-field');
+            const fieldsData = {};
+
+            inputs.forEach(input => {
+                if (input.name) {
+                    fieldsData[input.name] = input.value;
+                }
+            });
+
+            // 2. Gọi API lưu dữ liệu qua axiosClient
+            await saveCustomFields({
+                phieuKiemId: phieu.Id,
+                fields: fieldsData
+            });
+
+            // 3. API chạy thành công thì mới mở popup In của trình duyệt
+            triggerPrint();
+
+        } catch (error) {
+            console.error("Lỗi khi lưu dữ liệu in:", error);
+            // Có thể thay bằng thư viện toast của bạn (ví dụ: toast.error(...))
+            alert("Lưu thông tin thất bại. Vui lòng thử lại!");
+        }
+    };
 
     useEffect(() => {
         loadData();
@@ -79,7 +110,7 @@ export default function PhieuKiemDetail() {
             setSections(data.sections);
             setCheckItems(data.checkItems);
             setDefects(data.defects);
-
+            setDynamicFields(data.dynamicFields);
             if (data.phieu?.SanPhamId && data.phieu.TrangThai === "TAO_MOI") {
 
                 const nhomRes = await getSanPhamNhomKiem(data.phieu.SanPhamId);
@@ -87,11 +118,14 @@ export default function PhieuKiemDetail() {
                 const configs = nhomRes.data.map(n => ({
                     nhomKiemId: n.NhomKiemId,
                     tenNhom: n.TenNhom,
-                    lotSize: "",
+                    lotSize: data.phieu.SoLuong,
                     inspectionLevel: "II"
                 }));
                 console.log(configs)
                 setNhomConfigs(configs);
+
+                const levelsRes = await getInspectionLevels();
+                setLevels(levelsRes.data);
             }
 
         } catch (err) {
@@ -202,7 +236,7 @@ export default function PhieuKiemDetail() {
                                 onClick={() => navigate(-1)}
                                 color="inherit"
                             >
-                                Danh sách biên bản
+                                Danh sách phiếu kiểm
                             </Button>
                             <Stack direction="row" spacing={2}>
                                 <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => setOpenPrintModal(true)}>
@@ -299,14 +333,19 @@ export default function PhieuKiemDetail() {
                                             select
                                             label="Inspection Level"
                                             fullWidth
-                                            value={n.inspectionLevel}
+                                            value={n.inspectionLevel || ""}
                                             onChange={(e) =>
                                                 updateConfig(index, "inspectionLevel", e.target.value)
                                             }
                                         >
-                                            <MenuItem value="I">I</MenuItem>
-                                            <MenuItem value="II">II</MenuItem>
-                                            <MenuItem value="S-2">S-2</MenuItem>
+                                            {levels.map((lv) => (
+                                                <MenuItem
+                                                    key={lv.InspectionLevel}
+                                                    value={lv.InspectionLevel}
+                                                >
+                                                    {lv.InspectionLevel}
+                                                </MenuItem>
+                                            ))}
                                         </TextField>
                                     </Grid>
 
@@ -349,7 +388,7 @@ export default function PhieuKiemDetail() {
                                     </Typography>
 
                                     <Chip
-                                        label={`Sample: ${section.SoLuongKiem}`}
+                                        label={`Mẫu: ${section.SoLuongKiem}`}
                                         size="small"
                                     />
 
@@ -361,9 +400,9 @@ export default function PhieuKiemDetail() {
 
                                 {sectionItems.map(item => {
 
-                                    const itemDefects = defects.filter(
-                                        d => d.CheckItemId === item.Id
-                                    );
+                                    // const itemDefects = defects.filter(
+                                    //     d => d.CheckItemId === item.Id
+                                    // );
 
                                     const totalLoi = item.SoLuongLoi || 0;
 
@@ -442,6 +481,7 @@ export default function PhieuKiemDetail() {
                                 sections={sections}
                                 checkItems={checkItems}
                                 defects={defects}
+                                dynamicFields={dynamicFields}
                             />
                         </Box>
                     </DialogContent>

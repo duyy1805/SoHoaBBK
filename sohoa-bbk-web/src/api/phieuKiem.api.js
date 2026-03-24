@@ -84,3 +84,7 @@ export const ketLuanPhieuKiem = (data) => {
     return axiosClient.post("/phieu-kiem/ket-luan", data);
 };
 
+// Thêm API lưu field động
+export const saveCustomFields = (data) => {
+    return axiosClient.post("/phieu-kiem/custom-fields", data);
+};

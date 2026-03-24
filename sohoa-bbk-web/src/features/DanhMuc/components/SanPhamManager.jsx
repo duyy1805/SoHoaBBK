@@ -23,9 +23,11 @@ import {
     Tooltip,
     Grid,
     Divider,
-    Alert
+    Alert,
+    InputAdornment
 } from "@mui/material";
 
+import SearchIcon from "@mui/icons-material/Search";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
@@ -49,6 +51,7 @@ export default function SanPhamManager() {
     const [open, setOpen] = useState(false);
     const [form, setForm] = useState({});
 
+    const [searchQuery, setSearchQuery] = useState("");
     // State Nhóm kiểm
     const [nhomDialog, setNhomDialog] = useState(false);
     const [selectedSanPham, setSelectedSanPham] = useState(null);
@@ -57,15 +60,50 @@ export default function SanPhamManager() {
     const [selectedNhomObj, setSelectedNhomObj] = useState(null);
     const [thuTu, setThuTu] = useState(1);
 
-    const loadData = async () => {
-        const res = await getSanPhamList();
-        setData(res.data || []);
+    const [page, setPage] = useState(0);
+    const [pageSize] = useState(20);
+    const [hasMore, setHasMore] = useState(true);
+
+    const loadData = async (reset = false, keyword = searchQuery) => {
+        const currentPage = reset ? 0 : page;
+
+        const res = await getSanPhamList(currentPage, pageSize, keyword);
+
+        const newData = res.data.data || [];
+
+        if (reset) {
+            setData(newData);
+        } else {
+            setData(prev => [...prev, ...newData]);
+        }
+
+        setHasMore(newData.length === pageSize);
+        setPage(currentPage + 1);
     };
 
     useEffect(() => {
-        loadData();
+        loadData(true);
     }, []);
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            loadData(true, searchQuery);
+        }, 500);
 
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
+
+    // Logic tìm kiếm đa trường: Tìm theo Mã, Tên và Mô tả
+    const filteredData = useMemo(() => {
+        if (!searchQuery) return data;
+        const lowerCaseQuery = searchQuery.toLowerCase();
+
+        return data.filter(
+            (item) =>
+                item.MaSanPham?.toLowerCase().includes(lowerCaseQuery) ||
+                item.TenSanPham?.toLowerCase().includes(lowerCaseQuery) ||
+                item.MoTa?.toLowerCase().includes(lowerCaseQuery)
+        );
+    }, [data, searchQuery]);
     const loadSanPhamNhom = async (sanPhamId) => {
         const res = await getSanPhamNhomKiem(sanPhamId);
         setNhomData(res.data || []);
@@ -131,20 +169,45 @@ export default function SanPhamManager() {
     return (
         <Box sx={{ p: { xs: 2, md: 3 } }}>
             {/* Header */}
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
+            {/* Header */}
+            <Stack
+                direction={{ xs: "column", sm: "row" }}
+                justifyContent="space-between"
+                alignItems={{ xs: "stretch", sm: "center" }}
+                spacing={2}
+                sx={{ mb: 3 }}
+            >
                 <Typography variant="h5" fontWeight="bold">
                     Quản lý Sản phẩm
                 </Typography>
-                <Button
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    onClick={() => {
-                        setForm({});
-                        setOpen(true);
-                    }}
-                >
-                    Thêm sản phẩm
-                </Button>
+
+                <Stack direction="row" spacing={2} alignItems="center">
+                    <TextField
+                        size="small"
+                        placeholder="Tìm mã, tên, quy cách..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        InputProps={{
+                            startAdornment: (
+                                <InputAdornment position="start">
+                                    <SearchIcon fontSize="small" />
+                                </InputAdornment>
+                            ),
+                        }}
+                        sx={{ backgroundColor: "#fff", minWidth: { sm: 280 } }}
+                    />
+                    <Button
+                        variant="contained"
+                        startIcon={<AddIcon />}
+                        onClick={() => {
+                            setForm({});
+                            setOpen(true);
+                        }}
+                        sx={{ whiteSpace: "nowrap" }}
+                    >
+                        Thêm sản phẩm
+                    </Button>
+                </Stack>
             </Stack>
 
             {/* Main Table */}
@@ -202,7 +265,13 @@ export default function SanPhamManager() {
                     </Table>
                 </TableContainer>
             </Card>
-
+            {hasMore && (
+                <Box textAlign="center" p={2}>
+                    <Button onClick={() => loadData(false)}>
+                        Tải thêm
+                    </Button>
+                </Box>
+            )}
             {/* Dialog Form Sản phẩm */}
             <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
                 <DialogTitle sx={{ fontWeight: "bold" }}>

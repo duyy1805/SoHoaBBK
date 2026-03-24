@@ -148,7 +148,7 @@ export default function AssignUserModal({
             animationType="slide"
         >
 
-            <SafeAreaView style={styles.container}>
+            <View style={styles.container}>
 
                 {/* HEADER */}
 
@@ -203,7 +203,7 @@ export default function AssignUserModal({
 
                 </View>
 
-            </SafeAreaView>
+            </View>
 
         </Modal>
 
@@ -220,12 +220,13 @@ const styles = StyleSheet.create({
 
     header: {
         flexDirection: "row",
-        alignItems: "center",
         justifyContent: "space-between",
-        paddingHorizontal: 16,
-        paddingVertical: 12,
+        alignItems: "center",
+        paddingTop: 70,
+        padding: 16,
         borderBottomWidth: 1,
-        borderColor: "#eee"
+        borderColor: "#eee",
+        backgroundColor: "#fff"
     },
 
     title: {
