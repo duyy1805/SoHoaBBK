@@ -63,6 +63,39 @@ router.get(
 );
 
 router.get(
+    '/source-checked',
+    authenticateToken,
+    authorize('XEM_PHIEU_KIEM'),
+    async (req, res) => {
+
+        try {
+            const { week, year, loaiKiemId } = req.query;
+
+            if (!week || !year || !loaiKiemId) {
+                return res.status(400).json({
+                    message: 'Thiếu tham số week, year hoặc loaiKiemId'
+                });
+            }
+
+            const pool = await poolPromise;
+
+            const result = await pool.request()
+                .input('LoaiKiemId', parseInt(loaiKiemId))
+                .input('Week', parseInt(week))
+                .input('Year', parseInt(year))
+                .execute('sp_PhieuKiem_GetSourceChecked_ByWeekRange');
+
+            // ⚡ trả về array GUID luôn
+            res.json(result.recordset.map(x => x.SourceId_LCD));
+
+        } catch (err) {
+            console.error('GetSourceChecked error:', err);
+            res.status(500).json({ message: 'Lỗi lấy danh sách đã kiểm' });
+        }
+    }
+);
+
+router.get(
     '/chung-tu-nhap/chua-kiem',
     authenticateToken,
     authorize('XEM_PHIEU_KIEM'),
@@ -215,10 +248,12 @@ router.post(
             doiTuong,
             nguoiKiemId,
             sourceId,
+            sourceId_LCD, // Thêm field cho lịch đóng cont (GUID)
             soLuong
         } = req.body;
 
-        if (!sanPhamId || !loaiKiemId || !nguoiKiemId || !sourceId || !soLuong) {
+        // Bắt buộc phải có 1 trong 2 loại source
+        if (!sanPhamId || !loaiKiemId || !nguoiKiemId || !soLuong || (!sourceId && !sourceId_LCD)) {
             return res.status(400).json({
                 message: 'Thiếu thông tin bắt buộc'
             });
@@ -232,10 +267,12 @@ router.post(
                 .input('LoaiKiemId', sql.Int, loaiKiemId)
                 .input('Lot', sql.NVarChar, lot)
                 .input('DoiTuong', sql.NVarChar, doiTuong)
-                .input('SourceId', sql.Int, sourceId)
                 .input('NguoiKiemId', sql.Int, nguoiKiemId)
                 .input('SoLuong', sql.Int, soLuong)
                 .input('NguoiLapId', sql.Int, req.user.userId)
+                // Truyền null nếu không có giá trị để Stored Procedure xử lý linh hoạt
+                .input('SourceId', sql.Int, sourceId || null)
+                .input('SourceId_LCD', sql.UniqueIdentifier, sourceId_LCD || null)
                 .execute('sp_PhieuKiem_Create');
 
             res.json({

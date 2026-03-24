@@ -3,12 +3,13 @@ const cors = require('cors');
 require('dotenv').config();
 
 const authRouter = require('./routes/auth');
-
+const hrRouter = require('./routes/hr')
 const app = express();
 app.use(express.json());
 app.use(cors());
 
 app.use('/api/auth', authRouter);
+app.use('/api/hr', hrRouter);
 app.use('/api/phieu-kiem', require('./routes/phieuKiem'));
 app.use('/api/bien-ban', require('./routes/bienBan'));
 app.use('/api/lookup', require('./routes/lookup.routes'));

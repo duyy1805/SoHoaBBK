@@ -40,6 +40,15 @@ export const createPhieuKiem = (data) => {
 export const getLichDongContChuaKiem = () =>
     axiosClient.get("/phieu-kiem/lich-dong-cont/chua-kiem");
 
+// ESAM lịch đóng cont
+export const getLichDongCont = (params) => {
+    return axiosClient.get("/hr/lich-dong-cont", { params });
+};
+
+// danh sách đã kiểm
+export const getSourceChecked = (params) => {
+    return axiosClient.get("/phieu-kiem/source-checked", { params });
+};
 
 export const getChungTuNhapChuaKiem = () =>
     axiosClient.get("/phieu-kiem/chung-tu-nhap/chua-kiem");
