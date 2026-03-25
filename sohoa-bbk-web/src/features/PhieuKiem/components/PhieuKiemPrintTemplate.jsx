@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography, Grid } from '@mui/material';
+import { Box, Grid } from '@mui/material';
 
 // Hàm hỗ trợ chuyển số thứ tự thành số La Mã (I, II, III, IV...)
 const toRoman = (num) => {
@@ -113,25 +113,25 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                     <tbody>
                         <tr>
                             <td rowSpan={2} style={{ ...styles.headerTd, width: '20%' }}>
-                                <Typography style={{ fontWeight: 'bold', fontSize: '26pt', lineHeight: 1, color: '#00a0e3', fontStyle: 'italic', position: 'relative' }}>
+                                <div style={{ fontWeight: 'bold', fontSize: '26pt', lineHeight: 1, color: '#00a0e3', fontStyle: 'italic', position: 'relative' }}>
                                     <span style={{ color: '#e3000f', position: 'absolute', top: '-10px', left: '35%', fontSize: '18pt' }}>★</span>
                                     Z<span style={{ color: '#e3000f' }}>76</span>
-                                </Typography>
-                                <Typography style={{ fontSize: '9pt', fontStyle: 'italic', color: '#00a0e3', fontWeight: 'bold', marginTop: '4px' }}>We try harder</Typography>
+                                </div>
+                                <div style={{ fontSize: '9pt', fontStyle: 'italic', color: '#00a0e3', fontWeight: 'bold', marginTop: '4px' }}>We try harder</div>
                             </td>
                             <td style={{ ...styles.headerTd, width: '55%', borderBottom: '1px solid #000' }}>
-                                <Typography style={{ fontSize: '14pt' }}>CÔNG TY TNHH MTV 76</Typography>
+                                <div style={{ fontSize: '14pt' }}>CÔNG TY TNHH MTV 76</div>
                             </td>
                             <td rowSpan={2} style={{ ...styles.headerTd, width: '25%', textAlign: 'left', paddingLeft: '10px' }}>
-                                <Typography style={{ fontSize: '11pt' }}>Mã số: BM.01.02- QT.04-KN</Typography>
-                                <Typography style={{ fontSize: '11pt' }}>Ngày hiệu lực: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/2024</Typography>
-                                <Typography style={{ fontSize: '11pt' }}>Phiên bản: 02</Typography>
+                                <div style={{ fontSize: '11pt' }}>Mã số: BM.01.02- QT.04-KN</div>
+                                <div style={{ fontSize: '11pt' }}>Ngày hiệu lực: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/2024</div>
+                                <div style={{ fontSize: '11pt' }}>Phiên bản: 02</div>
                             </td>
                         </tr>
                         <tr>
                             <td style={{ ...styles.headerTd, backgroundColor: '#fbe4d5' }}>
-                                <Typography style={{ fontWeight: 'bold', fontSize: '16pt' }}>DANH MỤC KIỂM HÀNG LẦN CUỐI</Typography>
-                                <Typography style={{ fontWeight: 'bold', fontSize: '14pt' }}>FINAL INSPECTION CHECKLIST</Typography>
+                                <div style={{ fontWeight: 'bold', fontSize: '16pt' }}>DANH MỤC KIỂM HÀNG LẦN CUỐI</div>
+                                <div style={{ fontWeight: 'bold', fontSize: '14pt' }}>FINAL INSPECTION CHECKLIST</div>
                             </td>
                         </tr>
                     </tbody>
@@ -143,12 +143,12 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                     {/* Số phiếu & Ngày tháng */}
                     <Box style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
                         <Box style={{ display: 'flex', justifyContent: 'space-between', width: '500px' }}>
-                            <Typography style={{ ...styles.text, fontStyle: 'italic' }}>
+                            <div style={{ ...styles.text, fontStyle: 'italic' }}>
                                 Số: {phieu.SoPhieu || '..........'}/KN.
-                            </Typography>
-                            <Typography style={{ ...styles.text, fontStyle: 'italic' }}>
-                                Ngày {phieu.NgayKiem ? new Date(phieu.NgayKiem).toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm ')) : '......tháng ...... năm 20.....'}
-                            </Typography>
+                            </div>
+                            <div style={{ ...styles.text, fontStyle: 'italic' }}>
+                                Ngày {phieu.NgayKiem ? new Date(phieu.NgayKiem).toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm ')) : new Date().toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm '))}
+                            </div>
                         </Box>
                     </Box>
 
@@ -157,24 +157,24 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                         {/* Cột trái: Thông tin sản phẩm & Phê duyệt */}
                         <Box sx={{ width: '49%', border: '1px solid #000', display: 'flex', flexDirection: 'column' }}>
                             <Box sx={{ p: 1, flex: 1 }}>
-                                <Typography style={{ ...styles.text, fontSize: '10pt' }}>
+                                <div style={{ ...styles.text, fontSize: '10pt' }}>
                                     Sản phẩm: <b>{phieu.TenSanPham || '...........................................................................'}</b>
-                                </Typography>
-                                <Typography style={{ ...styles.text, fontSize: '10pt' }}>
+                                </div>
+                                <div style={{ ...styles.text, fontSize: '10pt' }}>
                                     Phiên bản: <b>{phieu.PhienBan || '...........................................................................'}</b>
-                                </Typography>
-                                <Typography style={{ ...styles.text, fontSize: '10pt' }}>
+                                </div>
+                                <div style={{ ...styles.text, fontSize: '10pt' }}>
                                     Tham chiếu tiêu chuẩn: <b>{phieu.MaSanPham || '...........................................................................'}</b>
-                                </Typography>
+                                </div>
                             </Box>
                             <Box sx={{ borderTop: '1px solid #000', p: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', minHeight: '120px' }}>
-                                <Typography style={styles.boldText}>PHÊ DUYỆT</Typography>
+                                <div style={styles.boldText}>PHÊ DUYỆT</div>
                             </Box>
                         </Box>
 
                         {/* Cột phải: Hình ảnh minh họa */}
                         <Box sx={{ width: '35%', border: '1px solid #000', p: 1, display: 'flex', flexDirection: 'column' }}>
-                            <Typography style={{ ...styles.text, fontSize: '10pt' }}>*Hình ảnh minh họa sản phẩm</Typography>
+                            <div style={{ ...styles.text, fontSize: '10pt' }}>*Hình ảnh minh họa sản phẩm</div>
                         </Box>
                     </Box>
 
@@ -194,7 +194,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                             <tr>
                                 <td style={{ padding: '4px 4px 4px 0', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Nhà cung cấp</td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', height: '26px' }}>
-                                    <input name="NhaCungCap" className="custom-field" type="text" defaultValue={customData.NhaCungCap || phieu.NhaCungCap || ''} style={styles.inputField} />
+                                    <input name="NhaCungCap" className="custom-field" type="text" defaultValue={customData.NhaCungCap || phieu.NhaCungCap || 'Công ty TNHH MTV 76'} style={styles.inputField} />
                                 </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Khách hàng</td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
@@ -246,7 +246,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Ngày kiểm tra</td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
-                                    <input name="NgayKiemTra" className="custom-field" type="text" defaultValue={customData.NgayKiemTra || (phieu.NgayKiem ? new Date(phieu.NgayKiem).toLocaleDateString('vi-VN') : '')} style={styles.inputField} />
+                                    <input name="NgayKiemTra" className="custom-field" type="text" defaultValue={customData.NgayKiemTra || (phieu.NgayKiem ? new Date(phieu.NgayKiem).toLocaleDateString('vi-VN') : new Date().toLocaleDateString('vi-VN'))} style={styles.inputField} />
                                 </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}></td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
@@ -304,9 +304,9 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                     <tr className="avoid-break" style={{ backgroundColor: '#f0f0f0' }}>
                                         <td colSpan={6} style={{ ...styles.td, padding: '8px' }}>
                                             <Box style={styles.flexBetween}>
-                                                <Typography style={styles.boldText}>
+                                                <div style={styles.boldText}>
                                                     {toRoman(sIndex + 1)}. {section.TenNhom.toUpperCase()}
-                                                </Typography>
+                                                </div>
                                                 <Box style={{ display: 'flex', gap: '40px', paddingRight: '20px' }}>
                                                     <span>Tổng số: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: '1px dotted #000', textAlign: 'center' }}><b>{section.TongSo}</b></span> Pcs</span>
                                                     <span>Số lượng kiểm: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: '1px dotted #000', textAlign: 'center' }}><b>{section.SoLuongKiem}</b></span> Pcs</span>
@@ -366,14 +366,14 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                 <Box className="avoid-break" mt={3} pl={1} pb={2}>
 
                     <Box mb={2} style={{ display: 'flex', alignItems: 'center' }}>
-                        <Typography style={{ ...styles.boldText, marginRight: '15px' }}>* Kết luận:</Typography>
-                        <Typography style={{ ...styles.boldText, textTransform: 'uppercase' }}>
+                        <div style={{ ...styles.boldText, marginRight: '15px' }}>* Kết luận:</div>
+                        <div style={{ ...styles.boldText, textTransform: 'uppercase' }}>
                             {phieu.KetLuan === 'DAT' ? 'ĐẠT YÊU CẦU' : phieu.KetLuan === 'KHONG_DAT' ? 'KHÔNG ĐẠT YÊU CẦU' : '.........................................................'}
-                        </Typography>
+                        </div>
                     </Box>
 
                     <Box mb={4} style={{ display: 'flex', alignItems: 'center', gap: '30px' }}>
-                        <Typography style={styles.boldText}>* Kết quả xử lý:</Typography>
+                        <div style={styles.boldText}>* Kết quả xử lý:</div>
                         <Box style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             {renderCheckbox(phieu.KetLuan === 'DAT')} <span>Cho xuất hàng</span>
                         </Box>
@@ -384,24 +384,24 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
 
                     <Box style={{ ...styles.signatureBlock, marginTop: '20px' }}>
                         <Box style={styles.signatureCol}>
-                            <Typography style={{ ...styles.text, minHeight: '40px' }}><b>Phòng Kiểm nghiệm</b></Typography>
+                            <div style={{ ...styles.text, minHeight: '40px' }}><b>Phòng Kiểm nghiệm</b></div>
                             <Box height="70px"></Box>
                         </Box>
                         <Box style={styles.signatureCol}>
-                            <Typography style={{ ...styles.text, minHeight: '40px' }}><b>Người kiểm hàng</b></Typography>
+                            <div style={{ ...styles.text, minHeight: '40px' }}><b>Người kiểm hàng</b></div>
                             <Box height="70px"></Box>
-                            <Typography style={styles.text}>{phieu.TenNguoiKiem}</Typography>
+                            <div style={styles.text}>{phieu.TenNguoiKiem}</div>
                         </Box>
                         <Box style={styles.signatureCol}>
-                            <Typography style={{ ...styles.text, minHeight: '40px' }}><b>Phân xưởng SX</b></Typography>
+                            <div style={{ ...styles.text, minHeight: '40px' }}><b>Phân xưởng SX</b></div>
                             <Box height="70px"></Box>
                         </Box>
                     </Box>
 
                     <Box mt={4}>
-                        <Typography style={{ fontSize: '11pt' }}>
-                            <b>* Ghi chú:</b> Báo cáo kiểm hàng lần cuối của từng sản phẩm được lập căn cứ theo tiêu chuẩn kỹ thuật của sản phẩm.
-                        </Typography>
+                        <div style={{ fontSize: '8pt' }}>
+                            <b>* Ghi chú:</b> Các lỗi dễ bị phản ánh hoặc đã có khiếu nại của khách hàng được cập nhật trong báo cáo kiểm hàng bằng những dòng chữ in đậm-nghiêng để chú ý và kiểm soát chặt chẽ hơn trong quá trình kiểm tra.
+                        </div>
                     </Box>
 
                 </Box>

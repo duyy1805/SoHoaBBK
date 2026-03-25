@@ -283,7 +283,7 @@ export default function PhieuKiemCreate() {
 
                 return createPhieuKiem(payload);
             });
-            // await Promise.all(promises);
+            await Promise.all(promises);
 
             showToast(`Đã tạo thành công ${selectedLichList.length} phiếu kiểm!`, "success");
             navigate("/phieu-kiem");
@@ -476,7 +476,7 @@ export default function PhieuKiemCreate() {
                                                     <TableCell>Item Code</TableCell>
                                                     <TableCell>Tên sản phẩm</TableCell>
                                                     <TableCell>Khách hàng / Kho</TableCell>
-                                                    <TableCell>Invoice</TableCell>
+                                                    <TableCell>ECIS/ Invoice</TableCell>
                                                 </>
                                             )}
                                             {selectedLoai?.MaLoai === "DAU_VAO" && (

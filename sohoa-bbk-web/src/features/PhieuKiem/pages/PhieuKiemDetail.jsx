@@ -22,6 +22,7 @@ import {
     Container
 } from "@mui/material";
 import { PhieuKiemPrintTemplate } from "../components/PhieuKiemPrintTemplate";
+import { PhieuGiamDinhPrintTemplate } from "../components/PhieuGiamDinhPrintTemplate"
 import PrintIcon from "@mui/icons-material/Print";
 import { useReactToPrint } from "react-to-print";
 import { Dialog, DialogTitle, DialogContent, DialogActions } from "@mui/material";
@@ -99,13 +100,9 @@ export default function PhieuKiemDetail() {
     }, [id]);
 
     const loadData = async () => {
-
         try {
-
             const res = await getPhieuKiemDetail(id);
-
             const data = res.data;
-
             setPhieu(data.phieu);
             setSections(data.sections);
             setCheckItems(data.checkItems);
@@ -469,14 +466,25 @@ export default function PhieuKiemDetail() {
                     <DialogTitle>Xem trước bản in</DialogTitle>
                     <DialogContent dividers sx={{ bgcolor: '#f0f0f0', p: 3 }}>
                         <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                            <PhieuKiemPrintTemplate
-                                ref={componentRef}
-                                phieu={phieu}
-                                sections={sections}
-                                checkItems={checkItems}
-                                defects={defects}
-                                dynamicFields={dynamicFields}
-                            />
+                            {phieu.LoaiKiemId === 1 ? (
+                                <PhieuGiamDinhPrintTemplate
+                                    ref={componentRef}
+                                    phieu={phieu}
+                                    sections={sections}
+                                    checkItems={checkItems}
+                                    defects={defects}
+                                    dynamicFields={dynamicFields}
+                                />
+                            ) : (
+                                <PhieuKiemPrintTemplate
+                                    ref={componentRef}
+                                    phieu={phieu}
+                                    sections={sections}
+                                    checkItems={checkItems}
+                                    defects={defects}
+                                    dynamicFields={dynamicFields}
+                                />
+                            )}
                         </Box>
                     </DialogContent>
                     <DialogActions>
