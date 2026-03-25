@@ -8,7 +8,9 @@ import {
     Alert,
     ActivityIndicator,
     Modal,
-    ScrollView
+    ScrollView,
+    KeyboardAvoidingView,
+    Platform
 } from "react-native";
 
 import {
@@ -179,115 +181,105 @@ export default function CheckItemScreen({ route, navigation }) {
     };
 
     return (
+        <KeyboardAvoidingView
+            style={{ flex: 1, backgroundColor: "#f1f5f9" }}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+        >
+            <ScrollView
+                style={styles.scrollContainer}
+                contentContainerStyle={styles.container}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+            >
+                <Text style={styles.title}>{item.TenMucKiem}</Text>
 
-        <View style={styles.container}>
-
-            <Text style={styles.title}>{item.TenMucKiem}</Text>
-
-            {/* info */}
-
-            <View style={styles.infoCard}>
-
-                <View style={styles.infoRow}>
-                    <Text style={styles.label}>Tham chiếu</Text>
-                    <Text style={styles.value}>{item.ThamChieu || "--"}</Text>
+                {/* info */}
+                <View style={styles.infoCard}>
+                    <View style={styles.infoRow}>
+                        <Text style={styles.label}>Tham chiếu</Text>
+                        <Text style={styles.value}>{item.ThamChieu || "--"}</Text>
+                    </View>
+                    <View style={styles.infoRow}>
+                        <Text style={styles.label}>Phương pháp</Text>
+                        <Text style={styles.value}>{item.PhuongPhapKiem || "--"}</Text>
+                    </View>
                 </View>
 
-                <View style={styles.infoRow}>
-                    <Text style={styles.label}>Phương pháp</Text>
-                    <Text style={styles.value}>{item.PhuongPhapKiem || "--"}</Text>
+                <View style={styles.standardCard}>
+                    <Text style={styles.standardTitle}>Tiêu chuẩn kỹ thuật</Text>
+                    <Text style={styles.standard}>{item.TieuChuan}</Text>
                 </View>
 
-            </View>
-
-            <View style={styles.standardCard}>
-                <Text style={styles.standardTitle}>Tiêu chuẩn kỹ thuật</Text>
-                <Text style={styles.standard}>{item.TieuChuan}</Text>
-            </View>
-
-            {/* chọn kết quả */}
-
-            <View style={styles.row}>
-
-                <TouchableOpacity
-                    style={[styles.option, ketQua === "DAT" && styles.success]}
-                    onPress={() => {
-                        setKetQua("DAT");
-                        setSelectedDefects([]);
-                    }}
-                >
-                    <Text style={styles.optionText}>Đạt</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.option, ketQua === "KHONG_DAT" && styles.error]}
-                    onPress={() => setKetQua("KHONG_DAT")}
-                >
-                    <Text style={styles.optionText}>Không đạt</Text>
-                </TouchableOpacity>
-
-            </View>
-
-            {/* defects */}
-
-            {ketQua === "KHONG_DAT" && (
-
-                <>
-
+                {/* chọn kết quả */}
+                <View style={styles.row}>
                     <TouchableOpacity
-                        style={styles.selectBox}
-                        onPress={() => setShowModal(true)}
+                        style={[styles.option, ketQua === "DAT" && styles.success]}
+                        onPress={() => {
+                            setKetQua("DAT");
+                            setSelectedDefects([]);
+                        }}
                     >
-                        <Text style={styles.selectText}>+ Thêm lỗi</Text>
+                        <Text style={styles.optionText}>Đạt</Text>
                     </TouchableOpacity>
 
-                    {selectedDefects.map((d, index) => (
-                        <View key={index} style={styles.defectRow}>
+                    <TouchableOpacity
+                        style={[styles.option, ketQua === "KHONG_DAT" && styles.error]}
+                        onPress={() => setKetQua("KHONG_DAT")}
+                    >
+                        <Text style={styles.optionText}>Không đạt</Text>
+                    </TouchableOpacity>
+                </View>
 
-                            <View style={{ flex: 1 }}>
-                                <Text style={styles.defectCode}>{d.MaLoi}</Text>
-                                <Text style={styles.defectName}>{d.TenLoi}</Text>
+                {/* defects */}
+                {ketQua === "KHONG_DAT" && (
+                    <>
+                        <TouchableOpacity
+                            style={styles.selectBox}
+                            onPress={() => setShowModal(true)}
+                        >
+                            <Text style={styles.selectText}>+ Thêm lỗi</Text>
+                        </TouchableOpacity>
+
+                        {selectedDefects.map((d, index) => (
+                            <View key={index} style={styles.defectRow}>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.defectCode}>{d.MaLoi}</Text>
+                                    <Text style={styles.defectName}>{d.TenLoi}</Text>
+                                </View>
+                                <TextInput
+                                    style={styles.qtyInput}
+                                    keyboardType="numeric"
+                                    value={String(d.soLuong)}
+                                    onChangeText={(val) => updateQty(index, val)}
+                                />
+                                <TouchableOpacity onPress={() => removeDefect(d.defectId)}>
+                                    <Text style={{ color: "#ef4444", fontWeight: "bold" }}>X</Text>
+                                </TouchableOpacity>
                             </View>
+                        ))}
+                    </>
+                )}
 
-                            <TextInput
-                                style={styles.qtyInput}
-                                // keyboardType="numeric"
-                                value={String(d.soLuong)}
-                                onChangeText={(val) => updateQty(index, val)}
-                            />
-
-                            <TouchableOpacity onPress={() => removeDefect(d.defectId)}>
-                                <Text style={{ color: "#ef4444", fontWeight: "bold" }}>X</Text>
-                            </TouchableOpacity>
-
-                        </View>
-                    ))}
-
-                </>
-
-            )}
-
-            <TouchableOpacity
-                style={[styles.saveBtn, loading && { opacity: 0.6 }]}
-                onPress={handleSave}
-                disabled={loading}
-            >
-
-                {loading
-                    ? <ActivityIndicator color="#fff" />
-                    : <Text style={styles.saveText}>Lưu kết quả</Text>
-                }
-
-            </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.saveBtn, loading && { opacity: 0.6 }]}
+                    onPress={handleSave}
+                    disabled={loading}
+                >
+                    {loading
+                        ? <ActivityIndicator color="#fff" />
+                        : <Text style={styles.saveText}>Lưu kết quả</Text>
+                    }
+                </TouchableOpacity>
+            </ScrollView>
 
             {/* modal chọn lỗi */}
-
             <Modal visible={showModal} transparent animationType="slide">
-
                 <View style={styles.modalOverlay}>
-
-                    <View style={styles.modalContent}>
-
+                    <KeyboardAvoidingView
+                        behavior={Platform.OS === "ios" ? "padding" : "height"}
+                        style={styles.modalContent}
+                    >
                         <Text style={styles.modalTitle}>Chọn lỗi</Text>
 
                         <TextInput
@@ -297,22 +289,18 @@ export default function CheckItemScreen({ route, navigation }) {
                             style={styles.searchInput}
                         />
 
-                        <ScrollView>
-
+                        <ScrollView showsVerticalScrollIndicator={false}>
                             {filteredDefects.map((d) => (
                                 <TouchableOpacity
                                     key={d.Id}
                                     style={styles.defectItem}
                                     onPress={() => handleAddDefect(d)}
                                 >
-
                                     <Text style={styles.defectCode}>{d.MaLoi}</Text>
                                     <Text style={styles.defectName}>{d.TenLoi}</Text>
                                     <Text style={styles.defectType}>{d.DefectType}</Text>
-
                                 </TouchableOpacity>
                             ))}
-
                         </ScrollView>
 
                         <TouchableOpacity
@@ -321,23 +309,21 @@ export default function CheckItemScreen({ route, navigation }) {
                         >
                             <Text style={{ color: "#fff" }}>Đóng</Text>
                         </TouchableOpacity>
-
-                    </View>
+                    </KeyboardAvoidingView>
                 </View>
             </Modal>
-
-        </View>
-
+        </KeyboardAvoidingView>
     );
-
 }
 
 const styles = StyleSheet.create({
 
-    container: {
+    scrollContainer: {
         flex: 1,
+    },
+
+    container: {
         padding: 20,
-        backgroundColor: "#f1f5f9"
     },
 
     title: {

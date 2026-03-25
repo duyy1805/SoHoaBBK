@@ -8,7 +8,10 @@ import {
     TouchableOpacity,
     StyleSheet,
     StatusBar,
-    RefreshControl
+    RefreshControl,
+    TextInput,
+    KeyboardAvoidingView,
+    Platform
 } from "react-native";
 import { useFocusEffect } from '@react-navigation/native';
 import { getMyPhieuKiem } from "../api/phieuKiem.api";
@@ -16,6 +19,7 @@ import { getMyPhieuKiem } from "../api/phieuKiem.api";
 export default function PhieuListScreen({ navigation }) {
     const [data, setData] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
+    const [searchText, setSearchText] = useState("");
 
     useFocusEffect(
         useCallback(() => {
@@ -23,6 +27,21 @@ export default function PhieuListScreen({ navigation }) {
         }, [])
     );
 
+    const filteredData = (data || []).filter(item => {
+        const searchLower = searchText.toLowerCase();
+        const maSP = (item.MaSanPham || "").toLowerCase();
+        const tenSP = (item.TenSanPham || "").toLowerCase();
+        const ngayGiao = item.Ngay_Giao ? new Date(item.Ngay_Giao).toLocaleDateString("vi-VN") : "";
+
+        return maSP.includes(searchLower) ||
+            tenSP.includes(searchLower) ||
+            ngayGiao.includes(searchLower);
+    });
+
+    const truncate = (text, max = 30) => {
+        if (!text) return "";
+        return text.length > max ? text.slice(0, max) + "..." : text;
+    };
     const loadData = async () => {
         try {
             const res = await getMyPhieuKiem();
@@ -101,13 +120,26 @@ export default function PhieuListScreen({ navigation }) {
 
                 <View style={styles.infoRow}>
                     <Text style={styles.label}>Quy cách</Text>
-                    <Text style={styles.value}>{item.TenSanPham}</Text>
+                    <Text
+                        style={styles.value}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                    >
+                        {truncate(item.TenSanPham)}
+                    </Text>
                 </View>
-
+                {item.Ngay_Giao && (
+                    <View style={styles.infoRow}>
+                        <Text style={styles.label}>Ngày giao</Text>
+                        <Text style={styles.value}>
+                            {new Date(item.Ngay_Giao).toLocaleDateString("vi-VN")}
+                        </Text>
+                    </View>
+                )}
                 <View style={styles.infoRow}>
-                    <Text style={styles.label}>SL / SL kiểm</Text>
+                    <Text style={styles.label}>Số lượng</Text>
                     <Text style={styles.value}>
-                        {item.SoLuong} / {item.SoLuongKiem}
+                        {item.SoLuong}
                     </Text>
                 </View>
             </TouchableOpacity>
@@ -121,11 +153,15 @@ export default function PhieuListScreen({ navigation }) {
     );
 
     return (
-        <View style={styles.container}>
+        <KeyboardAvoidingView
+            style={styles.container}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        >
             <StatusBar barStyle="dark-content" />
 
             <FlatList
-                data={data}
+                data={filteredData}
                 keyExtractor={(item) => item.Id.toString()}
                 renderItem={renderItem}
                 ListEmptyComponent={renderEmpty}
@@ -134,7 +170,17 @@ export default function PhieuListScreen({ navigation }) {
                 }
                 contentContainerStyle={{ padding: 16 }}
             />
-        </View>
+
+            <View style={styles.searchContainer}>
+                <TextInput
+                    style={styles.searchInput}
+                    placeholder="Tìm theo Mã SP, Quy cách, Ngày giao (dd/mm/yyyy)..."
+                    value={searchText}
+                    onChangeText={setSearchText}
+                    clearButtonMode="while-editing"
+                />
+            </View>
+        </KeyboardAvoidingView>
     );
 }
 
@@ -142,6 +188,24 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: "#f1f5f9"
+    },
+    searchContainer: {
+        padding: 12,
+        backgroundColor: "#ffffff",
+        borderTopWidth: 1,
+        borderTopColor: "#e2e8f0",
+        paddingBottom: 24
+    },
+    searchInput: {
+        backgroundColor: "#f1f5f9",
+        borderRadius: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        marginHorizontal: 12,
+        fontSize: 15,
+        color: "#1e293b",
+        borderWidth: 1,
+        borderColor: "#cbd5e1",
     },
     card: {
         backgroundColor: "#ffffff",

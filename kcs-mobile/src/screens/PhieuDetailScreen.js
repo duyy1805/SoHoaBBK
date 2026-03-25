@@ -23,11 +23,13 @@ import {
 } from "../api/phieuKiem.api";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import SectionConfigModal from "../components/SectionConfigModal";
 
 export default function PhieuDetailScreen({ route, navigation }) {
 
     const { id } = route.params;
 
+    const [phieu, setPhieu] = useState(null);
     const [lot, setLot] = useState("");
     const [lotConfirmed, setLotConfirmed] = useState(false);
     const [sections, setSections] = useState([]);
@@ -36,6 +38,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
 
     const [loadingAQL, setLoadingAQL] = useState(null);
     const [loadingAction, setLoadingAction] = useState(false);
+    const [isConfigModalVisible, setIsConfigModalVisible] = useState(false);
 
     const [trangThai, setTrangThai] = useState(null);
 
@@ -57,6 +60,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
     const loadData = async () => {
         const res = await getPhieuKiemDetail(id);
 
+        setPhieu(res.data.phieu);
         setSections(res.data.sections);
         setCheckItems(res.data.checkItems);
         setTrangThai(res.data.phieu?.TrangThai);
@@ -70,6 +74,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
     const isKCS = hasPermission("THUC_HIEN_KIEM");
     const isPX = hasPermission("XAC_NHAN_PX");
     const isKN = hasPermission("XAC_NHAN_KIEM_NGHIEM");
+    const canConfig = hasPermission("THUC_HIEN_KIEM");
     const isAllConfirmed =
         sections.length > 0 &&
         sections.every(s => s.KetLuan);
@@ -212,6 +217,17 @@ export default function PhieuDetailScreen({ route, navigation }) {
             )}
 
             <ScrollView style={styles.container}>
+
+                {trangThai === "TAO_MOI" && canConfig && (
+                    <TouchableOpacity
+                        style={[styles.actionButton, { backgroundColor: "#2563eb", marginBottom: 20 }]}
+                        onPress={() => setIsConfigModalVisible(true)}
+                    >
+                        <Text style={styles.actionText}>
+                            Thiết lập nhóm kiểm
+                        </Text>
+                    </TouchableOpacity>
+                )}
 
                 <Text style={styles.sectionLot}>Số lot</Text>
 
@@ -444,6 +460,15 @@ export default function PhieuDetailScreen({ route, navigation }) {
                 </View>
 
             )}
+
+            <SectionConfigModal
+                visible={isConfigModalVisible}
+                onClose={() => setIsConfigModalVisible(false)}
+                phieuId={id}
+                sanPhamId={phieu?.SanPhamId}
+                initialLotSize={phieu?.SoLuong}
+                onSuccess={loadData}
+            />
 
         </View>
 

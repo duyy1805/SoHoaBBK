@@ -249,7 +249,8 @@ router.post(
             nguoiKiemId,
             sourceId,
             sourceId_LCD, // Thêm field cho lịch đóng cont (GUID)
-            soLuong
+            soLuong,
+            Ngay_Giao
         } = req.body;
 
         // Bắt buộc phải có 1 trong 2 loại source
@@ -258,7 +259,7 @@ router.post(
                 message: 'Thiếu thông tin bắt buộc'
             });
         }
-
+        console.log(req.body)
         try {
             const pool = await poolPromise;
 
@@ -273,6 +274,7 @@ router.post(
                 // Truyền null nếu không có giá trị để Stored Procedure xử lý linh hoạt
                 .input('SourceId', sql.Int, sourceId || null)
                 .input('SourceId_LCD', sql.UniqueIdentifier, sourceId_LCD || null)
+                .input('Ngay_Giao', sql.Date, Ngay_Giao || null)
                 .execute('sp_PhieuKiem_Create');
 
             res.json({

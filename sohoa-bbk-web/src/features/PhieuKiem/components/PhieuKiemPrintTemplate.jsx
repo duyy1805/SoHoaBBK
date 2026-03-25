@@ -308,7 +308,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                                     {toRoman(sIndex + 1)}. {section.TenNhom.toUpperCase()}
                                                 </Typography>
                                                 <Box style={{ display: 'flex', gap: '40px', paddingRight: '20px' }}>
-                                                    <span>Tổng số: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: '1px dotted #000', textAlign: 'center' }}><b>{section.LotSize}</b></span> Pcs</span>
+                                                    <span>Tổng số: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: '1px dotted #000', textAlign: 'center' }}><b>{section.TongSo}</b></span> Pcs</span>
                                                     <span>Số lượng kiểm: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: '1px dotted #000', textAlign: 'center' }}><b>{section.SoLuongKiem}</b></span> Pcs</span>
                                                 </Box>
                                             </Box>
@@ -384,7 +384,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
 
                     <Box style={{ ...styles.signatureBlock, marginTop: '20px' }}>
                         <Box style={styles.signatureCol}>
-                            <Typography style={{ ...styles.text, minHeight: '40px' }}><b>Phòng Kiểm<br />nghiệm</b></Typography>
+                            <Typography style={{ ...styles.text, minHeight: '40px' }}><b>Phòng Kiểm nghiệm</b></Typography>
                             <Box height="70px"></Box>
                         </Box>
                         <Box style={styles.signatureCol}>

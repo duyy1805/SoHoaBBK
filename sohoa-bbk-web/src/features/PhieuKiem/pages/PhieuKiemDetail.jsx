@@ -127,17 +127,11 @@ export default function PhieuKiemDetail() {
                 const levelsRes = await getInspectionLevels();
                 setLevels(levelsRes.data);
             }
-
         } catch (err) {
-
             console.error(err);
-
         } finally {
-
             setLoading(false);
-
         }
-
     };
 
 

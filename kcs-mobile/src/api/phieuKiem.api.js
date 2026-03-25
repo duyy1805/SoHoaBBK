@@ -37,6 +37,10 @@ export const saveCheckItem = (data) => {
 export const calculateAQL = (sectionId) => {
   return axiosClient.post("phieu-kiem/calculate-aql", { sectionId });
 };
+
+export const createAllSection = (data) => {
+  return axiosClient.post("/phieu-kiem/section", data);
+};
 /* ================================
    Complete phiếu
 ================================ */

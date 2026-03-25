@@ -205,7 +205,10 @@ export default function PhieuKiemCreate() {
     const handleRemoveSelected = (rowId) => {
         setSelectedLichList(prev => prev.filter(item => getRowId(item) !== rowId));
     };
-
+    const formatDateToISO = (dateStr) => {
+        const [day, month, year] = dateStr.split("/");
+        return `${year}-${month}-${day}`;
+    };
     const handleSubmit = async () => {
         try {
             if (!form.loaiKiemId || !form.nguoiKiemId) {
@@ -272,14 +275,15 @@ export default function PhieuKiemCreate() {
 
                 if (row.isDongCont) {
                     payload.sourceId_LCD = row.ClosingScheduleDetailGuid;
+                    payload.Ngay_Giao = formatDateToISO(row.RequiredDateString);
                 } else {
                     payload.sourceId = getRowId(row);
                 }
+                console.log(payload.Ngay_Giao)
 
                 return createPhieuKiem(payload);
             });
-
-            await Promise.all(promises);
+            // await Promise.all(promises);
 
             showToast(`Đã tạo thành công ${selectedLichList.length} phiếu kiểm!`, "success");
             navigate("/phieu-kiem");
