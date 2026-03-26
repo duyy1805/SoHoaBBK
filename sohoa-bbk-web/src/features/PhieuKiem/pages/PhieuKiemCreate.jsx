@@ -61,11 +61,31 @@ export default function PhieuKiemCreate() {
     const [lichList, setLichList] = useState([]);
 
     const [searchTerm, setSearchTerm] = useState("");
+    const [displaySearchTerm, setDisplaySearchTerm] = useState("");
 
     const [chungLoaiFilter, setChungLoaiFilter] = useState("");
+    const [displayChungLoaiFilter, setDisplayChungLoaiFilter] = useState("");
+
     const [showChungLoaiFilter, setShowChungLoaiFilter] = useState(false);
 
     const [openModal, setOpenModal] = useState(false);
+
+    // Debounce search term
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setSearchTerm(displaySearchTerm);
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [displaySearchTerm]);
+
+    // Debounce chung loai filter
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setChungLoaiFilter(displayChungLoaiFilter);
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [displayChungLoaiFilter]);
+
     const [loadingModal, setLoadingModal] = useState(false);
     const [loading, setLoading] = useState(false);
 
@@ -78,7 +98,22 @@ export default function PhieuKiemCreate() {
     };
 
     const [week, setWeek] = useState(getCurrentWeek());
+    const [displayWeek, setDisplayWeek] = useState(getCurrentWeek());
     const [year] = useState(new Date().getFullYear());
+
+    // Debounce week change
+    useEffect(() => {
+        if (displayWeek === week) return;
+        
+        const timer = setTimeout(() => {
+            const val = parseInt(displayWeek) || 0;
+            if (val > 0) {
+                setWeek(val);
+                fetchLichList(selectedLoai, val);
+            }
+        }, 800);
+        return () => clearTimeout(timer);
+    }, [displayWeek, selectedLoai]);
 
     useEffect(() => {
         loadLookup();
@@ -185,7 +220,9 @@ export default function PhieuKiemCreate() {
 
             setSelectedLichList([]);
             setSearchTerm("");
+            setDisplaySearchTerm("");
             setChungLoaiFilter("");
+            setDisplayChungLoaiFilter("");
             setShowChungLoaiFilter(false);
             setForm(prev => ({ ...prev, loaiKiemId: value }));
 
@@ -460,8 +497,8 @@ export default function PhieuKiemCreate() {
                                         fullWidth
                                         placeholder="Tìm kiếm theo mã, tên, số cont, invoice..."
                                         variant="outlined"
-                                        value={searchTerm}
-                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        value={displaySearchTerm}
+                                        onChange={(e) => setDisplaySearchTerm(e.target.value)}
                                         InputProps={{
                                             startAdornment: (
                                                 <InputAdornment position="start">
@@ -475,14 +512,8 @@ export default function PhieuKiemCreate() {
                                             label="Tuần"
                                             type="number"
                                             sx={{ width: 100 }}
-                                            value={week}
-                                            onChange={(e) => {
-                                                const val = parseInt(e.target.value) || 0;
-                                                setWeek(val);
-                                                if (val > 0) {
-                                                    fetchLichList(selectedLoai, val);
-                                                }
-                                            }}
+                                            value={displayWeek}
+                                            onChange={(e) => setDisplayWeek(e.target.value)}
                                         />
                                     )}
                                 </Stack>
@@ -527,8 +558,8 @@ export default function PhieuKiemCreate() {
                                                             <TextField
                                                                 size="small"
                                                                 placeholder="Lọc chủng loại..."
-                                                                value={chungLoaiFilter}
-                                                                onChange={(e) => setChungLoaiFilter(e.target.value)}
+                                                                value={displayChungLoaiFilter}
+                                                                onChange={(e) => setDisplayChungLoaiFilter(e.target.value)}
                                                                 variant="standard"
                                                                 fullWidth
                                                                 sx={{ mt: 1 }}

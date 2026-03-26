@@ -113,11 +113,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                     <tbody>
                         <tr>
                             <td rowSpan={2} style={{ ...styles.headerTd, width: '20%' }}>
-                                <div style={{ fontWeight: 'bold', fontSize: '26pt', lineHeight: 1, color: '#00a0e3', fontStyle: 'italic', position: 'relative' }}>
-                                    <span style={{ color: '#e3000f', position: 'absolute', top: '-10px', left: '35%', fontSize: '18pt' }}>★</span>
-                                    Z<span style={{ color: '#e3000f' }}>76</span>
-                                </div>
-                                <div style={{ fontSize: '9pt', fontStyle: 'italic', color: '#00a0e3', fontWeight: 'bold', marginTop: '4px' }}>We try harder</div>
+                                <img src="/logo.png" alt="Logo Z76" style={{ height: '70px', display: 'block', margin: '0 auto' }} />
                             </td>
                             <td style={{ ...styles.headerTd, width: '55%', borderBottom: '1px solid #000' }}>
                                 <div style={{ fontSize: '14pt' }}>CÔNG TY TNHH MTV 76</div>

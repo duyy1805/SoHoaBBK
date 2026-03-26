@@ -140,11 +140,7 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                     <tbody>
                                         <tr>
                                             <td style={{ ...styles.headerTd, width: '20%' }}>
-                                                <div style={{ fontWeight: 'bold', fontSize: '26pt', lineHeight: 1, color: '#00a0e3', fontStyle: 'italic', position: 'relative' }}>
-                                                    <span style={{ color: '#e3000f', position: 'absolute', top: '-10px', left: '35%', fontSize: '18pt' }}>★</span>
-                                                    Z<span style={{ color: '#e3000f' }}>76</span>
-                                                </div>
-                                                <div style={{ fontSize: '9pt', fontStyle: 'italic', color: '#00a0e3', fontWeight: 'bold', marginTop: '4px' }}>We try harder</div>
+                                                <img src="/logo.png" alt="Logo Z76" style={{ height: '65px', display: 'block', margin: '0 auto' }} />
                                             </td>
                                             <td style={{ ...styles.headerTd, width: '55%' }}>
                                                 <div style={{ fontSize: '14pt' }}>CÔNG TY TNHH MTV 76</div>
@@ -289,13 +285,13 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                                 <React.Fragment key={section.Id}>
                                                     {/* Tên Section */}
                                                     <tr className="avoid-break" style={{ backgroundColor: '#f0f0f0' }}>
-                                                        <td colSpan={10} style={{ ...styles.td, padding: '8px' }}>
+                                                        <td colSpan={6} style={{ ...styles.td, padding: '8px' }}>
                                                             <Box style={styles.flexBetween}>
                                                                 <div style={styles.boldText}>
                                                                     {toRoman(sIndex + 1)}. {section.TenNhom.toUpperCase()}
                                                                 </div>
                                                                 <Box style={{ display: 'flex', gap: '40px', paddingRight: '20px' }}>
-                                                                    <span>Tổng số: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: '1px dotted #000', textAlign: 'center' }}><b>{section.LotSize}</b></span> Pcs</span>
+                                                                    <span>Tổng số: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: '1px dotted #000', textAlign: 'center' }}><b>{section.TongSo}</b></span> Pcs</span>
                                                                     <span>Số lượng kiểm: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: '1px dotted #000', textAlign: 'center' }}><b>{section.SoLuongKiem}</b></span> Pcs</span>
                                                                 </Box>
                                                             </Box>

@@ -64,7 +64,7 @@ router.get('/kcs', authenticateToken, async (req, res) => {
 router.post(
   "/defect",
   authenticateToken,
-  // authorize("ADMIN"),
+  authorize("QUAN_TRI_DM"),
   async (req, res) => {
     const { TenLoi, DefectType } = req.body;
 
@@ -88,7 +88,7 @@ router.post(
 router.put(
   "/defect/:id",
   authenticateToken,
-  // authorize("ADMIN"),
+  authorize("QUAN_TRI_DM"),
   async (req, res) => {
     const { id } = req.params;
     const { TenLoi, DefectType, TrangThai } = req.body;
@@ -115,7 +115,7 @@ router.put(
 router.delete(
   "/defect/:id",
   authenticateToken,
-  // authorize("ADMIN"),
+  authorize("QUAN_TRI_DM"),
   async (req, res) => {
     const { id } = req.params;
 
@@ -157,7 +157,7 @@ router.get(
 router.post(
   "/nhom-kiem",
   authenticateToken,
-  // authorize("ADMIN"),
+  authorize("QUAN_TRI_DM"),
   async (req, res) => {
     const { TenNhom, MoTa, ThuTu } = req.body;
 
@@ -182,7 +182,7 @@ router.post(
 router.put(
   "/nhom-kiem/:id",
   authenticateToken,
-  // authorize("ADMIN"),
+  authorize("QUAN_TRI_DM"),
   async (req, res) => {
     const { id } = req.params;
     const { TenNhom, MoTa, ThuTu, TrangThai } = req.body;
@@ -203,6 +203,29 @@ router.put(
     } catch (err) {
       console.error("Update nhom kiem error:", err);
       res.status(500).json({ message: "Cập nhật thất bại" });
+    }
+  }
+);
+
+router.delete(
+  "/nhom-kiem/:id",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  async (req, res) => {
+    const { id } = req.params;
+
+    try {
+      const pool = await poolPromise;
+
+      await pool.request()
+        .input("Id", sql.Int, id)
+        .execute("sp_DM_DeleteNhomKiem");
+
+      res.json({ message: "Đã xoá nhóm kiểm" });
+
+    } catch (err) {
+      console.error("Delete nhom kiem error:", err);
+      res.status(500).json({ message: "Xoá thất bại" });
     }
   }
 );
@@ -232,7 +255,7 @@ router.get(
 router.post(
   "/check-item",
   authenticateToken,
-  // authorize("ADMIN"),
+  authorize("QUAN_TRI_DM"),
   async (req, res) => {
     const { NhomKiemId, TenMucKiem, ThamChieu, PhuongPhapKiem, TieuChuan, ThuTu } = req.body;
 
@@ -260,7 +283,7 @@ router.post(
 router.put(
   "/check-item/:id",
   authenticateToken,
-  // authorize("ADMIN"),
+  authorize("QUAN_TRI_DM"),
   async (req, res) => {
     const { id } = req.params;
     const { TenMucKiem, ThamChieu, PhuongPhapKiem, TieuChuan, ThuTu, TrangThai } = req.body;
@@ -321,6 +344,7 @@ router.get(
 router.post(
   "/san-pham",
   authenticateToken,
+  authorize("QUAN_TRI_DM"),
   async (req, res) => {
 
     const { MaSanPham, TenSanPham, MoTa } = req.body;
@@ -357,6 +381,7 @@ router.post(
 router.put(
   "/san-pham/:id",
   authenticateToken,
+  authorize("QUAN_TRI_DM"),
   async (req, res) => {
 
     const { id } = req.params;
@@ -395,6 +420,7 @@ router.put(
 router.delete(
   "/san-pham/:id",
   authenticateToken,
+  authorize("QUAN_TRI_DM"),
   async (req, res) => {
 
     const { id } = req.params;
@@ -457,6 +483,7 @@ router.get(
 router.post(
   "/san-pham-nhom-kiem",
   authenticateToken,
+  authorize("QUAN_TRI_DM"),
   async (req, res) => {
 
     const { SanPhamId, NhomKiemId, BatBuoc, ThuTu } = req.body;
@@ -494,6 +521,7 @@ router.post(
 router.put(
   "/san-pham-nhom-kiem/:id",
   authenticateToken,
+  authorize("QUAN_TRI_DM"),
   async (req, res) => {
 
     const { id } = req.params;
@@ -525,6 +553,7 @@ router.put(
 router.delete(
   "/san-pham-nhom-kiem/:id",
   authenticateToken,
+  authorize("QUAN_TRI_DM"),
   async (req, res) => {
 
     const { id } = req.params;
@@ -553,6 +582,7 @@ router.delete(
 router.get(
   "/de-nghi-xu-ly",
   authenticateToken,
+  // authorize("QUAN_TRI_DM"),
   async (req, res) => {
 
     try {
@@ -607,6 +637,7 @@ router.get(
 router.post(
   "/inspection-level",
   authenticateToken,
+  authorize("QUAN_TRI_DM"),
   async (req, res) => {
 
     const {
@@ -662,6 +693,7 @@ router.post(
 router.put(
   "/inspection-level/:id",
   authenticateToken,
+  authorize("QUAN_TRI_DM"),
   async (req, res) => {
 
     const { id } = req.params;
@@ -717,6 +749,7 @@ router.put(
 router.delete(
   "/inspection-level/:id",
   authenticateToken,
+  authorize("QUAN_TRI_DM"),
   async (req, res) => {
 
     const { id } = req.params;
