@@ -32,7 +32,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
-
+import ConfirmDialog from "../../../components/common/ConfirmDialog"
 import {
     getSanPhamList,
     createSanPham,
@@ -64,6 +64,14 @@ export default function SanPhamManager() {
     const [pageSize] = useState(20);
     const [hasMore, setHasMore] = useState(true);
 
+    const [confirmDialog, setConfirmDialog] = useState({
+        open: false,
+        title: '',
+        message: '',
+        type: 'info',
+        onConfirm: null
+    });
+
     const loadData = async (reset = false, keyword = searchQuery) => {
         const currentPage = reset ? 0 : page;
 
@@ -81,9 +89,9 @@ export default function SanPhamManager() {
         setPage(currentPage + 1);
     };
 
-    useEffect(() => {
-        loadData(true);
-    }, []);
+    // useEffect(() => {
+    //     loadData(true);
+    // }, []);
     useEffect(() => {
         const timer = setTimeout(() => {
             loadData(true, searchQuery);
@@ -93,17 +101,17 @@ export default function SanPhamManager() {
     }, [searchQuery]);
 
     // Logic tìm kiếm đa trường: Tìm theo Mã, Tên và Mô tả
-    const filteredData = useMemo(() => {
-        if (!searchQuery) return data;
-        const lowerCaseQuery = searchQuery.toLowerCase();
+    // const filteredData = useMemo(() => {
+    //     if (!searchQuery) return data;
+    //     const lowerCaseQuery = searchQuery.toLowerCase();
 
-        return data.filter(
-            (item) =>
-                item.MaSanPham?.toLowerCase().includes(lowerCaseQuery) ||
-                item.TenSanPham?.toLowerCase().includes(lowerCaseQuery) ||
-                item.MoTa?.toLowerCase().includes(lowerCaseQuery)
-        );
-    }, [data, searchQuery]);
+    //     return data.filter(
+    //         (item) =>
+    //             item.MaSanPham?.toLowerCase().includes(lowerCaseQuery) ||
+    //             item.TenSanPham?.toLowerCase().includes(lowerCaseQuery) ||
+    //             item.MoTa?.toLowerCase().includes(lowerCaseQuery)
+    //     );
+    // }, [data, searchQuery]);
     const loadSanPhamNhom = async (sanPhamId) => {
         const res = await getSanPhamNhomKiem(sanPhamId);
         setNhomData(res.data || []);
@@ -141,9 +149,16 @@ export default function SanPhamManager() {
     };
 
     const handleDelete = async (id) => {
-        if (!window.confirm("Bạn có chắc chắn muốn xóa sản phẩm này?")) return;
-        await deleteSanPham(id);
-        loadData();
+        setConfirmDialog({
+            open: true,
+            title: 'Xác nhận xóa',
+            message: 'Bạn có chắc chắn muốn xóa sản phẩm này?',
+            type: 'error',
+            onConfirm: async () => {
+                await deleteSanPham(id);
+                loadData();
+            }
+        });
     };
 
     const handleAddNhom = async () => {
@@ -444,6 +459,14 @@ export default function SanPhamManager() {
                     </Button>
                 </DialogActions>
             </Dialog>
+            <ConfirmDialog
+                open={confirmDialog.open}
+                onClose={() => setConfirmDialog(prev => ({ ...prev, open: false }))}
+                onConfirm={confirmDialog.onConfirm}
+                title={confirmDialog.title}
+                message={confirmDialog.message}
+                type={confirmDialog.type}
+            />
         </Box>
     );
 }

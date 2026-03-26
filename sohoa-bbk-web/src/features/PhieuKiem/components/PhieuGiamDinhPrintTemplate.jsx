@@ -362,6 +362,7 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                         <Box style={styles.signatureCol}>
                                             <div style={{ ...styles.text, minHeight: '40px' }}><b>Phòng QLCL</b></div>
                                             <Box height="70px"></Box>
+                                            <div style={styles.text}>{phieu.KiemNghiem}</div>
                                         </Box>
                                         <Box style={styles.signatureCol}>
                                             <div style={{ ...styles.text, minHeight: '40px' }}><b>Nhân viên KT</b></div>

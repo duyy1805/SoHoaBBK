@@ -15,7 +15,8 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import ChecklistRtlIcon from "@mui/icons-material/ChecklistRtl";
 import TouchAppIcon from "@mui/icons-material/TouchApp";
-
+import { useToast } from "../../../components/common/ToastContext"
+import ConfirmDialog from "../../../components/common/ConfirmDialog"
 import {
     getNhomKiemList,
     getCheckItemByNhom,
@@ -33,7 +34,15 @@ export default function CheckItemManager() {
     const [form, setForm] = useState({});
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+    const { showToast } = useToast();
 
+    const [confirmDialog, setConfirmDialog] = useState({
+        open: false,
+        title: '',
+        message: '',
+        type: 'info',
+        onConfirm: null
+    });
     // ================= LOAD NHOM =================
     const loadNhom = useCallback(async () => {
         try {
@@ -91,6 +100,7 @@ export default function CheckItemManager() {
 
             setOpen(false);
             await loadData();
+            showToast("Lưu thành công", "success");
         } catch (err) {
             setError(err.response?.data?.message || "Có lỗi khi lưu");
         }
@@ -98,14 +108,21 @@ export default function CheckItemManager() {
 
     // ================= DELETE =================
     const handleDelete = async (id) => {
-        if (!window.confirm("Bạn có chắc chắn muốn xóa mục kiểm này?")) return;
-
-        try {
-            await deleteCheckItem(id);
-            await loadData();
-        } catch (err) {
-            setError(err.response?.data?.message || "Không thể xoá");
-        }
+        setConfirmDialog({
+            open: true,
+            title: "Xác nhận xóa",
+            message: "Bạn có chắc chắn muốn xóa mục kiểm này?",
+            type: "error",
+            onConfirm: async () => {
+                try {
+                    await deleteCheckItem(id);
+                    await loadData();
+                    showToast("Xóa thành công", "success");
+                } catch (err) {
+                    setError(err.response?.data?.message || "Không thể xoá");
+                }
+            }
+        });
     };
 
     // Lấy object nhóm hiện tại cho Autocomplete
@@ -140,20 +157,29 @@ export default function CheckItemManager() {
                         getOptionLabel={(option) => option.TenNhom || ""}
                         isOptionEqualToValue={(opt, val) => opt.Id === val.Id}
                         sx={{ bgcolor: "background.paper" }}
-                        renderOption={(props, option) => (
-                            <Box component="li" {...props} sx={{ borderBottom: '1px solid #eee', py: 1.5 }}>
-                                <Box>
-                                    <Typography variant="body1" fontWeight={500}>
-                                        {option.TenNhom}
-                                    </Typography>
-                                    {option.MoTa && (
-                                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                                            {option.MoTa}
+                        renderOption={(props, option) => {
+                            const { key, ...rest } = props;
+
+                            return (
+                                <Box
+                                    component="li"
+                                    key={key}
+                                    {...rest}
+                                    sx={{ borderBottom: '1px solid #eee', py: 1.5 }}
+                                >
+                                    <Box>
+                                        <Typography variant="body1" fontWeight={500}>
+                                            {option.TenNhom}
                                         </Typography>
-                                    )}
+                                        {option.MoTa && (
+                                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                                                {option.MoTa}
+                                            </Typography>
+                                        )}
+                                    </Box>
                                 </Box>
-                            </Box>
-                        )}
+                            );
+                        }}
                         renderInput={(params) => (
                             <TextField
                                 {...params}
@@ -343,7 +369,14 @@ export default function CheckItemManager() {
                     </Button>
                 </DialogActions>
             </Dialog>
-
+            <ConfirmDialog
+                open={confirmDialog.open}
+                onClose={() => setConfirmDialog(prev => ({ ...prev, open: false }))}
+                onConfirm={confirmDialog.onConfirm}
+                title={confirmDialog.title}
+                message={confirmDialog.message}
+                type={confirmDialog.type}
+            />
         </Box>
     );
 }
