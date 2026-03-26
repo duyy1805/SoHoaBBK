@@ -61,6 +61,7 @@ export default function PhieuKiemCreate() {
     const [lichList, setLichList] = useState([]);
 
     const [searchTerm, setSearchTerm] = useState("");
+
     const [chungLoaiFilter, setChungLoaiFilter] = useState("");
     const [showChungLoaiFilter, setShowChungLoaiFilter] = useState(false);
 
@@ -68,11 +69,23 @@ export default function PhieuKiemCreate() {
     const [loadingModal, setLoadingModal] = useState(false);
     const [loading, setLoading] = useState(false);
 
+    const getCurrentWeek = () => {
+        const d = new Date();
+        d.setHours(0, 0, 0, 0);
+        d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+        const yearStart = new Date(d.getFullYear(), 0, 1);
+        return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    };
+
+    const [week, setWeek] = useState(getCurrentWeek());
+    const [year] = useState(new Date().getFullYear());
+
     useEffect(() => {
         loadLookup();
     }, []);
 
     const loadLookup = async () => {
+
         try {
             // Không cần tải trước toàn bộ SanPhamList nữa để tối ưu hiệu năng
             const [lk, kcs] = await Promise.all([
@@ -86,20 +99,17 @@ export default function PhieuKiemCreate() {
         }
     };
 
-    const fetchLichList = async (loai) => {
+    const fetchLichList = async (loai, w = week, y = year) => {
         setOpenModal(true);
         setLoadingModal(true);
 
         try {
             if (loai?.MaLoai === "KIEM_DONG_CONT") {
-                const week = 12; // Có thể đưa vào state sau
-                const year = 2026;
-
                 const [lichRes, checkedRes] = await Promise.all([
-                    getLichDongCont({ week, year }),
+                    getLichDongCont({ week: w, year: y }),
                     getSourceChecked({
-                        week,
-                        year,
+                        week: w,
+                        year: y,
                         loaiKiemId: loai.Id
                     })
                 ]);
@@ -444,22 +454,38 @@ export default function PhieuKiemCreate() {
                             </Box>
                         ) : (
                             <Box sx={{ p: 2 }}>
-                                {/* THANH TÌM KIẾM TỔNG */}
-                                <TextField
-                                    fullWidth
-                                    placeholder="Tìm kiếm theo mã, tên, số cont, invoice..."
-                                    variant="outlined"
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    sx={{ mb: 2 }}
-                                    InputProps={{
-                                        startAdornment: (
-                                            <InputAdornment position="start">
-                                                <SearchIcon color="action" />
-                                            </InputAdornment>
-                                        )
-                                    }}
-                                />
+                                {/* THANH TÌM KIẾM TỔNG & LỌC TUẦN */}
+                                <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
+                                    <TextField
+                                        fullWidth
+                                        placeholder="Tìm kiếm theo mã, tên, số cont, invoice..."
+                                        variant="outlined"
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        InputProps={{
+                                            startAdornment: (
+                                                <InputAdornment position="start">
+                                                    <SearchIcon color="action" />
+                                                </InputAdornment>
+                                            )
+                                        }}
+                                    />
+                                    {selectedLoai?.MaLoai === "KIEM_DONG_CONT" && (
+                                        <TextField
+                                            label="Tuần"
+                                            type="number"
+                                            sx={{ width: 100 }}
+                                            value={week}
+                                            onChange={(e) => {
+                                                const val = parseInt(e.target.value) || 0;
+                                                setWeek(val);
+                                                if (val > 0) {
+                                                    fetchLichList(selectedLoai, val);
+                                                }
+                                            }}
+                                        />
+                                    )}
+                                </Stack>
 
                                 <Table stickyHeader size="small">
                                     <TableHead>

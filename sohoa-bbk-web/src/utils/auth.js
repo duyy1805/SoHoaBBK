@@ -22,6 +22,8 @@ export const setToken = (token, rememberMe = true) => {
 export const removeToken = () => {
     localStorage.removeItem('token');
     sessionStorage.removeItem('token');
+    localStorage.removeItem('user');
+    sessionStorage.removeItem('user');
 };
 
 /* ================================

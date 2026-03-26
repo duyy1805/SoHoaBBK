@@ -27,7 +27,14 @@ axiosClient.interceptors.request.use(
 axiosClient.interceptors.response.use(
     (response) => response,
     async (error) => {
-        if (error.response && error.response.status === 401) {
+        const { response, config } = error;
+        
+        if (response && response.status === 401) {
+            // Không auto logout nếu là request login
+            if (config.url && config.url.includes("/auth/login")) {
+                return Promise.reject(error);
+            }
+
             // Auto logout khi token hết hạn
             await logout();
             Toast.show({
@@ -35,6 +42,7 @@ axiosClient.interceptors.response.use(
                 text1: "Hết hạn phiên đăng nhập",
                 text2: "Vui lòng đăng nhập lại",
             });
+            
             if (navigationRef.isReady()) {
                 navigationRef.reset({
                     index: 0,
