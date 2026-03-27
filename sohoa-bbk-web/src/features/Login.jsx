@@ -134,7 +134,7 @@ export default function Login() {
                     sx={{
                         p: { xs: 3, sm: 5 },
                         width: '100%',
-                        maxWidth: 420,
+                        maxWidth: 450,
                         mx: 2,
                         borderRadius: 4,
                         display: 'flex',
@@ -180,10 +180,11 @@ export default function Login() {
                             backgroundClip: 'text',
                             WebkitBackgroundClip: 'text',
                             WebkitTextFillColor: 'transparent',
-                            mb: 0.5
+                            mb: 0.5,
+                            textAlign: 'center'
                         }}
                     >
-                        SoHoa BBK
+                        Số hoá biên bản kiểm
                     </Typography>
 
                     <Typography

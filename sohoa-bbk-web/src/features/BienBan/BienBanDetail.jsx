@@ -477,7 +477,7 @@ export default function BienBanDetail() {
 
                             {/* Group: Chi phí & Hành động khắc phục (2 Cột) */}
                             <Grid container spacing={3}>
-                                <Grid item xs={12} md={6}>
+                                <Grid size={{ xs: 12, md: 6 }}>
                                     <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2, height: '100%' }}>
                                         <CardContent>
                                             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
@@ -510,7 +510,7 @@ export default function BienBanDetail() {
                                     </Card>
                                 </Grid>
 
-                                <Grid item xs={12} md={6}>
+                                <Grid size={{ xs: 12, md: 6 }}>
                                     <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2, height: '100%' }}>
                                         <CardContent>
                                             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
@@ -551,7 +551,7 @@ export default function BienBanDetail() {
                                         </Typography>
                                         <Grid container spacing={2}>
                                             {xacNhan.map((x, i) => (
-                                                <Grid item xs={12} sm={6} key={i}>
+                                                <Grid size={{ xs: 12, sm: 6 }} key={i}>
                                                     <Paper variant="outlined" sx={{ p: 1.5, borderLeft: '4px solid #4caf50' }}>
                                                         <Typography variant="body2" fontWeight="bold">{x.FullName}</Typography>
                                                         <Typography variant="caption" color="text.secondary">{new Date(x.ThoiGian).toLocaleString("vi-VN")}</Typography>

@@ -10,7 +10,7 @@ import {
     RefreshControl,
     Alert
 } from "react-native";
-
+import Toast from "react-native-toast-message";
 import { useFocusEffect } from "@react-navigation/native";
 import { getMyBienBan } from "../api/bienBan.api";
 
@@ -34,7 +34,11 @@ export default function BienBanListScreen({ navigation }) {
 
         } catch (err) {
             console.log("Load BienBan error:", err);
-            Alert.alert("Lỗi", "Không thể tải danh sách biên bản");
+            Toast.show({
+                type: "error",
+                text1: "Lỗi",
+                text2: err.response?.data?.message || "Không thể tải danh sách biên bản"
+            });
         }
     };
 
