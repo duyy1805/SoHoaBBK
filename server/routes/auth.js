@@ -3,9 +3,13 @@ const router = express.Router();
 const argon2 = require('argon2');
 const jwt = require('jsonwebtoken');
 const sql = require('mssql');
+const crypto = require('crypto');
 
 const { poolPromise } = require('../db');
 
+const md5 = (text) => {
+    return crypto.createHash('md5').update(text).digest('hex');
+};
 /* =========================================================
    POST /auth/register
    ========================================================= */
@@ -20,7 +24,8 @@ router.post('/register', async (req, res) => {
 
     try {
         const pool = await poolPromise;
-        const passwordHash = await argon2.hash(password);
+        // const passwordHash = await argon2.hash(password);
+        const passwordHash = await md5(password);
 
         const request = pool.request()
             .input('Username', sql.NVarChar, username)
@@ -82,8 +87,14 @@ router.post('/login', async (req, res) => {
         }
 
         /* 2️⃣ Check password */
-        const validPassword = await argon2.verify(user.PasswordHash, password);
-        if (!validPassword) {
+        // const validPassword = await argon2.verify(user.PasswordHash, password);
+        // if (!validPassword) {
+        //     return res.status(401).json({ message: 'Invalid password' });
+        // }
+
+        const passwordHash = md5(password);
+
+        if (passwordHash !== user.PasswordHash) {
             return res.status(401).json({ message: 'Invalid password' });
         }
 

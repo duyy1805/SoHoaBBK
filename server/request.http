@@ -1,0 +1,9 @@
+
+###
+POST http://localhost:5001/api/auth/login
+Content-Type: application/json
+
+{
+    "username": "admin1",
+    "password": "Abcd$12349"
+}
