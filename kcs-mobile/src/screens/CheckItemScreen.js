@@ -10,12 +10,15 @@ import {
     Modal,
     ScrollView,
     KeyboardAvoidingView,
-    Platform
+    Platform,
+    Image
 } from "react-native";
-
+import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
 import {
     saveCheckItem,
-    getDefectList
+    getDefectList,
+    uploadImages
 } from "../api/phieuKiem.api";
 
 export default function CheckItemScreen({ route, navigation }) {
@@ -32,27 +35,21 @@ export default function CheckItemScreen({ route, navigation }) {
 
     const [showModal, setShowModal] = useState(false);
     const [loading, setLoading] = useState(false);
-
+    const BASE_URL = "https://z76api.z76.vn";
     useEffect(() => {
-
         loadDefects();
-
-        /* load defect hiện có */
-
         if (item.Defects && item.Defects.length > 0) {
-
             const mapped = item.Defects.map(d => ({
                 defectId: d.DefectId,
                 MaLoi: d.MaLoi,
                 TenLoi: d.TenLoi,
                 DefectType: d.DefectType,
-                soLuong: d.SoLuong
+                soLuong: d.SoLuong,
+                savedImages: d.ImageUrls ? d.ImageUrls : [], // Ảnh cũ từ DB
+                localImages: [] // Ảnh mới chuẩn bị chụp
             }));
-
             setSelectedDefects(mapped);
-
         }
-
     }, []);
 
     useEffect(() => {
@@ -74,14 +71,100 @@ export default function CheckItemScreen({ route, navigation }) {
 
     }, [searchText, defects]);
 
+    const handlePickImage = async (index) => {
+        Alert.alert(
+            "Thêm hình ảnh",
+            "Chọn nguồn ảnh",
+            [
+                {
+                    text: "Chụp ảnh",
+                    onPress: async () => {
+                        try {
+                            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+                            if (status !== 'granted') {
+                                Alert.alert("Lỗi", "Bạn cần cấp quyền camera để chụp ảnh.");
+                                return;
+                            }
+
+                            const result = await ImagePicker.launchCameraAsync({
+                                mediaTypes: 'images',
+                                quality: 0.7,
+                            });
+
+                            if (!result.canceled) {
+                                const newUri = result.assets[0].uri;
+                                setSelectedDefects(prev => prev.map((d, i) =>
+                                    i === index
+                                        ? { ...d, localImages: [...(d.localImages || []), newUri] }
+                                        : d
+                                ));
+                            }
+                        } catch (error) {
+                            console.error("Camera Error:", error);
+                            Alert.alert("Lỗi", "Không thể mở camera.");
+                        }
+                    }
+                },
+                {
+                    text: "Chọn từ thư viện",
+                    onPress: async () => {
+                        try {
+                            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                            if (status !== 'granted') {
+                                Alert.alert("Lỗi", "Bạn cần cấp quyền truy cập thư viện để chọn ảnh.");
+                                return;
+                            }
+
+                            const result = await ImagePicker.launchImageLibraryAsync({
+                                mediaTypes: 'images',
+                                quality: 0.7,
+                            });
+
+                            if (!result.canceled) {
+                                const newUri = result.assets[0].uri;
+                                setSelectedDefects(prev => prev.map((d, i) =>
+                                    i === index
+                                        ? { ...d, localImages: [...(d.localImages || []), newUri] }
+                                        : d
+                                ));
+                            }
+                        } catch (error) {
+                            console.error("Library Error:", error);
+                            Alert.alert("Lỗi", "Không thể mở thư viện ảnh.");
+                        }
+                    }
+                },
+                {
+                    text: "Hủy",
+                    style: "cancel"
+                }
+            ]
+        );
+    };
+
+    // Hàm xoá ảnh đã chụp mới
+    const removeLocalImage = (defectIndex, imgIndex) => {
+        const updated = [...selectedDefects];
+        updated[defectIndex].localImages.splice(imgIndex, 1);
+        setSelectedDefects(updated);
+    };
+
+    // Hàm xoá ảnh cũ đã lưu trên DB
+    const removeSavedImage = (defectIndex, imgIndex) => {
+        const updated = [...selectedDefects];
+        updated[defectIndex].savedImages.splice(imgIndex, 1);
+        setSelectedDefects(updated);
+    };
+
     const loadDefects = async () => {
 
         try {
 
-            const res = await getDefectList(item.DefectType || null);
+            const res = await getDefectList(searchText || null);
             const data = res.data || [];
 
             setDefects(data);
+            console.log(data)
             setFilteredDefects(data);
 
         } catch (err) {
@@ -135,49 +218,57 @@ export default function CheckItemScreen({ route, navigation }) {
     };
 
     const handleSave = async () => {
-
-        if (!ketQua) {
-            Alert.alert("Thiếu thông tin", "Vui lòng chọn kết quả");
-            return;
-        }
-
-        if (ketQua === "KHONG_DAT") {
-
-            if (selectedDefects.length === 0) {
-                Alert.alert("Thiếu thông tin", "Chọn ít nhất 1 lỗi");
-                return;
-            }
-
-        }
+        if (!ketQua) return Alert.alert("Thiếu thông tin", "Vui lòng chọn kết quả");
+        if (ketQua === "KHONG_DAT" && selectedDefects.length === 0) return Alert.alert("Thiếu thông tin", "Chọn ít nhất 1 lỗi");
 
         try {
-
             setLoading(true);
+            let finalDefects = [...selectedDefects];
 
+            if (ketQua === "KHONG_DAT") {
+                for (let i = 0; i < finalDefects.length; i++) {
+                    const defect = finalDefects[i];
+                    let newUploadedUrls = [];
+
+                    // Nếu có ảnh MỚI chụp, mang đi upload
+                    if (defect.localImages && defect.localImages.length > 0) {
+                        const formData = new FormData();
+                        defect.localImages.forEach((uri) => {
+                            const filename = uri.split('/').pop();
+                            const match = /\.(\w+)$/.exec(filename);
+                            const type = match ? `image/${match[1]}` : `image`;
+                            formData.append('images', { uri, name: filename, type });
+                        });
+
+                        const uploadRes = await uploadImages(formData);
+                        newUploadedUrls = uploadRes.data.filePaths;
+                    }
+
+                    // GỘP MẢNG: [Ảnh cũ user chưa xoá] + [Ảnh mới vừa upload]
+                    finalDefects[i].imageUrls = [...(defect.savedImages || []), ...newUploadedUrls];
+                }
+            }
+
+            // Gọi API lưu (Gửi lên data đã gộp)
             await saveCheckItem({
-
                 checkItemId: Number(item.Id),
                 ketQua,
-                defects: selectedDefects.map(d => ({
+                defects: finalDefects.map(d => ({
                     defectId: d.defectId,
-                    soLuong: d.soLuong
+                    soLuong: d.soLuong,
+                    imageUrls: d.imageUrls
                 }))
-
             });
 
             Alert.alert("Thành công", "Đã lưu kết quả");
             navigation.goBack();
 
         } catch (err) {
-
+            console.log(err);
             Alert.alert("Lỗi", "Không thể lưu dữ liệu");
-
         } finally {
-
             setLoading(false);
-
         }
-
     };
 
     return (
@@ -242,20 +333,65 @@ export default function CheckItemScreen({ route, navigation }) {
                         </TouchableOpacity>
 
                         {selectedDefects.map((d, index) => (
-                            <View key={index} style={styles.defectRow}>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={styles.defectCode}>{d.MaLoi}</Text>
-                                    <Text style={styles.defectName}>{d.TenLoi}</Text>
+                            <View key={index} style={{ backgroundColor: "#fff", padding: 12, borderRadius: 12, marginBottom: 8 }}>
+                                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.defectCode}>{d.MaLoi}</Text>
+                                        <Text style={styles.defectName}>{d.TenLoi}</Text>
+                                    </View>
+
+                                    <TextInput
+                                        style={styles.qtyInput}
+                                        keyboardType="numeric"
+                                        value={String(d.soLuong)}
+                                        onChangeText={(val) => updateQty(index, val)}
+                                    />
+
+                                    <TouchableOpacity onPress={() => handlePickImage(index)} style={{ marginHorizontal: 15 }}>
+                                        <Ionicons name="image-outline" size={24} color="#2563eb" />
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity onPress={() => removeDefect(d.defectId)}>
+                                        <Text style={{ color: "#ef4444", fontWeight: "bold", fontSize: 18 }}>X</Text>
+                                    </TouchableOpacity>
                                 </View>
-                                <TextInput
-                                    style={styles.qtyInput}
-                                    keyboardType="numeric"
-                                    value={String(d.soLuong)}
-                                    onChangeText={(val) => updateQty(index, val)}
-                                />
-                                <TouchableOpacity onPress={() => removeDefect(d.defectId)}>
-                                    <Text style={{ color: "#ef4444", fontWeight: "bold" }}>X</Text>
-                                </TouchableOpacity>
+
+                                {/* CONTAINER CHỨA ẢNH: Hiển thị nhiều ảnh trên 1 dòng */}
+                                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
+
+                                    {/* RENDER ẢNH ĐÃ LƯU */}
+                                    {d.savedImages?.map((url, imgIndex) => (
+                                        <View key={`saved-${imgIndex}`} style={{ marginRight: 12, marginBottom: 12, position: 'relative' }}>
+                                            <Image
+                                                source={{ uri: `${BASE_URL}${url}` }}
+                                                style={{ width: 60, height: 60, borderRadius: 8, borderWidth: 1, borderColor: '#cbd5e1' }}
+                                            />
+                                            <TouchableOpacity
+                                                style={{ position: 'absolute', top: -8, right: -8, backgroundColor: 'white', borderRadius: 12, zIndex: 1 }}
+                                                onPress={() => removeSavedImage(index, imgIndex)}
+                                            >
+                                                <Ionicons name="close-circle" size={22} color="#ef4444" />
+                                            </TouchableOpacity>
+                                        </View>
+                                    ))}
+
+                                    {/* RENDER ẢNH MỚI (CHƯA LƯU) */}
+                                    {d.localImages?.map((uri, imgIndex) => (
+                                        <View key={`local-${imgIndex}`} style={{ marginRight: 12, marginBottom: 12, position: 'relative' }}>
+                                            <Image
+                                                source={{ uri }}
+                                                style={{ width: 60, height: 60, borderRadius: 8 }}
+                                            />
+                                            <TouchableOpacity
+                                                style={{ position: 'absolute', top: -8, right: -8, backgroundColor: 'white', borderRadius: 12, zIndex: 1 }}
+                                                onPress={() => removeLocalImage(index, imgIndex)}
+                                            >
+                                                <Ionicons name="close-circle" size={22} color="#ef4444" />
+                                            </TouchableOpacity>
+                                        </View>
+                                    ))}
+
+                                </View>
                             </View>
                         ))}
                     </>
@@ -408,6 +544,93 @@ const styles = StyleSheet.create({
 
     selectText: {
         fontWeight: "600"
+    },
+
+    defectRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#fff",
+        padding: 12,
+        borderRadius: 12,
+        marginBottom: 8
+    },
+
+    defectCode: {
+        fontWeight: "bold"
+    },
+
+    defectName: {
+        color: "#475569"
+    },
+
+    qtyInput: {
+        width: 60,
+        backgroundColor: "#f1f5f9",
+        padding: 8,
+        borderRadius: 8,
+        textAlign: "center",
+        marginRight: 10
+    },
+
+    saveBtn: {
+        backgroundColor: "#2563eb",
+        padding: 16,
+        borderRadius: 16,
+        alignItems: "center",
+        marginTop: 20
+    },
+
+    saveText: {
+        color: "#fff",
+        fontWeight: "600"
+    },
+
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.4)",
+        justifyContent: "flex-end"
+    },
+
+    modalContent: {
+        backgroundColor: "#fff",
+        padding: 20,
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        maxHeight: "60%"
+    },
+
+    modalTitle: {
+        fontWeight: "bold",
+        fontSize: 16,
+        marginBottom: 15
+    },
+
+    searchInput: {
+        backgroundColor: "#f1f5f9",
+        padding: 12,
+        borderRadius: 12,
+        marginBottom: 12
+    },
+
+    defectItem: {
+        padding: 14,
+        borderRadius: 12,
+        marginBottom: 8,
+        backgroundColor: "#f1f5f9"
+    },
+
+    defectType: {
+        fontSize: 12,
+        color: "#64748b"
+    },
+
+    closeBtn: {
+        backgroundColor: "#2563eb",
+        padding: 14,
+        borderRadius: 14,
+        alignItems: "center",
+        marginTop: 10
+
     },
 
     defectRow: {

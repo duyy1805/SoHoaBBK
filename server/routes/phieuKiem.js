@@ -1,16 +1,45 @@
 const express = require('express');
 const router = express.Router();
 const sql = require('mssql');
-
+const fs = require('fs');
 const { poolPromise } = require('../db');
 const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
 
-/* =========================================================
-   GET /phieu-kiem
-   Role       : TO_TRUONG_KCS / KCS / TP_B8
-   Permission : XEM_PHIEU_KIEM
-========================================================= */
+const multer = require('multer');
+const path = require('path');
+
+// Cấu hình Multer để lưu file
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, 'uploads/');
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, uniqueSuffix + path.extname(file.originalname));
+    }
+});
+const upload = multer({ storage: storage });
+
+router.post(
+    '/upload',
+    authenticateToken,
+    upload.array('images', 5), // Tối đa 5 ảnh 1 lần
+    async (req, res) => {
+        try {
+            if (!req.files || req.files.length === 0) {
+                return res.status(400).json({ message: 'No files uploaded' });
+            }
+
+            // Trả về mảng các đường dẫn file
+            const filePaths = req.files.map(file => `/uploads/${file.filename}`);
+            res.json({ success: true, filePaths });
+        } catch (error) {
+            console.error('Upload error:', error);
+            res.status(500).json({ message: 'Upload failed' });
+        }
+    }
+);
 
 router.get(
     '/',
@@ -200,13 +229,14 @@ router.get(
                 if (!map[r.Id]) {
                     map[r.Id] = { ...r, Defects: [] };
                 }
-
                 if (r.DefectId) {
                     map[r.Id].Defects.push({
                         DefectId: r.DefectId,
                         MaLoi: r.MaLoi,
                         TenLoi: r.TenLoi,
-                        SoLuong: r.SoLuong
+                        SoLuong: r.SoLuong,
+                        DefectType: r.DefectType,
+                        ImageUrls: r.ImageUrls ? JSON.parse(r.ImageUrls) : []
                     });
                 }
 
@@ -411,29 +441,66 @@ router.post(
     authenticateToken,
     authorize("THUC_HIEN_KIEM"),
     async (req, res) => {
-
         const { checkItemId, ketQua, defects } = req.body;
 
         try {
-
             const pool = await poolPromise;
 
+            // --- BƯỚC 1: DỌN RÁC FILE ẢNH VẬT LÝ ---
+            // Lấy danh sách ảnh cũ hiện đang lưu trong DB
+            const oldDefectsRes = await pool.request()
+                .input("CheckItemId", sql.Int, checkItemId)
+                .query("SELECT ImageUrls FROM PHIEU_KIEM_DEFECT WHERE CheckItemId = @CheckItemId");
+
+            let oldUrls = [];
+            oldDefectsRes.recordset.forEach(row => {
+                if (row.ImageUrls) {
+                    try {
+                        const parsedUrls = JSON.parse(row.ImageUrls);
+                        oldUrls = [...oldUrls, ...parsedUrls];
+                    } catch (e) { }
+                }
+            });
+
+            // Lấy danh sách ảnh mà Mobile vừa gửi lên (chứa ảnh cũ được giữ lại + ảnh mới)
+            let incomingUrls = [];
+            defects.forEach(d => {
+                if (d.imageUrls && Array.isArray(d.imageUrls)) {
+                    incomingUrls = [...incomingUrls, ...d.imageUrls];
+                }
+            });
+
+            // Tìm những ảnh cũ KHÔNG CÒN nằm trong danh sách gửi lên (nghĩa là user đã bấm xoá trên App)
+            const urlsToDelete = oldUrls.filter(url => !incomingUrls.includes(url));
+
+            // Xoá file vật lý trên server
+            urlsToDelete.forEach(fileUrl => {
+                // url có dạng '/uploads/filename.jpg', cần ghép với __dirname để ra đường dẫn thực
+                // Lưu ý: Tuỳ vào cấu trúc thư mục, có thể cần path.join(__dirname, '..', fileUrl)
+                const filePath = path.join(__dirname, '..', fileUrl);
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath); // Xoá file
+                    console.log(`Đã xoá file rác: ${filePath}`);
+                }
+            });
+
+            // --- BƯỚC 2: CHẠY STORED PROCEDURE NHƯ BÌNH THƯỜNG ---
+            // Truyền dữ liệu mới tinh (đã gồm mảng URL gộp) vào Stored Procedure
+            // SP sẽ làm việc Delete bản ghi cũ & Insert bản ghi mới
             await pool.request()
                 .input("CheckItemId", sql.Int, checkItemId)
                 .input("KetQua", sql.NVarChar, ketQua)
                 .input("Defects", sql.NVarChar(sql.MAX), JSON.stringify(defects))
-                .execute("sp_PhieuKiem_SaveCheckItem");
+                .execute("sp_PhieuKiem_SaveCheckItem1");
 
             res.json({ success: true });
 
         } catch (err) {
-
             console.error(err);
             res.status(500).json({ message: "Lưu thất bại" });
-
         }
-
-    });
+    }
+);
 
 router.post(
     "/calculate-aql",

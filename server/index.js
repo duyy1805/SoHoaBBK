@@ -1,6 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
+
+// Tạo thư mục uploads nếu chưa có
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir);
+}
 
 const authRouter = require('./routes/auth');
 const hrRouter = require('./routes/hr')
@@ -13,6 +21,8 @@ app.use('/api/hr', hrRouter);
 app.use('/api/phieu-kiem', require('./routes/phieuKiem'));
 app.use('/api/bien-ban', require('./routes/bienBan'));
 app.use('/api/lookup', require('./routes/lookup.routes'));
+
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.get('/', (req, res) => res.send('Hello from server!'));
 

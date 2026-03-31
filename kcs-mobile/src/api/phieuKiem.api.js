@@ -62,3 +62,11 @@ export const confirmKN = (phieuKiemId) => {
     phieuKiemId
   });
 };
+
+export const uploadImages = (formData) => {
+  return axiosClient.post("/phieu-kiem/upload", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+};

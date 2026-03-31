@@ -2,7 +2,8 @@ node_modules
 
 server/.env
 server/db.js
-
+server/uploads
 # Build output
 dist/
 build/
+
