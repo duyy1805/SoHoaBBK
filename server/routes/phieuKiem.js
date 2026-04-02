@@ -9,6 +9,8 @@ const authorize = require('../middlewares/permission.middleware');
 const multer = require('multer');
 const path = require('path');
 
+const { Expo } = require('expo-server-sdk');
+let expo = new Expo();
 // Cấu hình Multer để lưu file
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -289,7 +291,7 @@ router.post(
                 message: 'Thiếu thông tin bắt buộc'
             });
         }
-        console.log(req.body)
+
         try {
             const pool = await poolPromise;
 
@@ -306,6 +308,55 @@ router.post(
                 .input('SourceId_LCD', sql.UniqueIdentifier, sourceId_LCD || null)
                 .input('Ngay_Giao', sql.Date, Ngay_Giao || null)
                 .execute('sp_PhieuKiem_Create');
+
+            const newPhieuId = result.recordset[0].Id;
+            const soPhieu = result.recordset[0].SoPhieu;
+
+            // ---- LOGIC THÔNG BÁO ----
+            const title = 'Bạn có phiếu kiểm mới! 📋';
+            const message = `Tổ trưởng vừa phân công cho bạn phiếu kiểm ${soPhieu}.`;
+
+            // A. Lưu vào Database (Bảng NOTIFICATIONS)
+            await pool.request()
+                .input('UserId', sql.Int, nguoiKiemId)
+                .input('Title', sql.NVarChar, title)
+                .input('Message', sql.NVarChar, message)
+                .input('Type', sql.VarChar, 'NEW_PHIEU')
+                .input('ReferenceId', sql.Int, newPhieuId)
+                .query('INSERT INTO NOTIFICATIONS (UserId, Title, Message, Type, ReferenceId) VALUES (@UserId, @Title, @Message, @Type, @ReferenceId)');
+
+            // B. Lấy Tokens và gửi Expo Push Notification
+            const userTokensRes = await pool.request()
+                .input('NguoiKiemId', sql.Int, nguoiKiemId)
+                .query(`
+                SELECT t.ExpoPushToken, 
+                (SELECT COUNT(*) FROM NOTIFICATIONS WHERE UserId = @NguoiKiemId AND IsRead = 0) as UnreadCount
+                FROM USER_PUSH_TOKENS t WHERE t.UserId = @NguoiKiemId
+            `);
+
+            const tokens = userTokensRes.recordset;
+            if (tokens.length > 0) {
+                const unreadCount = tokens[0].UnreadCount;
+                let pushMessages = [];
+
+                for (let row of tokens) {
+                    if (Expo.isExpoPushToken(row.ExpoPushToken)) {
+                        pushMessages.push({
+                            to: row.ExpoPushToken,
+                            sound: 'default',
+                            title: title,
+                            body: message,
+                            badge: unreadCount,
+                            data: { type: 'NEW_PHIEU', referenceId: newPhieuId },
+                        });
+                    }
+                }
+
+                let chunks = expo.chunkPushNotifications(pushMessages);
+                for (let chunk of chunks) {
+                    await expo.sendPushNotificationsAsync(chunk).catch(console.error);
+                }
+            }
 
             res.json({
                 success: true,

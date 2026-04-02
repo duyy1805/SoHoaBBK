@@ -66,7 +66,7 @@ export default function PhieuListScreen({ navigation }) {
                 return { backgroundColor: "#fef9c3", color: "#a16207", text: "Đang kiểm" };
 
             case "DA_TAO_SECTION":
-                return { backgroundColor: "#e0f2fe", color: "#0369a1", text: "Chưa kiểm" };
+                return { backgroundColor: "#e0f2fe", color: "#0369a1", text: "Đang kiểm" };
 
             case "CHO_XUONG_XAC_NHAN":
                 return { backgroundColor: "#fef3c7", color: "#b45309", text: "Chờ PX" };

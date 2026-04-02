@@ -15,6 +15,7 @@
     "axios": "^1.13.3",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
+    "expo-server-sdk": "^6.1.0",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.1.5",

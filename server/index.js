@@ -21,6 +21,7 @@ app.use('/api/hr', hrRouter);
 app.use('/api/phieu-kiem', require('./routes/phieuKiem'));
 app.use('/api/bien-ban', require('./routes/bienBan'));
 app.use('/api/lookup', require('./routes/lookup.routes'));
+app.use('/api/notifications', require('./routes/notifications'));
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 

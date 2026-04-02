@@ -6,18 +6,26 @@ import {
     Alert,
     StatusBar
 } from "react-native";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { getUser, logout } from "../utils/auth";
-
+import { getNotifications } from '../api/notification.api';
 export default function HomeScreen({ navigation }) {
     const [user, setUser] = useState(null);
+    const [unreadCount, setUnreadCount] = useState(0);
 
     useEffect(() => {
         loadUser();
     }, []);
-
+    useFocusEffect(
+        useCallback(() => {
+            getNotifications().then(res => {
+                setUnreadCount(res.data.unreadCount || 0);
+            }).catch(console.error);
+        }, [])
+    );
     const loadUser = async () => {
         const storedUser = await getUser();
         if (storedUser) {
@@ -59,9 +67,42 @@ export default function HomeScreen({ navigation }) {
                     </Text>
                 </View>
 
-                <TouchableOpacity onPress={handleLogout}>
-                    <Ionicons name="log-out-outline" size={28} color="#fff" />
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20 }}>
+                    {/* Nút Chuông Thông Báo */}
+                    <TouchableOpacity onPress={() => navigation.navigate("Notifications")}>
+                        <View>
+                            <Ionicons name="notifications-outline" size={28} color="#fff" />
+
+                            {unreadCount > 0 && (
+                                <View style={{
+                                    position: 'absolute',
+                                    top: -6,
+                                    right: -6,
+                                    minWidth: 18,
+                                    height: 18,
+                                    borderRadius: 9,
+                                    backgroundColor: 'red',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    paddingHorizontal: 4
+                                }}>
+                                    <Text style={{
+                                        color: '#fff',
+                                        fontSize: 10,
+                                        fontWeight: 'bold'
+                                    }}>
+                                        {unreadCount}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+                    </TouchableOpacity>
+
+                    {/* Nút Đăng Xuất */}
+                    <TouchableOpacity onPress={handleLogout}>
+                        <Ionicons name="log-out-outline" size={28} color="#fff" />
+                    </TouchableOpacity>
+                </View>
             </LinearGradient>
 
             <View style={styles.content}>
