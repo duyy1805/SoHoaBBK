@@ -271,7 +271,6 @@ router.post(
                 bienBanId,
                 loaiChiPhi,
                 giaTri,
-                boPhanId,
                 thoiHan
             } = req.body;
             const pool = await poolPromise;

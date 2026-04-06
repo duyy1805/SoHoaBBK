@@ -20,6 +20,7 @@ import {
 export default function ChiPhiModal({
     visible,
     bienBanId,
+    currentUserId,
     onClose,
     reload
 }) {
@@ -111,11 +112,6 @@ export default function ChiPhiModal({
             return;
         }
 
-        if (!boPhanId) {
-            Alert.alert("Thiếu dữ liệu", "Chọn bộ phận");
-            return;
-        }
-
         try {
 
             setLoading(true);
@@ -123,7 +119,6 @@ export default function ChiPhiModal({
                 bienBanId,
                 loaiChiPhi,
                 giaTri: Number(unformatMoney(giaTri)),
-                boPhanId,
                 thoiHan
             });
 
@@ -282,7 +277,7 @@ export default function ChiPhiModal({
 
             {/* MODAL CHỌN BỘ PHẬN */}
 
-            <Modal
+            {/* <Modal
                 visible={showBoPhanModal}
                 transparent
                 animationType="fade"
@@ -335,7 +330,7 @@ export default function ChiPhiModal({
 
                 </View>
 
-            </Modal>
+            </Modal> */}
 
         </Modal>
 

@@ -7,7 +7,7 @@ import { navigationRef } from "../navigation/navigationRef";
 import Toast from "react-native-toast-message";
 
 const axiosClient = axios.create({
-    baseURL: "http://192.168.88.3:5001/api", // ⚠ đổi thành IP máy chạy server
+    baseURL: "https://z76api.z76.vn/api", // ⚠ đổi thành IP máy chạy server
     timeout: 10000
 });
 

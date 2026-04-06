@@ -26,7 +26,7 @@ export default function DanhMucManager() {
                 <MenuItem value="DEFECT">Danh mục lỗi</MenuItem>
                 <MenuItem value="NHOM_KIEM">Nhóm kiểm</MenuItem>
                 <MenuItem value="CHECK_ITEM">Mục kiểm</MenuItem>
-                <MenuItem value="SAN_PHAM">Sản phẩm</MenuItem>
+                <MenuItem value="SAN_PHAM">Sản phẩm, vật tư</MenuItem>
                 <MenuItem value="INSPECTION_LEVEL">Inspection Level</MenuItem>
             </TextField>
 

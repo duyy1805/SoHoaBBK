@@ -187,6 +187,9 @@ export default function BienBanDetailScreen({ route, navigation }) {
 
     const isAssigned = assigns.some(a => a.BoPhanId === currentUserBoPhanId);
     const hasXuLy = xuLy.some(x => x.BoPhanId === currentUserBoPhanId);
+    const hasChiPhi = chiPhi.some(c => c.BoPhanId === currentUserBoPhanId);
+    const hasHanhDong = hanhDong.some(h => h.BoPhanId === currentUserBoPhanId);
+    console.log(hanhDong);
     const isConfirmed = xacNhan.some(
         x => x.BoPhanId === currentUserBoPhanId
     );
@@ -510,7 +513,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
             ))}
 
             {/* COMPLETE */}
-            {info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy && (
+            {info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy && hasChiPhi && hasHanhDong && (
 
                 <TouchableOpacity
                     style={styles.confirmUserBtn}

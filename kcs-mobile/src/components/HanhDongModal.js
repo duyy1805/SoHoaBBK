@@ -94,16 +94,11 @@ export default function HanhDongModal({
             Alert.alert("Thiếu dữ liệu", "Nhập nội dung");
             return;
         }
-        if (!boPhanId) {
-            Alert.alert("Thiếu dữ liệu", "Chọn bộ phận");
-            return;
-        }
         try {
             setLoading(true);
             await addHanhDong({
                 bienBanId,
                 noiDung,
-                boPhanId,
                 thoiHan
             });
             Alert.alert("Thành công", "Đã thêm hành động");

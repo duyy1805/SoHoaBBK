@@ -85,6 +85,24 @@ export default function PhieuDetailScreen({ route, navigation }) {
 
     const isCompleted = trangThai === "HOAN_TAT";
 
+    const renderStatus = (status) => {
+        switch (status) {
+            case "TAO_MOI": return "Tạo mới";
+            case "DA_TAO_SECTION": return "Chưa kiểm";
+            case "DANG_KIEM": return "Đang kiểm";
+            case "CHO_XUONG_XAC_NHAN": return "Chờ PX xác nhận";
+            case "CHO_KIEM_NGHIEM": return "Chờ kiểm nghiệm";
+            case "HOAN_TAT": return "Hoàn tất";
+            default: return status;
+        }
+    };
+
+    const renderResult = (result) => {
+        if (result === "DAT") return "Đạt";
+        if (result === "KHONG_DAT") return "Không đạt";
+        return "Chưa kết luận";
+    };
+
     const handleConfirmLot = async () => {
 
         if (!lot.trim()) {
@@ -217,6 +235,60 @@ export default function PhieuDetailScreen({ route, navigation }) {
             )}
 
             <ScrollView style={styles.container}>
+
+                <View style={styles.infoCard}>
+
+                    <View style={styles.infoRow}>
+                        <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Số phiếu</Text>
+                            <Text style={styles.infoValue}>{phieu?.SoPhieu}</Text>
+                        </View>
+                        <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Sản phẩm</Text>
+                            <Text style={styles.infoValue}>{phieu?.TenSanPham}</Text>
+                        </View>
+                    </View>
+
+                    <View style={styles.infoRow}>
+                        <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Mã hàng</Text>
+                            <Text style={styles.infoValue}>{phieu?.MaSanPham}</Text>
+                        </View>
+                        <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Số lượng</Text>
+                            <Text style={styles.infoValue}>{phieu?.SoLuong}</Text>
+                        </View>
+                    </View>
+
+                    <View style={styles.infoRow}>
+                        <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Trạng thái</Text>
+                            <Text style={styles.infoValue}>{renderStatus(phieu?.TrangThai)}</Text>
+                        </View>
+                        <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Kết luận</Text>
+                            <Text style={[
+                                styles.infoValue,
+                                phieu?.KetLuan === "DAT" && styles.success,
+                                phieu?.KetLuan === "KHONG_DAT" && styles.error
+                            ]}>
+                                {renderResult(phieu?.KetLuan)}
+                            </Text>
+                        </View>
+                    </View>
+
+                    <View style={styles.infoRow}>
+                        <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Ngày giao</Text>
+                            <Text style={styles.infoValue}>{phieu?.Ngay_Giao ? new Date(phieu.Ngay_Giao).toLocaleDateString('vi-VN') : "---"}</Text>
+                        </View>
+                        <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Người kiểm</Text>
+                            <Text style={styles.infoValue}>{phieu?.TenNguoiKiem || "---"}</Text>
+                        </View>
+                    </View>
+
+                </View>
 
                 {trangThai === "TAO_MOI" && canConfig && (
                     <TouchableOpacity
@@ -481,6 +553,35 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: "#f1f5f9",
         padding: 16
+    },
+    infoCard: {
+        backgroundColor: "#fff",
+        padding: 16,
+        borderRadius: 12,
+        marginBottom: 16,
+        elevation: 1,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2
+    },
+    infoRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        marginBottom: 10
+    },
+    infoItem: {
+        flex: 1
+    },
+    infoLabel: {
+        fontSize: 12,
+        color: "#64748b",
+        marginBottom: 2
+    },
+    infoValue: {
+        fontSize: 14,
+        fontWeight: "600",
+        color: "#0f172a"
     },
     sectionLot: {
         fontWeight: "700",
