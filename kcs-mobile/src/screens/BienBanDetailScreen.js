@@ -168,12 +168,14 @@ export default function BienBanDetailScreen({ route, navigation }) {
             navigation.goBack();
 
         } catch (err) {
-
-            Alert.alert(
-                "Lỗi",
-                err?.response?.data?.message || "Không thể hoàn thành biên bản"
-            );
-
+            if (err.status === 403) {
+                Alert.alert("Lỗi", "Không được cấp quyền");
+            } else {
+                Alert.alert(
+                    "Lỗi",
+                    err?.response?.data?.message || "Không thể hoàn thành biên bản"
+                );
+            }
         }
 
     };

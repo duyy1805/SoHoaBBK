@@ -381,17 +381,21 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                     <Box style={{ ...styles.signatureBlock, marginTop: '20px' }}>
                         <Box style={styles.signatureCol}>
                             <div style={{ ...styles.text, minHeight: '40px' }}><b>Phòng Kiểm nghiệm</b></div>
-                            <Box height="70px"></Box>
+                            <Box height="70px">{ }</Box>
+                            <div style={styles.text}>{phieu.KiemNghiem}</div>
                         </Box>
                         <Box style={styles.signatureCol}>
                             <div style={{ ...styles.text, minHeight: '40px' }}><b>Người kiểm hàng</b></div>
                             <Box height="70px"></Box>
                             <div style={styles.text}>{phieu.TenNguoiKiem}</div>
                         </Box>
-                        <Box style={styles.signatureCol}>
-                            <div style={{ ...styles.text, minHeight: '40px' }}><b>Phân xưởng SX</b></div>
-                            <Box height="70px"></Box>
-                        </Box>
+                        {phieu.BoPhan && (
+                            <Box style={styles.signatureCol}>
+                                <div style={{ ...styles.text, minHeight: '40px' }}><b>Phân xưởng SX</b></div>
+                                <Box height="70px"></Box>
+                                <div style={styles.text}>{phieu.BoPhan}</div>
+                            </Box>
+                        )}
                     </Box>
 
                     <Box mt={4}>

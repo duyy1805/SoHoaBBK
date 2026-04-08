@@ -7,7 +7,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
     xuLy = [],
     chiPhi = [],
     hanhDong = [],
-    // xacNhan
+    xacNhan = []
 }, ref) => {
     if (!info) return null;
 
@@ -402,12 +402,18 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                         <Typography style={styles.text}>Ngày..................</Typography>
                                         <Typography style={styles.text}><b>PHÒNG KTCN</b></Typography>
                                         <Box height="60px"></Box>
+                                        <div style={styles.text}>{xacNhan.BoPhan}</div>
                                     </Box>
-                                    <Box style={styles.signatureCol}>
-                                        <Typography style={styles.text}>Ngày..................</Typography>
-                                        <Typography style={styles.text}><b>PHÒNG VT</b></Typography>
-                                        <Box height="60px"></Box>
-                                    </Box>
+                                    {
+                                        xacNhan && xacNhan.some(item => item.BoPhanId === 2) && (
+                                            <Box style={styles.signatureCol}>
+                                                <Typography style={styles.text}>Ngày..................</Typography>
+                                                <Typography style={styles.text}><b>PHÒNG VT</b></Typography>
+                                                <Box height="60px"></Box>
+                                                <div style={styles.text}>{xacNhan.find(item => item.BoPhanId === 2)?.FullName}</div>
+                                            </Box>
+                                        )
+                                    }
                                 </Box>
 
                                 {/* 8. Theo dõi */}
