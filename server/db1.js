@@ -12,6 +12,7 @@ const hrConfig = {
         trustedConnection: process.env.DB_TRUSTED_CONNECTION === 'true',
         enableArithAbort: process.env.DB_ENABLE_ARITHABORT === 'true',
         trustServerCertificate: true,
+        useUTC: false,
         cryptoCredentialsDetails: {
             servername: undefined
         }

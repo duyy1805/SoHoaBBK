@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography, Grid } from '@mui/material';
+import { Box } from '@mui/material';
 
 export const BienBanPrintTemplate = React.forwardRef(({
     info = {},
@@ -30,6 +30,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
             boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
         },
         text: { fontSize: '12pt', marginBottom: '4px' },
+        boldText: { fontSize: '12pt', fontWeight: 'bold' },
         sectionTitle: { fontWeight: 'bold', fontSize: '12pt', marginTop: '15px', marginBottom: '8px' },
         dottedLine: { flexGrow: 1, borderBottom: '2px dotted #000', marginLeft: '8px', marginRight: '8px', textAlign: 'center', position: 'relative', top: '-4px' },
         table: { border: '1px solid #000', borderCollapse: 'collapse', width: '100%', marginBottom: '10px' },
@@ -40,7 +41,8 @@ export const BienBanPrintTemplate = React.forwardRef(({
         signatureBlock: { display: 'flex', justifyContent: 'space-between', marginTop: '15px', textAlign: 'center', width: '100%' },
         signatureCol: { flex: 1, padding: '0 10px' },
         layoutTable: { width: '100%', borderCollapse: 'collapse', border: 'none' },
-        layoutTd: { border: 'none', padding: '4px 0', verticalAlign: 'middle' }
+        layoutTd: { border: 'none', padding: '4px 0', verticalAlign: 'middle' },
+        flexBetween: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
     };
 
     const renderCheckboxRight = (label, checked) => (
@@ -110,20 +112,23 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                 <table style={styles.headerTable}>
                                     <tbody>
                                         <tr>
-                                            <td style={{ ...styles.headerTd, width: '20%' }}>
-                                                <Typography style={{ fontWeight: 'bold', fontSize: '18pt', lineHeight: 1, color: '#00539c' }}>Z76</Typography>
-                                                <Typography style={{ fontSize: '10pt', fontStyle: 'italic', color: '#00a0e3' }}>We try harder</Typography>
+                                            <td rowSpan={2} style={{ ...styles.headerTd, width: '20%' }}>
+                                                <img src="/logo.png" alt="Logo Z76" style={{ height: '70px', display: 'block', margin: '0 auto' }} />
                                             </td>
-                                            <td style={{ ...styles.headerTd, width: '50%' }}>
-                                                <Typography style={{ fontWeight: 'bold', fontSize: '14pt' }}>PHIẾU XỬ LÝ VT, BTP, TP</Typography>
-                                                <Typography style={{ fontWeight: 'bold', fontSize: '14pt' }}>KHÔNG PHÙ HỢP</Typography>
+                                            <td style={{ ...styles.headerTd, width: '50%', borderBottom: '1px solid #000' }}>
+                                                <div style={{ fontSize: '14pt' }}>CÔNG TY TNHH MTV 76</div>
                                             </td>
-                                            <td style={{ ...styles.headerTd, width: '30%', textAlign: 'left', paddingLeft: '10px' }}>
-                                                <Typography style={{ fontSize: '11pt' }}>Mã số: BM.01-QT.02-B8</Typography>
-                                                <Typography style={{ fontSize: '11pt' }}>Ngày HL: 20/01/2026</Typography>
-                                                <Typography style={{ fontSize: '11pt' }}>Phiên bản: 00</Typography>
-                                                {/* Với bản in động nhiều trang, dùng chuỗi chấm để điền tay hoặc đánh số sau */}
-                                                <Typography style={{ fontSize: '11pt' }}>Trang: ....................</Typography>
+                                            <td rowSpan={2} style={{ ...styles.headerTd, width: '30%', textAlign: 'left', paddingLeft: '10px' }}>
+                                                <div style={{ fontSize: '11pt' }}>Mã số: BM.01-QT.02-B8</div>
+                                                <div style={{ fontSize: '11pt' }}>Ngày HL: 20/01/2026</div>
+                                                <div style={{ fontSize: '11pt' }}>Phiên bản: 00</div>
+                                                <div style={{ fontSize: '11pt' }}>Trang: ....................</div>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td style={styles.headerTd}>
+                                                <div style={{ fontWeight: 'bold', fontSize: '14pt' }}>PHIẾU XỬ LÝ VT, BTP, TP</div>
+                                                <div style={{ fontWeight: 'bold', fontSize: '14pt' }}>KHÔNG PHÙ HỢP</div>
                                             </td>
                                         </tr>
                                     </tbody>
@@ -138,60 +143,64 @@ export const BienBanPrintTemplate = React.forwardRef(({
                             <td style={{ border: 'none' }}>
 
                                 {/* Số phiếu */}
-                                <Box display="flex" justifyContent="flex-end" mb={2}>
-                                    <Box width="450px">
-                                        <Typography style={{ ...styles.text, fontStyle: 'italic', display: 'flex', justifyContent: 'flex-end' }}>
-                                            <span>Số: {info.SoPhieu || '..........'}/KN.</span>
-                                            <span style={{ marginLeft: '40px' }}>Ngày ......tháng ...... năm 20.....</span>
-                                        </Typography>
-                                    </Box>
-                                </Box>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+                                    <div style={{ width: '450px' }}>
+                                        <Box style={{ display: 'flex', justifyContent: 'space-between', width: '450px' }}>
+                                            <div style={{ ...styles.text, fontStyle: 'italic' }}>
+                                                {/* Số: {info.SoPhieu || '..........'}/KN. */}
+                                            </div>
+                                            <div style={{ ...styles.text, fontStyle: 'italic' }}>
+                                                Ngày {info.NgayKiem ? new Date(info.NgayKiem).toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm ')) : new Date().toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm '))}
+                                            </div>
+                                        </Box>
+                                    </div>
+                                </div>
 
                                 {/* 1. Thông tin */}
                                 <Box mb={2} className="avoid-break">
-                                    <Typography style={styles.sectionTitle}>1. Thông tin sự không phù hợp</Typography>
-                                    <Box display="flex" alignItems="flex-end" mb={1.5} style={styles.text}>
+                                    <div style={styles.sectionTitle}>1. Thông tin sự không phù hợp</div>
+                                    <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: '12px', ...styles.text }}>
                                         <span style={{ whiteSpace: 'nowrap' }}>Đơn vị sản xuất:</span>
                                         <span style={styles.dottedLine}>{info.TenBoPhan || ''}</span>
                                         <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Mã ĐVSX:</span>
                                         <span style={{ ...styles.dottedLine, flexGrow: 0.6 }}>{info.MaBoPhan || ''}</span>
-                                    </Box>
-                                    <Box display="flex" alignItems="flex-end" mb={1.5} style={styles.text}>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: '12px', ...styles.text }}>
                                         <span style={{ whiteSpace: 'nowrap' }}>Tên VT/BTP/TP:</span>
                                         <span style={styles.dottedLine}>{info.TenSanPham || ''}</span>
                                         <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Mã Item:</span>
                                         <span style={{ ...styles.dottedLine, flexGrow: 0.6 }}></span>
-                                    </Box>
-                                    <Box display="flex" alignItems="flex-end" mb={1.5} style={styles.text}>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: '12px', ...styles.text }}>
                                         <span style={{ whiteSpace: 'nowrap' }}>Mã truy nguyên:</span>
                                         <span style={styles.dottedLine}></span>
                                         <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Đơn hàng:</span>
                                         <span style={{ ...styles.dottedLine, flexGrow: 0.5 }}></span>
                                         <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Lô SX:</span>
                                         <span style={{ ...styles.dottedLine, flexGrow: 0.3 }}>{info.Lot || ''}</span>
-                                    </Box>
-                                    <Box display="flex" alignItems="flex-end" mt={3} mb={1.5} style={styles.text}>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'flex-end', marginTop: '24px', marginBottom: '12px', ...styles.text }}>
                                         <span style={{ whiteSpace: 'nowrap' }}>Số lượng:</span>
                                         <span style={styles.dottedLine}></span>
                                         <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Dấu tuần:</span>
                                         <span style={{ ...styles.dottedLine, flexGrow: 0.4 }}></span>
-                                    </Box>
+                                    </div>
                                 </Box>
 
                                 {/* 2. Phát hiện từ */}
                                 <Box className="avoid-break">
-                                    <Typography style={styles.sectionTitle}>2. Sự không phù hợp được phát hiện từ</Typography>
+                                    <div style={styles.sectionTitle}>2. Sự không phù hợp được phát hiện từ</div>
                                     <table style={{ ...styles.layoutTable, paddingLeft: '15px' }}>
                                         <tbody>
                                             <tr>
-                                                <td style={{ ...styles.layoutTd, width: '33%' }}>{renderCheckboxRight('a) Kiểm tra đầu vào', false)}</td>
-                                                <td style={{ ...styles.layoutTd, width: '33%' }}>{renderCheckboxRight('b) Trong sản xuất', false)}</td>
-                                                <td style={{ ...styles.layoutTd, width: '34%' }}>{renderCheckboxRight('c) Kiểm cuối', false)}</td>
+                                                <td style={{ ...styles.layoutTd, width: '33%' }}>{renderCheckboxRight('a) Kiểm tra đầu vào', info.PhatHienTu === 'A' || info.PhatHienTu === 'KIEM_TRA_DAU_VAO')}</td>
+                                                <td style={{ ...styles.layoutTd, width: '33%' }}>{renderCheckboxRight('b) Trong sản xuất', info.PhatHienTu === 'B' || info.PhatHienTu === 'TRONG_SAN_XUAT')}</td>
+                                                <td style={{ ...styles.layoutTd, width: '34%' }}>{renderCheckboxRight('c) Kiểm cuối', info.PhatHienTu === 'C' || info.PhatHienTu === 'KIEM_DONG_CONT')}</td>
                                             </tr>
                                             <tr>
-                                                <td style={styles.layoutTd}>{renderCheckboxRight('d) Kiểm tra tại NCC', false)}</td>
-                                                <td style={styles.layoutTd}>{renderCheckboxRight('e) Khách hàng', false)}</td>
-                                                <td style={styles.layoutTd}>{renderCheckboxRight('f) Trong kho', false)}</td>
+                                                <td style={styles.layoutTd}>{renderCheckboxRight('d) Kiểm tra tại NCC', info.PhatHienTu === 'D' || info.PhatHienTu === 'TAI_NCC')}</td>
+                                                <td style={styles.layoutTd}>{renderCheckboxRight('e) Khách hàng', info.PhatHienTu === 'E' || info.PhatHienTu === 'KHACH_HANG')}</td>
+                                                <td style={styles.layoutTd}>{renderCheckboxRight('f) Trong kho', info.PhatHienTu === 'F' || info.PhatHienTu === 'TRONG_KHO')}</td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -203,15 +212,15 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                         <tbody>
                                             <tr>
                                                 <td style={{ ...styles.layoutTd, width: '42%', verticalAlign: 'top', paddingTop: '4px' }}>
-                                                    <Typography style={{ ...styles.sectionTitle, marginTop: 0, marginBottom: 0 }}>3. Mức độ không phù hợp</Typography>
+                                                    <div style={{ ...styles.sectionTitle, marginTop: 0, marginBottom: 0 }}>3. Mức độ không phù hợp</div>
                                                 </td>
-                                                <td style={{ ...styles.layoutTd, width: '29%' }}>{renderCheckboxRight('a) Lỗi lần đầu', false)}</td>
-                                                <td style={{ ...styles.layoutTd, width: '29%' }}>{renderCheckboxRight('b) Lỗi lặp lại', false)}</td>
+                                                <td style={{ ...styles.layoutTd, width: '29%' }}>{renderCheckboxRight('a) Lỗi lần đầu', !!info.LoiLanDau)}</td>
+                                                <td style={{ ...styles.layoutTd, width: '29%' }}>{renderCheckboxRight('b) Lỗi lặp lại', !!info.LoiLapLai)}</td>
                                             </tr>
                                             <tr>
                                                 <td style={styles.layoutTd}></td>
-                                                <td style={styles.layoutTd}>{renderCheckboxRight('c) Lỗi đơn lẻ', false)}</td>
-                                                <td style={styles.layoutTd}>{renderCheckboxRight('d) Lỗi hàng loạt', false)}</td>
+                                                <td style={styles.layoutTd}>{renderCheckboxRight('c) Lỗi đơn lẻ', !!info.LoiDonLe)}</td>
+                                                <td style={styles.layoutTd}>{renderCheckboxRight('d) Lỗi hàng loạt', !!info.LoiHangLoat)}</td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -219,11 +228,11 @@ export const BienBanPrintTemplate = React.forwardRef(({
 
                                 {/* 4. Mô tả chi tiết (Defects) */}
                                 <Box>
-                                    <Typography style={styles.sectionTitle}>4. Mô tả chi tiết sự không phù hợp:</Typography>
+                                    <div style={styles.sectionTitle}>4. Mô tả chi tiết sự không phù hợp:</div>
                                     {info.MoTaChung && (
-                                        <Typography style={{ ...styles.text, paddingLeft: '10px', marginBottom: '10px', fontStyle: 'italic' }}>
+                                        <div style={{ ...styles.text, paddingLeft: '10px', marginBottom: '10px', fontStyle: 'italic' }}>
                                             - {info.MoTaChung}
-                                        </Typography>
+                                        </div>
                                     )}
                                     <table style={styles.table}>
                                         <thead>
@@ -263,26 +272,26 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                 {/* Chữ ký 1 */}
                                 <Box className="avoid-break" style={styles.signatureBlock}>
                                     <Box style={styles.signatureCol}>
-                                        <Typography style={styles.text}>Ngày..................</Typography>
-                                        <Typography style={styles.text}><b>PHÒNG KN</b></Typography>
+                                        <div style={styles.text}>Ngày..................</div>
+                                        <div style={styles.boldText}>PHÒNG KN</div>
                                         <Box height="60px"></Box>
                                     </Box>
                                     <Box style={styles.signatureCol}>
-                                        <Typography style={styles.text}>Ngày..................</Typography>
-                                        <Typography style={styles.text}><b>PHÒNG/BAN/BPSX</b></Typography>
+                                        <div style={styles.text}>Ngày..................</div>
+                                        <div style={styles.boldText}>PHÒNG/BAN/BPSX</div>
                                         <Box height="60px"></Box>
                                     </Box>
                                     <Box style={styles.signatureCol}>
-                                        <Typography style={styles.text}>Ngày..................</Typography>
-                                        <Typography style={styles.text}><b>NGƯỜI LẬP</b></Typography>
+                                        <div style={styles.text}>Ngày..................</div>
+                                        <div style={styles.boldText}>NGƯỜI LẬP</div>
                                         <Box height="60px"></Box>
-                                        <Typography style={styles.text}>{info.NguoiLap || '(Ký, họ tên)'}</Typography>
+                                        <div style={styles.text}>{info.NguoiLap || '(Ký, họ tên)'}</div>
                                     </Box>
                                 </Box>
 
                                 {/* 5. Đề xuất xử lý */}
                                 <Box mt={3}>
-                                    <Typography style={styles.sectionTitle}>5. Đề xuất xử lý</Typography>
+                                    <div style={styles.sectionTitle}>5. Đề xuất xử lý</div>
                                     <table style={styles.table}>
                                         <thead>
                                             <tr>
@@ -309,24 +318,24 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                     </table>
 
                                     <Box className="avoid-break" mt={1} pl={1}>
-                                        <Typography style={{ ...styles.text, fontStyle: 'italic', marginBottom: '5px' }}>Các nội dung mục đề nghị xử lý:</Typography>
-                                        <Grid container>
-                                            <Grid item xs={4}>{renderCheckbox('a) Cho vào SX', false)}</Grid>
-                                            <Grid item xs={4}>{renderCheckbox('b) Trả lại NCC/DVSX', false)}</Grid>
-                                            <Grid item xs={4}>{renderCheckbox('c) Loại bỏ', false)}</Grid>
-                                            <Grid item xs={4}>{renderCheckbox('d) Sửa chữa', false)}</Grid>
-                                            <Grid item xs={4}>{renderCheckbox('e) Giảm giá/ hạ cấp', false)}</Grid>
-                                            <Grid item xs={4}>{renderCheckbox('f) Hình thức khác:', false)}</Grid>
-                                        </Grid>
+                                        <div style={{ ...styles.text, fontStyle: 'italic', marginBottom: '5px' }}>Các nội dung mục đề nghị xử lý:</div>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+                                            <div style={{ width: '33.33%' }}>{renderCheckbox('a) Cho vào SX', false)}</div>
+                                            <div style={{ width: '33.33%' }}>{renderCheckbox('b) Trả lại NCC/DVSX', false)}</div>
+                                            <div style={{ width: '33.33%' }}>{renderCheckbox('c) Loại bỏ', false)}</div>
+                                            <div style={{ width: '33.33%' }}>{renderCheckbox('d) Sửa chữa', false)}</div>
+                                            <div style={{ width: '33.33%' }}>{renderCheckbox('e) Giảm giá/ hạ cấp', false)}</div>
+                                            <div style={{ width: '33.33%' }}>{renderCheckbox('f) Hình thức khác:', false)}</div>
+                                        </div>
                                     </Box>
                                 </Box>
 
                                 {/* 6. Chi phí phát sinh */}
                                 <Box mt={2}>
                                     <Box className="avoid-break" display="flex" alignItems="center">
-                                        <Typography style={{ ...styles.sectionTitle, marginTop: 0, marginBottom: 0, marginRight: '30px' }}>
+                                        <div style={{ ...styles.sectionTitle, marginTop: 0, marginBottom: 0, marginRight: '30px' }}>
                                             6. Chi phí phát sinh
-                                        </Typography>
+                                        </div>
                                         {renderCheckbox('Yêu cầu', chiPhi.length > 0)}
                                         {renderCheckbox('Không yêu cầu', chiPhi.length === 0)}
                                     </Box>
@@ -360,9 +369,9 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                 {/* 7. Hành động khắc phục */}
                                 <Box mt={2}>
                                     <Box className="avoid-break" display="flex" alignItems="center">
-                                        <Typography style={{ ...styles.sectionTitle, marginTop: 0, marginBottom: 0, marginRight: '30px' }}>
+                                        <div style={{ ...styles.sectionTitle, marginTop: 0, marginBottom: 0, marginRight: '30px' }}>
                                             7. Hành động khắc phục, phòng ngừa
-                                        </Typography>
+                                        </div>
                                         {renderCheckbox('Yêu cầu', hanhDong.length > 0)}
                                         {renderCheckbox('Không yêu cầu', hanhDong.length === 0)}
                                     </Box>
@@ -394,22 +403,22 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                 {/* Chữ ký 2 */}
                                 <Box className="avoid-break" style={styles.signatureBlock}>
                                     <Box style={styles.signatureCol}>
-                                        <Typography style={styles.text}>Ngày..................</Typography>
-                                        <Typography style={styles.text}><b>PHÒNG KN</b></Typography>
-                                        <Box height="60px"></Box>
+                                        <div style={styles.text}>Ngày..................</div>
+                                        <div style={styles.boldText}>PHÒNG KN</div>
+                                        <Box height="90px"></Box>
                                     </Box>
                                     <Box style={styles.signatureCol}>
-                                        <Typography style={styles.text}>Ngày..................</Typography>
-                                        <Typography style={styles.text}><b>PHÒNG KTCN</b></Typography>
-                                        <Box height="60px"></Box>
+                                        <div style={styles.text}>Ngày..................</div>
+                                        <div style={styles.boldText}>PHÒNG KTCN</div>
+                                        <Box height="90px"></Box>
                                         <div style={styles.text}>{xacNhan.BoPhan}</div>
                                     </Box>
                                     {
                                         xacNhan && xacNhan.some(item => item.BoPhanId === 2) && (
                                             <Box style={styles.signatureCol}>
-                                                <Typography style={styles.text}>Ngày..................</Typography>
-                                                <Typography style={styles.text}><b>PHÒNG VT</b></Typography>
-                                                <Box height="60px"></Box>
+                                                <div style={styles.text}>Ngày..................</div>
+                                                <div style={styles.boldText}>PHÒNG VT</div>
+                                                <Box height="90px"></Box>
                                                 <div style={styles.text}>{xacNhan.find(item => item.BoPhanId === 2)?.FullName}</div>
                                             </Box>
                                         )
@@ -417,29 +426,29 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                 </Box>
 
                                 {/* 8. Theo dõi */}
-                                <Box className="avoid-break" mt={2} pt={1}>
-                                    <Typography style={styles.sectionTitle}>8. Theo dõi đánh giá</Typography>
-                                    <Box display="flex" mt={1}>
+                                <Box className="avoid-break" mt={2} pt={0}>
+                                    <div style={styles.sectionTitle}>8. Theo dõi đánh giá</div>
+                                    <div style={{ display: 'flex', marginTop: '8px' }}>
                                         {renderCheckbox('Thỏa mãn', false)}
                                         {renderCheckbox('Không thỏa mãn', false)}
                                         <span style={{ marginLeft: '40px' }}>Phiếu KPH mới số: ................................................</span>
-                                    </Box>
-                                    <Box mt={2}>
-                                        <Typography style={styles.text}>Ghi chú: ..........................................................................................................................................................</Typography>
-                                    </Box>
+                                    </div>
+                                    <div style={{ marginTop: '16px' }}>
+                                        <div style={styles.text}>Ghi chú: ..........................................................................................................................................................</div>
+                                    </div>
 
-                                    <Box mt={3} display="flex" justifyContent="space-between" alignItems="flex-start">
-                                        <Box pl={2}>
-                                            <Typography style={styles.text}><b>Nơi nhận:</b></Typography>
-                                            <Typography style={styles.text}>- Lưu</Typography>
-                                        </Box>
-                                        <Box textAlign="center" width="250px">
-                                            <Typography style={styles.text}>Ngày..................</Typography>
-                                            <Typography style={styles.text}><b>NGƯỜI THEO DÕI</b></Typography>
+                                    <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <div style={{ paddingLeft: '16px' }}>
+                                            <div style={styles.boldText}>Nơi nhận:</div>
+                                            <div style={styles.text}>- Lưu</div>
+                                        </div>
+                                        <div style={{ textAlign: 'center', width: '250px' }}>
+                                            <div style={styles.text}>Ngày..................</div>
+                                            <div style={styles.boldText}>NGƯỜI THEO DÕI</div>
                                             <Box height="60px"></Box>
-                                            <Typography style={styles.text}>(Ký, họ tên)</Typography>
-                                        </Box>
-                                    </Box>
+                                            <div style={styles.text}>(Ký, họ tên)</div>
+                                        </div>
+                                    </div>
                                 </Box>
 
                             </td>
