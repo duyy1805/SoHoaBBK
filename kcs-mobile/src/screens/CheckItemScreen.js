@@ -164,7 +164,6 @@ export default function CheckItemScreen({ route, navigation }) {
             const data = res.data || [];
 
             setDefects(data);
-            console.log(data)
             setFilteredDefects(data);
 
         } catch (err) {
@@ -190,6 +189,8 @@ export default function CheckItemScreen({ route, navigation }) {
                 defectId: d.Id,
                 MaLoi: d.MaLoi,
                 TenLoi: d.TenLoi,
+                MoTa: d.MoTa,
+                GhiChu: d.GhiChu,
                 DefectType: d.DefectType,
                 soLuong: 1
             }
@@ -338,6 +339,15 @@ export default function CheckItemScreen({ route, navigation }) {
                                     <View style={{ flex: 1 }}>
                                         <Text style={styles.defectCode}>{d.MaLoi}</Text>
                                         <Text style={styles.defectName}>{d.TenLoi}</Text>
+                                        {d.MoTa && (
+                                            <Text style={styles.defectDesc}>{d.MoTa}</Text>
+                                        )}
+                                        {d.GhiChu && (
+                                            <View style={styles.noteBox}>
+                                                <Ionicons name="information-circle-outline" size={12} color="#2563eb" />
+                                                <Text style={styles.noteText}>{d.GhiChu}</Text>
+                                            </View>
+                                        )}
                                     </View>
 
                                     <TextInput
@@ -426,17 +436,47 @@ export default function CheckItemScreen({ route, navigation }) {
                         />
 
                         <ScrollView showsVerticalScrollIndicator={false}>
-                            {filteredDefects.map((d) => (
-                                <TouchableOpacity
-                                    key={d.Id}
-                                    style={styles.defectItem}
-                                    onPress={() => handleAddDefect(d)}
-                                >
-                                    <Text style={styles.defectCode}>{d.MaLoi}</Text>
-                                    <Text style={styles.defectName}>{d.TenLoi}</Text>
-                                    <Text style={styles.defectType}>{d.DefectType}</Text>
-                                </TouchableOpacity>
-                            ))}
+                            {filteredDefects.length === 0 ? (
+                                <View style={{ padding: 20, alignItems: 'center' }}>
+                                    <Ionicons name="search-outline" size={40} color="#cbd5e1" />
+                                    <Text style={{ color: "#94a3b8", marginTop: 8 }}>Không tìm thấy mã lỗi phù hợp</Text>
+                                </View>
+                            ) : (
+                                filteredDefects.map((d) => {
+                                    const typeColor = d.DefectType === 'CRITICAL' ? '#ef4444' : d.DefectType === 'MAJOR' ? '#f59e0b' : '#3b82f6';
+                                    return (
+                                        <TouchableOpacity
+                                            key={d.Id}
+                                            style={styles.defectItem}
+                                            onPress={() => handleAddDefect(d)}
+                                        >
+                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                <View style={{ flex: 1 }}>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                                                        <View style={[styles.typeBadge, { backgroundColor: typeColor }]}>
+                                                            <Text style={styles.typeBadgeText}>{d.DefectType}</Text>
+                                                        </View>
+                                                        <Text style={styles.defectCode}>{d.MaLoi}</Text>
+                                                    </View>
+                                                    <Text style={styles.defectName}>{d.TenLoi}</Text>
+                                                </View>
+                                                <Ionicons name="add-circle-outline" size={24} color="#2563eb" />
+                                            </View>
+
+                                            {d.MoTa && (
+                                                <Text style={styles.defectDesc}>{d.MoTa}</Text>
+                                            )}
+
+                                            {d.GhiChu && (
+                                                <View style={styles.noteBox}>
+                                                    <Ionicons name="alert-circle-outline" size={14} color="#2563eb" />
+                                                    <Text style={styles.noteText}>{d.GhiChu}</Text>
+                                                </View>
+                                            )}
+                                        </TouchableOpacity>
+                                    );
+                                })
+                            )}
                         </ScrollView>
 
                         <TouchableOpacity
@@ -596,67 +636,103 @@ const styles = StyleSheet.create({
         padding: 20,
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
-        maxHeight: "60%"
+        maxHeight: "85%", // Tăng chiều cao để xem được nhiều lỗi hơn
+        flex: 1
     },
 
     modalTitle: {
         fontWeight: "bold",
-        fontSize: 16,
-        marginBottom: 15
+        fontSize: 18,
+        marginBottom: 15,
+        textAlign: 'center',
+        color: '#0f172a'
     },
 
     searchInput: {
         backgroundColor: "#f1f5f9",
         padding: 12,
         borderRadius: 12,
-        marginBottom: 12
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: '#e2e8f0'
     },
 
     defectItem: {
         padding: 14,
         borderRadius: 12,
-        marginBottom: 8,
-        backgroundColor: "#f1f5f9"
-    },
-
-    defectType: {
-        fontSize: 12,
-        color: "#64748b"
-    },
-
-    closeBtn: {
-        backgroundColor: "#2563eb",
-        padding: 14,
-        borderRadius: 14,
-        alignItems: "center",
-        marginTop: 10
-
-    },
-
-    defectRow: {
-        flexDirection: "row",
-        alignItems: "center",
+        marginBottom: 10,
         backgroundColor: "#fff",
-        padding: 12,
-        borderRadius: 12,
-        marginBottom: 8
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 2
     },
 
     defectCode: {
-        fontWeight: "bold"
+        fontWeight: "bold",
+        fontSize: 14,
+        color: "#64748b",
+        marginLeft: 8
     },
 
     defectName: {
-        color: "#475569"
+        fontSize: 16,
+        fontWeight: "600",
+        color: "#0f172a",
+        marginTop: 2
+    },
+
+    defectDesc: {
+        fontSize: 13,
+        color: "#64748b",
+        marginTop: 6,
+        lineHeight: 18
+    },
+
+    typeBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 6,
+    },
+
+    typeBadgeText: {
+        color: "#fff",
+        fontSize: 10,
+        fontWeight: "bold"
+    },
+
+    noteBox: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginTop: 8,
+        backgroundColor: "#eff6ff",
+        padding: 8,
+        borderRadius: 8,
+        borderLeftWidth: 3,
+        borderLeftColor: '#2563eb'
+    },
+
+    noteText: {
+        fontSize: 12,
+        color: "#1e40af",
+        fontWeight: "500",
+        marginLeft: 4,
+        flex: 1
     },
 
     qtyInput: {
         width: 60,
-        backgroundColor: "#f1f5f9",
+        backgroundColor: "#f8fafc",
         padding: 8,
         borderRadius: 8,
         textAlign: "center",
-        marginRight: 10
+        marginRight: 10,
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+        fontWeight: 'bold'
     },
 
     saveBtn: {
@@ -664,59 +740,24 @@ const styles = StyleSheet.create({
         padding: 16,
         borderRadius: 16,
         alignItems: "center",
-        marginTop: 20
+        marginTop: 20,
+        shadowColor: "#2563eb",
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
+        elevation: 5
     },
 
     saveText: {
         color: "#fff",
-        fontWeight: "600"
-    },
-
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: "rgba(0,0,0,0.4)",
-        justifyContent: "flex-end"
-    },
-
-    modalContent: {
-        backgroundColor: "#fff",
-        padding: 20,
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-        maxHeight: "60%"
-    },
-
-    modalTitle: {
         fontWeight: "bold",
-        fontSize: 16,
-        marginBottom: 15
-    },
-
-    searchInput: {
-        backgroundColor: "#f1f5f9",
-        padding: 12,
-        borderRadius: 12,
-        marginBottom: 12
-    },
-
-    defectItem: {
-        padding: 14,
-        borderRadius: 12,
-        marginBottom: 8,
-        backgroundColor: "#f1f5f9"
-    },
-
-    defectType: {
-        fontSize: 12,
-        color: "#64748b"
+        fontSize: 16
     },
 
     closeBtn: {
-        backgroundColor: "#2563eb",
+        backgroundColor: "#64748b",
         padding: 14,
         borderRadius: 14,
         alignItems: "center",
-        marginTop: 10
+        marginTop: 15
     }
-
 });

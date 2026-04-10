@@ -145,21 +145,22 @@ export default function DefectManager() {
                         </Box>
                     )}
 
-                    <Table sx={{ minWidth: 650 }}>
+                    <Table sx={{ minWidth: 800 }}>
                         <TableHead>
                             <TableRow sx={{ backgroundColor: "#f8fafc" }}>
-                                <TableCell sx={{ fontWeight: 600, width: '15%' }}>Mã lỗi</TableCell>
-                                <TableCell sx={{ fontWeight: 600, width: '35%' }}>Tên lỗi</TableCell>
-                                <TableCell sx={{ fontWeight: 600 }}>Phân loại</TableCell>
+                                <TableCell sx={{ fontWeight: 600, width: '10%' }}>Mã lỗi</TableCell>
+                                <TableCell sx={{ fontWeight: 600, width: '25%' }}>Tên lỗi</TableCell>
+                                <TableCell sx={{ fontWeight: 600, width: '25%' }}>Mô tả chi tiết</TableCell>
+                                <TableCell sx={{ fontWeight: 600, width: '15%' }}>Phân loại</TableCell>
                                 <TableCell sx={{ fontWeight: 600 }} align="center">Trạng thái</TableCell>
-                                <TableCell sx={{ fontWeight: 600, width: 120 }} align="right">Thao tác</TableCell>
+                                <TableCell sx={{ fontWeight: 600, width: 100 }} align="right">Thao tác</TableCell>
                             </TableRow>
                         </TableHead>
 
                         <TableBody>
                             {data.length === 0 && !loading ? (
                                 <TableRow>
-                                    <TableCell colSpan={5} align="center" sx={{ py: 6 }}>
+                                    <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
                                         <BugReportIcon sx={{ fontSize: 60, color: "text.disabled", mb: 1 }} />
                                         <Typography variant="h6" color="text.secondary">Chưa có dữ liệu lỗi</Typography>
                                         <Typography variant="body2" color="text.secondary">
@@ -178,6 +179,17 @@ export default function DefectManager() {
 
                                         <TableCell sx={{ fontWeight: 500 }}>
                                             {row.TenLoi}
+                                        </TableCell>
+
+                                        <TableCell>
+                                            <Typography variant="body2" color="text.secondary">
+                                                {row.MoTa || "--"}
+                                            </Typography>
+                                            {row.GhiChu && (
+                                                <Typography variant="caption" sx={{ display: 'block', color: 'primary.main', fontStyle: 'italic' }}>
+                                                    Lưu ý: {row.GhiChu}
+                                                </Typography>
+                                            )}
                                         </TableCell>
 
                                         <TableCell>
@@ -242,14 +254,32 @@ export default function DefectManager() {
                 </DialogTitle>
 
                 <DialogContent dividers>
-                    <Stack spacing={3} sx={{ mt: 1 }}>
+                    <Stack spacing={2.5} sx={{ mt: 1 }}>
                         <TextField
-                            label="Tên lỗi"
+                            label="Tên lỗi (Ngắn gọn)"
                             required
                             fullWidth
-                            placeholder="Nhập tên mô tả lỗi..."
+                            placeholder="Ví dụ: Thùng móp méo, In sai màu..."
                             value={form.TenLoi || ""}
                             onChange={(e) => setForm({ ...form, TenLoi: e.target.value })}
+                        />
+
+                        <TextField
+                            label="Mô tả chi tiết"
+                            fullWidth
+                            multiline
+                            rows={2}
+                            placeholder="Mô tả cụ thể hơn về đặc điểm lỗi để KCS dễ nhận biết..."
+                            value={form.MoTa || ""}
+                            onChange={(e) => setForm({ ...form, MoTa: e.target.value })}
+                        />
+
+                        <TextField
+                            label="Ghi chú / Lưu ý"
+                            fullWidth
+                            placeholder="Các lưu ý đặc biệt khi kiểm tra lỗi này..."
+                            value={form.GhiChu || ""}
+                            onChange={(e) => setForm({ ...form, GhiChu: e.target.value })}
                         />
 
                         <TextField

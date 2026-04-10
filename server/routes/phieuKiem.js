@@ -236,6 +236,8 @@ router.get(
                         DefectId: r.DefectId,
                         MaLoi: r.MaLoi,
                         TenLoi: r.TenLoi,
+                        MoTa: r.MoTa,
+                        GhiChu: r.GhiChu,
                         SoLuong: r.SoLuong,
                         DefectType: r.DefectType,
                         ImageUrls: r.ImageUrls ? JSON.parse(r.ImageUrls) : []

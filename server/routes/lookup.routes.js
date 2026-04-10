@@ -66,7 +66,7 @@ router.post(
   authenticateToken,
   authorize("QUAN_TRI_DM"),
   async (req, res) => {
-    const { TenLoi, DefectType } = req.body;
+    const { TenLoi, DefectType, MoTa, GhiChu } = req.body;
 
     try {
       const pool = await poolPromise;
@@ -74,6 +74,8 @@ router.post(
       await pool.request()
         .input("TenLoi", sql.NVarChar(255), TenLoi)
         .input("DefectType", sql.NVarChar(20), DefectType)
+        .input("MoTa", sql.NVarChar(sql.MAX), MoTa)
+        .input("GhiChu", sql.NVarChar(sql.MAX), GhiChu)
         .execute("sp_DM_CreateDefect");
 
       res.json({ message: "Tạo lỗi thành công" });
@@ -91,7 +93,7 @@ router.put(
   authorize("QUAN_TRI_DM"),
   async (req, res) => {
     const { id } = req.params;
-    const { TenLoi, DefectType, TrangThai } = req.body;
+    const { TenLoi, DefectType, TrangThai, MoTa, GhiChu } = req.body;
 
     try {
       const pool = await poolPromise;
@@ -101,6 +103,8 @@ router.put(
         .input("TenLoi", sql.NVarChar(255), TenLoi)
         .input("DefectType", sql.NVarChar(20), DefectType)
         .input("TrangThai", sql.Bit, TrangThai)
+        .input("MoTa", sql.NVarChar(sql.MAX), MoTa)
+        .input("GhiChu", sql.NVarChar(sql.MAX), GhiChu)
         .execute("sp_DM_UpdateDefect");
 
       res.json({ message: "Cập nhật thành công" });
