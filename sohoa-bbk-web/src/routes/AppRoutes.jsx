@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import AppLayout from '../components/Layout/AppLayout';
 import Login from '../features/Login';
+import Dashboard from '../features/Dashboard/Dashboard';
 import PhieuKiemList from '../features/PhieuKiem/pages/PhieuKiemList';
 import PhieuKiemDetail from '../features/PhieuKiem/pages/PhieuKiemDetail';
 import PhieuKiemCreate from '../features/PhieuKiem/pages/PhieuKiemCreate';
@@ -18,6 +19,7 @@ export default function AppRoutes() {
             {/* Protected */}
             <Route element={<ProtectedRoute />}>
                 <Route element={<AppLayout />}>
+                    <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/phieu-kiem" element={<PhieuKiemList />} />
                     <Route path="/phieu-kiem/:id" element={<PhieuKiemDetail />} />
                     <Route path="/phieu-kiem/create" element={<PhieuKiemCreate />} />
@@ -27,7 +29,7 @@ export default function AppRoutes() {
                 </Route>
             </Route>
 
-            <Route path="*" element={<Navigate to="/phieu-kiem" />} />
+            <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
     );
 }
