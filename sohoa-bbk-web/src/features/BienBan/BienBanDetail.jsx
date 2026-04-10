@@ -61,7 +61,8 @@ import {
     addXuLy,
     addChiPhi,
     addHanhDong,
-    getDeNghiXuLy
+    getDeNghiXuLy,
+    saveBienBanCustomFields
 } from "../../api/bienBan.api";
 import { decodeToken } from "../../utils/auth";
 import ConfirmDialog from "../../components/common/ConfirmDialog";
@@ -97,6 +98,7 @@ export default function BienBanDetail() {
     const [openHanhDongModal, setOpenHanhDongModal] = useState(false);
     const [openPrintModal, setOpenPrintModal] = useState(false);
 
+    const [dynamicFields, setDynamicFields] = useState([]);
     // Confirm Dialog state
     const [confirmDialog, setConfirmDialog] = useState({
         open: false,
@@ -127,7 +129,7 @@ export default function BienBanDetail() {
             setChiPhi(res.data.chiPhi || []);
             setXacNhan(res.data.xacNhan || []);
             setHanhDong(res.data.hanhDong || []);
-
+            setDynamicFields(res.data.dynamicFields || []);
             const moTa = res.data.info?.MoTaChung || "";
             setMoTaChung(moTa);
             setMoTaConfirmed(!!moTa);
@@ -222,10 +224,41 @@ export default function BienBanDetail() {
     };
 
     const handlePrintPreview = () => setOpenPrintModal(true);
-    const handlePrint = useReactToPrint({
+    const triggerPrint = useReactToPrint({
         contentRef: componentRef,
         documentTitle: info ? `BienBan_${info.SoPhieu}` : 'BienBan',
     });
+    const handlePrint = async () => {
+        try {
+            // 1. Gom dữ liệu từ các thẻ input
+            const inputs = document.querySelectorAll('.custom-field');
+            const fieldsData = {};
+
+            inputs.forEach(input => {
+                if (input.name) {
+                    // Nếu là checkbox/radio lưu value dạng boolean/string
+                    if (input.type === 'checkbox') {
+                        fieldsData[input.name] = input.checked;
+                    } else {
+                        fieldsData[input.name] = input.value;
+                    }
+                }
+            });
+
+            // 2. Gọi API lưu dữ liệu
+            await saveBienBanCustomFields({
+                bienBanId: info.BienBanId || bienBanId,
+                fields: fieldsData
+            });
+
+            // 3. Bật hộp thoại in
+            triggerPrint();
+
+        } catch (error) {
+            console.error("Lỗi khi lưu dữ liệu in:", error);
+            showToast("Lưu thông tin thất bại. Vui lòng thử lại!", "error");
+        }
+    };
 
     // --- UI Helpers & Conditions ---
     const getStatusText = (boPhanId) => xuLy.some(x => x.BoPhanId === boPhanId) ? "Đã xử lý" : "Đang chờ";
@@ -317,25 +350,39 @@ export default function BienBanDetail() {
                                     <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                                         <DescriptionIcon color="action" /> Mô tả chung
                                     </Typography>
-                                    <TextField
-                                        fullWidth
-                                        multiline
-                                        minRows={4}
-                                        placeholder="Nhập mô tả chi tiết về tình trạng lỗi..."
-                                        value={moTaChung}
-                                        onChange={(e) => setMoTaChung(e.target.value)}
-                                        disabled={moTaConfirmed}
-                                        sx={{
-                                            bgcolor: moTaConfirmed ? '#f5f5f5' : '#fff',
-                                            '& .MuiInputBase-root': { borderRadius: 1.5 }
-                                        }}
-                                    />
-                                    {!moTaConfirmed && (
-                                        <Box sx={{ mt: 2, textAlign: 'right' }}>
-                                            <Button variant="contained" startIcon={<SaveIcon />} onClick={handleConfirmMoTa}>
-                                                Lưu mô tả
-                                            </Button>
+                                    {moTaConfirmed ? (
+                                        <Box sx={{ px: 1 }}>
+                                            <Typography
+                                                variant="body1"
+                                                sx={{
+                                                    whiteSpace: 'pre-wrap',
+                                                    color: 'text.primary',
+                                                    lineHeight: 1.7
+                                                }}
+                                            >
+                                                {moTaChung}
+                                            </Typography>
                                         </Box>
+                                    ) : (
+                                        <>
+                                            <TextField
+                                                fullWidth
+                                                multiline
+                                                minRows={4}
+                                                placeholder="Nhập mô tả chi tiết về tình trạng lỗi..."
+                                                value={moTaChung}
+                                                onChange={(e) => setMoTaChung(e.target.value)}
+                                                sx={{
+                                                    bgcolor: '#fff',
+                                                    '& .MuiInputBase-root': { borderRadius: 1.5 }
+                                                }}
+                                            />
+                                            <Box sx={{ mt: 2, textAlign: 'right' }}>
+                                                <Button variant="contained" startIcon={<SaveIcon />} onClick={handleConfirmMoTa}>
+                                                    Lưu mô tả
+                                                </Button>
+                                            </Box>
+                                        </>
                                     )}
                                 </CardContent>
                             </Card>
@@ -603,6 +650,7 @@ export default function BienBanDetail() {
                                 chiPhi={chiPhi}
                                 hanhDong={hanhDong}
                                 xacNhan={xacNhan}
+                                dynamicFields={dynamicFields}
                             />
                         </Paper>
                     </Box>

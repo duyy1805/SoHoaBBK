@@ -97,3 +97,7 @@ export const getDeNghiXuLy = () => {
 export const getBoPhan = () => {
     return axiosClient.get("/lookup/bo-phan");
 };
+
+export const saveBienBanCustomFields = (data) => {
+    return axiosClient.post("/bien-ban/custom-fields", data);
+};

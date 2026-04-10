@@ -58,6 +58,17 @@ router.get(
 
             const rs = result.recordsets;
 
+            // Xử lý DynamicFieldsJSON tương tự PhieuKiem
+            let dynamicFields = [];
+            const info = rs[0]?.[0] || null;
+            if (info && info.DynamicFieldsJSON) {
+                try {
+                    dynamicFields = JSON.parse(info.DynamicFieldsJSON);
+                } catch (e) {
+                    console.error("Lỗi parse DynamicFieldsJSON:", e);
+                }
+                delete info.DynamicFieldsJSON; // Xóa chuỗi thô đi cho nhẹ
+            }
             res.json({
                 info: rs[0]?.[0] || null,
                 defects: rs[1] || [],
@@ -65,7 +76,8 @@ router.get(
                 xuLy: rs[3] || [],
                 chiPhi: rs[4] || [],
                 xacNhan: rs[5] || [],
-                hanhDong: rs[6] || []
+                hanhDong: rs[6] || [],
+                dynamicFields: dynamicFields // Thêm dòng này
             });
 
         } catch (err) {
@@ -372,4 +384,22 @@ router.post(
 
     }
 )
+
+router.post('/custom-fields', authenticateToken, async (req, res) => {
+    try {
+        const { bienBanId, fields } = req.body;
+        const jsonString = JSON.stringify(fields);
+
+        const pool = await poolPromise;
+        await pool.request()
+            .input('BienBanId', sql.Int, bienBanId)
+            .input('JsonData', sql.NVarChar(sql.MAX), jsonString)
+            .execute('SP_Upsert_BienBan_CustomFields');
+
+        res.status(200).json({ success: true, message: 'Đã lưu thông tin fields' });
+    } catch (error) {
+        console.error("Lỗi lưu custom fields biên bản:", error);
+        res.status(500).json({ success: false, message: 'Lỗi server' });
+    }
+});
 module.exports = router;

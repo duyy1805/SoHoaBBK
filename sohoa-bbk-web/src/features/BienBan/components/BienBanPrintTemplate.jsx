@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Box } from '@mui/material';
 
 export const BienBanPrintTemplate = React.forwardRef(({
@@ -7,8 +7,31 @@ export const BienBanPrintTemplate = React.forwardRef(({
     xuLy = [],
     chiPhi = [],
     hanhDong = [],
-    xacNhan = []
+    xacNhan = [],
+    dynamicFields = []
 }, ref) => {
+
+    // 1. Lấy dữ liệu Custom Data đã lưu từ API
+    const customData = (dynamicFields || []).reduce((acc, field) => {
+        if (field?.FieldName) acc[field.FieldName] = field.FieldValue;
+        return acc;
+    }, {});
+
+    // 2. State quản lý Mục 2
+    const [phatHienTu, setPhatHienTu] = useState(customData.PhatHienTu || info.PhatHienTu || '');
+
+    // 3. State quản lý Mục 3 (chuyển sang string để chỉ chọn 1)
+    const [mucDo, setMucDo] = useState(() => {
+        if (customData.MucDo) return customData.MucDo;
+        // Hỗ trợ tương thích đọc data cũ (boolean)
+        const isTrue = (val) => val === true || val === 'true';
+        if (isTrue(customData.LoiLanDau) || info.LoiLanDau) return 'LoiLanDau';
+        if (isTrue(customData.LoiLapLai) || info.LoiLapLai) return 'LoiLapLai';
+        if (isTrue(customData.LoiDonLe) || info.LoiDonLe) return 'LoiDonLe';
+        if (isTrue(customData.LoiHangLoat) || info.LoiHangLoat) return 'LoiHangLoat';
+        return '';
+    });
+
     if (!info) return null;
 
     const styles = {
@@ -21,7 +44,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
             fontFamily: '"Times New Roman", Times, serif',
             color: '#000',
         },
-        // Tờ giấy A4 liền mạch (cuộn vô tận trên web, tự cắt khi in)
+        // Tờ giấy A4 liền mạch
         documentPaper: {
             width: '210mm',
             backgroundColor: '#fff',
@@ -43,17 +66,28 @@ export const BienBanPrintTemplate = React.forwardRef(({
         layoutTable: { width: '100%', borderCollapse: 'collapse', border: 'none' },
         layoutTd: { border: 'none', padding: '4px 0', verticalAlign: 'middle' },
         flexBetween: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+        inputField: { width: '100%', border: 'none', outline: 'none', backgroundColor: 'transparent', fontSize: 'inherit', fontFamily: 'inherit', padding: 0, margin: 0, color: 'inherit', textAlign: 'center' }
     };
 
-    const renderCheckboxRight = (label, checked) => (
-        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '85%' }}>
-            <span style={{ fontSize: '12pt' }}>{label}</span>
-            <span style={{ width: '16px', height: '16px', border: '1px solid #000', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px' }}>
-                {checked ? 'x' : ''}
-            </span>
+    // Ô vuông to dùng cho Mục 2 và Mục 3
+    const renderSquareBox = (checked) => (
+        <span style={{
+            width: '24px',
+            height: '24px',
+            border: '1px solid #000',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '18px',
+            fontWeight: 'bold',
+            lineHeight: 1,
+            marginLeft: '8px'
+        }}>
+            {checked ? 'x' : ''}
         </span>
     );
 
+    // Ô check nhỏ bên dưới (phần đề xuất)
     const renderCheckbox = (label, checked) => (
         <span style={{ marginRight: '15px', display: 'inline-flex', alignItems: 'center' }}>
             <span style={{ width: '16px', height: '16px', border: '1px solid #000', display: 'inline-block', marginRight: '6px', textAlign: 'center', lineHeight: '14px', fontSize: '12px' }}>
@@ -61,6 +95,28 @@ export const BienBanPrintTemplate = React.forwardRef(({
             </span>
             {label}
         </span>
+    );
+
+    // Cập nhật Ô check cho phần 2 (Chỉ chọn 1 - Radio)
+    const renderRadioRight = (label, value) => (
+        <div
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '85%', cursor: 'pointer' }}
+            onClick={() => setPhatHienTu(prev => prev === value ? '' : value)}
+        >
+            <span style={{ fontSize: '12pt' }}>{label}</span>
+            {renderSquareBox(phatHienTu === value)}
+        </div>
+    );
+
+    // Cập nhật ô check cho phần 3 (Chỉ chọn 1 - Radio)
+    const renderMucDoRadio = (label, value) => (
+        <div
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '85%', cursor: 'pointer' }}
+            onClick={() => setMucDo(prev => prev === value ? '' : value)}
+        >
+            <span style={{ fontSize: '12pt' }}>{label}</span>
+            {renderSquareBox(mucDo === value)}
+        </div>
     );
 
     return (
@@ -98,11 +154,12 @@ export const BienBanPrintTemplate = React.forwardRef(({
                 `}
             </style>
 
+            {/* Các thẻ Hidden input lưu trữ giá trị để Component cha gọi lưu API */}
+            <input type="hidden" name="PhatHienTu" className="custom-field" value={phatHienTu} />
+            <input type="hidden" name="MucDo" className="custom-field" value={mucDo} />
+
             <div className="document-paper" style={styles.documentPaper}>
-                {/* SỬ DỤNG TABLE TỔNG ĐỂ AUTO PHÂN TRANG:
-                  - <thead>: Luôn lặp lại ở đầu mỗi trang in
-                  - <tbody>: Chứa nội dung, sẽ tự động cắt sang trang mới nếu quá dài
-                */}
+                {/* SỬ DỤNG TABLE TỔNG ĐỂ AUTO PHÂN TRANG */}
                 <table style={{ width: '100%', borderCollapse: 'collapse', border: 'none' }}>
 
                     {/* ===== HEADER LẶP LẠI ===== */}
@@ -146,8 +203,9 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
                                     <div style={{ width: '450px' }}>
                                         <Box style={{ display: 'flex', justifyContent: 'space-between', width: '450px' }}>
-                                            <div style={{ ...styles.text, fontStyle: 'italic' }}>
-                                                {/* Số: {info.SoPhieu || '..........'}/KN. */}
+                                            <div style={{ ...styles.text, fontStyle: 'italic', display: 'flex', alignItems: 'center' }}>
+                                                {/* <span style={{ whiteSpace: 'nowrap' }}>Số: </span> */}
+                                                {/* <input name="SoPhieuBienBan" className="custom-field" type="text" defaultValue={customData.SoPhieuBienBan || info.SoPhieu || ''} placeholder=".........." style={{ ...styles.inputField, width: '100px', borderBottom: '1px dotted #000', marginLeft: 4 }} /> /KN. */}
                                             </div>
                                             <div style={{ ...styles.text, fontStyle: 'italic' }}>
                                                 Ngày {info.NgayKiem ? new Date(info.NgayKiem).toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm ')) : new Date().toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm '))}
@@ -161,29 +219,47 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                     <div style={styles.sectionTitle}>1. Thông tin sự không phù hợp</div>
                                     <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: '12px', ...styles.text }}>
                                         <span style={{ whiteSpace: 'nowrap' }}>Đơn vị sản xuất:</span>
-                                        <span style={styles.dottedLine}>{info.TenBoPhan || ''}</span>
+                                        <span style={styles.dottedLine}>
+                                            <input name="TenBoPhan" className="custom-field" type="text" defaultValue={customData.TenBoPhan || info.TenBoPhan || ''} style={styles.inputField} />
+                                        </span>
                                         <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Mã ĐVSX:</span>
-                                        <span style={{ ...styles.dottedLine, flexGrow: 0.6 }}>{info.MaBoPhan || ''}</span>
+                                        <span style={{ ...styles.dottedLine, flexGrow: 0.6 }}>
+                                            <input name="MaBoPhan" className="custom-field" type="text" defaultValue={customData.MaBoPhan || info.MaBoPhan || ''} style={styles.inputField} />
+                                        </span>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: '12px', ...styles.text }}>
                                         <span style={{ whiteSpace: 'nowrap' }}>Tên VT/BTP/TP:</span>
-                                        <span style={styles.dottedLine}>{info.TenSanPham || ''}</span>
+                                        <span style={styles.dottedLine}>
+                                            <input name="TenSanPham" className="custom-field" type="text" defaultValue={customData.TenSanPham || info.TenSanPham || ''} style={styles.inputField} />
+                                        </span>
                                         <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Mã Item:</span>
-                                        <span style={{ ...styles.dottedLine, flexGrow: 0.6 }}></span>
+                                        <span style={{ ...styles.dottedLine, flexGrow: 0.6 }}>
+                                            <input name="MaItem" className="custom-field" type="text" defaultValue={customData.MaItem || info.MaSanPham || ''} style={styles.inputField} />
+                                        </span>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: '12px', ...styles.text }}>
                                         <span style={{ whiteSpace: 'nowrap' }}>Mã truy nguyên:</span>
-                                        <span style={styles.dottedLine}></span>
+                                        <span style={styles.dottedLine}>
+                                            <input name="MaTruyNguyen" className="custom-field" type="text" defaultValue={customData.MaTruyNguyen || ''} style={styles.inputField} />
+                                        </span>
                                         <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Đơn hàng:</span>
-                                        <span style={{ ...styles.dottedLine, flexGrow: 0.5 }}></span>
+                                        <span style={{ ...styles.dottedLine, flexGrow: 0.5 }}>
+                                            <input name="DonHang" className="custom-field" type="text" defaultValue={customData.DonHang || ''} style={styles.inputField} />
+                                        </span>
                                         <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Lô SX:</span>
-                                        <span style={{ ...styles.dottedLine, flexGrow: 0.3 }}>{info.Lot || ''}</span>
+                                        <span style={{ ...styles.dottedLine, flexGrow: 0.3 }}>
+                                            <input name="Lot" className="custom-field" type="text" defaultValue={customData.Lot || info.Lot || ''} style={styles.inputField} />
+                                        </span>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'flex-end', marginTop: '24px', marginBottom: '12px', ...styles.text }}>
                                         <span style={{ whiteSpace: 'nowrap' }}>Số lượng:</span>
-                                        <span style={styles.dottedLine}></span>
+                                        <span style={styles.dottedLine}>
+                                            <input name="SoLuongKPH" className="custom-field" type="text" defaultValue={customData.SoLuongKPH || ''} style={styles.inputField} />
+                                        </span>
                                         <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Dấu tuần:</span>
-                                        <span style={{ ...styles.dottedLine, flexGrow: 0.4 }}></span>
+                                        <span style={{ ...styles.dottedLine, flexGrow: 0.4 }}>
+                                            <input name="DauTuan" className="custom-field" type="text" defaultValue={customData.DauTuan || ''} style={styles.inputField} />
+                                        </span>
                                     </div>
                                 </Box>
 
@@ -193,14 +269,14 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                     <table style={{ ...styles.layoutTable, paddingLeft: '15px' }}>
                                         <tbody>
                                             <tr>
-                                                <td style={{ ...styles.layoutTd, width: '33%' }}>{renderCheckboxRight('a) Kiểm tra đầu vào', info.PhatHienTu === 'A' || info.PhatHienTu === 'KIEM_TRA_DAU_VAO')}</td>
-                                                <td style={{ ...styles.layoutTd, width: '33%' }}>{renderCheckboxRight('b) Trong sản xuất', info.PhatHienTu === 'B' || info.PhatHienTu === 'TRONG_SAN_XUAT')}</td>
-                                                <td style={{ ...styles.layoutTd, width: '34%' }}>{renderCheckboxRight('c) Kiểm cuối', info.PhatHienTu === 'C' || info.PhatHienTu === 'KIEM_DONG_CONT')}</td>
+                                                <td style={{ ...styles.layoutTd, width: '33%' }}>{renderRadioRight('a) Kiểm tra đầu vào', 'KIEM_TRA_DAU_VAO')}</td>
+                                                <td style={{ ...styles.layoutTd, width: '33%' }}>{renderRadioRight('b) Trong sản xuất', 'TRONG_SAN_XUAT')}</td>
+                                                <td style={{ ...styles.layoutTd, width: '34%' }}>{renderRadioRight('c) Kiểm cuối', 'KIEM_DONG_CONT')}</td>
                                             </tr>
                                             <tr>
-                                                <td style={styles.layoutTd}>{renderCheckboxRight('d) Kiểm tra tại NCC', info.PhatHienTu === 'D' || info.PhatHienTu === 'TAI_NCC')}</td>
-                                                <td style={styles.layoutTd}>{renderCheckboxRight('e) Khách hàng', info.PhatHienTu === 'E' || info.PhatHienTu === 'KHACH_HANG')}</td>
-                                                <td style={styles.layoutTd}>{renderCheckboxRight('f) Trong kho', info.PhatHienTu === 'F' || info.PhatHienTu === 'TRONG_KHO')}</td>
+                                                <td style={styles.layoutTd}>{renderRadioRight('d) Kiểm tra tại NCC', 'TAI_NCC')}</td>
+                                                <td style={styles.layoutTd}>{renderRadioRight('e) Khách hàng', 'KHACH_HANG')}</td>
+                                                <td style={styles.layoutTd}>{renderRadioRight('f) Trong kho', 'TRONG_KHO')}</td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -214,13 +290,13 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                                 <td style={{ ...styles.layoutTd, width: '42%', verticalAlign: 'top', paddingTop: '4px' }}>
                                                     <div style={{ ...styles.sectionTitle, marginTop: 0, marginBottom: 0 }}>3. Mức độ không phù hợp</div>
                                                 </td>
-                                                <td style={{ ...styles.layoutTd, width: '29%' }}>{renderCheckboxRight('a) Lỗi lần đầu', !!info.LoiLanDau)}</td>
-                                                <td style={{ ...styles.layoutTd, width: '29%' }}>{renderCheckboxRight('b) Lỗi lặp lại', !!info.LoiLapLai)}</td>
+                                                <td style={{ ...styles.layoutTd, width: '29%' }}>{renderMucDoRadio('a) Lỗi lần đầu', 'LoiLanDau')}</td>
+                                                <td style={{ ...styles.layoutTd, width: '29%' }}>{renderMucDoRadio('b) Lỗi lặp lại', 'LoiLapLai')}</td>
                                             </tr>
                                             <tr>
                                                 <td style={styles.layoutTd}></td>
-                                                <td style={styles.layoutTd}>{renderCheckboxRight('c) Lỗi đơn lẻ', !!info.LoiDonLe)}</td>
-                                                <td style={styles.layoutTd}>{renderCheckboxRight('d) Lỗi hàng loạt', !!info.LoiHangLoat)}</td>
+                                                <td style={styles.layoutTd}>{renderMucDoRadio('c) Lỗi đơn lẻ', 'LoiDonLe')}</td>
+                                                <td style={styles.layoutTd}>{renderMucDoRadio('d) Lỗi hàng loạt', 'LoiHangLoat')}</td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -403,20 +479,30 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                 {/* Chữ ký 2 */}
                                 <Box className="avoid-break" style={styles.signatureBlock}>
                                     <Box style={styles.signatureCol}>
-                                        <div style={styles.text}>Ngày..................</div>
+                                        <div style={{ ...styles.text, fontStyle: 'italic' }}>
+                                            Ngày {xacNhan.find(item => item.BoPhanId === 1)?.ThoiGian ? new Date(xacNhan.find(item => item.BoPhanId === 1).ThoiGian).toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm ')) : new Date().toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm '))}
+                                        </div>
                                         <div style={styles.boldText}>PHÒNG KN</div>
                                         <Box height="90px"></Box>
                                     </Box>
-                                    <Box style={styles.signatureCol}>
-                                        <div style={styles.text}>Ngày..................</div>
-                                        <div style={styles.boldText}>PHÒNG KTCN</div>
-                                        <Box height="90px"></Box>
-                                        <div style={styles.text}>{xacNhan.BoPhan}</div>
-                                    </Box>
+                                    {
+                                        xacNhan && xacNhan.some(item => item.BoPhanId === 3) && (
+                                            <Box style={styles.signatureCol}>
+                                                <div style={{ ...styles.text, fontStyle: 'italic' }}>
+                                                    Ngày {xacNhan.find(item => item.BoPhanId === 3)?.ThoiGian ? new Date(xacNhan.find(item => item.BoPhanId === 3).ThoiGian).toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm ')) : new Date().toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm '))}
+                                                </div>
+                                                <div style={styles.boldText}>PHÒNG KTCN</div>
+                                                <Box height="90px"></Box>
+                                                <div style={styles.text}>{xacNhan.BoPhan}</div>
+                                            </Box>
+                                        )
+                                    }
                                     {
                                         xacNhan && xacNhan.some(item => item.BoPhanId === 2) && (
                                             <Box style={styles.signatureCol}>
-                                                <div style={styles.text}>Ngày..................</div>
+                                                <div style={{ ...styles.text, fontStyle: 'italic' }}>
+                                                    Ngày {xacNhan.find(item => item.BoPhanId === 2)?.ThoiGian ? new Date(xacNhan.find(item => item.BoPhanId === 2).ThoiGian).toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm ')) : new Date().toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm '))}
+                                                </div>
                                                 <div style={styles.boldText}>PHÒNG VT</div>
                                                 <Box height="90px"></Box>
                                                 <div style={styles.text}>{xacNhan.find(item => item.BoPhanId === 2)?.FullName}</div>
