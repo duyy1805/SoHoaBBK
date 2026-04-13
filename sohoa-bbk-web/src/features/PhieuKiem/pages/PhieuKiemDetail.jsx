@@ -230,6 +230,16 @@ export default function PhieuKiemDetail() {
                                 Danh sách phiếu kiểm
                             </Button>
                             <Stack direction="row" spacing={2}>
+                                {phieu?.BienBanId && (
+                                    <Button
+                                        variant="outlined"
+                                        color="error"
+                                        startIcon={<AssignmentIcon />}
+                                        onClick={() => navigate(`/bien-ban/${phieu.BienBanId}`)}
+                                    >
+                                        Xem biên bản KPH
+                                    </Button>
+                                )}
                                 <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => setOpenPrintModal(true)}>
                                     In phiếu kiểm
                                 </Button>

@@ -123,14 +123,13 @@ export default function Dashboard() {
             <Grid container spacing={3}>
                 {/* Stats */}
                 {stats.map((stat, index) => (
-                    <Grid item xs={12} sm={6} md={3} key={index}>
+                    <Grid size={{ xs: 12, sm: 6, md: 3 }} key={index}>
                         <StatCard {...stat} />
                     </Grid>
                 ))}
-...
 
                 {/* Main Content Area */}
-                <Grid item xs={12} md={8}>
+                <Grid size={{ xs: 12, md: 8 }}>
                     <Paper sx={{ p: 0, overflow: 'hidden' }}>
                         <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <Typography variant="h6">Kiểm tra gần đây</Typography>
@@ -215,14 +214,14 @@ export default function Dashboard() {
                 </Grid>
 
                 {/* Sidebar area */}
-                <Grid item xs={12} md={4}>
+                <Grid size={{ xs: 12, md: 4 }}>
                     <Stack spacing={3}>
                         {/* Quick Actions */}
                         <Paper sx={{ p: 2 }}>
                             <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>Thao tác nhanh</Typography>
                             <Grid container spacing={2}>
                                 {quickActions.map((action, index) => (
-                                    <Grid item xs={6} key={index}>
+                                    <Grid size={{ xs: 12, sm: 6 }} key={index}>
                                         <Button
                                             variant="outlined"
                                             fullWidth

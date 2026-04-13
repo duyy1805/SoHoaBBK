@@ -238,17 +238,33 @@ export default function BienBanDetailScreen({ route, navigation }) {
 
             <View style={styles.headerCard}>
 
-                <Text style={styles.soPhieu}>{info.SoPhieu}</Text>
+                <Text style={styles.soPhieu}>{info?.SoPhieu}</Text>
 
-                <Text style={styles.product}>{info.TenSanPham}</Text>
+                <Text style={styles.product}>{info?.TenSanPham}</Text>
 
                 <View style={styles.rowBetween}>
-                    <Text style={styles.meta}>Lot: {info.Lot}</Text>
-                    <Text style={styles.meta}>Người lập: {info.NguoiLap}</Text>
+                    <Text style={styles.meta}>Lot: {info?.Lot}</Text>
+                    <Text style={styles.meta}>Người lập: {info?.NguoiLap}</Text>
                 </View>
 
-                <View style={styles.statusBadge}>
-                    <Text style={styles.statusText}>{info.TrangThai}</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
+                    <View style={styles.statusBadge}>
+                        <Text style={styles.statusText}>{info?.TrangThai}</Text>
+                    </View>
+
+                    {info?.PhieuKiemId && (
+                        <TouchableOpacity
+                            onPress={() => navigation.navigate("PhieuDetail", { id: info.PhieuKiemId })}
+                            style={{
+                                backgroundColor: '#2563eb',
+                                paddingHorizontal: 12,
+                                paddingVertical: 6,
+                                borderRadius: 8
+                            }}
+                        >
+                            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>Xem phiếu kiểm</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
 
             </View>

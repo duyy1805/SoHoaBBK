@@ -288,6 +288,17 @@ export default function PhieuDetailScreen({ route, navigation }) {
                         </View>
                     </View>
 
+                    {phieu?.BienBanId && (
+                        <TouchableOpacity
+                            style={styles.bienBanBadge}
+                            onPress={() => navigation.navigate("BienBanDetail", { bienBanId: phieu.BienBanId })}
+                        >
+                            <Text style={styles.bienBanBadgeText}>
+                                Xem biên bản KPH
+                            </Text>
+                        </TouchableOpacity>
+                    )}
+
                 </View>
 
                 {trangThai === "TAO_MOI" && canConfig && (
@@ -747,6 +758,23 @@ const styles = StyleSheet.create({
     completedText: {
         color: "#166534",
         fontWeight: "700"
+    },
+
+    bienBanBadge: {
+        backgroundColor: "#fee2e2",
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: 8,
+        marginTop: 8,
+        alignSelf: "flex-start",
+        borderWidth: 1,
+        borderColor: "#fecaca"
+    },
+
+    bienBanBadgeText: {
+        color: "#dc2626",
+        fontWeight: "700",
+        fontSize: 12
     }
 
-});
+    });

@@ -296,6 +296,15 @@ export default function BienBanDetail() {
                             Danh sách biên bản
                         </Button>
                         <Stack direction="row" spacing={2}>
+                            {info.PhieuKiemId && (
+                                <Button
+                                    variant="outlined"
+                                    startIcon={<AssignmentTurnedInIcon />}
+                                    onClick={() => navigate(`/phieu-kiem/${info.PhieuKiemId}`)}
+                                >
+                                    Xem phiếu kiểm
+                                </Button>
+                            )}
                             <Button
                                 variant="outlined"
                                 startIcon={<PrintIcon />}

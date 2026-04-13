@@ -192,7 +192,7 @@ export default function PhieuKiemCreate() {
                         row.Ma_DonHang?.toLowerCase().includes(lower) ||
                         row.Ma_VatTu?.toLowerCase().includes(lower) ||
                         row.QuyCach?.toLowerCase().includes(lower) ||
-                        row.Ten_NhaCungCap?.toLowerCase().includes(lower)
+                        row.NhaCungCap?.toLowerCase().includes(lower)
                     );
                 }
                 return false;
@@ -209,7 +209,7 @@ export default function PhieuKiemCreate() {
         return result;
     }, [lichList, searchTerm, chungLoaiFilter, selectedLoai]);
 
-    const getRowId = (row) => selectedLoai?.MaLoai === "KIEM_DONG_CONT" ? row.ClosingScheduleDetailGuid : row.ID_KeHoach_ChiTiet;
+    const getRowId = (row) => selectedLoai?.MaLoai === "KIEM_DONG_CONT" ? row.ClosingScheduleDetailGuid : row.ID_ChungTuNhap_ChiTiet;
 
     const handleChange = async (e) => {
         const { name, value } = e.target;
@@ -621,7 +621,7 @@ export default function PhieuKiemCreate() {
                                                                 </TableCell>
                                                                 <TableCell>{row.QuyCach}</TableCell>
                                                                 <TableCell>{row.Ten_ChungLoaiVatTu}</TableCell>
-                                                                <TableCell>{row.Ten_NhaCungCap}</TableCell>
+                                                                <TableCell>{row.NhaCungCap}</TableCell>
                                                             </>
                                                         )}
 
@@ -629,7 +629,7 @@ export default function PhieuKiemCreate() {
                                                         <TableCell>
                                                             {selectedLoai?.MaLoai === "KIEM_DONG_CONT"
                                                                 ? row.RequiredDateString
-                                                                : new Date(row.Ngay_Giao || row.NgayLap).toLocaleDateString('vi-VN')}
+                                                                : new Date(row.Ngay_Giao || row.Ngay_Invoice).toLocaleDateString('vi-VN')}
                                                         </TableCell>
                                                     </TableRow>
                                                 );

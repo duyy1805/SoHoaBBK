@@ -49,7 +49,7 @@ export default function App() {
       }
     });
 
-    return () => Notifications.removeNotificationSubscription(responseListener);
+    return () => responseListener.remove();
   }, []);
 
   if (!ready) return null;
