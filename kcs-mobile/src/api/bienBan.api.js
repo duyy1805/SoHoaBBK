@@ -46,6 +46,11 @@ export const getAssignableUsers = (bienBanId) => {
     return axiosClient.get(`/bien-ban/${bienBanId}/assign-users`);
 };
 
+export const getAssignableUsersByDepartment = (bienBanId, boPhanId) => {
+    const query = boPhanId ? `?boPhanId=${boPhanId}` : "";
+    return axiosClient.get(`/bien-ban/${bienBanId}/assign-users${query}`);
+};
+
 /* ================================
    Phân công xử lý
 ================================ */
@@ -58,6 +63,10 @@ export const assignDepartments = (bienBanId, boPhanIds) => {
 
 export const confirmAssign = (bienBanId) => {
     return axiosClient.post(`/bien-ban/${bienBanId}/confirm-assign`);
+};
+
+export const assignUserToDepartment = (bienBanId, data) => {
+    return axiosClient.post(`/bien-ban/${bienBanId}/assign-user`, data);
 };
 /* ================================
    Thêm ý kiến xử lý

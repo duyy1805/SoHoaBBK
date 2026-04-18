@@ -44,6 +44,9 @@ export default function BienBanDetailScreen({ route, navigation }) {
     const [showHanhDongModal, setShowHanhDongModal] = useState(false);
     const [currentUserId, setCurrentUserId] = useState(null);
     const [currentUserBoPhanId, setCurrentUserBoPhanId] = useState(null);
+    const [currentUserPermissions, setCurrentUserPermissions] = useState([]);
+    const [currentUserRoles, setCurrentUserRoles] = useState([]);
+    const [selectedAssign, setSelectedAssign] = useState(null);
     /* LOAD DATA */
 
     useEffect(() => {
@@ -57,6 +60,8 @@ export default function BienBanDetailScreen({ route, navigation }) {
         const user = JSON.parse(userStr);
         setCurrentUserId(user.id);
         setCurrentUserBoPhanId(user.boPhanId);
+        setCurrentUserPermissions(user.permissions || []);
+        setCurrentUserRoles(user.roles || []);
     };
     const loadData = async () => {
         try {
@@ -118,7 +123,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
 
             Alert.alert(
                 "Lỗi",
-                err.status = 403 ? "Không được cấp quyền" : err?.response?.data?.message || "Không thể xác nhận phân công"
+                err?.response?.status === 403 ? "Không được cấp quyền" : err?.response?.data?.message || "Không thể xác nhận phân công"
             );
 
         }
@@ -191,10 +196,25 @@ export default function BienBanDetailScreen({ route, navigation }) {
     const hasXuLy = xuLy.some(x => x.BoPhanId === currentUserBoPhanId);
     const hasChiPhi = chiPhi.some(c => c.BoPhanId === currentUserBoPhanId);
     const hasHanhDong = hanhDong.some(h => h.BoPhanId === currentUserBoPhanId);
-    console.log(hanhDong);
     const isConfirmed = xacNhan.some(
         x => x.BoPhanId === currentUserBoPhanId
     );
+    const canAssignUserForDepartment = (assign) => {
+        if (!info?.AssignConfirmed) return false;
+        if (!assign || assign.BoPhanId !== currentUserBoPhanId) return false;
+
+        const hasAssignPermission = currentUserPermissions.includes("XAC_NHAN_NGUOI_XU_LY");
+        const hasLeadRole = currentUserRoles.some(
+            role => role?.toUpperCase().includes("TP")
+        );
+        console.log(currentUserRoles);
+        return hasAssignPermission || hasLeadRole || currentUserRoles.length === 0;
+    };
+
+    const openAssignUserModal = (assign) => {
+        setSelectedAssign(assign);
+        setShowAssignModal(true);
+    };
     const allConfirmed =
         assigns.length > 0 &&
         assigns.every(a =>
@@ -349,19 +369,35 @@ export default function BienBanDetailScreen({ route, navigation }) {
                 {assigns.map((a, i) => (
                     <View key={i} style={styles.assignRow}>
 
-                        <View>
+                        <View style={styles.assignInfo}>
                             <Text style={styles.assignName}>{a.MaBoPhan}</Text>
                             <Text style={styles.assignRole}>{a.TenBoPhan}</Text>
+                            <Text style={styles.assignPerson}>
+                                Phụ trách: {a.NguoiXuLy || "Chưa phân cá nhân"}
+                            </Text>
                         </View>
 
-                        <Text style={[
-                            styles.assignStatus,
-                            getStatusText(a.BoPhanId) === "✓"
-                                ? styles.done
-                                : styles.pending
-                        ]}>
-                            {getStatusText(a.BoPhanId)}
-                        </Text>
+                        <View style={styles.assignActionGroup}>
+                            <Text style={[
+                                styles.assignStatus,
+                                getStatusText(a.BoPhanId) === "✓"
+                                    ? styles.done
+                                    : styles.pending
+                            ]}>
+                                {getStatusText(a.BoPhanId)}
+                            </Text>
+
+                            {canAssignUserForDepartment(a) && (
+                                <TouchableOpacity
+                                    style={styles.assignMiniBtn}
+                                    onPress={() => openAssignUserModal(a)}
+                                >
+                                    <Text style={styles.assignMiniBtnText}>
+                                        Phân cá nhân
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
 
                     </View>
                 ))}
@@ -373,15 +409,6 @@ export default function BienBanDetailScreen({ route, navigation }) {
             {!info.AssignConfirmed && moTaConfirmed && (
 
                 <>
-
-                    <TouchableOpacity
-                        style={styles.assignBtn}
-                        onPress={() => setShowAssignModal(true)}
-                    >
-                        <Text style={styles.btnText}>
-                            Chọn người xử lý
-                        </Text>
-                    </TouchableOpacity>
 
                     <TouchableOpacity
                         style={styles.confirmBtn}
@@ -561,8 +588,13 @@ export default function BienBanDetailScreen({ route, navigation }) {
             <AssignUserModal
                 visible={showAssignModal}
                 bienBanId={bienBanId}
-                assignedUsers={assigns}
-                onClose={() => setShowAssignModal(false)}
+                boPhanId={selectedAssign?.BoPhanId}
+                tenBoPhan={selectedAssign?.TenBoPhan}
+                currentAssignedUserId={selectedAssign?.NguoiXuLyId}
+                onClose={() => {
+                    setShowAssignModal(false);
+                    setSelectedAssign(null);
+                }}
                 reload={loadData}
             />
 
@@ -720,14 +752,31 @@ const styles = StyleSheet.create({
     assignRow: {
         flexDirection: "row",
         justifyContent: "space-between",
+        alignItems: "center",
         paddingVertical: 10,
         borderBottomWidth: 1,
         borderColor: "#eee"
     },
 
+    assignInfo: {
+        flex: 1,
+        paddingRight: 12
+    },
+
     assignRole: {
         color: "#666",
         fontSize: 13
+    },
+
+    assignPerson: {
+        color: "#2563eb",
+        fontSize: 13,
+        marginTop: 4,
+        fontWeight: "500"
+    },
+
+    assignActionGroup: {
+        alignItems: "flex-end"
     },
 
     assignStatus: {
@@ -879,12 +928,18 @@ const styles = StyleSheet.create({
         fontWeight: "600",
         color: "#2980b9",
     },
-    assignBtn: {
+    assignMiniBtn: {
         backgroundColor: "#3498db",
-        padding: 12,
-        borderRadius: 10,
-        alignItems: "center",
-        marginTop: 10
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 8,
+        marginTop: 8
+    },
+
+    assignMiniBtnText: {
+        color: "#fff",
+        fontSize: 12,
+        fontWeight: "600"
     },
 
     confirmBtn: {

@@ -7,6 +7,47 @@ const { poolPromise } = require("../db");
 const authenticateToken = require("../middlewares/auth.middleware");
 const authorize = require("../middlewares/permission.middleware");
 
+const hasPermission = (user, permissionCode) =>
+    Array.isArray(user?.permissions) && user.permissions.includes(permissionCode);
+
+const hasLeadRole = (user) => {
+    if (!Array.isArray(user?.roles) || user.roles.length === 0) {
+        return true;
+    }
+
+    return user.roles.some((role) => role?.toUpperCase().includes("TP"));
+};
+
+const canManageDepartmentAssign = (user, boPhanId) => {
+    if (hasPermission(user, "XAC_NHAN_NGUOI_XU_LY")) {
+        return true;
+    }
+
+    return user?.boPhanId === boPhanId && hasLeadRole(user);
+};
+
+const getBienBanAssignRows = async (pool, bienBanId) => {
+    const result = await pool.request()
+        .input("BienBanId", sql.Int, bienBanId)
+        .query(`
+            SELECT
+                a.Id,
+                a.BoPhanId,
+                bp.MaBoPhan,
+                bp.TenBoPhan,
+                a.NguoiXuLyId,
+                u.FullName AS NguoiXuLy,
+                a.AssignedToUserAt
+            FROM BIEN_BAN_ASSIGN a
+            LEFT JOIN DM_BO_PHAN bp ON bp.Id = a.BoPhanId
+            LEFT JOIN USERS u ON u.Id = a.NguoiXuLyId
+            WHERE a.BienBanId = @BienBanId
+            ORDER BY a.Id
+        `);
+
+    return result.recordset;
+};
+
 /* =========================================================
    GET /bien-ban
    Permission : XEM_BIEN_BAN
@@ -57,6 +98,7 @@ router.get(
                 .execute("sp_BienBan_GetDetail");
 
             const rs = result.recordsets;
+            const assignRows = await getBienBanAssignRows(pool, id);
 
             // Xử lý DynamicFieldsJSON tương tự PhieuKiem
             let dynamicFields = [];
@@ -69,10 +111,19 @@ router.get(
                 }
                 delete info.DynamicFieldsJSON; // Xóa chuỗi thô đi cho nhẹ
             }
+
+            const mergedAssigns = (assignRows.length > 0 ? assignRows : (rs[2] || [])).map((assign) => {
+                const fallback = (rs[2] || []).find((item) => item.BoPhanId === assign.BoPhanId) || {};
+                return {
+                    ...fallback,
+                    ...assign
+                };
+            });
+
             res.json({
                 info: rs[0]?.[0] || null,
                 defects: rs[1] || [],
-                assigns: rs[2] || [],
+                assigns: mergedAssigns,
                 xuLy: rs[3] || [],
                 chiPhi: rs[4] || [],
                 xacNhan: rs[5] || [],
@@ -237,19 +288,102 @@ router.post(
 router.get(
     "/:id/assign-users",
     authenticateToken,
-    authorize("XAC_NHAN_NGUOI_XU_LY"),
     async (req, res) => {
+        try {
+            const bienBanId = parseInt(req.params.id, 10);
+            const queryBoPhanId = req.query.boPhanId ? parseInt(req.query.boPhanId, 10) : null;
+            const targetBoPhanId = queryBoPhanId || req.user.boPhanId;
 
-        const bienBanId = parseInt(req.params.id, 10);
+            if (!targetBoPhanId) {
+                return res.status(400).json({
+                    message: "Thiếu bộ phận cần lấy danh sách nhân sự"
+                });
+            }
 
-        const pool = await poolPromise;
+            if (!canManageDepartmentAssign(req.user, targetBoPhanId)) {
+                return res.status(403).json({
+                    message: "Không được phép xem danh sách nhân sự của bộ phận này"
+                });
+            }
 
-        const result = await pool.request()
-            // .input("BienBanId", sql.Int, bienBanId)
-            .execute("sp_BienBan_GetAssignableUsers");
+            const pool = await poolPromise;
 
-        res.json(result.recordset);
+            const assignCheck = await pool.request()
+                .input("BienBanId", sql.Int, bienBanId)
+                .input("BoPhanId", sql.Int, targetBoPhanId)
+                .query(`
+                    SELECT TOP 1 Id
+                    FROM BIEN_BAN_ASSIGN
+                    WHERE BienBanId = @BienBanId AND BoPhanId = @BoPhanId
+                `);
 
+            if (assignCheck.recordset.length === 0) {
+                return res.status(404).json({
+                    message: "Bộ phận này chưa được phân công cho biên bản"
+                });
+            }
+
+            const result = await pool.request()
+                .input("BoPhanId", sql.Int, targetBoPhanId)
+                .query(`
+                    SELECT
+                        u.Id,
+                        u.Username,
+                        u.FullName,
+                        u.BoPhanId,
+                        bp.TenBoPhan,
+                        bp.MaBoPhan
+                    FROM USERS u
+                    LEFT JOIN DM_BO_PHAN bp ON bp.Id = u.BoPhanId
+                    WHERE u.TrangThai = 1
+                      AND u.BoPhanId = @BoPhanId
+                    ORDER BY u.FullName, u.Username
+                `);
+
+            res.json(result.recordset);
+        } catch (err) {
+            console.error("GetAssignableUsers error:", err);
+            res.status(500).json({
+                message: "Không lấy được danh sách nhân sự"
+            });
+        }
+
+    }
+);
+
+router.post(
+    "/:id/assign-user",
+    authenticateToken,
+    authorize("PHAN_CONG_NGUOI_XU_LY"),
+    async (req, res) => {
+        try {
+            const bienBanId = parseInt(req.params.id, 10);
+            const boPhanId = parseInt(req.body.boPhanId, 10);
+            const nguoiXuLyId = parseInt(req.body.nguoiXuLyId, 10);
+
+            if (!boPhanId || !nguoiXuLyId) {
+                return res.status(400).json({
+                    message: "Thiếu bộ phận hoặc người xử lý"
+                });
+            }
+
+            const pool = await poolPromise;
+
+            await pool.request()
+                .input("BienBanId", sql.Int, bienBanId)
+                .input("BoPhanId", sql.Int, boPhanId)
+                .input("NguoiXuLyId", sql.Int, nguoiXuLyId)
+                .execute("sp_BienBan_AssignNhanVien");
+
+            res.json({ success: true });
+
+        } catch (err) {
+            console.error("AssignUser error:", err);
+
+            res.status(500).json({
+                message: err.message || "Không thể phân cá nhân xử lý"
+            });
+        }
     }
 );
 

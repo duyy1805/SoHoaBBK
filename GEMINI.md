@@ -5,7 +5,8 @@ This project, **SoHoaBBK**, is a comprehensive Quality Control System (KCS) desi
 ## Project Overview
 
 ### Architecture & Tech Stack
-- **Backend (`/server`)**: 
+
+- **Backend (`/server`)**:
   - **Runtime**: Node.js with Express.
   - **Database**: SQL Server (`mssql`) using Stored Procedures for business logic and data access.
   - **Security**: JWT-based authentication with `argon2` password hashing.
@@ -22,6 +23,7 @@ This project, **SoHoaBBK**, is a comprehensive Quality Control System (KCS) desi
   - **Purpose**: Real-time inspection execution ("Phieu Kiem") by workers on the production floor.
 
 ## Key Features
+
 - **Authentication**: Role-based access control (RBAC) with specific permissions (e.g., `XEM_PHIEU_KIEM`, `THUC_HIEN_KIEM`, `XAC_NHAN_PX`).
 - **Inspection Management ("Phieu Kiem")**: Creation, assignment, AQL calculation, and multi-stage confirmation (KCS -> PX -> Kiem Nghiem).
 - **Incident Reporting ("Bien Ban")**: Tracking defects, assigning responsibilities, and proposing corrective actions.
@@ -30,10 +32,12 @@ This project, **SoHoaBBK**, is a comprehensive Quality Control System (KCS) desi
 ## Development & Execution
 
 ### Prerequisites
+
 - Node.js (v18+ recommended)
 - SQL Server (with the required stored procedures and schema)
 
 ### Backend
+
 - **Path**: `server/`
 - **Commands**:
   - `npm install`: Install dependencies.
@@ -41,6 +45,7 @@ This project, **SoHoaBBK**, is a comprehensive Quality Control System (KCS) desi
 - **Config**: Requires a `.env` file with `JWT_SECRET`, `PORT`, and DB connection details.
 
 ### Web Frontend
+
 - **Path**: `sohoa-bbk-web/`
 - **Commands**:
   - `npm install`: Install dependencies.
@@ -49,6 +54,7 @@ This project, **SoHoaBBK**, is a comprehensive Quality Control System (KCS) desi
 - **Config**: API endpoint is configured in `src/api/axiosClient.js`.
 
 ### Mobile App
+
 - **Path**: `kcs-mobile/`
 - **Commands**:
   - `npm install`: Install dependencies.
@@ -56,9 +62,10 @@ This project, **SoHoaBBK**, is a comprehensive Quality Control System (KCS) desi
 - **Config**: API `baseURL` in `src/api/axiosClient.js` needs to be set to the server's local IP address for physical device testing.
 
 ## Development Conventions
+
 - **Database Logic**: Avoid writing complex SQL queries in the Express routes. Use Stored Procedures (`sp_...`) via `pool.request().execute('sp_Name')`.
 - **API Client**: Always use the centralized `axiosClient` in both Web and Mobile to ensure consistent token handling and error processing.
-- **Styling**: 
+- **Styling**:
   - Web: Use MUI components and Emotion for styling.
   - Mobile: Use React Native Paper components for a consistent Material Design feel.
 - **Permissions**: Use the `authorize` middleware in the backend to protect routes based on permission codes.

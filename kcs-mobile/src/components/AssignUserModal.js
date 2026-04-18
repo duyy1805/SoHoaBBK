@@ -1,218 +1,177 @@
-// src/components/AssignUserModal.jsx
-
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-    View,
-    Text,
-    Modal,
+    ActivityIndicator,
+    Alert,
     FlatList,
-    TouchableOpacity,
+    Modal,
     StyleSheet,
+    Text,
     TextInput,
-    Alert
+    TouchableOpacity,
+    View
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
-    getBoPhan,
-    assignDepartments
+    assignUserToDepartment,
+    getAssignableUsersByDepartment
 } from "../api/bienBan.api";
 
 export default function AssignUserModal({
     visible,
     onClose,
     bienBanId,
-    assignedUsers = [],
+    boPhanId,
+    tenBoPhan,
+    currentAssignedUserId,
     reload
 }) {
-
-    const [departments, setDepartments] = useState([]);
-    const [selected, setSelected] = useState([]);
+    const [users, setUsers] = useState([]);
+    const [selectedUserId, setSelectedUserId] = useState(currentAssignedUserId || null);
     const [search, setSearch] = useState("");
-
-    /* LOAD DEPARTMENTS */
-
-    useEffect(() => {
-
-        if (visible) {
-            loadDepartments();
-        }
-
-    }, [visible]);
-
-    /* SET SELECTED BAN ĐẦU */
+    const [loading, setLoading] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
-
-        if (assignedUsers?.length) {
-
-            const ids = assignedUsers.map(x => x.BoPhanId);
-
-            setSelected(ids);
-
+        if (!visible) {
+            setSearch("");
+            return;
         }
 
-    }, [assignedUsers]);
+        setSelectedUserId(currentAssignedUserId || null);
+        loadUsers();
+    }, [visible, currentAssignedUserId, boPhanId]);
 
-    const loadDepartments = async () => {
+    const loadUsers = async () => {
+        if (!bienBanId || !boPhanId) {
+            setUsers([]);
+            return;
+        }
 
         try {
-
-            const res = await getBoPhan();
-
-            setDepartments(res.data || []);
-
+            setLoading(true);
+            const res = await getAssignableUsersByDepartment(bienBanId, boPhanId);
+            setUsers(res.data || []);
         } catch (err) {
-
-            console.log(err);
-
+            Alert.alert(
+                "Lỗi",
+                err?.response?.data?.message || "Không tải được danh sách nhân sự"
+            );
+        } finally {
+            setLoading(false);
         }
-
     };
 
-    /* TOGGLE */
+    const filteredUsers = useMemo(() => {
+        const keyword = search.trim().toLowerCase();
+        if (!keyword) return users;
 
-    const toggleDepartment = (id) => {
-
-        if (selected.includes(id)) {
-
-            setSelected(selected.filter(x => x !== id));
-
-        } else {
-
-            setSelected([...selected, id]);
-
-        }
-
-    };
-
-    /* SUBMIT */
+        return users.filter((user) => (
+            user.FullName?.toLowerCase().includes(keyword) ||
+            user.Username?.toLowerCase().includes(keyword) ||
+            user.MaBoPhan?.toLowerCase().includes(keyword) ||
+            user.TenBoPhan?.toLowerCase().includes(keyword)
+        ));
+    }, [search, users]);
 
     const handleSubmit = async () => {
+        if (!selectedUserId) {
+            Alert.alert("Thiếu thông tin", "Vui lòng chọn một cá nhân xử lý.");
+            return;
+        }
 
         try {
-            const res = await assignDepartments(bienBanId, selected);
+            setSubmitting(true);
+            await assignUserToDepartment(bienBanId, {
+                boPhanId,
+                nguoiXuLyId: selectedUserId
+            });
             reload();
             onClose();
         } catch (err) {
-            err.status = 403 ? Alert.alert("Không thể xác nhận", "Không được cấp quyền") : console.log(err);
+            Alert.alert(
+                "Lỗi",
+                err?.response?.data?.message || "Không thể phân công cá nhân"
+            );
+        } finally {
+            setSubmitting(false);
         }
     };
 
-    /* FILTER */
-
-    const filteredDepartments = departments.filter(d => {
-
-        const keyword = search.toLowerCase();
-
-        return (
-            d.TenBoPhan?.toLowerCase().includes(keyword) ||
-            d.MaBoPhan?.toLowerCase().includes(keyword)
-        );
-
-    });
-
-    /* RENDER ITEM */
-
-    const renderDepartment = ({ item }) => (
-
+    const renderUser = ({ item }) => (
         <TouchableOpacity
             style={styles.user}
-            onPress={() => toggleDepartment(item.Id)}
+            onPress={() => setSelectedUserId(item.Id)}
         >
-
-            <View>
-
-                <Text style={styles.name}>
-                    {item.TenBoPhan}
-                </Text>
-
+            <View style={styles.userInfo}>
+                <Text style={styles.name}>{item.FullName || item.Username}</Text>
                 <Text style={styles.role}>
-                    {item.MaBoPhan}
+                    {item.Username}
+                    {item.TenBoPhan ? ` - ${item.TenBoPhan}` : ""}
                 </Text>
-
             </View>
 
             <Text style={styles.check}>
-                {selected.includes(item.Id) ? "✓" : ""}
+                {selectedUserId === item.Id ? "✓" : ""}
             </Text>
-
         </TouchableOpacity>
-
     );
 
     return (
-
-        <Modal
-            visible={visible}
-            animationType="slide"
-        >
-
+        <Modal visible={visible} animationType="slide" transparent={false}>
             <View style={styles.container}>
-
-                {/* HEADER */}
-
                 <View style={styles.header}>
-
                     <TouchableOpacity onPress={onClose}>
-                        <Text style={styles.back}>
-                            ←
-                        </Text>
+                        <Text style={styles.back}>←</Text>
                     </TouchableOpacity>
 
-                    <Text style={styles.title}>
-                        Chọn bộ phận xử lý
-                    </Text>
+                    <View style={styles.titleWrapper}>
+                        <Text style={styles.title}>Phân cá nhân xử lý</Text>
+                        <Text style={styles.subtitle}>{tenBoPhan || "Bộ phận xử lý"}</Text>
+                    </View>
 
                     <View style={{ width: 30 }} />
-
                 </View>
 
-                {/* SEARCH */}
-
                 <TextInput
-                    placeholder="Tìm bộ phận..."
+                    placeholder="Tìm cá nhân..."
                     value={search}
                     onChangeText={setSearch}
                     style={styles.search}
                 />
 
-                {/* LIST */}
-
-                <FlatList
-                    data={filteredDepartments}
-                    renderItem={renderDepartment}
-                    keyExtractor={(item) => item.Id.toString()}
-                    contentContainerStyle={{ paddingBottom: 100 }}
-                />
-
-                {/* FOOTER */}
+                {loading ? (
+                    <ActivityIndicator size="large" style={styles.loader} />
+                ) : (
+                    <FlatList
+                        data={filteredUsers}
+                        renderItem={renderUser}
+                        keyExtractor={(item) => item.Id.toString()}
+                        contentContainerStyle={styles.listContent}
+                        ListEmptyComponent={
+                            <Text style={styles.emptyText}>
+                                Không có cá nhân phù hợp trong bộ phận này.
+                            </Text>
+                        }
+                    />
+                )}
 
                 <View style={styles.footer}>
-
                     <TouchableOpacity
-                        style={styles.btn}
+                        style={[styles.btn, submitting && styles.btnDisabled]}
                         onPress={handleSubmit}
+                        disabled={submitting}
                     >
-
                         <Text style={styles.btnText}>
-                            Xác nhận
+                            {submitting ? "Đang lưu..." : "Xác nhận"}
                         </Text>
-
                     </TouchableOpacity>
-
                 </View>
-
             </View>
-
         </Modal>
-
     );
-
 }
 
 const styles = StyleSheet.create({
-
     container: {
         flex: 1,
         backgroundColor: "#fff"
@@ -229,9 +188,18 @@ const styles = StyleSheet.create({
         backgroundColor: "#fff"
     },
 
+    titleWrapper: {
+        alignItems: "center"
+    },
+
     title: {
         fontSize: 18,
         fontWeight: "bold"
+    },
+
+    subtitle: {
+        marginTop: 4,
+        color: "#666"
     },
 
     back: {
@@ -245,12 +213,26 @@ const styles = StyleSheet.create({
         borderRadius: 10
     },
 
+    loader: {
+        marginTop: 40
+    },
+
+    listContent: {
+        paddingBottom: 100
+    },
+
     user: {
         flexDirection: "row",
         justifyContent: "space-between",
+        alignItems: "center",
         padding: 16,
         borderBottomWidth: 1,
         borderColor: "#eee"
+    },
+
+    userInfo: {
+        flex: 1,
+        paddingRight: 12
     },
 
     name: {
@@ -268,6 +250,13 @@ const styles = StyleSheet.create({
         color: "#27ae60"
     },
 
+    emptyText: {
+        textAlign: "center",
+        color: "#666",
+        paddingHorizontal: 24,
+        paddingTop: 32
+    },
+
     footer: {
         padding: 16,
         borderTopWidth: 1,
@@ -281,9 +270,12 @@ const styles = StyleSheet.create({
         alignItems: "center"
     },
 
+    btnDisabled: {
+        opacity: 0.7
+    },
+
     btnText: {
         color: "#fff",
         fontWeight: "600"
     }
-
 });
