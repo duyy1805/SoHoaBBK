@@ -35,6 +35,11 @@ export default function CheckItemScreen({ route, navigation }) {
 
     const [showModal, setShowModal] = useState(false);
     const [loading, setLoading] = useState(false);
+
+    // State cho việc xem trước ảnh
+    const [previewUri, setPreviewUri] = useState(null);
+    const [isPreviewVisible, setIsPreviewVisible] = useState(false);
+
     const BASE_URL = "https://z76api.z76.vn";
     useEffect(() => {
         loadDefects();
@@ -140,6 +145,12 @@ export default function CheckItemScreen({ route, navigation }) {
                 }
             ]
         );
+    };
+
+    // Hàm mở xem trước ảnh
+    const handlePreviewImage = (uri) => {
+        setPreviewUri(uri);
+        setIsPreviewVisible(true);
     };
 
     // Hàm xoá ảnh đã chụp mới
@@ -372,10 +383,12 @@ export default function CheckItemScreen({ route, navigation }) {
                                     {/* RENDER ẢNH ĐÃ LƯU */}
                                     {d.savedImages?.map((url, imgIndex) => (
                                         <View key={`saved-${imgIndex}`} style={{ marginRight: 12, marginBottom: 12, position: 'relative' }}>
-                                            <Image
-                                                source={{ uri: `${BASE_URL}${url}` }}
-                                                style={{ width: 60, height: 60, borderRadius: 8, borderWidth: 1, borderColor: '#cbd5e1' }}
-                                            />
+                                            <TouchableOpacity onPress={() => handlePreviewImage(`${BASE_URL}${url}`)}>
+                                                <Image
+                                                    source={{ uri: `${BASE_URL}${url}` }}
+                                                    style={{ width: 60, height: 60, borderRadius: 8, borderWidth: 1, borderColor: '#cbd5e1' }}
+                                                />
+                                            </TouchableOpacity>
                                             <TouchableOpacity
                                                 style={{ position: 'absolute', top: -8, right: -8, backgroundColor: 'white', borderRadius: 12, zIndex: 1 }}
                                                 onPress={() => removeSavedImage(index, imgIndex)}
@@ -388,10 +401,12 @@ export default function CheckItemScreen({ route, navigation }) {
                                     {/* RENDER ẢNH MỚI (CHƯA LƯU) */}
                                     {d.localImages?.map((uri, imgIndex) => (
                                         <View key={`local-${imgIndex}`} style={{ marginRight: 12, marginBottom: 12, position: 'relative' }}>
-                                            <Image
-                                                source={{ uri }}
-                                                style={{ width: 60, height: 60, borderRadius: 8 }}
-                                            />
+                                            <TouchableOpacity onPress={() => handlePreviewImage(uri)}>
+                                                <Image
+                                                    source={{ uri }}
+                                                    style={{ width: 60, height: 60, borderRadius: 8 }}
+                                                />
+                                            </TouchableOpacity>
                                             <TouchableOpacity
                                                 style={{ position: 'absolute', top: -8, right: -8, backgroundColor: 'white', borderRadius: 12, zIndex: 1 }}
                                                 onPress={() => removeLocalImage(index, imgIndex)}
@@ -486,6 +501,34 @@ export default function CheckItemScreen({ route, navigation }) {
                             <Text style={{ color: "#fff" }}>Đóng</Text>
                         </TouchableOpacity>
                     </KeyboardAvoidingView>
+                </View>
+            </Modal>
+
+            {/* Modal xem trước ảnh phóng to */}
+            <Modal
+                visible={isPreviewVisible}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setIsPreviewVisible(false)}
+            >
+                <View style={styles.previewOverlay}>
+                    <TouchableOpacity
+                        style={styles.previewCloseArea}
+                        activeOpacity={1}
+                        onPress={() => setIsPreviewVisible(false)}
+                    >
+                        <Image
+                            source={{ uri: previewUri }}
+                            style={styles.previewFullImage}
+                            resizeMode="contain"
+                        />
+                        <TouchableOpacity
+                            style={styles.previewCloseBtn}
+                            onPress={() => setIsPreviewVisible(false)}
+                        >
+                            <Ionicons name="close-circle" size={40} color="#fff" />
+                        </TouchableOpacity>
+                    </TouchableOpacity>
                 </View>
             </Modal>
         </KeyboardAvoidingView>
@@ -759,5 +802,29 @@ const styles = StyleSheet.create({
         borderRadius: 14,
         alignItems: "center",
         marginTop: 15
+    },
+
+    // Styles cho xem trước ảnh
+    previewOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.9)",
+        justifyContent: "center",
+        alignItems: "center"
+    },
+    previewCloseArea: {
+        width: '100%',
+        height: '100%',
+        justifyContent: "center",
+        alignItems: "center"
+    },
+    previewFullImage: {
+        width: '95%',
+        height: '80%',
+    },
+    previewCloseBtn: {
+        position: 'absolute',
+        top: 40,
+        right: 20,
+        zIndex: 10
     }
 });

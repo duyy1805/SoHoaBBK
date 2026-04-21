@@ -119,8 +119,8 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 <div style={{ fontSize: '14pt' }}>CÔNG TY TNHH MTV 76</div>
                             </td>
                             <td rowSpan={2} style={{ ...styles.headerTd, width: '25%', textAlign: 'left', paddingLeft: '10px' }}>
-                                <div style={{ fontSize: '11pt' }}>Mã số: BM.01.02- QT.04-KN</div>
-                                <div style={{ fontSize: '11pt' }}>Ngày hiệu lực: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/2024</div>
+                                <div style={{ fontWeight: 'bold', fontSize: '11pt' }}>Mã số: </div> <span>BM.01.02- QT.04-B8</span>
+                                <div style={{ fontSize: '11pt' }}>Ngày hiệu lực: 15/3/2026</div>
                                 <div style={{ fontSize: '11pt' }}>Phiên bản: 02</div>
                             </td>
                         </tr>

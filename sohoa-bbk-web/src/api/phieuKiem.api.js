@@ -52,6 +52,9 @@ export const getSourceChecked = (params) => {
 
 export const getChungTuNhapChuaKiem = () =>
     axiosClient.get("/phieu-kiem/chung-tu-nhap/chua-kiem");
+
+export const getKeHoachSanXuatChuaKiem = () =>
+    axiosClient.get("/phieu-kiem/ke-hoach-san-xuat/chua-kiem");
 /* =========================================================
    PHÂN BỔ (TO_TRUONG_KCS)
 ========================================================= */

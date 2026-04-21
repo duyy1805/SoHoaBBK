@@ -149,6 +149,28 @@ router.get(
 );
 
 router.get(
+    '/ke-hoach-san-xuat/chua-kiem',
+    authenticateToken,
+    authorize('XEM_PHIEU_KIEM'),
+    async (req, res) => {
+        try {
+            const pool = await poolPromise;
+
+            const result = await pool.request()
+                .execute('sp_KeHoachSanXuat_GetList_ChuaKiem_TrenChuyen');
+
+            res.json(result.recordset);
+
+        } catch (err) {
+            console.error(err);
+            res.status(500).json({
+                message: 'Lỗi lấy kế hoạch sản xuất'
+            });
+        }
+    }
+);
+
+router.get(
     '/my',
     authenticateToken,
     async (req, res) => {

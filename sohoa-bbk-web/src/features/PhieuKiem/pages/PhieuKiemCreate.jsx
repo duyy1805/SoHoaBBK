@@ -38,12 +38,14 @@ import {
     getLoaiKiemLookup,
     getKCSLookup,
     getChungTuNhapChuaKiem,
+    getKeHoachSanXuatChuaKiem,
     getLichDongCont,
     getSourceChecked,
 } from "../../../api/phieuKiem.api";
 import {
     getSanPhamList
 } from "../../../api/lookup.api";
+
 export default function PhieuKiemCreate() {
     const navigate = useNavigate();
     const { showToast } = useToast();
@@ -120,9 +122,7 @@ export default function PhieuKiemCreate() {
     }, []);
 
     const loadLookup = async () => {
-
         try {
-            // Không cần tải trước toàn bộ SanPhamList nữa để tối ưu hiệu năng
             const [lk, kcs] = await Promise.all([
                 getLoaiKiemLookup(),
                 getKCSLookup()
@@ -163,6 +163,12 @@ export default function PhieuKiemCreate() {
                 const res = await getChungTuNhapChuaKiem();
                 setLichList(res.data || []);
             }
+            if (loai?.MaLoai === "KIEM_TREN_CHUYEN") {
+                console.log("duy")
+                const res = await getKeHoachSanXuatChuaKiem();
+                console.log(res.data);
+                setLichList(res.data || []);
+            }
         } catch (err) {
             console.error(err);
         } finally {
@@ -195,6 +201,15 @@ export default function PhieuKiemCreate() {
                         row.NhaCungCap?.toLowerCase().includes(lower)
                     );
                 }
+                if (selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN") {
+                    return (
+                        row.ID_KeHoachSanXuat?.toString().includes(lower) ||
+                        row.MaSanPham?.toLowerCase().includes(lower) ||
+                        row.TenSanPham?.toLowerCase().includes(lower) ||
+                        row.Ten_DonVi?.toLowerCase().includes(lower) ||
+                        row.Ten_BoPhan?.toLowerCase().includes(lower)
+                    );
+                }
                 return false;
             });
         }
@@ -209,7 +224,12 @@ export default function PhieuKiemCreate() {
         return result;
     }, [lichList, searchTerm, chungLoaiFilter, selectedLoai]);
 
-    const getRowId = (row) => selectedLoai?.MaLoai === "KIEM_DONG_CONT" ? row.ClosingScheduleDetailGuid : row.ID_ChungTuNhap_ChiTiet;
+    const getRowId = (row) => {
+        if (selectedLoai?.MaLoai === "KIEM_DONG_CONT") return row.ClosingScheduleDetailGuid;
+        if (selectedLoai?.MaLoai === "DAU_VAO") return row.ID_ChungTuNhap_ChiTiet;
+        if (selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN") return row.ID_KeHoachSanXuat;
+        return row.Id;
+    };
 
     const handleChange = async (e) => {
         const { name, value } = e.target;
@@ -252,10 +272,12 @@ export default function PhieuKiemCreate() {
     const handleRemoveSelected = (rowId) => {
         setSelectedLichList(prev => prev.filter(item => getRowId(item) !== rowId));
     };
+
     const formatDateToISO = (dateStr) => {
         const [day, month, year] = dateStr.split("/");
         return `${year}-${month}-${day}`;
     };
+
     const handleSubmit = async () => {
         try {
             if (!form.loaiKiemId || !form.nguoiKiemId) {
@@ -269,24 +291,21 @@ export default function PhieuKiemCreate() {
 
             setLoading(true);
 
-            // 1. Dùng Map để cache kết quả dò mã, tránh gọi trùng API nếu chọn nhiều Cont có cùng ItemId
+            // 1. Dùng Map để cache kết quả dò mã
             const spCache = new Map();
 
             // 2. Map lấy SanPhamId chính xác qua API
             const resolvedRows = await Promise.all(selectedLichList.map(async (row) => {
                 const isDongCont = selectedLoai?.MaLoai === "KIEM_DONG_CONT";
-                let mappedSpId = row.SanPhamId; // Nếu là ĐẦU VÀO thì đã có sẵn ID int
+                let mappedSpId = row.SanPhamId;
 
                 if (isDongCont) {
                     const itemCode = row.ItemId;
                     if (spCache.has(itemCode)) {
                         mappedSpId = spCache.get(itemCode);
                     } else {
-                        // Gọi API dò mã
                         const res = await getSanPhamList(0, 50, itemCode);
                         const resultData = res?.data?.data || [];
-
-                        // Cực kỳ quan trọng: Lọc lại CHÍNH XÁC bằng == vì API trả về LIKE
                         const exactMatch = resultData.find(sp =>
                             sp.ItemCode === itemCode ||
                             sp.Ma_VatTu === itemCode ||
@@ -316,17 +335,21 @@ export default function PhieuKiemCreate() {
                     nguoiKiemId: form.nguoiKiemId,
                     lot: "",
                     sanPhamId: row.mappedSpId,
-                    soLuong: row.isDongCont ? row.Quantity : row.SoLuong,
-                    doiTuong: row.isDongCont ? row.WarehouseId : (row.Ma_DonHang || row.ID_NhaCungCap)
+                    soLuong: row.isDongCont ? row.Quantity : (selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN" ? row.SoLuongKeHoach : row.SoLuong),
+                    doiTuong: row.isDongCont ? row.WarehouseId : (selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN" ? row.Ten_DonVi : (row.Ma_DonHang || row.ID_NhaCungCap))
                 };
 
                 if (row.isDongCont) {
                     payload.sourceId_LCD = row.ClosingScheduleDetailGuid;
                     payload.Ngay_Giao = formatDateToISO(row.RequiredDateString);
+                } else if (selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN") {
+                    payload.sourceId = row.ID_KeHoachSanXuat;
+                    payload.sanPhamId = row.SanPhamId;
+                    payload.soLuong = row.NangSuat_DuKien;
+                    payload.doiTuong = row.Ten_DonVi;
                 } else {
                     payload.sourceId = getRowId(row);
                 }
-                console.log(payload.Ngay_Giao)
 
                 return createPhieuKiem(payload);
             });
@@ -335,7 +358,6 @@ export default function PhieuKiemCreate() {
             showToast(`Đã tạo thành công ${selectedLichList.length} phiếu kiểm!`, "success");
             navigate("/phieu-kiem");
         } catch (err) {
-            // Hiển thị lỗi throw ở khâu Map SanPhamId hoặc lỗi từ API backend
             showToast(err.message || err?.response?.data?.message || "Có lỗi xảy ra khi tạo hàng loạt", "error");
         } finally {
             setLoading(false);
@@ -363,7 +385,6 @@ export default function PhieuKiemCreate() {
                     <Divider sx={{ mb: 3 }} />
 
                     <Grid container spacing={3}>
-                        {/* LOẠI KIỂM */}
                         <Grid size={{ xs: 12, md: 6 }}>
                             <TextField
                                 select
@@ -381,7 +402,6 @@ export default function PhieuKiemCreate() {
                             </TextField>
                         </Grid>
 
-                        {/* KCS */}
                         <Grid size={{ xs: 12, md: 6 }}>
                             <TextField
                                 select
@@ -399,7 +419,6 @@ export default function PhieuKiemCreate() {
                             </TextField>
                         </Grid>
 
-                        {/* DANH SÁCH ĐÃ CHỌN */}
                         <Grid size={{ xs: 12 }}>
                             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
                                 <Typography variant="subtitle1" fontWeight={600}>
@@ -432,18 +451,28 @@ export default function PhieuKiemCreate() {
                                             {selectedLichList.map(row => (
                                                 <TableRow key={getRowId(row)}>
                                                     <TableCell fontWeight={600}>
-                                                        {selectedLoai?.MaLoai === "DAU_VAO" ? row.Ma_VatTu : row.ItemId}
+                                                        {selectedLoai?.MaLoai === "DAU_VAO" ? row.Ma_VatTu :
+                                                            selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN" ? row.MaSanPham :
+                                                                row.ItemId}
                                                     </TableCell>
                                                     <TableCell>
-                                                        {selectedLoai?.MaLoai === "DAU_VAO" ? row.QuyCach : row.ItemName}
+                                                        {selectedLoai?.MaLoai === "DAU_VAO" ? row.QuyCach :
+                                                            selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN" ? row.TenSanPham :
+                                                                row.ItemName}
                                                     </TableCell>
                                                     <TableCell>
-                                                        <b>{selectedLoai?.MaLoai === "KIEM_DONG_CONT" ? row.Quantity : row.SoLuong}</b>
+                                                        <b>{selectedLoai?.MaLoai === "KIEM_DONG_CONT" ? row.Quantity :
+                                                            selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN" ? row.NangSuat_DuKien :
+                                                                row.SoLuong}</b>
                                                     </TableCell>
                                                     <TableCell>
                                                         <Chip
                                                             size="small"
-                                                            label={selectedLoai?.MaLoai === "DAU_VAO" ? row.Ma_DonHang : row.Time || row.Type}
+                                                            label={
+                                                                selectedLoai?.MaLoai === "DAU_VAO" ? row.Ma_DonHang :
+                                                                    selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN" ? row.Ten_DonVi :
+                                                                        row.Time || row.Type
+                                                            }
                                                         />
                                                     </TableCell>
                                                     <TableCell align="center">
@@ -465,7 +494,6 @@ export default function PhieuKiemCreate() {
                             )}
                         </Grid>
 
-                        {/* BUTTON TẠO HÀNG LOẠT */}
                         <Grid size={{ xs: 12 }}>
                             <Stack direction="row" justifyContent="flex-end">
                                 <Button
@@ -481,7 +509,6 @@ export default function PhieuKiemCreate() {
                     </Grid>
                 </Paper>
 
-                {/* MODAL CHỌN KẾ HOẠCH */}
                 <Dialog open={openModal} onClose={() => setOpenModal(false)} maxWidth="lg" fullWidth scroll="paper">
                     <DialogTitle>Chọn kế hoạch kiểm tra</DialogTitle>
                     <DialogContent dividers sx={{ p: 0 }}>
@@ -491,7 +518,6 @@ export default function PhieuKiemCreate() {
                             </Box>
                         ) : (
                             <Box sx={{ p: 2 }}>
-                                {/* THANH TÌM KIẾM TỔNG & LỌC TUẦN */}
                                 <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
                                     <TextField
                                         fullWidth
@@ -569,7 +595,19 @@ export default function PhieuKiemCreate() {
                                                     <TableCell>Nhà cung cấp</TableCell>
                                                 </>
                                             )}
-                                            <TableCell>SL</TableCell>
+                                            {selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN" && (
+                                                <>
+                                                    <TableCell>Phân xưởng</TableCell>
+                                                    <TableCell>Mã SP</TableCell>
+                                                    <TableCell>Tên sản phẩm</TableCell>
+                                                    <TableCell>Kế hoạch</TableCell>
+                                                    <TableCell>NS Dự kiến</TableCell>
+                                                    <TableCell>Đã SX</TableCell>
+                                                </>
+                                            )}
+                                            {selectedLoai?.MaLoai !== "KIEM_TREN_CHUYEN" && (
+                                                <TableCell>SL</TableCell>
+                                            )}
                                             <TableCell>Ngày</TableCell>
                                         </TableRow>
                                     </TableHead>
@@ -624,12 +662,25 @@ export default function PhieuKiemCreate() {
                                                                 <TableCell>{row.NhaCungCap}</TableCell>
                                                             </>
                                                         )}
-
-                                                        <TableCell><b>{selectedLoai?.MaLoai === "KIEM_DONG_CONT" ? row.Quantity : row.SoLuong}</b></TableCell>
+                                                        {selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN" && (
+                                                            <>
+                                                                <TableCell>{row.Ten_DonVi}</TableCell>
+                                                                <TableCell>{row.MaSanPham}</TableCell>
+                                                                <TableCell>{row.TenSanPham}</TableCell>
+                                                                <TableCell>{row.SoLuongKeHoach}</TableCell>
+                                                                <TableCell><b>{row.NangSuat_DuKien}</b></TableCell>
+                                                                <TableCell>{row.DaSanXuat}</TableCell>
+                                                            </>
+                                                        )}
+                                                        {selectedLoai?.MaLoai !== "KIEM_TREN_CHUYEN" && (
+                                                            <TableCell><b>{selectedLoai?.MaLoai === "KIEM_DONG_CONT" ? row.Quantity : row.SoLuong}</b></TableCell>
+                                                        )}
                                                         <TableCell>
                                                             {selectedLoai?.MaLoai === "KIEM_DONG_CONT"
                                                                 ? row.RequiredDateString
-                                                                : new Date(row.Ngay_Giao || row.Ngay_Invoice).toLocaleDateString('vi-VN')}
+                                                                : selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN"
+                                                                    ? (row.Ngay_BatDauSX ? `${new Date(row.Ngay_BatDauSX).toLocaleDateString('vi-VN')} - ${new Date(row.Ngay_KetThucSX).toLocaleDateString('vi-VN')}` : '')
+                                                                    : new Date(row.Ngay_Giao || row.Ngay_Invoice).toLocaleDateString('vi-VN')}
                                                         </TableCell>
                                                     </TableRow>
                                                 );
@@ -650,6 +701,6 @@ export default function PhieuKiemCreate() {
                     </DialogActions>
                 </Dialog>
             </Box>
-        </Fade >
+        </Fade>
     );
 }
