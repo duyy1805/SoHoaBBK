@@ -679,7 +679,7 @@ export default function PhieuKiemCreate() {
                                                             {selectedLoai?.MaLoai === "KIEM_DONG_CONT"
                                                                 ? row.RequiredDateString
                                                                 : selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN"
-                                                                    ? (row.Ngay_BatDauSX ? `${new Date(row.Ngay_BatDauSX).toLocaleDateString('vi-VN')} - ${new Date(row.Ngay_KetThucSX).toLocaleDateString('vi-VN')}` : '')
+                                                                    ? (row.Ngay ? `${new Date(row.Ngay).toLocaleDateString('vi-VN')} ` : '')
                                                                     : new Date(row.Ngay_Giao || row.Ngay_Invoice).toLocaleDateString('vi-VN')}
                                                         </TableCell>
                                                     </TableRow>

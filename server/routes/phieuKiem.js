@@ -8,6 +8,7 @@ const authorize = require('../middlewares/permission.middleware');
 
 const multer = require('multer');
 const path = require('path');
+const sharp = require('sharp');
 
 const { Expo } = require('expo-server-sdk');
 let expo = new Expo();
@@ -33,8 +34,24 @@ router.post(
                 return res.status(400).json({ message: 'No files uploaded' });
             }
 
-            // Trả về mảng các đường dẫn file
-            const filePaths = req.files.map(file => `/uploads/${file.filename}`);
+            // Xử lý từng file ảnh: Convert sang JPEG để hỗ trợ hiển thị trên Web (đặc biệt là HEIC từ iPhone)
+            const filePaths = await Promise.all(req.files.map(async (file) => {
+                const outputFilename = `v2-${Date.now()}-${Math.round(Math.random() * 1E9)}.jpg`;
+                const outputPath = path.join('uploads', outputFilename);
+
+                await sharp(file.path)
+                    .rotate() // Tự động xoay ảnh theo EXIF (tránh bị ngược ảnh)
+                    .jpeg({ quality: 80 }) // Chuyển về định dạng JPEG, nén chất lượng 80% để nhẹ hơn
+                    .toFile(outputPath);
+
+                // Sau khi convert xong, xoá file gốc để tiết kiệm bộ nhớ
+                if (fs.existsSync(file.path)) {
+                    fs.unlinkSync(file.path);
+                }
+
+                return `/uploads/${outputFilename}`;
+            }));
+
             res.json({ success: true, filePaths });
         } catch (error) {
             console.error('Upload error:', error);

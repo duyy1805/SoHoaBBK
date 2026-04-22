@@ -61,8 +61,14 @@ router.get(
         try {
 
             const pool = await poolPromise;
-
             const request = pool.request();
+
+            // Lọc danh sách biên bản theo quyền hạn: 
+            // Nếu không có quyền quản trị danh mục (QUAN_TRI_DM) thì chỉ xem biên bản liên quan
+            if (!req.user.permissions.includes("QUAN_TRI_DM")) {
+                request.input("UserId", sql.Int, req.user.userId);
+                request.input("BoPhanId", sql.Int, req.user.boPhanId);
+            }
 
             const result = await request.execute("sp_BienBan_GetList");
 
@@ -122,7 +128,10 @@ router.get(
 
             res.json({
                 info: rs[0]?.[0] || null,
-                defects: rs[1] || [],
+                defects: (rs[1] || []).map(d => ({
+                    ...d,
+                    ImageUrls: d.ImageUrls ? JSON.parse(d.ImageUrls) : []
+                })),
                 assigns: mergedAssigns,
                 xuLy: rs[3] || [],
                 chiPhi: rs[4] || [],

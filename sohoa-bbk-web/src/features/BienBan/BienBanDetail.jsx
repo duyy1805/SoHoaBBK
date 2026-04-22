@@ -97,6 +97,7 @@ export default function BienBanDetail() {
     const [openChiPhiModal, setOpenChiPhiModal] = useState(false);
     const [openHanhDongModal, setOpenHanhDongModal] = useState(false);
     const [openPrintModal, setOpenPrintModal] = useState(false);
+    const [previewImage, setPreviewImage] = useState(null);
 
     const [dynamicFields, setDynamicFields] = useState([]);
     // Confirm Dialog state
@@ -123,7 +124,23 @@ export default function BienBanDetail() {
             const res = await getBienBanDetail(bienBanId);
 
             setInfo(res.data.info);
-            setDefects(res.data.defects || []);
+            const parsedDefects = (res.data.defects || []).map(d => {
+                let images = [];
+                if (d.ImageUrls) {
+                    try {
+                        // Nếu là chuỗi JSON thì parse, nếu là mảng thì dùng luôn
+                        images = typeof d.ImageUrls === 'string' ? JSON.parse(d.ImageUrls) : d.ImageUrls;
+                        // Đảm bảo kết quả là mảng
+                        if (!Array.isArray(images)) images = [images];
+                    } catch (e) {
+                        // Nếu parse lỗi thì coi như là 1 chuỗi đơn
+                        images = [d.ImageUrls];
+                    }
+                }
+                return { ...d, ImageUrls: images };
+            });
+            setDefects(parsedDefects);
+            console.log(parsedDefects);
             setAssigns(res.data.assigns || []);
             setXuLy(res.data.xuLy || []);
             setChiPhi(res.data.chiPhi || []);
@@ -408,9 +425,9 @@ export default function BienBanDetail() {
                                         <Table size="small">
                                             <TableHead sx={{ bgcolor: '#f8fafc' }}>
                                                 <TableRow>
-                                                    <TableCell>Tên lỗi</TableCell>
-                                                    <TableCell align="center">Mức độ</TableCell>
-                                                    <TableCell align="right">SL</TableCell>
+                                                    <TableCell>Thông tin lỗi</TableCell>
+                                                    <TableCell align="center" sx={{ width: 100 }}>Mức độ</TableCell>
+                                                    <TableCell align="right" sx={{ width: 60 }}>SL</TableCell>
                                                 </TableRow>
                                             </TableHead>
                                             <TableBody>
@@ -420,12 +437,44 @@ export default function BienBanDetail() {
                                                     </TableRow>
                                                 ) : (
                                                     defects.map((d, i) => (
-                                                        <TableRow key={i} hover>
-                                                            <TableCell>{d.TenLoi}</TableCell>
+                                                        <TableRow key={i} hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                                                            <TableCell>
+                                                                <Typography variant="body2" fontWeight="bold" color="primary">
+                                                                    {d.TenLoi}
+                                                                </Typography>
+                                                                {d.MoTa && (
+                                                                    <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+                                                                        {d.MoTa}
+                                                                    </Typography>
+                                                                )}
+                                                                {Array.isArray(d.ImageUrls) && d.ImageUrls.length > 0 && (
+                                                                    <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap', gap: 1 }}>
+                                                                        {d.ImageUrls.map((url, idx) => (
+                                                                            <Box
+                                                                                key={idx}
+                                                                                component="img"
+                                                                                src={url.startsWith('http') ? url : `https://z76api.z76.vn${url}`}
+                                                                                sx={{
+                                                                                    width: 60,
+                                                                                    height: 60,
+                                                                                    objectFit: 'cover',
+                                                                                    borderRadius: 1,
+                                                                                    cursor: 'pointer',
+                                                                                    border: '1px solid #e0e0e0',
+                                                                                    '&:hover': { opacity: 0.8 }
+                                                                                }}
+                                                                                onClick={() => setPreviewImage(url.startsWith('http') ? url : `https://z76api.z76.vn${url}`)}
+                                                                            />
+                                                                        ))}
+                                                                    </Stack>
+                                                                )}
+                                                            </TableCell>
                                                             <TableCell align="center">
                                                                 <Chip label={d.DefectType} color={getDefectColor(d.DefectType)} size="small" variant="outlined" />
                                                             </TableCell>
-                                                            <TableCell align="right" fontWeight="bold">{d.SoLuong}</TableCell>
+                                                            <TableCell align="right">
+                                                                <Typography variant="body2" fontWeight="bold">{d.SoLuong}</Typography>
+                                                            </TableCell>
                                                         </TableRow>
                                                     ))
                                                 )}
@@ -682,6 +731,23 @@ export default function BienBanDetail() {
             <XuLyDialog open={openXuLyModal} onClose={() => setOpenXuLyModal(false)} bienBanId={bienBanId} currentUserId={currentUserId} reload={loadData} />
             <ChiPhiDialog open={openChiPhiModal} onClose={() => setOpenChiPhiModal(false)} bienBanId={bienBanId} reload={loadData} />
             <HanhDongDialog open={openHanhDongModal} onClose={() => setOpenHanhDongModal(false)} bienBanId={bienBanId} reload={loadData} />
+
+            {/* Image Preview Modal */}
+            <Dialog open={!!previewImage} onClose={() => setPreviewImage(null)} maxWidth="md">
+                <Box sx={{ position: 'relative', p: 1, bgcolor: '#000', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                    <img
+                        src={previewImage}
+                        alt="Preview"
+                        style={{ maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain' }}
+                    />
+                    <Button
+                        onClick={() => setPreviewImage(null)}
+                        sx={{ position: 'absolute', top: 8, right: 8, color: 'white', bgcolor: 'rgba(0,0,0,0.5)', minWidth: 40 }}
+                    >
+                        X
+                    </Button>
+                </Box>
+            </Dialog>
 
             {/* Confirm Dialog */}
             <ConfirmDialog
