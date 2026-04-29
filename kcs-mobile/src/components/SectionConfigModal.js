@@ -71,14 +71,14 @@ export default function SectionConfigModal({ visible, onClose, phieuId, sanPhamI
           inspectionLevel: n.inspectionLevel,
         })),
       };
-
+      console.log(payload);
       await createAllSection(payload);
-      Alert.alert("Thành công", "Đã tạo các nhóm kiểm");
+      Alert.alert("Thành công", "Đã cập nhật các nhóm kiểm");
       onSuccess();
       onClose();
     } catch (err) {
-      console.error(err);
-      Alert.alert("Lỗi", "Không thể tạo nhóm kiểm");
+      console.error("Lỗi từ server:", err.response?.data || err.message);
+      Alert.alert("Lỗi", "Không thể cập nhật nhóm kiểm");
     } finally {
       setSubmitting(false);
     }
@@ -87,7 +87,7 @@ export default function SectionConfigModal({ visible, onClose, phieuId, sanPhamI
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.modalContent}
           keyboardVerticalOffset={Platform.OS === "ios" ? 20 : 0}
@@ -106,7 +106,7 @@ export default function SectionConfigModal({ visible, onClose, phieuId, sanPhamI
               {nhomConfigs.map((n, index) => (
                 <View key={n.nhomKiemId} style={styles.configItem}>
                   <Text style={styles.nhomName}>{n.tenNhom}</Text>
-                  
+
                   <View style={styles.inputGroup}>
                     <Text style={styles.label}>Số lượng lô (Lot Size)</Text>
                     <TextInput
@@ -146,9 +146,9 @@ export default function SectionConfigModal({ visible, onClose, phieuId, sanPhamI
           )}
 
           <View style={styles.footer}>
-            <TouchableOpacity 
-              style={[styles.confirmBtn, (submitting || loading || nhomConfigs.length === 0) && styles.disabledBtn]} 
-              onPress={handleConfirm} 
+            <TouchableOpacity
+              style={[styles.confirmBtn, (submitting || loading || nhomConfigs.length === 0) && styles.disabledBtn]}
+              onPress={handleConfirm}
               disabled={submitting || loading || nhomConfigs.length === 0}
             >
               {submitting ? (

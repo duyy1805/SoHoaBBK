@@ -422,7 +422,7 @@ router.post(
 router.post(
     "/section",
     authenticateToken,
-    authorize("PHAN_BO_KIEM"),
+    authorize("THUC_HIEN_KIEM"),
     async (req, res) => {
 
         const { phieuKiemId, sections } = req.body;
@@ -438,10 +438,10 @@ router.post(
             const pool = await poolPromise;
 
             const table = new sql.Table();
-
+            console.log(sections);
             table.columns.add("NhomKiemId", sql.Int);
             table.columns.add("LotSize", sql.Int);
-            table.columns.add("InspectionLevel", sql.NVarChar(10));
+            table.columns.add("InspectionLevel", sql.NVarChar(100));
 
             sections.forEach(s => {
 
@@ -452,6 +452,7 @@ router.post(
                 );
 
             });
+            console.log(table);
 
             const result = await pool.request()
                 .input("PhieuKiemId", sql.Int, phieuKiemId)
@@ -466,9 +467,12 @@ router.post(
         } catch (err) {
 
             console.error("CreateSection error:", err);
+            fs.appendFileSync('error_log.txt', `\n--- ${new Date().toISOString()} ---\n${err.stack}\n${JSON.stringify(err, null, 2)}\n`);
 
             res.status(500).json({
-                message: "Tạo section thất bại"
+                message: "Tạo section thất bại",
+                error: err.message,
+                sqlError: err.originalError?.message
             });
 
         }
@@ -481,15 +485,14 @@ router.post(
     authorize('PHAN_BO_KIEM'),
     async (req, res) => {
         const { phieuKiemId, lotSize, inspectionLevel } = req.body;
-
+        console.log("Start phieu kiem:", req.body);
         const pool = await poolPromise;
 
         await pool.request()
             .input('PhieuKiemId', sql.Int, phieuKiemId)
             .input('LotSize', sql.Int, lotSize)
-            .input('InspectionLevel', sql.NVarChar, inspectionLevel)
+            .input('InspectionLevel', sql.NVarChar(100), inspectionLevel)
             .execute('sp_PhieuKiem_CreateAllSection');
-
         res.json({ success: true });
     }
 );

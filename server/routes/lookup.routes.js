@@ -662,7 +662,7 @@ router.post(
       const pool = await poolPromise;
 
       const result = await pool.request()
-        .input("InspectionLevel", sql.NVarChar(10), InspectionLevel)
+        .input("InspectionLevel", sql.NVarChar(100), InspectionLevel)
         .input("LotMin", sql.Int, LotMin)
         .input("LotMax", sql.Int, LotMax)
         .input("SampleSize", sql.Int, SampleSize)
