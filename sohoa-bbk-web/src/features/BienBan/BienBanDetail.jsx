@@ -90,6 +90,7 @@ export default function BienBanDetail() {
 
     const [currentUserId, setCurrentUserId] = useState(null);
     const [currentUserBoPhanId, setCurrentUserBoPhanId] = useState(null);
+    const [currentUserPermissions, setCurrentUserPermissions] = useState([]);
 
     // Modals state
     const [openAssignModal, setOpenAssignModal] = useState(false);
@@ -114,6 +115,7 @@ export default function BienBanDetail() {
         if (decoded) {
             setCurrentUserId(decoded.userId);
             setCurrentUserBoPhanId(decoded.boPhanId);
+            setCurrentUserPermissions(decoded.permissions || []);
         }
         loadData();
     }, [bienBanId]);
@@ -280,6 +282,10 @@ export default function BienBanDetail() {
     // --- UI Helpers & Conditions ---
     const getStatusText = (boPhanId) => xuLy.some(x => x.BoPhanId === boPhanId) ? "Đã xử lý" : "Đang chờ";
     const getStatusColor = (boPhanId) => xuLy.some(x => x.BoPhanId === boPhanId) ? "success" : "warning";
+
+    const isManagerOrQA = currentUserPermissions.includes("XAC_NHAN_NGUOI_XU_LY") || 
+                          currentUserPermissions.includes("KET_LUAN") || 
+                          currentUserPermissions.includes("QUAN_TRI_DM");
 
     const isAssigned = assigns.some(a => a.BoPhanId === currentUserBoPhanId);
     const hasXuLy = xuLy.some(x => x.BoPhanId === currentUserBoPhanId);
@@ -498,7 +504,7 @@ export default function BienBanDetail() {
                                             <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                                 <GroupWorkIcon color="primary" /> Bộ phận phối hợp xử lý
                                             </Typography>
-                                            {!info.AssignConfirmed && (
+                                            {!info.AssignConfirmed && isManagerOrQA && (
                                                 <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => setOpenAssignModal(true)}>
                                                     Cập nhật
                                                 </Button>
@@ -524,7 +530,7 @@ export default function BienBanDetail() {
                                             </Grid>
                                         )}
 
-                                        {!info.AssignConfirmed && assigns.length > 0 && (
+                                        {!info.AssignConfirmed && assigns.length > 0 && isManagerOrQA && (
                                             <Box sx={{ mt: 3, textAlign: 'right' }}>
                                                 <Button variant="contained" color="warning" onClick={handleConfirmAssign} startIcon={<AssignmentTurnedInIcon />}>
                                                     Chốt phân công

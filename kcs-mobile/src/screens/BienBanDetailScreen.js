@@ -20,6 +20,7 @@ import {
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import AssignUserModal from "../components/AssignUserModal";
+import AssignDepartmentModal from "../components/AssignDepartmentModal";
 import XuLyModal from "../components/XuLyModal";
 import ChiPhiModal from "../components/ChiPhiModal";
 import HanhDongModal from "../components/HanhDongModal";
@@ -38,6 +39,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
     const [hanhDong, setHanhDong] = useState([]);
 
     const [loading, setLoading] = useState(true);
+    const [showAssignDeptModal, setShowAssignDeptModal] = useState(false);
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [showXuLyModal, setShowXuLyModal] = useState(false);
     const [showChiPhiModal, setShowChiPhiModal] = useState(false);
@@ -192,6 +194,10 @@ export default function BienBanDetailScreen({ route, navigation }) {
         return done ? "✓" : "Chờ";
     };
 
+    const isManagerOrQA = currentUserPermissions.includes("XAC_NHAN_NGUOI_XU_LY") ||
+        currentUserPermissions.includes("KET_LUAN") ||
+        currentUserPermissions.includes("QUAN_TRI_DM");
+    console.log(isManagerOrQA);
     const isAssigned = assigns.some(a => a.BoPhanId === currentUserBoPhanId);
     const hasXuLy = xuLy.some(x => x.BoPhanId === currentUserBoPhanId);
     const hasChiPhi = chiPhi.some(c => c.BoPhanId === currentUserBoPhanId);
@@ -406,9 +412,18 @@ export default function BienBanDetailScreen({ route, navigation }) {
 
             {/* BUTTONS */}
 
-            {!info.AssignConfirmed && moTaConfirmed && (
+            {!info.AssignConfirmed && moTaConfirmed && isManagerOrQA && (
 
                 <>
+
+                    <TouchableOpacity
+                        style={styles.assignDeptBtn}
+                        onPress={() => setShowAssignDeptModal(true)}
+                    >
+                        <Text style={styles.btnText}>
+                            Chọn bộ phận xử lý
+                        </Text>
+                    </TouchableOpacity>
 
                     <TouchableOpacity
                         style={styles.confirmBtn}
@@ -584,6 +599,14 @@ export default function BienBanDetailScreen({ route, navigation }) {
             )}
 
             {/* MODALS */}
+
+            <AssignDepartmentModal
+                visible={showAssignDeptModal}
+                bienBanId={bienBanId}
+                assignedDepartments={assigns}
+                onClose={() => setShowAssignDeptModal(false)}
+                reload={loadData}
+            />
 
             <AssignUserModal
                 visible={showAssignModal}
@@ -940,6 +963,14 @@ const styles = StyleSheet.create({
         color: "#fff",
         fontSize: 12,
         fontWeight: "600"
+    },
+
+    assignDeptBtn: {
+        backgroundColor: "#8e44ad",
+        padding: 12,
+        borderRadius: 10,
+        alignItems: "center",
+        marginTop: 10
     },
 
     confirmBtn: {

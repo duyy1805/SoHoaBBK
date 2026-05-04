@@ -64,8 +64,13 @@ router.get(
             const request = pool.request();
 
             // Lọc danh sách biên bản theo quyền hạn: 
-            // Nếu không có quyền quản trị danh mục (QUAN_TRI_DM) thì chỉ xem biên bản liên quan
-            if (!req.user.permissions.includes("QUAN_TRI_DM")) {
+            // Nếu không có quyền quản trị (QUAN_TRI_DM), không có quyền phân công, và không phải Trưởng phòng (TP)
+            // thì chỉ xem biên bản liên quan đến cá nhân/bộ phận
+            const isManager = req.user.permissions.includes("QUAN_TRI_DM") ||
+                req.user.permissions.includes("XAC_NHAN_NGUOI_XU_LY") ||
+                hasLeadRole(req.user);
+
+            if (!isManager) {
                 request.input("UserId", sql.Int, req.user.userId);
                 request.input("BoPhanId", sql.Int, req.user.boPhanId);
             }
