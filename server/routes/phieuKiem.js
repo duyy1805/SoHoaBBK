@@ -607,6 +607,15 @@ router.post(
         try {
             const pool = await poolPromise;
 
+            // Tự động cho các mục "Chưa kiểm" (KetQua IS NULL) thành "ĐẠT"
+            await pool.request()
+                .input("SectionId", sql.Int, sectionId)
+                .query(`
+                    UPDATE PHIEU_KIEM_CHECK_ITEM
+                    SET KetQua = 'DAT'
+                    WHERE SectionId = @SectionId AND KetQua IS NULL
+                `);
+
             await pool.request()
                 .input("SectionId", sql.Int, sectionId)
                 .execute("sp_PhieuKiem_CalculateAQL");
