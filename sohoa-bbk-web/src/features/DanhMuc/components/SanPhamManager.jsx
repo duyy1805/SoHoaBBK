@@ -32,7 +32,9 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
+import SettingsOverscanIcon from '@mui/icons-material/SettingsOverscan';
 import ConfirmDialog from "../../../components/common/ConfirmDialog"
+import SanPhamThongSoDialog from "./SanPhamThongSoDialog";
 import {
     getSanPhamList,
     createSanPham,
@@ -52,8 +54,9 @@ export default function SanPhamManager() {
     const [form, setForm] = useState({});
 
     const [searchQuery, setSearchQuery] = useState("");
-    // State Nhóm kiểm
+    // State Nhóm kiểm & Thông số
     const [nhomDialog, setNhomDialog] = useState(false);
+    const [thongSoDialog, setThongSoDialog] = useState(false);
     const [selectedSanPham, setSelectedSanPham] = useState(null);
     const [nhomData, setNhomData] = useState([]);
     const [nhomList, setNhomList] = useState([]);
@@ -130,6 +133,11 @@ export default function SanPhamManager() {
         setNhomData(sanPhamNhomRes.data || []);
         setThuTu((sanPhamNhomRes.data?.length || 0) + 1);
         setSelectedNhomObj(null);
+    };
+
+    const openThongSoManager = (sanPham) => {
+        setSelectedSanPham(sanPham);
+        setThongSoDialog(true);
     };
 
     const nhomAvailable = useMemo(() => {
@@ -257,8 +265,18 @@ export default function SanPhamManager() {
                                                 variant="outlined"
                                                 startIcon={<AssignmentTurnedInIcon />}
                                                 onClick={() => openNhomManager(row)}
+                                                sx={{ mr: 1 }}
                                             >
                                                 Nhóm kiểm
+                                            </Button>
+                                            <Button
+                                                size="small"
+                                                variant="outlined"
+                                                color="secondary"
+                                                startIcon={<SettingsOverscanIcon />}
+                                                onClick={() => openThongSoManager(row)}
+                                            >
+                                                Thông số kiểm
                                             </Button>
                                         </TableCell>
                                         <TableCell align="right">
@@ -466,6 +484,13 @@ export default function SanPhamManager() {
                 title={confirmDialog.title}
                 message={confirmDialog.message}
                 type={confirmDialog.type}
+            />
+
+            {/* Dialog Thông số đặc biệt */}
+            <SanPhamThongSoDialog 
+                open={thongSoDialog} 
+                onClose={() => setThongSoDialog(false)} 
+                selectedSanPham={selectedSanPham} 
             />
         </Box>
     );

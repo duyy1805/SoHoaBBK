@@ -860,4 +860,69 @@ router.get(
   }
 );
 
+// --- CẤU HÌNH THÔNG SỐ ĐẶC BIỆT ---
+router.get(
+  "/san-pham/:sanPhamId/thong-so",
+  authenticateToken,
+  async (req, res) => {
+    const { sanPhamId } = req.params;
+    try {
+      const pool = await poolPromise;
+      const result = await pool.request()
+        .input("SanPhamId", sql.Int, sanPhamId)
+        .execute("sp_DM_SanPhamThongSo_Get");
+      res.json(result.recordset);
+    } catch (err) {
+      console.error("Get thong-so error:", err);
+      res.status(500).json({ message: "Lỗi tải cấu hình thông số" });
+    }
+  }
+);
+
+router.post(
+  "/san-pham-thong-so",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  async (req, res) => {
+    const { Id, SanPhamId, NhomThongSo, TenThongSo, GiaTriChuan, DungSaiAm, DungSaiDuong, DonVi, ThuTu } = req.body;
+    try {
+      const pool = await poolPromise;
+      const result = await pool.request()
+        .input("Id", sql.Int, Id || null)
+        .input("SanPhamId", sql.Int, SanPhamId)
+        .input("NhomThongSo", sql.NVarChar(100), NhomThongSo)
+        .input("TenThongSo", sql.NVarChar(100), TenThongSo || null)
+        .input("GiaTriChuan", sql.NVarChar(100), GiaTriChuan)
+        .input("DungSaiAm", sql.Float, DungSaiAm)
+        .input("DungSaiDuong", sql.Float, DungSaiDuong)
+        .input("DonVi", sql.NVarChar(50), DonVi || null)
+        .input("ThuTu", sql.Int, ThuTu || 0)
+        .execute("sp_DM_SanPhamThongSo_Save");
+      res.json({ message: "Đã lưu thành công", id: result.recordset[0].InsertedId });
+    } catch (err) {
+      console.error("Save thong-so error:", err);
+      res.status(500).json({ message: "Lỗi lưu cấu hình thông số" });
+    }
+  }
+);
+
+router.delete(
+  "/san-pham-thong-so/:id",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  async (req, res) => {
+    const { id } = req.params;
+    try {
+      const pool = await poolPromise;
+      await pool.request()
+        .input("Id", sql.Int, id)
+        .execute("sp_DM_SanPhamThongSo_Delete");
+      res.json({ message: "Đã xoá thành công" });
+    } catch (err) {
+      console.error("Delete thong-so error:", err);
+      res.status(500).json({ message: "Lỗi xoá cấu hình thông số" });
+    }
+  }
+);
+
 module.exports = router;

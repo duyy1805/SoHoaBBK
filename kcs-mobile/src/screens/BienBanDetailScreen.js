@@ -71,7 +71,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
             setLoading(true);
             const res = await getBienBanDetail(bienBanId);
 
-            setInfo(res.data.info);
+            setInfo(res.data.info || []);
             setDefects(res.data.defects || []);
             setAssigns(res.data.assigns || []);
             setXuLy(res.data.xuLy || []);

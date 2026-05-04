@@ -36,7 +36,8 @@ import AssignmentIcon from "@mui/icons-material/Assignment";
 import {
     getPhieuKiemDetail,
     createAllSection,
-    saveCustomFields
+    saveCustomFields,
+    getThongSoKq
 } from "../../../api/phieuKiem.api";
 
 import { getSanPhamNhomKiem, getInspectionLevels } from "../../../api/lookup.api"
@@ -55,6 +56,10 @@ export default function PhieuKiemDetail() {
     const [dynamicFields, setDynamicFields] = useState([]);
     const [nhomConfigs, setNhomConfigs] = useState([]);
     const [levels, setLevels] = useState([]);
+    
+    // Thêm state cho thông số KQ đặc biệt
+    const [thongSoList, setThongSoList] = useState([]);
+    const [thongSoKqList, setThongSoKqList] = useState([]);
 
     const [loading, setLoading] = useState(true);
     const [creatingSection, setCreatingSection] = useState(false);
@@ -108,6 +113,20 @@ export default function PhieuKiemDetail() {
             setCheckItems(data.checkItems);
             setDefects(data.defects);
             setDynamicFields(data.dynamicFields);
+            
+            // Lấy thêm thông số kết quả kiểm tra cấp độ đặc biệt
+            try {
+                const tsRes = await getThongSoKq(id);
+                console.log("[DEBUG] thong-so-kq response:", tsRes.data);
+                if (tsRes.data) {
+                    setThongSoList(tsRes.data.thongSo || []);
+                    setThongSoKqList(tsRes.data.ketQua || []);
+                    console.log("[DEBUG] thongSoList:", tsRes.data.thongSo);
+                }
+            } catch (err) {
+                console.error("[DEBUG] Lỗi gọi thong-so-kq:", err?.response?.status, err?.response?.data || err.message);
+            }
+
             if (data.phieu?.SanPhamId && data.phieu.TrangThai === "TAO_MOI") {
 
                 const nhomRes = await getSanPhamNhomKiem(data.phieu.SanPhamId);
@@ -476,7 +495,7 @@ export default function PhieuKiemDetail() {
                     <DialogTitle>Xem trước bản in</DialogTitle>
                     <DialogContent dividers sx={{ bgcolor: '#f0f0f0', p: 3 }}>
                         <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                            {phieu.LoaiKiemId === 1 ? (
+                            {phieu.LoaiKiemId === 5 ? (
                                 <PhieuGiamDinhPrintTemplate
                                     ref={componentRef}
                                     phieu={phieu}
@@ -484,6 +503,8 @@ export default function PhieuKiemDetail() {
                                     checkItems={checkItems}
                                     defects={defects}
                                     dynamicFields={dynamicFields}
+                                    thongSoList={thongSoList}
+                                    thongSoKqList={thongSoKqList}
                                 />
                             ) : (
                                 <PhieuKiemPrintTemplate

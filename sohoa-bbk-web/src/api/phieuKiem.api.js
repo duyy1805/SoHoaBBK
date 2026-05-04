@@ -100,3 +100,7 @@ export const ketLuanPhieuKiem = (data) => {
 export const saveCustomFields = (data) => {
     return axiosClient.post("/phieu-kiem/custom-fields", data);
 };
+
+export const getThongSoKq = (phieuKiemId) => {
+    return axiosClient.get(`/phieu-kiem/${phieuKiemId}/thong-so-kq`);
+};

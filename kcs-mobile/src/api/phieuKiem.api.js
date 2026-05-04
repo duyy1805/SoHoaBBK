@@ -70,3 +70,11 @@ export const uploadImages = (formData) => {
     },
   });
 };
+
+export const getThongSoKq = (phieuKiemId) => {
+  return axiosClient.get(`/phieu-kiem/${phieuKiemId}/thong-so-kq`);
+};
+
+export const saveThongSoKq = (phieuKiemId, results) => {
+  return axiosClient.post(`/phieu-kiem/${phieuKiemId}/thong-so-kq`, { results });
+};

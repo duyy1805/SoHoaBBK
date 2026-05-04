@@ -19,7 +19,8 @@ import {
     completePhieuKiem,
     confirmPX,
     confirmKN,
-    updateLot
+    updateLot,
+    getThongSoKq
 } from "../api/phieuKiem.api";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -41,6 +42,9 @@ export default function PhieuDetailScreen({ route, navigation }) {
     const [isConfigModalVisible, setIsConfigModalVisible] = useState(false);
 
     const [trangThai, setTrangThai] = useState(null);
+    const [hasThongSo, setHasThongSo] = useState(false);
+    const [thongSoList, setThongSoList] = useState([]);
+    const [thongSoKqList, setThongSoKqList] = useState([]);
 
     useFocusEffect(
         useCallback(() => {
@@ -67,6 +71,21 @@ export default function PhieuDetailScreen({ route, navigation }) {
         const lot = res.data.phieu?.Lot;
         setLot(lot);
         setLotConfirmed(!!lot);
+
+        try {
+            const thongSoRes = await getThongSoKq(id);
+            const tsList = thongSoRes.data?.thongSo || [];
+            const kqList = thongSoRes.data?.ketQua || [];
+            setThongSoList(tsList);
+            setThongSoKqList(kqList);
+            console.log("[DEBUG] thongSoList:", JSON.stringify(tsList));
+            console.log("[DEBUG] thongSoKqList:", JSON.stringify(kqList));
+            if (tsList.length > 0) {
+                setHasThongSo(true);
+            }
+        } catch (e) {
+            console.log("Không tải được thông số kiểm đặc biệt", e?.message);
+        }
     };
 
     const hasPermission = (p) => permissions.includes(p);
@@ -81,7 +100,19 @@ export default function PhieuDetailScreen({ route, navigation }) {
 
     const hasReject = sections.some(s => s.KetLuan === "REJECT");
 
-    const finalResult = hasReject ? "KHONG_DAT" : "DAT";
+    // Kiểm tra xem kết quả kiểm đặc biệt có mẫu nào không đạt không
+    const hasSpecialReject = thongSoKqList.some(kq => {
+        const ts = thongSoList.find(t => t.Id === kq.ThongSoId);
+        if (!ts || kq.GiaTriDo === null || kq.GiaTriDo === undefined) return false;
+        const num = Number(kq.GiaTriDo);
+        const chuan = Number(ts.GiaTriChuan);
+        if (isNaN(num) || isNaN(chuan)) return false;
+        const min = chuan - Number(ts.DungSaiAm);
+        const max = chuan + Number(ts.DungSaiDuong);
+        return num < min || num > max;
+    });
+
+    const finalResult = (hasReject || hasSpecialReject) ? "KHONG_DAT" : "DAT";
 
     const isCompleted = trangThai === "HOAN_TAT";
 
@@ -312,6 +343,17 @@ export default function PhieuDetailScreen({ route, navigation }) {
                     </TouchableOpacity>
                 )}
 
+                {hasThongSo && isKCS && (
+                    <TouchableOpacity
+                        style={[styles.actionButton, { backgroundColor: "#8b5cf6", marginBottom: 20 }]}
+                        onPress={() => navigation.navigate("KiemDacBiet", { phieuId: id })}
+                    >
+                        <Text style={styles.actionText}>
+                            Kiểm tra cấp độ đặc biệt
+                        </Text>
+                    </TouchableOpacity>
+                )}
+
                 <Text style={styles.sectionLot}>Số lot</Text>
 
                 <View style={styles.lotBox}>
@@ -481,7 +523,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
                     <TouchableOpacity
                         style={[
                             styles.actionButton,
-                            hasReject
+                            (hasReject || hasSpecialReject)
                                 ? styles.reject
                                 : styles.accept
                         ]}

@@ -116,3 +116,16 @@ export const deleteInspectionLevel = (id) =>
     axiosClient.delete(`/lookup/inspection-level/${id}`);
 
 export const getInspectionLevels = () => axiosClient.get("/lookup/inspection-levels");
+
+/* =====================================================
+   4️⃣ DANH MỤC THÔNG SỐ SẢN PHẨM (KIỂM ĐẶC BIỆT)
+===================================================== */
+
+export const getSanPhamThongSo = (sanPhamId) =>
+    axiosClient.get(`/lookup/san-pham/${sanPhamId}/thong-so`);
+
+export const createSanPhamThongSo = (data) =>
+    axiosClient.post("/lookup/san-pham-thong-so", data);
+
+export const deleteSanPhamThongSo = (id) =>
+    axiosClient.delete(`/lookup/san-pham-thong-so/${id}`);

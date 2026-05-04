@@ -820,4 +820,71 @@ router.post('/custom-fields', async (req, res) => {
         res.status(500).json({ success: false, message: 'Lỗi server' });
     }
 });
+
+/* =========================================================
+   GET /phieu-kiem/:id/thong-so-kq
+========================================================= */
+router.get('/:id/thong-so-kq', authenticateToken, async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('PhieuKiemId', sql.Int, req.params.id)
+            .execute('sp_PhieuKiem_ThongSo_GetResults');
+        
+        // result.recordsets[0] = Cấu hình thông số
+        // result.recordsets[1] = Kết quả đã nhập
+        res.json({
+            thongSo: result.recordsets[0],
+            ketQua: result.recordsets[1]
+        });
+    } catch (err) {
+        console.error("Get thong-so-kq error:", err);
+        res.status(500).json({ message: "Lỗi tải kết quả kiểm đặc biệt" });
+    }
+});
+
+/* =========================================================
+   POST /phieu-kiem/:id/thong-so-kq
+========================================================= */
+router.post('/:id/thong-so-kq', authenticateToken, authorize('THUC_HIEN_KIEM'), async (req, res) => {
+    const phieuKiemId = req.params.id;
+    const { results } = req.body; // Array of { ThongSoId, ThuTuMau, GiaTriDo, GhiChu }
+
+    if (!Array.isArray(results)) {
+        return res.status(400).json({ message: "Dữ liệu không hợp lệ" });
+    }
+
+    try {
+        const pool = await poolPromise;
+        const transaction = new sql.Transaction(pool);
+        await transaction.begin();
+
+        try {
+            const request = new sql.Request(transaction);
+            
+            for (const item of results) {
+                await request
+                    .input('PhieuKiemId', sql.Int, phieuKiemId)
+                    .input('ThongSoId', sql.Int, item.ThongSoId)
+                    .input('ThuTuMau', sql.Int, item.ThuTuMau)
+                    .input('GiaTriDo', sql.Float, item.GiaTriDo !== '' ? item.GiaTriDo : null)
+                    .input('GhiChu', sql.NVarChar(255), item.GhiChu || null)
+                    .execute('sp_PhieuKiem_ThongSo_SaveResult');
+                
+                // Clear parameters for next iteration
+                request.parameters = {};
+            }
+
+            await transaction.commit();
+            res.json({ success: true, message: "Đã lưu kết quả đo đạc thành công" });
+        } catch (err) {
+            await transaction.rollback();
+            throw err;
+        }
+    } catch (err) {
+        console.error("Save thong-so-kq error:", err);
+        res.status(500).json({ message: "Lỗi lưu kết quả kiểm đặc biệt" });
+    }
+});
+
 module.exports = router;
