@@ -275,19 +275,19 @@ export default function PhieuDetailScreen({ route, navigation }) {
                             <Text style={styles.infoValue}>{phieu?.SoPhieu}</Text>
                         </View>
                         <View style={styles.infoItem}>
-                            <Text style={styles.infoLabel}>Sản phẩm</Text>
-                            <Text style={styles.infoValue}>{phieu?.TenSanPham}</Text>
+                            <Text style={styles.infoLabel}>Mã CT Nhập</Text>
+                            <Text style={[styles.infoValue, { color: '#2563eb', fontWeight: 'bold' }]}>{phieu?.ID_ChungTuNhap || "---"}</Text>
                         </View>
                     </View>
 
                     <View style={styles.infoRow}>
                         <View style={styles.infoItem}>
-                            <Text style={styles.infoLabel}>Mã hàng</Text>
-                            <Text style={styles.infoValue}>{phieu?.MaSanPham}</Text>
+                            <Text style={styles.infoLabel}>Sản phẩm</Text>
+                            <Text style={styles.infoValue}>{phieu?.TenSanPham}</Text>
                         </View>
                         <View style={styles.infoItem}>
-                            <Text style={styles.infoLabel}>Số lượng</Text>
-                            <Text style={styles.infoValue}>{phieu?.SoLuong}</Text>
+                            <Text style={styles.infoLabel}>Mã hàng</Text>
+                            <Text style={styles.infoValue}>{phieu?.MaSanPham}</Text>
                         </View>
                     </View>
 
@@ -310,12 +310,22 @@ export default function PhieuDetailScreen({ route, navigation }) {
 
                     <View style={styles.infoRow}>
                         <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Số lượng</Text>
+                            <Text style={styles.infoValue}>{phieu?.SoLuong}</Text>
+                        </View>
+                        <View style={styles.infoItem}>
                             <Text style={styles.infoLabel}>Ngày giao</Text>
                             <Text style={styles.infoValue}>{phieu?.Ngay_Giao ? new Date(phieu.Ngay_Giao).toLocaleDateString('vi-VN') : "---"}</Text>
                         </View>
+                    </View>
+
+                    <View style={styles.infoRow}>
                         <View style={styles.infoItem}>
                             <Text style={styles.infoLabel}>Người kiểm</Text>
                             <Text style={styles.infoValue}>{phieu?.TenNguoiKiem || "---"}</Text>
+                        </View>
+                        <View style={styles.infoItem}>
+                            {/* Empty space or another field if needed */}
                         </View>
                     </View>
 

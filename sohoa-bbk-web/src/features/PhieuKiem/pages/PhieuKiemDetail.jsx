@@ -278,6 +278,13 @@ export default function PhieuKiemDetail() {
                                 <Typography fontWeight={600}>{phieu?.SoPhieu}</Typography>
                             </Grid>
 
+                            {phieu?.ID_ChungTuNhap && (
+                                <Grid size={{ xs: 3 }}>
+                                    <Typography variant="subtitle2">Mã CT Nhập</Typography>
+                                    <Typography fontWeight={600} color="primary">{phieu.ID_ChungTuNhap}</Typography>
+                                </Grid>
+                            )}
+
                             <Grid size={{ xs: 3 }}>
                                 <Typography variant="subtitle2">Tên sản phẩm</Typography>
                                 <Typography fontWeight={600}>{phieu?.TenSanPham}</Typography>

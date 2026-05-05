@@ -212,6 +212,7 @@ export default function PhieuKiemList() {
                             <TableHead>
                                 <TableRow hover>
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Số phiếu</TableCell>
+                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Mã CT Nhập</TableCell>
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Sản phẩm</TableCell>
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>LOT</TableCell>
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }} align="right">SL Kế hoạch</TableCell>
@@ -224,7 +225,7 @@ export default function PhieuKiemList() {
                             <TableBody>
                                 {paginatedData.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
+                                        <TableCell colSpan={9} align="center" sx={{ py: 6 }}>
                                             <Typography color="text.secondary">
                                                 Không tìm thấy phiếu kiểm nào.
                                             </Typography>
@@ -240,6 +241,9 @@ export default function PhieuKiemList() {
                                         >
                                             <TableCell sx={{ fontWeight: 600, color: 'primary.main' }}>
                                                 {item.SoPhieu}
+                                            </TableCell>
+                                            <TableCell sx={{ fontWeight: 500 }}>
+                                                {item.ID_ChungTuNhap || "—"}
                                             </TableCell>
                                             <TableCell>
                                                 {/* Hiển thị Tên Sản Phẩm */}

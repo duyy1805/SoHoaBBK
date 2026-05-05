@@ -15,7 +15,7 @@ export default function KiemDacBietScreen({ route, navigation }) {
     const { phieuId, trangThai } = route.params;
 
     // Chỉ cho phép chỉnh sửa khi phư kiết quả đang ở trạng thái kiểm (DANG_KIEM)
-    const isReadOnly = trangThai !== "DANG_KIEM";
+    const isReadOnly = trangThai !== "DANG_KIEM" && trangThai !== "DA_TAO_SECTION";
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);

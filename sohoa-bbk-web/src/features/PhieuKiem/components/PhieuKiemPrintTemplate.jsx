@@ -24,6 +24,18 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
         return acc;
     }, {});
 
+    // Tính toán kích thước sản phẩm từ thongSoList (Cấp độ đặc biệt)
+    const specDimensions = (() => {
+        const dimGroup = (thongSoList || []).filter(ts => ts.NhomThongSo === "Kích thước sản phẩm");
+        if (dimGroup.length === 0) return null;
+
+        const dai = dimGroup.find(ts => ts.TenThongSo?.toLowerCase() === "dài")?.GiaTriChuan;
+        const rong = dimGroup.find(ts => ts.TenThongSo?.toLowerCase() === "rộng")?.GiaTriChuan;
+        const cao = dimGroup.find(ts => ts.TenThongSo?.toLowerCase() === "cao")?.GiaTriChuan;
+
+        return [dai, rong, cao].filter(v => v !== undefined && v !== null && v !== "").join(" x ");
+    })();
+
     const styles = {
         previewBackground: {
             backgroundColor: '#e5e7eb',
@@ -228,7 +240,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Kích thước SP</td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
-                                    <input name="KichThuocSP" className="custom-field" type="text" defaultValue={customData.KichThuocSP || phieu.KichThuoc || ''} style={styles.inputField} />
+                                    <input name="KichThuocSP" className="custom-field" type="text" defaultValue={specDimensions || customData.KichThuocSP || phieu.KichThuoc || ''} style={styles.inputField} />
                                 </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>hàng xuất</td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
@@ -395,7 +407,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                             <table style={{ ...styles.table, width: '100%' }}>
                                 <thead>
                                     <tr>
-                                        <th rowSpan={2} style={{ ...styles.th, width: '7%', verticalAlign: 'bottom' }}>
+                                        <th rowSpan={2} style={{ ...styles.th, width: '9%', verticalAlign: 'bottom' }}>
                                             Chỉ tiêu<br /><span style={{ fontWeight: 'normal', fontSize: '10pt' }}>Thứ tự mẫu</span>
                                         </th>
                                         {groupKeys.map(key => (
