@@ -12,12 +12,15 @@ import {
 import { getThongSoKq, saveThongSoKq } from "../api/phieuKiem.api";
 
 export default function KiemDacBietScreen({ route, navigation }) {
-    const { phieuId } = route.params;
+    const { phieuId, trangThai } = route.params;
+
+    // Chỉ cho phép chỉnh sửa khi phư kiết quả đang ở trạng thái kiểm (DANG_KIEM)
+    const isReadOnly = trangThai !== "DANG_KIEM";
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [thongSoList, setThongSoList] = useState([]);
-    
+
     // Matrix of results: { [thongSoId]: { [thuTuMau]: { GiaTriDo: "", GhiChu: "" } } }
     const [resultsMatrix, setResultsMatrix] = useState({});
     const [sampleCount, setSampleCount] = useState(13); // Default 13 samples as in the image
@@ -30,7 +33,7 @@ export default function KiemDacBietScreen({ route, navigation }) {
         try {
             setLoading(true);
             const res = await getThongSoKq(phieuId);
-            
+
             const thongSo = res.data.thongSo || [];
             const ketQua = res.data.ketQua || [];
 
@@ -38,7 +41,7 @@ export default function KiemDacBietScreen({ route, navigation }) {
 
             // Xây dựng ma trận kết quả
             let matrix = {};
-            
+
             // Khởi tạo ma trận rỗng
             thongSo.forEach(ts => {
                 matrix[ts.Id] = {};
@@ -123,9 +126,9 @@ export default function KiemDacBietScreen({ route, navigation }) {
     const handleSave = async () => {
         try {
             setSaving(true);
-            
+
             const hasFailed = isAnyFailed();
-            
+
             // Prepare payload
             const payload = [];
             for (const tsId in resultsMatrix) {
@@ -143,7 +146,7 @@ export default function KiemDacBietScreen({ route, navigation }) {
             }
 
             await saveThongSoKq(phieuId, payload);
-            
+
             if (hasFailed) {
                 Alert.alert("Cảnh báo", "Có giá trị KHÔNG ĐẠT. Phiếu này sẽ bị đánh dấu Không Đạt.", [
                     { text: "OK", onPress: () => navigation.goBack() }
@@ -226,13 +229,15 @@ export default function KiemDacBietScreen({ route, navigation }) {
                                             style={[
                                                 styles.input,
                                                 status === "KHONG_DAT" && styles.inputError,
-                                                status === "DAT" && styles.inputSuccess
+                                                status === "DAT" && styles.inputSuccess,
+                                                isReadOnly && styles.inputReadOnly
                                             ]}
                                             keyboardType="numeric"
                                             value={value}
                                             onChangeText={(val) => handleValueChange(ts.Id, sampleIdx, val)}
                                             placeholder="-"
                                             placeholderTextColor="#cbd5e1"
+                                            editable={!isReadOnly}
                                         />
                                     </View>
                                 );
@@ -242,17 +247,25 @@ export default function KiemDacBietScreen({ route, navigation }) {
                 </ScrollView>
             </ScrollView>
 
-            <TouchableOpacity
-                style={[styles.saveBtn, saving && { opacity: 0.7 }]}
-                onPress={handleSave}
-                disabled={saving}
-            >
-                {saving ? (
-                    <ActivityIndicator color="#fff" />
-                ) : (
-                    <Text style={styles.saveText}>Lưu kết quả</Text>
-                )}
-            </TouchableOpacity>
+            {isReadOnly ? (
+                <View style={styles.readOnlyNotice}>
+                    <Text style={styles.readOnlyText}>
+                        Kết quả đã được xác nhận.
+                    </Text>
+                </View>
+            ) : (
+                <TouchableOpacity
+                    style={[styles.saveBtn, saving && { opacity: 0.7 }]}
+                    onPress={handleSave}
+                    disabled={saving}
+                >
+                    {saving ? (
+                        <ActivityIndicator color="#fff" />
+                    ) : (
+                        <Text style={styles.saveText}>Lưu kết quả</Text>
+                    )}
+                </TouchableOpacity>
+            )}
         </View>
     );
 }
@@ -322,6 +335,24 @@ const styles = StyleSheet.create({
     inputSuccess: {
         color: "#22c55e",
         fontWeight: "bold"
+    },
+    inputReadOnly: {
+        backgroundColor: "#f1f5f9",
+        color: "#94a3b8"
+    },
+    readOnlyNotice: {
+        backgroundColor: "#fef9c3",
+        padding: 14,
+        borderRadius: 12,
+        alignItems: "center",
+        marginTop: 15,
+        borderWidth: 1,
+        borderColor: "#fde047"
+    },
+    readOnlyText: {
+        color: "#854d0e",
+        fontWeight: "600",
+        fontSize: 14
     },
     saveBtn: {
         backgroundColor: "#2563eb",

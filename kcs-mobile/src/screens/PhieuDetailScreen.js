@@ -346,7 +346,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
                 {hasThongSo && isKCS && (
                     <TouchableOpacity
                         style={[styles.actionButton, { backgroundColor: "#8b5cf6", marginBottom: 20 }]}
-                        onPress={() => navigation.navigate("KiemDacBiet", { phieuId: id })}
+                        onPress={() => navigation.navigate("KiemDacBiet", { phieuId: id, trangThai })}
                     >
                         <Text style={styles.actionText}>
                             Kiểm tra cấp độ đặc biệt
@@ -516,7 +516,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
 
             {/* KCS hoàn tất */}
 
-            {isAllConfirmed && !isCompleted && isKCS && (
+            {isAllConfirmed && trangThai === "DANG_KIEM" && isKCS && (
 
                 <View style={styles.actionWrapper}>
 
@@ -556,7 +556,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
                     >
 
                         <Text style={styles.actionText}>
-                            Xác nhận phân xưởng
+                            xác nhận trưởng bộ phận
                         </Text>
 
                     </TouchableOpacity>
@@ -819,4 +819,4 @@ const styles = StyleSheet.create({
         fontSize: 12
     }
 
-    });
+});

@@ -12,7 +12,9 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
     sections = [],
     checkItems = [],
     defects = [],
-    dynamicFields = [] // Bổ sung prop nhận dữ liệu động từ API
+    dynamicFields = [],
+    thongSoList = [],
+    thongSoKqList = []
 }, ref) => {
     if (!phieu) return null;
 
@@ -357,6 +359,109 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                         })}
                     </tbody>
                 </table>
+
+                {/* ================= BẢNG KIỂM TRA CẤP ĐỘ ĐẶC BIỆT ================= */}
+                {thongSoList && thongSoList.length > 0 && (() => {
+                    const maxSample = thongSoKqList.length > 0
+                        ? Math.max(...thongSoKqList.map(kq => kq.ThuTuMau))
+                        : 13;
+                    const sampleIndices = Array.from({ length: maxSample }, (_, i) => i + 1);
+
+                    const groups = {};
+                    thongSoList.forEach(ts => {
+                        const key = ts.NhomThongSo || ts.TenThongSo || `ts-${ts.Id}`;
+                        if (!groups[key]) groups[key] = [];
+                        groups[key].push(ts);
+                    });
+                    const groupKeys = Object.keys(groups);
+
+                    const checkVal = (ts, value) => {
+                        if (value === undefined || value === null || value === '') return null;
+                        const num = Number(value);
+                        if (isNaN(num)) return null;
+                        const chuan = Number(ts.GiaTriChuan);
+                        if (isNaN(chuan)) return null;
+                        const min = chuan - Number(ts.DungSaiAm);
+                        const max = chuan + Number(ts.DungSaiDuong);
+                        return (num >= min && num <= max) ? 'DAT' : 'KHONG_DAT';
+                    };
+
+                    return (
+                        <Box className="avoid-break" mt={3}>
+                            <Box mb={1} style={{ textAlign: 'center' }}>
+                                <div style={{ ...styles.boldText, fontSize: '12pt' }}>Kết quả kiểm theo cấp độ đặc biệt</div>
+                            </Box>
+                            <div style={{ fontSize: '11pt', marginBottom: '4px' }}><b>Số mẫu cần lấy:</b></div>
+                            <table style={{ ...styles.table, width: '100%' }}>
+                                <thead>
+                                    <tr>
+                                        <th rowSpan={2} style={{ ...styles.th, width: '7%', verticalAlign: 'bottom' }}>
+                                            Chỉ tiêu<br /><span style={{ fontWeight: 'normal', fontSize: '10pt' }}>Thứ tự mẫu</span>
+                                        </th>
+                                        {groupKeys.map(key => (
+                                            <th key={key} colSpan={groups[key].length} style={styles.th}>{key}</th>
+                                        ))}
+                                        <th rowSpan={2} style={{ ...styles.th, width: '10%' }}>Ghi chú</th>
+                                    </tr>
+                                    <tr>
+                                        {thongSoList.map(ts => (
+                                            <th key={ts.Id} style={{ ...styles.th, fontSize: '9pt', fontWeight: 'normal' }}>
+                                                {ts.TenThongSo && ts.TenThongSo !== ts.NhomThongSo ? `${ts.TenThongSo} ` : ''}
+                                                {ts.GiaTriChuan}
+                                                {ts.DungSaiAm === ts.DungSaiDuong ? `±${ts.DungSaiAm}` : `(-${Math.abs(ts.DungSaiAm)}/+${ts.DungSaiDuong})`}
+                                                {ts.DonVi ? ` ${ts.DonVi}` : ''}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {sampleIndices.map(sampleIdx => (
+                                        <tr key={sampleIdx}>
+                                            <td style={styles.tdCenter}>{sampleIdx}</td>
+                                            {thongSoList.map(ts => {
+                                                const kq = thongSoKqList.find(r => r.ThongSoId === ts.Id && r.ThuTuMau === sampleIdx);
+                                                const value = kq?.GiaTriDo;
+                                                const status = checkVal(ts, value);
+                                                return (
+                                                    <td key={ts.Id} style={{
+                                                        ...styles.tdCenter,
+                                                        color: status === 'KHONG_DAT' ? 'red' : 'inherit',
+                                                        fontWeight: status === 'KHONG_DAT' ? 'bold' : 'normal'
+                                                    }}>
+                                                        {value !== undefined && value !== null ? value : ''}
+                                                    </td>
+                                                );
+                                            })}
+                                            <td style={styles.td}></td>
+                                        </tr>
+                                    ))}
+                                    <tr style={{ backgroundColor: '#f0f9f0' }}>
+                                        <td style={{ ...styles.td, fontWeight: 'bold' }}>*Kết quả<br />Đạt</td>
+                                        {thongSoList.map(ts => {
+                                            const datCount = sampleIndices.filter(idx => {
+                                                const kq = thongSoKqList.find(r => r.ThongSoId === ts.Id && r.ThuTuMau === idx);
+                                                return checkVal(ts, kq?.GiaTriDo) === 'DAT';
+                                            }).length;
+                                            return <td key={ts.Id} style={{ ...styles.tdCenter, color: '#16a34a', fontWeight: 'bold' }}>{datCount > 0 ? datCount : ''}</td>;
+                                        })}
+                                        <td style={styles.td}></td>
+                                    </tr>
+                                    <tr style={{ backgroundColor: '#fff5f5' }}>
+                                        <td style={{ ...styles.td, fontWeight: 'bold' }}>Không đạt</td>
+                                        {thongSoList.map(ts => {
+                                            const failCount = sampleIndices.filter(idx => {
+                                                const kq = thongSoKqList.find(r => r.ThongSoId === ts.Id && r.ThuTuMau === idx);
+                                                return checkVal(ts, kq?.GiaTriDo) === 'KHONG_DAT';
+                                            }).length;
+                                            return <td key={ts.Id} style={{ ...styles.tdCenter, color: failCount > 0 ? 'red' : 'inherit', fontWeight: failCount > 0 ? 'bold' : 'normal' }}>{failCount > 0 ? failCount : ''}</td>;
+                                        })}
+                                        <td style={styles.td}></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </Box>
+                    );
+                })()}
 
                 {/* ================= KẾT LUẬN & CHỮ KÝ ================= */}
                 <Box className="avoid-break" mt={3} pl={1} pb={2}>

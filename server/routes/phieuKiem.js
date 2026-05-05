@@ -198,14 +198,14 @@ router.get(
 
             const permissions = req.user.permissions;
             let mode = 'VIEW';
-            if (permissions.includes('PHAN_BO_KIEM'))
-                mode = 'TO_TRUONG_KCS';
-            if (permissions.includes('THUC_HIEN_KIEM'))
-                mode = 'KCS';
-            if (permissions.includes('XAC_NHAN_PX'))
-                mode = 'PX';
             if (permissions.includes('XAC_NHAN_KIEM_NGHIEM'))
                 mode = 'KIEM_NGHIEM';
+            if (permissions.includes('XAC_NHAN_PX'))
+                mode = 'PX';
+            if (permissions.includes('THUC_HIEN_KIEM'))
+                mode = 'KCS';
+            if (permissions.includes('PHAN_BO_KIEM'))
+                mode = 'TO_TRUONG_KCS';   // ưu tiên cao hơn KCS
             if (permissions.includes('QUAN_TRI_DM'))
                 mode = 'VIEW';
             const result = await pool.request()
@@ -712,7 +712,7 @@ router.post(
             console.error('XacNhanPX error:', err);
 
             res.status(500).json({
-                message: 'Xác nhận phân xưởng thất bại'
+                message: 'xác nhận trưởng bộ phận thất bại'
             });
 
         }
@@ -830,7 +830,7 @@ router.get('/:id/thong-so-kq', authenticateToken, async (req, res) => {
         const result = await pool.request()
             .input('PhieuKiemId', sql.Int, req.params.id)
             .execute('sp_PhieuKiem_ThongSo_GetResults');
-        
+
         // result.recordsets[0] = Cấu hình thông số
         // result.recordsets[1] = Kết quả đã nhập
         res.json({
@@ -861,7 +861,7 @@ router.post('/:id/thong-so-kq', authenticateToken, authorize('THUC_HIEN_KIEM'), 
 
         try {
             const request = new sql.Request(transaction);
-            
+
             for (const item of results) {
                 await request
                     .input('PhieuKiemId', sql.Int, phieuKiemId)
@@ -870,7 +870,7 @@ router.post('/:id/thong-so-kq', authenticateToken, authorize('THUC_HIEN_KIEM'), 
                     .input('GiaTriDo', sql.Float, item.GiaTriDo !== '' ? item.GiaTriDo : null)
                     .input('GhiChu', sql.NVarChar(255), item.GhiChu || null)
                     .execute('sp_PhieuKiem_ThongSo_SaveResult');
-                
+
                 // Clear parameters for next iteration
                 request.parameters = {};
             }

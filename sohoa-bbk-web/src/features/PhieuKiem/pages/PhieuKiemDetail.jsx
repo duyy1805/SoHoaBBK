@@ -495,7 +495,7 @@ export default function PhieuKiemDetail() {
                     <DialogTitle>Xem trước bản in</DialogTitle>
                     <DialogContent dividers sx={{ bgcolor: '#f0f0f0', p: 3 }}>
                         <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                            {phieu.LoaiKiemId === 5 ? (
+                            {phieu.LoaiKiemId === 1 ? (
                                 <PhieuGiamDinhPrintTemplate
                                     ref={componentRef}
                                     phieu={phieu}
@@ -503,8 +503,6 @@ export default function PhieuKiemDetail() {
                                     checkItems={checkItems}
                                     defects={defects}
                                     dynamicFields={dynamicFields}
-                                    thongSoList={thongSoList}
-                                    thongSoKqList={thongSoKqList}
                                 />
                             ) : (
                                 <PhieuKiemPrintTemplate
@@ -514,6 +512,8 @@ export default function PhieuKiemDetail() {
                                     checkItems={checkItems}
                                     defects={defects}
                                     dynamicFields={dynamicFields}
+                                    thongSoList={thongSoList}
+                                    thongSoKqList={thongSoKqList}
                                 />
                             )}
                         </Box>
