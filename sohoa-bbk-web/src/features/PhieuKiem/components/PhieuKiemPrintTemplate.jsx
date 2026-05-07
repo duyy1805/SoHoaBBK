@@ -36,6 +36,10 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
         return [dai, rong, cao].filter(v => v !== undefined && v !== null && v !== "").join(" x ");
     })();
 
+    // Lấy số lượng từ các nhóm kiểm (sections) tương ứng
+    const khayQty = sections.find(s => s.TenNhom?.toUpperCase() === "KHAY HỘP CARTON")?.TongSo;
+    const palletQty = sections.find(s => s.TenNhom?.toUpperCase() === "PALLET")?.TongSo;
+
     const styles = {
         previewBackground: {
             backgroundColor: '#e5e7eb',
@@ -223,8 +227,18 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                     <input name="NVienKiemHang" className="custom-field" type="text" defaultValue={customData.NVienKiemHang || phieu.TenNguoiKiem || ''} style={styles.inputField} />
                                 </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Tên sản phẩm</td>
-                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
-                                    <input name="TenSanPham" className="custom-field" type="text" defaultValue={customData.TenSanPham || phieu.TenSanPham || ''} style={styles.inputField} />
+                                <td style={{ border: '1px solid #000', padding: '2px 6px', fontSize: '11pt', verticalAlign: 'middle' }}>
+                                    <textarea
+                                        name="TenSanPham"
+                                        className="custom-field"
+                                        defaultValue={customData.TenSanPham || phieu.TenSanPham || ''}
+                                        style={{ ...styles.inputField, resize: 'none', overflow: 'hidden', minHeight: '36px', display: 'block' }}
+                                        onInput={(e) => {
+                                            e.target.style.height = 'auto';
+                                            e.target.style.height = e.target.scrollHeight + 'px';
+                                        }}
+                                        rows={2}
+                                    />
                                 </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Số lượng</td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
@@ -242,9 +256,9 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
                                     <input name="KichThuocSP" className="custom-field" type="text" defaultValue={specDimensions || customData.KichThuocSP || phieu.KichThuoc || ''} style={styles.inputField} />
                                 </td>
-                                <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>hàng xuất</td>
+                                <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Khay</td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
-                                    <input name="HangXuat" className="custom-field" type="text" defaultValue={customData.HangXuat || phieu.HangXuat || ''} style={styles.inputField} />
+                                    <input name="Khay" className="custom-field" type="text" defaultValue={khayQty || customData.Khay || phieu.Khay || ''} style={styles.inputField} />
                                 </td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', textAlign: 'right' }}>cái</td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', textAlign: 'right' }}>hộp</td>
@@ -258,9 +272,9 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
                                     <input name="NgayKiemTra" className="custom-field" type="text" defaultValue={customData.NgayKiemTra || (phieu.NgayKiem ? new Date(phieu.NgayKiem).toLocaleDateString('vi-VN') : new Date().toLocaleDateString('vi-VN'))} style={styles.inputField} />
                                 </td>
-                                <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}></td>
+                                <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Pallet</td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
-                                    <input name="Extra1" className="custom-field" type="text" defaultValue={customData.Extra1 || ''} style={styles.inputField} />
+                                    <input name="Pallet" className="custom-field" type="text" defaultValue={palletQty || customData.Pallet || phieu.Pallet || ''} style={styles.inputField} />
                                 </td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', textAlign: 'right' }}>cái</td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', textAlign: 'right' }}>hộp</td>
@@ -272,7 +286,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Nơi đến</td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
-                                    <input name="NoiDen" className="custom-field" type="text" defaultValue={customData.NoiDen || phieu.NoiDen || ''} style={styles.inputField} />
+                                    <input name="NoiDen" className="custom-field" type="text" defaultValue={customData.NoiDen || phieu.NoiDen || phieu.DoiTuong || ''} style={styles.inputField} />
                                 </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Tổng SL</td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
@@ -315,7 +329,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                         <td colSpan={6} style={{ ...styles.td, padding: '8px' }}>
                                             <Box style={styles.flexBetween}>
                                                 <div style={styles.boldText}>
-                                                    {toRoman(sIndex + 1)}. {section.TenNhom.toUpperCase()}
+                                                    {toRoman(sIndex + 1)}. {section.TenNhom.toUpperCase()} {section.InspectionLevel ? <span style={{ fontWeight: 'normal', fontSize: '10pt', marginLeft: '5px' }}> - AQL: {section.InspectionLevel}</span> : ''}
                                                 </div>
                                                 <Box style={{ display: 'flex', gap: '40px', paddingRight: '20px' }}>
                                                     <span>Tổng số: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: '1px dotted #000', textAlign: 'center' }}><b>{section.TongSo}</b></span> Pcs</span>

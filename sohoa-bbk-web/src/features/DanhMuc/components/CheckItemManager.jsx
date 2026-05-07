@@ -120,6 +120,8 @@ export default function CheckItemManager() {
                     showToast("Xóa thành công", "success");
                 } catch (err) {
                     setError(err.response?.data?.message || "Không thể xoá");
+                } finally {
+                    setConfirmDialog(prev => ({ ...prev, open: false }));
                 }
             }
         });
@@ -163,7 +165,7 @@ export default function CheckItemManager() {
                             return (
                                 <Box
                                     component="li"
-                                    key={key}
+                                    key={option.Id}
                                     {...rest}
                                     sx={{ borderBottom: '1px solid #eee', py: 1.5 }}
                                 >

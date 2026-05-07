@@ -323,7 +323,8 @@ router.post(
             sourceId,
             sourceId_LCD, // Thêm field cho lịch đóng cont (GUID)
             soLuong,
-            Ngay_Giao
+            Ngay_Giao,
+            mucDoKiemTra
         } = req.body;
 
         // Bắt buộc phải có 1 trong 2 loại source
@@ -348,6 +349,7 @@ router.post(
                 .input('SourceId', sql.Int, sourceId || null)
                 .input('SourceId_LCD', sql.UniqueIdentifier, sourceId_LCD || null)
                 .input('Ngay_Giao', sql.Date, Ngay_Giao || null)
+                .input('MucDoKiemTra', sql.NVarChar, mucDoKiemTra || null)
                 .execute('sp_PhieuKiem_Create');
 
             const newPhieuId = result.recordset[0].Id;

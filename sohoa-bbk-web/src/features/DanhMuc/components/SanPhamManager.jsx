@@ -487,10 +487,10 @@ export default function SanPhamManager() {
             />
 
             {/* Dialog Thông số đặc biệt */}
-            <SanPhamThongSoDialog 
-                open={thongSoDialog} 
-                onClose={() => setThongSoDialog(false)} 
-                selectedSanPham={selectedSanPham} 
+            <SanPhamThongSoDialog
+                open={thongSoDialog}
+                onClose={() => setThongSoDialog(false)}
+                selectedSanPham={selectedSanPham}
             />
         </Box>
     );

@@ -314,6 +314,29 @@ router.put(
   }
 );
 
+router.delete(
+  "/check-item/:id",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  async (req, res) => {
+    const { id } = req.params;
+
+    try {
+      const pool = await poolPromise;
+
+      await pool.request()
+        .input("Id", sql.Int, id)
+        .execute("sp_DM_DeleteCheckItem");
+
+      res.json({ message: "Đã xoá mục kiểm" });
+
+    } catch (err) {
+      console.error("Delete check item error:", err);
+      res.status(500).json({ message: "Xoá thất bại" });
+    }
+  }
+);
+
 router.get(
   "/san-pham",
   authenticateToken,

@@ -56,7 +56,7 @@ export default function PhieuKiemDetail() {
     const [dynamicFields, setDynamicFields] = useState([]);
     const [nhomConfigs, setNhomConfigs] = useState([]);
     const [levels, setLevels] = useState([]);
-    
+
     // Thêm state cho thông số KQ đặc biệt
     const [thongSoList, setThongSoList] = useState([]);
     const [thongSoKqList, setThongSoKqList] = useState([]);
@@ -113,7 +113,7 @@ export default function PhieuKiemDetail() {
             setCheckItems(data.checkItems);
             setDefects(data.defects);
             setDynamicFields(data.dynamicFields);
-            
+
             // Lấy thêm thông số kết quả kiểm tra cấp độ đặc biệt
             try {
                 const tsRes = await getThongSoKq(id);
@@ -316,6 +316,10 @@ export default function PhieuKiemDetail() {
                             <Grid size={{ xs: 3 }}>
                                 <Typography variant="subtitle2">Kết luận</Typography>
                                 {renderKetLuanChip(phieu?.KetLuan)}
+                            </Grid>
+                            <Grid size={{ xs: 3 }}>
+                                <Typography variant="subtitle2">Mức độ kiểm tra</Typography>
+                                <Typography fontWeight={600} color="secondary">{phieu?.MucDoKiemTra || "Chưa xác định"}</Typography>
                             </Grid>
                         </Grid>
 

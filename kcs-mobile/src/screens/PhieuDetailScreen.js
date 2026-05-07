@@ -93,7 +93,9 @@ export default function PhieuDetailScreen({ route, navigation }) {
     const isKCS = hasPermission("THUC_HIEN_KIEM");
     const isPX = hasPermission("XAC_NHAN_PX");
     const isKN = hasPermission("XAC_NHAN_KIEM_NGHIEM");
-    const canConfig = hasPermission("THUC_HIEN_KIEM");
+    const isLeader = hasPermission("PHAN_BO_KIEM");
+    const canConfig = isKCS || isLeader;
+
     const isAllConfirmed =
         sections.length > 0 &&
         sections.every(s => s.KetLuan);
@@ -353,7 +355,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
                     </TouchableOpacity>
                 )}
 
-                {hasThongSo && isKCS && (
+                {hasThongSo && (isKCS || isLeader) && (
                     <TouchableOpacity
                         style={[styles.actionButton, { backgroundColor: "#8b5cf6", marginBottom: 20 }]}
                         onPress={() => navigation.navigate("KiemDacBiet", { phieuId: id, trangThai })}
@@ -434,9 +436,9 @@ export default function PhieuDetailScreen({ route, navigation }) {
                                     key={item.Id}
                                     style={[
                                         styles.itemRow,
-                                        (!isKCS || section.KetLuan) && styles.itemDisabled
+                                        (!(isKCS || isLeader) || section.KetLuan) && styles.itemDisabled
                                     ]}
-                                    disabled={!isKCS || !!section.KetLuan}
+                                    disabled={!(isKCS || isLeader) || !!section.KetLuan}
                                     onPress={() =>
                                         navigation.navigate("CheckItem", { item })
                                     }
@@ -499,7 +501,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
                                     </Text>
                                 </View>
                             </View>
-                            {!section.KetLuan && isKCS && (
+                            {!section.KetLuan && (isKCS || isLeader) && (
 
                                 <TouchableOpacity
                                     style={styles.aqlButton}
@@ -526,7 +528,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
 
             {/* KCS hoàn tất */}
 
-            {isAllConfirmed && trangThai === "DANG_KIEM" && isKCS && (
+            {isAllConfirmed && (trangThai === "DANG_KIEM" || trangThai === "DA_TAO_SECTION") && (isKCS || isLeader) && (
 
                 <View style={styles.actionWrapper}>
 

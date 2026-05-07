@@ -52,7 +52,8 @@ export default function PhieuKiemCreate() {
 
     const [form, setForm] = useState({
         loaiKiemId: "",
-        nguoiKiemId: ""
+        nguoiKiemId: "",
+        mucDoKiemTra: ""
     });
 
     const [loaiKiemList, setLoaiKiemList] = useState([]);
@@ -155,7 +156,7 @@ export default function PhieuKiemCreate() {
                 const filtered = lichData.filter(
                     item => !checkedSet.has(item.ClosingScheduleDetailGuid)
                 );
-
+                console.log(lichData)
                 setLichList(filtered);
             }
 
@@ -336,7 +337,8 @@ export default function PhieuKiemCreate() {
                     lot: "",
                     sanPhamId: row.mappedSpId,
                     soLuong: row.isDongCont ? row.Quantity : (selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN" ? row.SoLuongKeHoach : row.SoLuong),
-                    doiTuong: row.isDongCont ? row.WarehouseId : (selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN" ? row.Ten_DonVi : (row.Ma_DonHang || row.ID_NhaCungCap))
+                    doiTuong: row.isDongCont ? `${row.InvoiceNo} - ${row.WarehouseId}` : (selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN" ? row.Ten_DonVi : (row.Ma_DonHang || row.ID_NhaCungCap)),
+                    mucDoKiemTra: form.mucDoKiemTra || null
                 };
 
                 if (row.isDongCont) {
@@ -385,7 +387,7 @@ export default function PhieuKiemCreate() {
                     <Divider sx={{ mb: 3 }} />
 
                     <Grid container spacing={3}>
-                        <Grid size={{ xs: 12, md: 6 }}>
+                        <Grid size={{ xs: 12, md: 4 }}>
                             <TextField
                                 select
                                 fullWidth
@@ -402,7 +404,7 @@ export default function PhieuKiemCreate() {
                             </TextField>
                         </Grid>
 
-                        <Grid size={{ xs: 12, md: 6 }}>
+                        <Grid size={{ xs: 12, md: 4 }}>
                             <TextField
                                 select
                                 fullWidth
@@ -416,6 +418,22 @@ export default function PhieuKiemCreate() {
                                         {u.FullName}
                                     </MenuItem>
                                 ))}
+                            </TextField>
+                        </Grid>
+
+                        <Grid size={{ xs: 12, md: 4 }}>
+                            <TextField
+                                select
+                                fullWidth
+                                label="Mức độ kiểm tra"
+                                name="mucDoKiemTra"
+                                value={form.mucDoKiemTra}
+                                onChange={handleChange}
+                            >
+                                <MenuItem value=""><em>-- Không chọn --</em></MenuItem>
+                                <MenuItem value="KT lần đầu">KT lần đầu</MenuItem>
+                                <MenuItem value="KT thường xuyên">KT thường xuyên</MenuItem>
+                                <MenuItem value="KT lại">KT lại</MenuItem>
                             </TextField>
                         </Grid>
 
