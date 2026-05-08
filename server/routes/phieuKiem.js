@@ -540,7 +540,7 @@ router.post(
     authenticateToken,
     authorize("THUC_HIEN_KIEM"),
     async (req, res) => {
-        const { checkItemId, ketQua, defects } = req.body;
+        const { checkItemId, ketQua, defects, giaTriDo } = req.body;
 
         try {
             const pool = await poolPromise;
@@ -600,6 +600,7 @@ router.post(
                 .input("CheckItemId", sql.Int, checkItemId)
                 .input("KetQua", sql.NVarChar, ketQua)
                 .input("Defects", sql.NVarChar(sql.MAX), JSON.stringify(defects))
+                .input("GiaTriDo", sql.NVarChar(sql.MAX), giaTriDo)
                 .execute("sp_PhieuKiem_SaveCheckItem1");
 
             res.json({ success: true });

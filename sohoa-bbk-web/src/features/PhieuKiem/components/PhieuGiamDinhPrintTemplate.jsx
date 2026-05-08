@@ -91,6 +91,38 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
         </span>
     );
 
+    // Hàm render bảng kết quả đo nhỏ (grid)
+    const renderMeasurementGrid = (val) => {
+        if (!val) return <div style={{ height: '20px' }}></div>;
+        // Tách chuỗi bằng khoảng trắng, dấu phẩy hoặc xuống dòng
+        const values = val.split(/[\s,\n]+/).filter(v => v.trim() !== '');
+        if (values.length === 0) return <div style={{ height: '20px' }}></div>;
+
+        const cols = 5; // Cố định 5 cột
+        const rows = [];
+        for (let i = 0; i < values.length; i += cols) {
+            rows.push(values.slice(i, i + cols));
+        }
+
+        return (
+            <table style={{ width: '100%', borderCollapse: 'collapse', border: 'none', fontSize: '8pt' }}>
+                <tbody>
+                    {rows.map((row, ridx) => (
+                        <tr key={ridx}>
+                            {row.map((v, cidx) => (
+                                <td key={cidx} style={{ border: '0.5px solid #000', textAlign: 'center', padding: '1px', width: `${100 / cols}%`, height: '20px' }}>{v}</td>
+                            ))}
+                            {/* Điền ô trống nếu hàng cuối không đủ cột */}
+                            {row.length < cols && Array.from({ length: cols - row.length }).map((_, idx) => (
+                                <td key={`empty-${idx}`} style={{ border: '0.5px solid #000', width: `${100 / cols}%` }}></td>
+                            ))}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        );
+    };
+
     return (
         <div ref={ref} style={styles.previewBackground} className="preview-background">
             <style>
@@ -264,9 +296,9 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                         <tr>
                                             <th rowSpan={2} style={{ ...styles.th, width: '4%' }}>TT<br />No</th>
                                             <th rowSpan={2} style={{ ...styles.th, width: '25%' }}>MỤC KIỂM TRA<br />Checklist</th>
-                                            <th rowSpan={2} style={{ ...styles.th, width: '15%' }}>Phương pháp KT</th>
-                                            <th rowSpan={2} style={{ ...styles.th, width: '20%' }}>TIÊU CHUẨN KỸ THUẬT<br />Standard</th>
-                                            <th colSpan={2} style={{ ...styles.th, width: '12%' }}>KẾT QUẢ<br />Finding</th>
+                                            <th rowSpan={2} style={{ ...styles.th, width: '15%' }}>TIÊU CHUẨN KỸ THUẬT<br />Standard</th>
+                                            <th rowSpan={2} style={{ ...styles.th, width: '20%' }}>KẾT QUẢ<br />Result</th>
+                                            <th colSpan={2} style={{ ...styles.th, width: '12%' }}>KẾT LUẬN<br />Conclusion</th>
                                             <th colSpan={3} style={{ ...styles.th, width: '24%' }}>DẠNG LỖI</th>
                                         </tr>
                                         <tr>
@@ -313,8 +345,10 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                                             <tr key={item.Id} className="avoid-break">
                                                                 <td style={styles.tdCenter}>{iIndex + 1}</td>
                                                                 <td style={styles.td}>{item.TenMucKiem}</td>
-                                                                <td style={styles.td}>{item.PhuongPhapKiem}</td>
                                                                 <td style={styles.td}>{item.TieuChuan}</td>
+                                                                <td style={{ ...styles.td, padding: 0 }}>
+                                                                    {renderMeasurementGrid(item.GiaTriDo)}
+                                                                </td>
 
                                                                 <td style={styles.tdCenter}>{renderCheckbox(item.KetQua === 'DAT')}</td>
                                                                 <td style={styles.tdCenter}>{renderCheckbox(item.KetQua === 'KHONG_DAT')}</td>
@@ -361,12 +395,12 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                     <Box style={{ ...styles.signatureBlock, marginTop: '10px' }}>
                                         <Box style={styles.signatureCol}>
                                             <div style={{ ...styles.text, minHeight: '30px' }}><b>Phòng QLCL</b></div>
-                                            <Box height="40px"></Box>
+                                            <Box height="60px"></Box>
                                             <div style={styles.text}>{phieu.KiemNghiem}</div>
                                         </Box>
                                         <Box style={styles.signatureCol}>
                                             <div style={{ ...styles.text, minHeight: '30px' }}><b>Nhân viên KT</b></div>
-                                            <Box height="40px"></Box>
+                                            <Box height="60px"></Box>
                                             <div style={styles.text}>{phieu.TenNguoiKiem}</div>
                                         </Box>
                                     </Box>
@@ -377,6 +411,62 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                         </div>
                                     </Box>
                                 </Box>
+
+                                {/* ================= HÌNH ẢNH LỖI ================= */}
+                                {(() => {
+                                    const defectImages = [];
+                                    defects.forEach(d => {
+                                        let urls = [];
+                                        try {
+                                            if (Array.isArray(d.ImageUrls)) {
+                                                urls = d.ImageUrls;
+                                            } else if (typeof d.ImageUrls === 'string' && d.ImageUrls.trim() !== '') {
+                                                urls = JSON.parse(d.ImageUrls);
+                                            }
+                                        } catch (e) {
+                                            console.error("Error parsing ImageUrls for defect:", d.Id, e);
+                                        }
+
+                                        if (urls && urls.length > 0) {
+                                            const checkItem = checkItems.find(ci => ci.Id === d.CheckItemId);
+                                            urls.forEach(url => {
+                                                defectImages.push({
+                                                    url: url,
+                                                    tenMucKiem: checkItem?.TenMucKiem || 'N/A',
+                                                    loaiLoi: d.DefectType
+                                                });
+                                            });
+                                        }
+                                    });
+
+                                    if (defectImages.length === 0) return null;
+
+                                    return (
+                                        <Box mt={4} className="avoid-break">
+                                            <Box mb={2} style={{ textAlign: 'center', borderBottom: '2px solid #000', pb: 1 }}>
+                                                <div style={{ ...styles.boldText, fontSize: '14pt' }}>HÌNH ẢNH LỖI</div>
+                                            </Box>
+                                            <Grid container spacing={2}>
+                                                {defectImages.map((img, idx) => (
+                                                    <Grid item xs={4} key={idx} sx={{ mb: 2 }}>
+                                                        <Box style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center', height: '100%' }}>
+                                                            <img
+                                                                src={`https://z76api.z76.vn${img.url}`}
+                                                                alt="defect"
+                                                                style={{ width: '100%', height: '200px', objectFit: 'contain', display: 'block' }}
+                                                                crossOrigin="anonymous"
+                                                            />
+                                                            <div style={{ fontSize: '9pt', marginTop: '6px', textAlign: 'left', borderTop: '1px solid #eee', pt: 0.5 }}>
+                                                                <b>Mục:</b> {img.tenMucKiem}<br />
+                                                                <b>Lỗi:</b> {img.loaiLoi}
+                                                            </div>
+                                                        </Box>
+                                                    </Grid>
+                                                ))}
+                                            </Grid>
+                                        </Box>
+                                    );
+                                })()}
 
                             </td>
                         </tr>

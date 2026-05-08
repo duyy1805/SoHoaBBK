@@ -26,6 +26,7 @@ export default function CheckItemScreen({ route, navigation }) {
     const { item } = route.params;
 
     const [ketQua, setKetQua] = useState(item.KetQua || null);
+    const [giaTriDo, setGiaTriDo] = useState(item.GiaTriDo || "");
 
     const [defects, setDefects] = useState([]);
     const [selectedDefects, setSelectedDefects] = useState([]);
@@ -235,7 +236,7 @@ export default function CheckItemScreen({ route, navigation }) {
 
         try {
             setLoading(true);
-            
+
             // Tạo bản sao sâu để tránh mutation state
             let finalDefects = selectedDefects.map(d => ({
                 ...d,
@@ -245,7 +246,7 @@ export default function CheckItemScreen({ route, navigation }) {
             if (ketQua === "KHONG_DAT") {
                 for (let i = 0; i < finalDefects.length; i++) {
                     const defect = finalDefects[i];
-                    
+
                     // Nếu có ảnh MỚI chụp, mang đi upload
                     if (defect.localImages && defect.localImages.length > 0) {
                         const formData = new FormData();
@@ -258,7 +259,7 @@ export default function CheckItemScreen({ route, navigation }) {
 
                         const uploadRes = await uploadImages(formData);
                         const newUploadedUrls = uploadRes.data?.filePaths || [];
-                        
+
                         // GỘP MẢNG: [Ảnh cũ user chưa xoá] + [Ảnh mới vừa upload]
                         finalDefects[i].imageUrls = [...finalDefects[i].imageUrls, ...newUploadedUrls];
                     }
@@ -273,7 +274,8 @@ export default function CheckItemScreen({ route, navigation }) {
                     defectId: d.defectId,
                     soLuong: d.soLuong,
                     imageUrls: d.imageUrls
-                }))
+                })),
+                giaTriDo: giaTriDo
             });
 
             Alert.alert("Thành công", "Đã lưu kết quả");
@@ -426,6 +428,30 @@ export default function CheckItemScreen({ route, navigation }) {
                         ))}
                     </>
                 )}
+
+                {/* Nhập giá trị đo thực tế */}
+                <View style={{ backgroundColor: "#fff", padding: 14, borderRadius: 14, marginTop: 10, marginBottom: 5 }}>
+                    <Text style={{ fontWeight: "600", color: "#0f172a", marginBottom: 8 }}>
+                        Kết quả đo thực tế (Các giá trị cách nhau bằng dấu cách)
+                    </Text>
+                    <TextInput
+                        style={{
+                            backgroundColor: "#f8fafc",
+                            padding: 12,
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor: "#e2e8f0",
+                            minHeight: 80,
+                            textAlignVertical: "top",
+                            color: "#0f172a",
+                            fontSize: 15
+                        }}
+                        multiline
+                        placeholder="Ví dụ: 100 102.5 98 101..."
+                        value={giaTriDo}
+                        onChangeText={setGiaTriDo}
+                    />
+                </View>
 
                 <TouchableOpacity
                     style={[styles.saveBtn, loading && { opacity: 0.6 }]}

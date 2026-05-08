@@ -512,18 +512,18 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                     <Box style={{ ...styles.signatureBlock, marginTop: '10px' }}>
                         <Box style={styles.signatureCol}>
                             <div style={{ ...styles.text, minHeight: '30px' }}><b>Phòng Kiểm nghiệm</b></div>
-                            <Box height="40px">{ }</Box>
+                            <Box height="60px">{ }</Box>
                             <div style={styles.text}>{phieu.KiemNghiem}</div>
                         </Box>
                         <Box style={styles.signatureCol}>
                             <div style={{ ...styles.text, minHeight: '30px' }}><b>Người kiểm hàng</b></div>
-                            <Box height="40px"></Box>
+                            <Box height="60px"></Box>
                             <div style={styles.text}>{phieu.TenNguoiKiem}</div>
                         </Box>
                         {phieu.BoPhan && (
                             <Box style={styles.signatureCol}>
                                 <div style={{ ...styles.text, minHeight: '30px' }}><b>Phân xưởng SX</b></div>
-                                <Box height="40px"></Box>
+                                <Box height="60px"></Box>
                                 <div style={styles.text}>{phieu.BoPhan}</div>
                             </Box>
                         )}
@@ -536,6 +536,62 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                     </Box>
 
                 </Box>
+
+                {/* ================= HÌNH ẢNH LỖI ================= */}
+                {(() => {
+                    const defectImages = [];
+                    defects.forEach(d => {
+                        let urls = [];
+                        try {
+                            if (Array.isArray(d.ImageUrls)) {
+                                urls = d.ImageUrls;
+                            } else if (typeof d.ImageUrls === 'string' && d.ImageUrls.trim() !== '') {
+                                urls = JSON.parse(d.ImageUrls);
+                            }
+                        } catch (e) {
+                            console.error("Error parsing ImageUrls for defect:", d.Id, e);
+                        }
+
+                        if (urls && urls.length > 0) {
+                            const checkItem = checkItems.find(ci => ci.Id === d.CheckItemId);
+                            urls.forEach(url => {
+                                defectImages.push({
+                                    url: url,
+                                    tenMucKiem: checkItem?.TenMucKiem || 'N/A',
+                                    loaiLoi: d.DefectType
+                                });
+                            });
+                        }
+                    });
+
+                    if (defectImages.length === 0) return null;
+
+                    return (
+                        <Box mt={4} className="avoid-break">
+                            <Box mb={2} style={{ textAlign: 'center', borderBottom: '2px solid #000', pb: 1 }}>
+                                <div style={{ ...styles.boldText, fontSize: '14pt' }}>HÌNH ẢNH LỖI</div>
+                            </Box>
+                            <Grid container spacing={2}>
+                                {defectImages.map((img, idx) => (
+                                    <Grid item xs={4} key={idx} sx={{ mb: 2 }}>
+                                        <Box style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center', height: '100%' }}>
+                                            <img
+                                                src={`https://z76api.z76.vn${img.url}`}
+                                                alt="defect"
+                                                style={{ width: '100%', height: '200px', objectFit: 'contain', display: 'block' }}
+                                                crossOrigin="anonymous"
+                                            />
+                                            <div style={{ fontSize: '9pt', marginTop: '6px', textAlign: 'left', borderTop: '1px solid #eee', pt: 0.5 }}>
+                                                <b>Mục:</b> {img.tenMucKiem}<br />
+                                                <b>Lỗi:</b> {img.loaiLoi}
+                                            </div>
+                                        </Box>
+                                    </Grid>
+                                ))}
+                            </Grid>
+                        </Box>
+                    );
+                })()}
 
             </div>
         </div>
