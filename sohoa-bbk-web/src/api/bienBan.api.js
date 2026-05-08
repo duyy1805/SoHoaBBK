@@ -42,8 +42,10 @@ export const updateMoTaChung = (data) => {
    Danh sách user có thể xử lý
 ================================ */
 
-export const getAssignableUsers = (bienBanId) => {
-    return axiosClient.get(`/bien-ban/${bienBanId}/assign-users`);
+export const getAssignableUsers = (bienBanId, boPhanId) => {
+    return axiosClient.get(`/bien-ban/${bienBanId}/assign-users`, {
+        params: { boPhanId }
+    });
 };
 
 /* ================================
@@ -58,6 +60,10 @@ export const assignDepartments = (bienBanId, boPhanIds) => {
 
 export const confirmAssign = (bienBanId) => {
     return axiosClient.post(`/bien-ban/${bienBanId}/confirm-assign`);
+};
+
+export const assignUser = (bienBanId, data) => {
+    return axiosClient.post(`/bien-ban/${bienBanId}/assign-user`, data);
 };
 /* ================================
    Thêm ý kiến xử lý

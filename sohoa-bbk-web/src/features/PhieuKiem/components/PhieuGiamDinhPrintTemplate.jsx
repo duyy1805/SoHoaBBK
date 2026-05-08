@@ -36,18 +36,18 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
             width: '297mm', // Khổ A4 ngang
             minHeight: '210mm',
             backgroundColor: '#fff',
-            padding: '15mm 20mm', // Lề giấy ảo trên web
+            padding: '5mm 15mm', // Lề giấy ảo trên web
             boxSizing: 'border-box',
             boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
         },
         text: { fontSize: '12pt', marginBottom: '4px' },
         boldText: { fontSize: '11pt', fontWeight: 'bold' },
         table: { border: '1px solid #000', borderCollapse: 'collapse', width: '100%', marginBottom: '15px' },
-        th: { border: '1px solid #000', padding: '6px 4px', fontWeight: 'bold', textAlign: 'center', fontSize: '10pt', backgroundColor: '#f9f9f9' },
-        td: { border: '1px solid #000', padding: '6px 8px', fontSize: '10pt', verticalAlign: 'middle' },
-        tdCenter: { border: '1px solid #000', padding: '6px 4px', fontSize: '10pt', textAlign: 'center', verticalAlign: 'middle' },
+        th: { border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', textAlign: 'center', fontSize: '10pt', backgroundColor: '#f9f9f9' },
+        td: { border: '1px solid #000', padding: '2px 6px', fontSize: '10pt', verticalAlign: 'middle' },
+        tdCenter: { border: '1px solid #000', padding: '2px 4px', fontSize: '10pt', textAlign: 'center', verticalAlign: 'middle' },
         headerTable: { width: '100%', borderCollapse: 'collapse', marginBottom: '15px', border: '1px solid #000' },
-        headerTd: { border: '1px solid #000', padding: '6px', textAlign: 'center', verticalAlign: 'middle' },
+        headerTd: { border: '1px solid #000', padding: '2px', textAlign: 'center', verticalAlign: 'middle' },
         signatureBlock: { display: 'flex', justifyContent: 'space-between', marginTop: '30px', textAlign: 'center', width: '100%' },
         signatureCol: { flex: 1, padding: '0 10px' },
         flexBetween: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
@@ -97,7 +97,7 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                 {`
                 @page {
                     size: A4 landscape; /* Bắt buộc in ngang */
-                    margin: 15mm 20mm; /* Lề in thực tế */
+                    margin: 5mm 15mm; /* Lề in thực tế */
                 }
                 @media print {
                     body {
@@ -163,10 +163,10 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                         <tr>
                             <td style={{ border: 'none' }}>
 
-                                <Box mb={3} className="avoid-break">
+                                <Box mb={1} className="avoid-break">
 
                                     {/* Số phiếu */}
-                                    <Box style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}>
+                                    <Box style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '4px' }}>
                                         <div style={{ ...styles.text, fontSize: '13pt', display: 'flex', alignItems: 'center' }}>
                                             <span style={{ whiteSpace: 'nowrap' }}>Số: </span>
                                             <input name="SoPhieu" className="custom-field" type="text" defaultValue={customData.SoPhieu || phieu.SoPhieu || ''} placeholder="...................................." style={styles.inputField} />
@@ -358,22 +358,22 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                     </Box>
 
                                     {/* Chữ ký dàn ngang */}
-                                    <Box style={{ ...styles.signatureBlock, marginTop: '0' }}>
+                                    <Box style={{ ...styles.signatureBlock, marginTop: '10px' }}>
                                         <Box style={styles.signatureCol}>
-                                            <div style={{ ...styles.text, minHeight: '40px' }}><b>Phòng QLCL</b></div>
-                                            <Box height="70px"></Box>
+                                            <div style={{ ...styles.text, minHeight: '30px' }}><b>Phòng QLCL</b></div>
+                                            <Box height="40px"></Box>
                                             <div style={styles.text}>{phieu.KiemNghiem}</div>
                                         </Box>
                                         <Box style={styles.signatureCol}>
-                                            <div style={{ ...styles.text, minHeight: '40px' }}><b>Nhân viên KT</b></div>
-                                            <Box height="70px"></Box>
+                                            <div style={{ ...styles.text, minHeight: '30px' }}><b>Nhân viên KT</b></div>
+                                            <Box height="40px"></Box>
                                             <div style={styles.text}>{phieu.TenNguoiKiem}</div>
                                         </Box>
                                     </Box>
 
-                                    <Box mt={4}>
+                                    <Box mt={1}>
                                         <div style={{ fontSize: '11pt' }}>
-                                            <b>* Ghi chú:</b> Báo cáo kiểm hàng lần cuối của từng sản phẩm được lập căn cứ theo tiêu chuẩn kỹ thuật của sản phẩm.
+                                            {/* <b>* Ghi chú:</b> Báo cáo kiểm hàng lần cuối của từng sản phẩm được lập căn cứ theo tiêu chuẩn kỹ thuật của sản phẩm. */}
                                         </div>
                                     </Box>
                                 </Box>

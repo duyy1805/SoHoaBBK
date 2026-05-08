@@ -326,8 +326,12 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                                 <tr key={index}>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{index + 1}</td>
                                                     <td style={styles.td}>{d.TenLoi}</td>
-                                                    <td style={{ ...styles.td, textAlign: 'center' }}>{d.SoLuong}</td>
-                                                    <td style={styles.td}></td>
+                                                    <td style={{ ...styles.td, textAlign: 'center' }}>{d.SoLuongKiem || 0}</td>
+                                                    <td style={{ ...styles.td, textAlign: 'center' }}>
+                                                        {(d.SoLuong && d.SoLuongKiem) 
+                                                            ? ((d.SoLuong / d.SoLuongKiem) * 100).toFixed(0) + '%' 
+                                                            : (d.SoLuong > 0 && !d.SoLuongKiem) ? '100%' : '0%'}
+                                                    </td>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{d.DefectType}</td>
                                                     <td style={styles.td}></td>
                                                 </tr>

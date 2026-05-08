@@ -53,18 +53,18 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
             width: '297mm', // Khổ A4 ngang
             minHeight: '210mm',
             backgroundColor: '#fff',
-            padding: '15mm 20mm', // Lề giấy ảo trên web
+            padding: '5mm 15mm', // Lề giấy ảo trên web
             boxSizing: 'border-box',
             boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
         },
         text: { fontSize: '11pt', marginBottom: '4px' },
         boldText: { fontSize: '11pt', fontWeight: 'bold' },
         table: { border: '1px solid #000', borderCollapse: 'collapse', width: '100%', marginBottom: '15px' },
-        th: { border: '1px solid #000', padding: '6px 4px', fontWeight: 'bold', textAlign: 'center', fontSize: '10pt', backgroundColor: '#f9f9f9' },
-        td: { border: '1px solid #000', padding: '6px 8px', fontSize: '10pt', verticalAlign: 'middle' },
-        tdCenter: { border: '1px solid #000', padding: '6px 4px', fontSize: '10pt', textAlign: 'center', verticalAlign: 'middle' },
+        th: { border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', textAlign: 'center', fontSize: '10pt', backgroundColor: '#f9f9f9' },
+        td: { border: '1px solid #000', padding: '2px 6px', fontSize: '10pt', verticalAlign: 'middle' },
+        tdCenter: { border: '1px solid #000', padding: '2px 4px', fontSize: '10pt', textAlign: 'center', verticalAlign: 'middle' },
         headerTable: { width: '100%', borderCollapse: 'collapse', marginBottom: '15px', border: '1px solid #000' },
-        headerTd: { border: '1px solid #000', padding: '6px', textAlign: 'center', verticalAlign: 'middle' },
+        headerTd: { border: '1px solid #000', padding: '2px', textAlign: 'center', verticalAlign: 'middle' },
         signatureBlock: { display: 'flex', justifyContent: 'space-between', marginTop: '30px', textAlign: 'center', width: '100%' },
         signatureCol: { flex: 1, padding: '0 10px' },
         flexBetween: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
@@ -93,7 +93,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                 {`
                 @page {
                     size: A4 landscape; /* Bắt buộc in ngang */
-                    margin: 15mm 20mm; /* Lề in thực tế */
+                    margin: 5mm 15mm; /* Lề in thực tế */
                 }
                 @media print {
                     body {
@@ -152,10 +152,10 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                 </table>
 
                 {/* ================= NỘI DUNG CHÍNH ================= */}
-                <Box mb={3} className="avoid-break">
+                <Box mb={1} className="avoid-break">
 
                     {/* Số phiếu & Ngày tháng */}
-                    <Box style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+                    <Box style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '6px' }}>
                         <Box style={{ display: 'flex', justifyContent: 'space-between', width: '500px' }}>
                             <div style={{ ...styles.text, fontStyle: 'italic' }}>
                                 Số: {phieu.SoPhieu || '..........'}/KN.
@@ -167,7 +167,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                     </Box>
 
                     {/* Khung 2 ô Thông tin & Hình ảnh */}
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                         {/* Cột trái: Thông tin sản phẩm & Phê duyệt */}
                         <Box sx={{ width: '49%', border: '1px solid #000', display: 'flex', flexDirection: 'column' }}>
                             <Box sx={{ p: 1, flex: 1 }}>
@@ -181,7 +181,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                     Tham chiếu tiêu chuẩn: <b>{phieu.MaSanPham || '...........................................................................'}</b>
                                 </div>
                             </Box>
-                            <Box sx={{ borderTop: '1px solid #000', p: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', minHeight: '120px' }}>
+                            <Box sx={{ borderTop: '1px solid #000', p: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', minHeight: '80px' }}>
                                 <div style={styles.boldText}>PHÊ DUYỆT</div>
                             </Box>
                         </Box>
@@ -499,7 +499,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                         </div>
                     </Box>
 
-                    <Box mb={4} style={{ display: 'flex', alignItems: 'center', gap: '30px' }}>
+                    <Box mb={2} style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
                         <div style={styles.boldText}>* Kết quả xử lý:</div>
                         <Box style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             {renderCheckbox(phieu.KetLuan === 'DAT')} <span>Cho xuất hàng</span>
@@ -509,27 +509,27 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                         </Box>
                     </Box>
 
-                    <Box style={{ ...styles.signatureBlock, marginTop: '20px' }}>
+                    <Box style={{ ...styles.signatureBlock, marginTop: '10px' }}>
                         <Box style={styles.signatureCol}>
-                            <div style={{ ...styles.text, minHeight: '40px' }}><b>Phòng Kiểm nghiệm</b></div>
-                            <Box height="70px">{ }</Box>
+                            <div style={{ ...styles.text, minHeight: '30px' }}><b>Phòng Kiểm nghiệm</b></div>
+                            <Box height="40px">{ }</Box>
                             <div style={styles.text}>{phieu.KiemNghiem}</div>
                         </Box>
                         <Box style={styles.signatureCol}>
-                            <div style={{ ...styles.text, minHeight: '40px' }}><b>Người kiểm hàng</b></div>
-                            <Box height="70px"></Box>
+                            <div style={{ ...styles.text, minHeight: '30px' }}><b>Người kiểm hàng</b></div>
+                            <Box height="40px"></Box>
                             <div style={styles.text}>{phieu.TenNguoiKiem}</div>
                         </Box>
                         {phieu.BoPhan && (
                             <Box style={styles.signatureCol}>
-                                <div style={{ ...styles.text, minHeight: '40px' }}><b>Phân xưởng SX</b></div>
-                                <Box height="70px"></Box>
+                                <div style={{ ...styles.text, minHeight: '30px' }}><b>Phân xưởng SX</b></div>
+                                <Box height="40px"></Box>
                                 <div style={styles.text}>{phieu.BoPhan}</div>
                             </Box>
                         )}
                     </Box>
 
-                    <Box mt={4}>
+                    <Box mt={1}>
                         <div style={{ fontSize: '8pt' }}>
                             <b>* Ghi chú:</b> Các lỗi dễ bị phản ánh hoặc đã có khiếu nại của khách hàng được cập nhật trong báo cáo kiểm hàng bằng những dòng chữ in đậm-nghiêng để chú ý và kiểm soát chặt chẽ hơn trong quá trình kiểm tra.
                         </div>

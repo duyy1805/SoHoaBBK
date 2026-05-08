@@ -9,6 +9,7 @@ const authorize = require('../middlewares/permission.middleware');
 const multer = require('multer');
 const path = require('path');
 const sharp = require('sharp');
+sharp.cache(false);
 
 const { Expo } = require('expo-server-sdk');
 let expo = new Expo();
@@ -27,7 +28,7 @@ const upload = multer({ storage: storage });
 router.post(
     '/upload',
     authenticateToken,
-    upload.array('images', 5), // Tối đa 5 ảnh 1 lần
+    upload.array('images', 10), // Tối đa 10 ảnh 1 lần
     async (req, res) => {
         try {
             if (!req.files || req.files.length === 0) {
@@ -45,8 +46,12 @@ router.post(
                     .toFile(outputPath);
 
                 // Sau khi convert xong, xoá file gốc để tiết kiệm bộ nhớ
-                if (fs.existsSync(file.path)) {
-                    fs.unlinkSync(file.path);
+                try {
+                    if (fs.existsSync(file.path)) {
+                        fs.unlinkSync(file.path);
+                    }
+                } catch (err) {
+                    console.error('Failed to delete temp file:', file.path, err.message);
                 }
 
                 return `/uploads/${outputFilename}`;
@@ -569,12 +574,22 @@ router.post(
 
             // Xoá file vật lý trên server
             urlsToDelete.forEach(fileUrl => {
-                // url có dạng '/uploads/filename.jpg', cần ghép với __dirname để ra đường dẫn thực
-                // Lưu ý: Tuỳ vào cấu trúc thư mục, có thể cần path.join(__dirname, '..', fileUrl)
-                const filePath = path.join(__dirname, '..', fileUrl);
-                if (fs.existsSync(filePath)) {
-                    fs.unlinkSync(filePath); // Xoá file
-                    console.log(`Đã xoá file rác: ${filePath}`);
+                try {
+                    // url có dạng '/uploads/filename.jpg'
+                    // Loại bỏ dấu / ở đầu nếu có để path.join hoạt động chính xác
+                    const relativePath = fileUrl.startsWith('/') ? fileUrl.slice(1) : fileUrl;
+                    const filePath = path.join(__dirname, '..', relativePath);
+                    
+                    if (fs.existsSync(filePath)) {
+                        try {
+                            fs.unlinkSync(filePath); // Xoá file
+                            console.log(`Đã xoá file rác: ${filePath}`);
+                        } catch (unlinkErr) {
+                            console.error(`Không thể xoá file rác (EPERM?): ${filePath}`, unlinkErr.message);
+                        }
+                    }
+                } catch (unlinkError) {
+                    console.error(`Lỗi khi xoá file ${fileUrl}:`, unlinkError);
                 }
             });
 
@@ -590,8 +605,11 @@ router.post(
             res.json({ success: true });
 
         } catch (err) {
-            console.error(err);
-            res.status(500).json({ message: "Lưu thất bại" });
+            console.error('CheckItem save error:', err);
+            res.status(500).json({ 
+                message: "Lưu thất bại",
+                error: err.message 
+            });
         }
     }
 );

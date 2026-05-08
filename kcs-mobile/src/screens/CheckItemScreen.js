@@ -235,29 +235,33 @@ export default function CheckItemScreen({ route, navigation }) {
 
         try {
             setLoading(true);
-            let finalDefects = [...selectedDefects];
+            
+            // Tạo bản sao sâu để tránh mutation state
+            let finalDefects = selectedDefects.map(d => ({
+                ...d,
+                imageUrls: d.savedImages ? [...d.savedImages] : []
+            }));
 
             if (ketQua === "KHONG_DAT") {
                 for (let i = 0; i < finalDefects.length; i++) {
                     const defect = finalDefects[i];
-                    let newUploadedUrls = [];
-
+                    
                     // Nếu có ảnh MỚI chụp, mang đi upload
                     if (defect.localImages && defect.localImages.length > 0) {
                         const formData = new FormData();
                         defect.localImages.forEach((uri) => {
                             const filename = uri.split('/').pop();
                             const match = /\.(\w+)$/.exec(filename);
-                            const type = match ? `image/${match[1]}` : `image`;
+                            const type = match ? `image/${match[1]}` : `image/jpeg`;
                             formData.append('images', { uri, name: filename, type });
                         });
 
                         const uploadRes = await uploadImages(formData);
-                        newUploadedUrls = uploadRes.data.filePaths;
+                        const newUploadedUrls = uploadRes.data?.filePaths || [];
+                        
+                        // GỘP MẢNG: [Ảnh cũ user chưa xoá] + [Ảnh mới vừa upload]
+                        finalDefects[i].imageUrls = [...finalDefects[i].imageUrls, ...newUploadedUrls];
                     }
-
-                    // GỘP MẢNG: [Ảnh cũ user chưa xoá] + [Ảnh mới vừa upload]
-                    finalDefects[i].imageUrls = [...(defect.savedImages || []), ...newUploadedUrls];
                 }
             }
 
@@ -276,8 +280,9 @@ export default function CheckItemScreen({ route, navigation }) {
             navigation.goBack();
 
         } catch (err) {
-            console.log(err);
-            Alert.alert("Lỗi", "Không thể lưu dữ liệu");
+            console.error("Save Error:", err);
+            const errMsg = err?.response?.data?.message || "Không thể lưu dữ liệu";
+            Alert.alert("Lỗi", errMsg);
         } finally {
             setLoading(false);
         }

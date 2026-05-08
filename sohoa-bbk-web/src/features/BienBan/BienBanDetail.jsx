@@ -32,7 +32,10 @@ import {
     FormControl,
     InputLabel,
     Divider,
-    Container
+    Container,
+    List,
+    ListItem,
+    ListItemButton
 } from "@mui/material";
 
 // --- MUI Icons ---
@@ -48,6 +51,7 @@ import VerifiedIcon from '@mui/icons-material/Verified';
 import AddIcon from '@mui/icons-material/Add';
 import SaveIcon from '@mui/icons-material/Save';
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
+import CheckIcon from '@mui/icons-material/Check';
 
 // --- API & Utils ---
 import {
@@ -62,7 +66,9 @@ import {
     addChiPhi,
     addHanhDong,
     getDeNghiXuLy,
-    saveBienBanCustomFields
+    saveBienBanCustomFields,
+    getAssignableUsers,
+    assignUser
 } from "../../api/bienBan.api";
 import { decodeToken } from "../../utils/auth";
 import ConfirmDialog from "../../components/common/ConfirmDialog";
@@ -91,9 +97,12 @@ export default function BienBanDetail() {
     const [currentUserId, setCurrentUserId] = useState(null);
     const [currentUserBoPhanId, setCurrentUserBoPhanId] = useState(null);
     const [currentUserPermissions, setCurrentUserPermissions] = useState([]);
+    const [currentUserRoles, setCurrentUserRoles] = useState([]);
 
     // Modals state
     const [openAssignModal, setOpenAssignModal] = useState(false);
+    const [openAssignUserModal, setOpenAssignUserModal] = useState(false);
+    const [selectedAssign, setSelectedAssign] = useState(null);
     const [openXuLyModal, setOpenXuLyModal] = useState(false);
     const [openChiPhiModal, setOpenChiPhiModal] = useState(false);
     const [openHanhDongModal, setOpenHanhDongModal] = useState(false);
@@ -116,6 +125,7 @@ export default function BienBanDetail() {
             setCurrentUserId(decoded.userId);
             setCurrentUserBoPhanId(decoded.boPhanId);
             setCurrentUserPermissions(decoded.permissions || []);
+            setCurrentUserRoles(decoded.roles || []);
         }
         loadData();
     }, [bienBanId]);
@@ -370,6 +380,12 @@ export default function BienBanDetail() {
                                                 <Typography variant="caption" color="text.secondary">Người lập</Typography>
                                                 <Typography variant="body2">{info.NguoiLap}</Typography>
                                             </Box>
+                                            {info.DoiTuong && (
+                                                <Box>
+                                                    <Typography variant="caption" color="text.secondary">Nơi đến</Typography>
+                                                    <Typography variant="body2">{info.DoiTuong}</Typography>
+                                                </Box>
+                                            )}
                                         </Stack>
                                     </Stack>
                                 </CardContent>
@@ -515,17 +531,45 @@ export default function BienBanDetail() {
                                             <Typography color="text.secondary" fontStyle="italic">Chưa có bộ phận được phân công.</Typography>
                                         ) : (
                                             <Grid container spacing={2}>
-                                                {assigns.map((a, i) => (
-                                                    <Grid size={{ xs: 12, sm: 6, md: 4 }} key={i}>
-                                                        <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: '#f8fafc' }}>
-                                                            <Box>
-                                                                <Typography variant="body2" fontWeight="bold">{a.TenBoPhan}</Typography>
-                                                                <Typography variant="caption" color="text.secondary">Mã: {a.MaBoPhan}</Typography>
-                                                            </Box>
-                                                            <Chip size="small" label={getStatusText(a.BoPhanId)} color={getStatusColor(a.BoPhanId)} />
-                                                        </Paper>
-                                                    </Grid>
-                                                ))}
+                                                {assigns.map((a, i) => {
+                                                    const canAssign = info.AssignConfirmed && 
+                                                                    a.BoPhanId === currentUserBoPhanId && 
+                                                                    (currentUserPermissions.includes("XAC_NHAN_NGUOI_XU_LY") || 
+                                                                     currentUserRoles.some(r => r?.toUpperCase().includes("TP")) ||
+                                                                     currentUserRoles.length === 0);
+
+                                                    return (
+                                                        <Grid size={{ xs: 12, sm: 6, md: 4 }} key={i}>
+                                                            <Paper variant="outlined" sx={{ p: 1.5, bgcolor: '#f8fafc' }}>
+                                                                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                                                                    <Box>
+                                                                        <Typography variant="body2" fontWeight="bold">{a.TenBoPhan}</Typography>
+                                                                        <Typography variant="caption" color="text.secondary">Mã: {a.MaBoPhan}</Typography>
+                                                                    </Box>
+                                                                    <Chip size="small" label={getStatusText(a.BoPhanId)} color={getStatusColor(a.BoPhanId)} />
+                                                                </Stack>
+                                                                <Box sx={{ borderTop: '1px solid #eee', pt: 1, mt: 1 }}>
+                                                                    <Typography variant="caption" color="primary" sx={{ display: 'block', mb: 0.5 }}>
+                                                                        Phụ trách: <strong>{a.NguoiXuLy || "Chưa phân công"}</strong>
+                                                                    </Typography>
+                                                                    {canAssign && !isConfirmed && (
+                                                                        <Button 
+                                                                            size="small" 
+                                                                            variant="text" 
+                                                                            onClick={() => {
+                                                                                setSelectedAssign(a);
+                                                                                setOpenAssignUserModal(true);
+                                                                            }}
+                                                                            sx={{ p: 0, minWidth: 0, fontSize: '0.75rem' }}
+                                                                        >
+                                                                            Phân cá nhân
+                                                                        </Button>
+                                                                    )}
+                                                                </Box>
+                                                            </Paper>
+                                                        </Grid>
+                                                    );
+                                                })}
                                             </Grid>
                                         )}
 
@@ -736,6 +780,19 @@ export default function BienBanDetail() {
             <XuLyDialog open={openXuLyModal} onClose={() => setOpenXuLyModal(false)} bienBanId={bienBanId} currentUserId={currentUserId} reload={loadData} />
             <ChiPhiDialog open={openChiPhiModal} onClose={() => setOpenChiPhiModal(false)} bienBanId={bienBanId} reload={loadData} />
             <HanhDongDialog open={openHanhDongModal} onClose={() => setOpenHanhDongModal(false)} bienBanId={bienBanId} reload={loadData} />
+            
+            <AssignUserDialog 
+                open={openAssignUserModal} 
+                onClose={() => {
+                    setOpenAssignUserModal(false);
+                    setSelectedAssign(null);
+                }} 
+                bienBanId={bienBanId} 
+                boPhanId={selectedAssign?.BoPhanId}
+                tenBoPhan={selectedAssign?.TenBoPhan}
+                currentUserId={selectedAssign?.NguoiXuLyId}
+                reload={loadData} 
+            />
 
             {/* Image Preview Modal */}
             <Dialog open={!!previewImage} onClose={() => setPreviewImage(null)} maxWidth="md">
@@ -1001,6 +1058,103 @@ function HanhDongDialog({ open, onClose, bienBanId, reload }) {
             <DialogActions sx={{ p: 2 }}>
                 <Button onClick={onClose} color="inherit">Hủy</Button>
                 <Button onClick={handleSubmit} variant="contained" color="primary">Cập nhật</Button>
+            </DialogActions>
+        </Dialog>
+    );
+}
+
+function AssignUserDialog({ open, onClose, bienBanId, boPhanId, tenBoPhan, currentUserId, reload }) {
+    const [users, setUsers] = useState([]);
+    const [selectedUserId, setSelectedUserId] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [search, setSearch] = useState("");
+
+    useEffect(() => {
+        if (open && boPhanId) {
+            loadUsers();
+            setSelectedUserId(currentUserId || null);
+        }
+    }, [open, boPhanId, currentUserId]);
+
+    const loadUsers = async () => {
+        try {
+            setLoading(true);
+            const res = await getAssignableUsers(bienBanId, boPhanId);
+            setUsers(res.data || []);
+        } catch (err) {
+            console.error("Load users error:", err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleAssign = async () => {
+        if (!selectedUserId) return;
+        try {
+            await assignUser(bienBanId, {
+                boPhanId,
+                nguoiXuLyId: selectedUserId
+            });
+            reload();
+            onClose();
+        } catch (err) {
+            alert(err?.response?.data?.message || "Lỗi phân công");
+        }
+    };
+
+    const filteredUsers = users.filter(u => 
+        u.FullName?.toLowerCase().includes(search.toLowerCase()) ||
+        u.Username?.toLowerCase().includes(search.toLowerCase())
+    );
+
+    return (
+        <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
+            <DialogTitle fontWeight="bold">
+                Phân cá nhân xử lý
+                <Typography variant="caption" display="block" color="text.secondary">
+                    Bộ phận: {tenBoPhan}
+                </Typography>
+            </DialogTitle>
+            <DialogContent dividers sx={{ p: 0 }}>
+                <Box sx={{ p: 2 }}>
+                    <TextField 
+                        placeholder="Tìm kiếm nhân viên..." 
+                        fullWidth 
+                        size="small" 
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                    />
+                </Box>
+                {loading ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+                        <CircularProgress size={24} />
+                    </Box>
+                ) : (
+                    <List sx={{ pt: 0, maxHeight: 400, overflow: 'auto' }}>
+                        {filteredUsers.map((user) => (
+                            <ListItem key={user.Id} disablePadding>
+                                <ListItemButton onClick={() => setSelectedUserId(user.Id)} selected={selectedUserId === user.Id}>
+                                    <ListItemText 
+                                        primary={user.FullName || user.Username} 
+                                        secondary={user.Username} 
+                                    />
+                                    {selectedUserId === user.Id && <CheckIcon color="primary" />}
+                                </ListItemButton>
+                            </ListItem>
+                        ))}
+                        {filteredUsers.length === 0 && (
+                            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', p: 4 }}>
+                                Không tìm thấy nhân sự phù hợp.
+                            </Typography>
+                        )}
+                    </List>
+                )}
+            </DialogContent>
+            <DialogActions sx={{ p: 2 }}>
+                <Button onClick={onClose} color="inherit">Hủy</Button>
+                <Button onClick={handleAssign} variant="contained" color="primary" disabled={!selectedUserId}>
+                    Xác nhận
+                </Button>
             </DialogActions>
         </Dialog>
     );

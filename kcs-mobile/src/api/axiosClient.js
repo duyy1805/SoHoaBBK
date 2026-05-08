@@ -8,7 +8,7 @@ import Toast from "react-native-toast-message";
 
 const axiosClient = axios.create({
     baseURL: "https://z76api.z76.vn/api", // ⚠ đổi thành IP máy chạy server
-    timeout: 10000
+    timeout: 30000
 });
 
 axiosClient.interceptors.request.use(

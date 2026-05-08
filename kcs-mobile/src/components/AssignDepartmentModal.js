@@ -7,7 +7,8 @@ import {
     FlatList,
     TouchableOpacity,
     StyleSheet,
-    Alert
+    Alert,
+    SafeAreaView
 } from "react-native";
 
 import {
@@ -51,6 +52,10 @@ export default function AssignDepartmentModal({
     };
 
     const handleSubmit = async () => {
+        if (selected.length === 0) {
+            Alert.alert("Thông báo", "Vui lòng chọn ít nhất một bộ phận");
+            return;
+        }
         try {
             await assignDepartments(bienBanId, selected);
             reload();
@@ -88,7 +93,7 @@ export default function AssignDepartmentModal({
 
     return (
         <Modal visible={visible} animationType="slide">
-            <View style={styles.container}>
+          <SafeAreaView style={styles.container}>
                 {/* HEADER */}
                 <View style={styles.header}>
                     <TouchableOpacity onPress={onClose}>
@@ -122,7 +127,7 @@ export default function AssignDepartmentModal({
                         <Text style={styles.btnText}>Xác nhận</Text>
                     </TouchableOpacity>
                 </View>
-            </View>
+          </SafeAreaView>
         </Modal>
     );
 }
