@@ -156,7 +156,6 @@ export default function PhieuKiemCreate() {
                 const filtered = lichData.filter(
                     item => !checkedSet.has(item.ClosingScheduleDetailGuid)
                 );
-                console.log(lichData)
                 setLichList(filtered);
             }
 
@@ -165,9 +164,7 @@ export default function PhieuKiemCreate() {
                 setLichList(res.data || []);
             }
             if (loai?.MaLoai === "KIEM_TREN_CHUYEN") {
-                console.log("duy")
                 const res = await getKeHoachSanXuatChuaKiem();
-                console.log(res.data);
                 setLichList(res.data || []);
             }
         } catch (err) {

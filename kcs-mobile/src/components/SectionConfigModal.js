@@ -71,7 +71,6 @@ export default function SectionConfigModal({ visible, onClose, phieuId, sanPhamI
           inspectionLevel: n.inspectionLevel,
         })),
       };
-      console.log(payload);
       await createAllSection(payload);
       Alert.alert("Thành công", "Đã cập nhật các nhóm kiểm");
       onSuccess();

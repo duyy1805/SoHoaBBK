@@ -117,11 +117,9 @@ export default function PhieuKiemDetail() {
             // Lấy thêm thông số kết quả kiểm tra cấp độ đặc biệt
             try {
                 const tsRes = await getThongSoKq(id);
-                console.log("[DEBUG] thong-so-kq response:", tsRes.data);
                 if (tsRes.data) {
                     setThongSoList(tsRes.data.thongSo || []);
                     setThongSoKqList(tsRes.data.ketQua || []);
-                    console.log("[DEBUG] thongSoList:", tsRes.data.thongSo);
                 }
             } catch (err) {
                 console.error("[DEBUG] Lỗi gọi thong-so-kq:", err?.response?.status, err?.response?.data || err.message);
@@ -137,7 +135,6 @@ export default function PhieuKiemDetail() {
                     lotSize: data.phieu.SoLuong,
                     inspectionLevel: "II"
                 }));
-                console.log(configs)
                 setNhomConfigs(configs);
 
                 const levelsRes = await getInspectionLevels();

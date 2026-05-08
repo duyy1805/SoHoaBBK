@@ -51,7 +51,6 @@ export default function AppHeader({
         .join('')
         .toUpperCase()
         .slice(0, 2) || 'U';
-    console.log(user)
     return (
         <>
             <AppBar

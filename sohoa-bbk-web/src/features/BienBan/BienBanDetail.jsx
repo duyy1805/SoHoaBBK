@@ -142,7 +142,6 @@ export default function BienBanDetail() {
                 return { ...d, ImageUrls: images };
             });
             setDefects(parsedDefects);
-            console.log(parsedDefects);
             setAssigns(res.data.assigns || []);
             setXuLy(res.data.xuLy || []);
             setChiPhi(res.data.chiPhi || []);
@@ -283,9 +282,9 @@ export default function BienBanDetail() {
     const getStatusText = (boPhanId) => xuLy.some(x => x.BoPhanId === boPhanId) ? "Đã xử lý" : "Đang chờ";
     const getStatusColor = (boPhanId) => xuLy.some(x => x.BoPhanId === boPhanId) ? "success" : "warning";
 
-    const isManagerOrQA = currentUserPermissions.includes("XAC_NHAN_NGUOI_XU_LY") || 
-                          currentUserPermissions.includes("KET_LUAN") || 
-                          currentUserPermissions.includes("QUAN_TRI_DM");
+    const isManagerOrQA = currentUserPermissions.includes("XAC_NHAN_NGUOI_XU_LY") ||
+        currentUserPermissions.includes("KET_LUAN") ||
+        currentUserPermissions.includes("QUAN_TRI_DM");
 
     const isAssigned = assigns.some(a => a.BoPhanId === currentUserBoPhanId);
     const hasXuLy = xuLy.some(x => x.BoPhanId === currentUserBoPhanId);

@@ -197,7 +197,6 @@ export default function BienBanDetailScreen({ route, navigation }) {
     const isManagerOrQA = currentUserPermissions.includes("XAC_NHAN_NGUOI_XU_LY") ||
         currentUserPermissions.includes("KET_LUAN") ||
         currentUserPermissions.includes("QUAN_TRI_DM");
-    console.log(isManagerOrQA);
     const isAssigned = assigns.some(a => a.BoPhanId === currentUserBoPhanId);
     const hasXuLy = xuLy.some(x => x.BoPhanId === currentUserBoPhanId);
     const hasChiPhi = chiPhi.some(c => c.BoPhanId === currentUserBoPhanId);
@@ -213,7 +212,6 @@ export default function BienBanDetailScreen({ route, navigation }) {
         const hasLeadRole = currentUserRoles.some(
             role => role?.toUpperCase().includes("TP")
         );
-        console.log(currentUserRoles);
         return hasAssignPermission || hasLeadRole || currentUserRoles.length === 0;
     };
 

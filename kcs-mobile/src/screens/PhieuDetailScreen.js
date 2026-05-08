@@ -71,15 +71,13 @@ export default function PhieuDetailScreen({ route, navigation }) {
         const lot = res.data.phieu?.Lot;
         setLot(lot);
         setLotConfirmed(!!lot);
-
+        console.log(phieu.LoaiKiemId)
         try {
             const thongSoRes = await getThongSoKq(id);
             const tsList = thongSoRes.data?.thongSo || [];
             const kqList = thongSoRes.data?.ketQua || [];
             setThongSoList(tsList);
             setThongSoKqList(kqList);
-            console.log("[DEBUG] thongSoList:", JSON.stringify(tsList));
-            console.log("[DEBUG] thongSoKqList:", JSON.stringify(kqList));
             if (tsList.length > 0) {
                 setHasThongSo(true);
             }
@@ -326,9 +324,12 @@ export default function PhieuDetailScreen({ route, navigation }) {
                             <Text style={styles.infoLabel}>Người kiểm</Text>
                             <Text style={styles.infoValue}>{phieu?.TenNguoiKiem || "---"}</Text>
                         </View>
-                        <View style={styles.infoItem}>
-                            {/* Empty space or another field if needed */}
-                        </View>
+                        {phieu?.LoaiKiemId === 5 &&
+                            <View style={styles.infoItem}>
+                                <Text style={styles.infoLabel}>Nơi đến</Text>
+                                <Text style={styles.infoValue}>{phieu?.DoiTuong || "---"}</Text>
+                            </View>
+                        }
                     </View>
 
                     {phieu?.BienBanId && (

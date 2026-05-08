@@ -142,6 +142,14 @@ export default function PhieuListScreen({ navigation }) {
                         {item.SoLuong}
                     </Text>
                 </View>
+                <View style={styles.infoRow}>
+                    <Text style={styles.label}>Nơi đến</Text>
+                    <Text style={styles.value}>{item.DoiTuong}</Text>
+                </View>
+                <View style={styles.infoRow}>
+                    <Text style={styles.label}>Người kiểm</Text>
+                    <Text style={styles.value}>{item.TenNguoiKiem}</Text>
+                </View>
             </TouchableOpacity>
         );
     };

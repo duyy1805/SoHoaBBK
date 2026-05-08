@@ -440,7 +440,6 @@ router.post(
             const pool = await poolPromise;
 
             const table = new sql.Table();
-            console.log(sections);
             table.columns.add("NhomKiemId", sql.Int);
             table.columns.add("LotSize", sql.Int);
             table.columns.add("InspectionLevel", sql.NVarChar(100));
@@ -454,7 +453,6 @@ router.post(
                 );
 
             });
-            console.log(table);
 
             const result = await pool.request()
                 .input("PhieuKiemId", sql.Int, phieuKiemId)
@@ -487,7 +485,6 @@ router.post(
     authorize('PHAN_BO_KIEM'),
     async (req, res) => {
         const { phieuKiemId, lotSize, inspectionLevel } = req.body;
-        console.log("Start phieu kiem:", req.body);
         const pool = await poolPromise;
 
         await pool.request()
