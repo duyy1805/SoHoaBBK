@@ -171,6 +171,28 @@ router.get(
 );
 
 router.get(
+    '/phieu-nhap-btp/chua-kiem',
+    authenticateToken,
+    authorize('XEM_PHIEU_KIEM'),
+    async (req, res) => {
+        try {
+            const pool = await poolPromise;
+
+            const result = await pool.request()
+                .execute('sp_PhieuNhapBTP_GetList_ChuaKiem');
+
+            res.json(result.recordset);
+
+        } catch (err) {
+            console.error(err);
+            res.status(500).json({
+                message: 'Lỗi lấy danh sách phiếu nhập BTP'
+            });
+        }
+    }
+);
+
+router.get(
     '/ke-hoach-san-xuat/chua-kiem',
     authenticateToken,
     authorize('XEM_PHIEU_KIEM'),
@@ -247,6 +269,42 @@ router.get(
         try {
             const pool = await poolPromise;
 
+            // 1. Lấy thông tin cơ bản để xác định loại kiểm
+            const basicInfo = await pool.request()
+                .input('Id', sql.Int, id)
+                .query('SELECT LoaiKiemId FROM PHIEU_KIEM WHERE Id = @Id');
+
+            if (basicInfo.recordset.length === 0) {
+                return res.status(404).json({ message: 'Không tìm thấy phiếu kiểm' });
+            }
+
+            const loaiKiemId = basicInfo.recordset[0].LoaiKiemId;
+
+            // 2. Nếu là Sản Xuất Bổ Trợ (LoaiKiemId = 4)
+            if (loaiKiemId === 4) {
+                const result = await pool.request()
+                    .input('PhieuKiemId', sql.Int, id)
+                    .execute('sp_PhieuKiem_GetDetail_SXBT');
+
+                const phieu = result.recordsets[0][0] || null;
+                let dynamicFields = [];
+                if (phieu && phieu.DynamicFieldsJSON) {
+                    try {
+                        dynamicFields = JSON.parse(phieu.DynamicFieldsJSON);
+                    } catch (e) { }
+                    delete phieu.DynamicFieldsJSON;
+                }
+
+                return res.json({
+                    phieu,
+                    btpItems: result.recordsets[1] || [],
+                    summary: result.recordsets[2][0] || null,
+                    defects: result.recordsets[3] || [],
+                    dynamicFields
+                });
+            }
+
+            // 3. Mặc định cho các loại kiểm khác (1, 2, 3...)
             const result = await pool.request()
                 .input('PhieuKiemId', sql.Int, id)
                 .execute('sp_PhieuKiem_GetDetail');
@@ -422,6 +480,159 @@ router.post(
 );
 
 /* =========================================================
+   POST /phieu-kiem/create-sxbt (Sản xuất bổ trợ)
+========================================================= */
+router.post(
+    '/create-sxbt',
+    authenticateToken,
+    authorize('PHAN_BO_KIEM'),
+    async (req, res) => {
+        const {
+            loaiKiemId,
+            nguoiKiemId,
+            sourceId,
+            soLuong,
+            doiTuong,
+            mucDoKiemTra
+        } = req.body;
+        console.log(req.body);
+        try {
+            const pool = await poolPromise;
+            const result = await pool.request()
+                .input('LoaiKiemId', sql.Int, loaiKiemId)
+                .input('NguoiKiemId', sql.Int, nguoiKiemId)
+                .input('NguoiLapId', sql.Int, req.user.userId)
+                .input('SourceId', sql.Int, sourceId)
+                .input('SoLuong', sql.Int, soLuong)
+                .input('DoiTuong', sql.NVarChar, doiTuong)
+                .input('MucDoKiemTra', sql.NVarChar, mucDoKiemTra || null)
+                .execute('sp_PhieuKiem_Create_SXBT');
+
+            const newPhieuId = result.recordset[0].Id;
+            const soPhieu = result.recordset[0].SoPhieu;
+
+            // Gửi thông báo (Lưu vào DB)
+            const title = 'Bạn có phiếu kiểm bổ trợ mới! 📋';
+            const message = `Tổ trưởng vừa phân công cho bạn phiếu kiểm ${soPhieu}.`;
+
+            await pool.request()
+                .input('UserId', sql.Int, nguoiKiemId)
+                .input('Title', sql.NVarChar, title)
+                .input('Message', sql.NVarChar, message)
+                .input('Type', sql.VarChar, 'NEW_PHIEU')
+                .input('ReferenceId', sql.Int, newPhieuId)
+                .query('INSERT INTO NOTIFICATIONS (UserId, Title, Message, Type, ReferenceId) VALUES (@UserId, @Title, @Message, @Type, @ReferenceId)');
+
+            res.json({
+                success: true,
+                phieuKiemId: newPhieuId,
+                soPhieu: soPhieu
+            });
+        } catch (err) {
+            console.error('CreateSXBT error:', err);
+            res.status(500).json({ message: 'Tạo phiếu kiểm bổ trợ thất bại' });
+        }
+    }
+);
+
+/* =========================================================
+   GET /phieu-kiem/:id/btp-items (Lấy danh sách mặt hàng BTP)
+========================================================= */
+router.get(
+    '/:id/btp-items',
+    authenticateToken,
+    async (req, res) => {
+        try {
+            const { id } = req.params;
+            const pool = await poolPromise;
+            const result = await pool.request()
+                .input('PhieuKiemId', sql.Int, id)
+                .query('SELECT * FROM PHIEU_KIEM_BTP_ITEM WHERE PhieuKiemId = @PhieuKiemId');
+            res.json(result.recordset);
+        } catch (err) {
+            console.error(err);
+            res.status(500).json({ message: 'Lỗi lấy chi tiết mặt hàng BTP' });
+        }
+    }
+);
+
+/* =========================================================
+   POST /phieu-kiem/sxbt-save (Lưu toàn bộ Phiếu Kiểm SXBT)
+========================================================= */
+router.post(
+    '/sxbt-save',
+    authenticateToken,
+    authorize('THUC_HIEN_KIEM'),
+    async (req, res) => {
+        try {
+            const { 
+                phieuKiemId, 
+                dynamicFields, 
+                btpItems, 
+                summary, 
+                defects, 
+                ketLuan 
+            } = req.body;
+
+            if (!phieuKiemId) {
+                return res.status(400).json({ message: 'Thiếu phieuKiemId' });
+            }
+
+            const pool = await poolPromise;
+            const result = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('DynamicFieldsJson', sql.NVarChar(sql.MAX), dynamicFields ? JSON.stringify(dynamicFields) : null)
+                .input('BtpItemsJson', sql.NVarChar(sql.MAX), btpItems ? JSON.stringify(btpItems) : null)
+                .input('SummaryJson', sql.NVarChar(sql.MAX), summary ? JSON.stringify(summary) : null)
+                .input('DefectsJson', sql.NVarChar(sql.MAX), defects ? JSON.stringify(defects) : null)
+                .input('KetLuan', sql.NVarChar(50), ketLuan || null)
+                .execute('sp_PhieuKiem_SXBT_Save');
+
+            res.json({
+                success: true,
+                message: result.recordset && result.recordset.length > 0 ? result.recordset[0].Message : 'Lưu thành công'
+            });
+
+        } catch (err) {
+            console.error('SXBT Save error:', err);
+            res.status(500).json({ message: 'Lỗi lưu dữ liệu Sản Xuất Bổ Trợ' });
+        }
+    }
+);
+
+/* =========================================================
+   POST /phieu-kiem/sxbt-complete (Hoàn tất phiếu SXBT)
+========================================================= */
+router.post(
+    '/sxbt-complete',
+    authenticateToken,
+    authorize('THUC_HIEN_KIEM'),
+    async (req, res) => {
+        const { phieuKiemId, ketLuan } = req.body;
+        const userId = req.user.userId;
+
+        if (!phieuKiemId || !ketLuan) {
+            return res.status(400).json({ message: 'Thiếu phieuKiemId hoặc ketLuan' });
+        }
+
+        try {
+            const pool = await poolPromise;
+            await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('KetLuan', sql.NVarChar(50), ketLuan)
+                .input('UserId', sql.Int, userId)
+                .execute('sp_PhieuKiem_SXBT_Complete');
+
+            res.json({ success: true, message: 'Hoàn tất phiếu kiểm SXBT thành công' });
+
+        } catch (err) {
+            console.error('SXBT Complete error:', err);
+            res.status(500).json({ message: 'Hoàn tất phiếu kiểm SXBT thất bại' });
+        }
+    }
+);
+
+/* =========================================================
    POST /phieu-kiem/section
    Role       : KCS
    Permission : THUC_HIEN_KIEM
@@ -579,7 +790,7 @@ router.post(
                     // Loại bỏ dấu / ở đầu nếu có để path.join hoạt động chính xác
                     const relativePath = fileUrl.startsWith('/') ? fileUrl.slice(1) : fileUrl;
                     const filePath = path.join(__dirname, '..', relativePath);
-                    
+
                     if (fs.existsSync(filePath)) {
                         try {
                             fs.unlinkSync(filePath); // Xoá file
@@ -607,9 +818,9 @@ router.post(
 
         } catch (err) {
             console.error('CheckItem save error:', err);
-            res.status(500).json({ 
+            res.status(500).json({
                 message: "Lưu thất bại",
-                error: err.message 
+                error: err.message
             });
         }
     }

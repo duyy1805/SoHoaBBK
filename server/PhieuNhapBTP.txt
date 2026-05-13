@@ -1,0 +1,280 @@
+Lấy từ TAG_QTKD.dbo
+
+---------------------------------------------------------------------------------
+-- [pr_PhieuNhapBTP_Select_MainForm] NULL, NULL
+---------------------------------------------------------------------------------
+ALTER PROCEDURE [dbo].[pr_PhieuNhapBTP_Select_MainForm]
+	@TuNgay DATE,
+	@DenNgay DATE,
+	@ID_PhieuNhapBTP INT = 0,	
+	@ID_PhieuXuatBTP INT = 0
+AS
+SET NOCOUNT ON
+-- SELECT all rows from the table.
+DECLARE @IsAn bit = (SELECT IsAn from Check_An_NhaThau)
+DECLARE @IkeaKiemTra bit = (select IsKiemTra from TAG_QTKD.dbo.IkeaKiemTra)
+CREATE TABLE #tblPhieuNhapBTP (
+	ID_PhieuNhapBTP int
+)
+
+IF @IkeaKiemTra = 1
+BEGIN
+IF @ID_PhieuNhapBTP > 0 BEGIN	
+	INSERT INTO #tblPhieuNhapBTP (ID_PhieuNhapBTP) VALUES(@ID_PhieuNhapBTP)	
+END
+
+ELSE IF @ID_PhieuXuatBTP > 0 BEGIN
+	INSERT INTO #tblPhieuNhapBTP
+	SELECT ID_PhieuNhapBTP
+	FROM dbo.PhieuNhapBTP
+	WHERE TonTai = 1
+	  AND ID_PhieuXuatBTP = @ID_PhieuXuatBTP
+END
+
+ELSE BEGIN
+
+	INSERT INTO #tblPhieuNhapBTP
+	SELECT ID_PhieuNhapBTP
+	FROM dbo.PhieuNhapBTP
+	WHERE TonTai = 1
+	  AND (@TuNgay IS NULL OR Ngay_NhapBTP >= @TuNgay)
+	  AND (@DenNgay IS NULL OR Ngay_NhapBTP < DATEADD(d, 1, @DenNgay))
+END
+
+SELECT a.ID_PhieuNhapBTP, a.So_PhieuNhapBTP, a.Ngay_NhapBTP,	 
+	   a.ID_KhoNhap, kn.Ten_Kho AS Ten_KhoNhap,    
+	   a.ID_HinhThucNhapBTP, ht.Ten_HinhThucNhapBTP,	
+	   a.ID_PhieuXuatBTP, px.So_PhieuXuatBTP, 
+	   a.ID_QuyTrinhSanXuat, qtsx.Ten_QuyTrinhSanXuat,
+	   px.ID_KhoXuat, kx.Ten_Kho AS Ten_KhoXuat,
+	   kh.ID_KhachHang, kh.Ten_KhachHang, kh.MaSo_KhachHang,
+	   dv.ID_DonVi, dv.Ten_DonVi,	
+	   bp.ID_BoPhan, 
+		 CASE WHEN @IkeaKiemTra = 1 AND dv.ID_DonVi = 32
+		 THEN
+		 '' 
+		 ELSE
+		 bp.Ten_BoPhan END as Ten_BoPhan,
+	   a.ID_NhaCungCap, ncc.Ten_NhaCungCap,
+	   b.SoLuong_NhapKho,
+	   a.GhiChu,
+	   a.IsNhapKHSX,
+	   a.TaiKhoan_Lap, tk.TenDayDu AS TenDayDu_Lap,
+	   a.Ngay_Lap, a.Ngay_SuaCuoi,
+
+	   CASE WHEN a.TrangThai = 5 AND a.TaiKhoan_DuyetKy > 0 THEN 6 ELSE a.TrangThai END AS TrangThai,
+	   dbo.fn_Get_TenTrangThai_PhieuNhapXuat(CASE WHEN a.TaiKhoan_DuyetKy > 0 THEN 6 ELSE a.TrangThai END) AS Ten_TrangThai,
+	   	   
+	   Ma_DonHang = STUFF(( SELECT DISTINCT ', ' + nc.Ma_DonHang
+							FROM dbo.PhieuNhapBTP_ChiTiet na
+							INNER JOIN dbo.DonHang nc ON na.ID_DonHang = nc.ID_DonHang
+							WHERE na.ID_PhieuNhapBTP = a.ID_PhieuNhapBTP						 
+							FOR XML PATH , TYPE ).value('.[1]', 'nvarchar(max)'), 1, 2, '')
+									   	  
+FROM #tblPhieuNhapBTP lst
+INNER JOIN dbo.PhieuNhapBTP a ON lst.ID_PhieuNhapBTP = a.ID_PhieuNhapBTP
+INNER JOIN dbo.DM_Kho kn ON a.ID_KhoNhap = kn.ID_Kho
+INNER JOIN dbo.DM_QuyTrinhSanXuat qtsx ON a.ID_QuyTrinhSanXuat = qtsx.ID_QuyTrinhSanXuat
+LEFT JOIN dbo.DM_KhachHang kh ON a.ID_KhachHang = kh.ID_KhachHang
+LEFT JOIN dbo.PhieuXuatBTP px ON a.ID_PhieuXuatBTP = px.ID_PhieuXuatBTP
+LEFT JOIN dbo.DM_Kho kx ON px.ID_KhoXuat = kx.ID_Kho
+LEFT JOIN dbo.DM_HinhThucNhapBTP ht ON a.ID_HinhThucNhapBTP = ht.ID_HinhThucNhapBTP
+LEFT JOIN TAG_System.dbo.DM_DonVi dv ON a.ID_DonVi = dv.ID_DonVi
+LEFT JOIN TAG_System.dbo.DM_BoPhan bp ON a.ID_BoPhan = bp.ID_BoPhan
+LEFT JOIN dbo.DM_NhaCungCap ncc ON a.ID_NhaCungCap = ncc.ID_NhaCungCap
+
+LEFT JOIN TAG_System.dbo.TaiKhoanDangNhap tk ON a.TaiKhoan_Lap = tk.ID_TaiKhoanDangNhap	
+LEFT JOIN (SELECT ba.ID_PhieuNhapBTP, SUM(bb.SoLuong_NhapKho) AS SoLuong_NhapKho
+		   FROM #tblPhieuNhapBTP ba
+		   INNER JOIN dbo.PhieuNhapBTP_ChiTiet bb ON ba.ID_PhieuNhapBTP = bb.ID_PhieuNhapBTP
+		   GROUP BY ba.ID_PhieuNhapBTP) b ON a.ID_PhieuNhapBTP = b.ID_PhieuNhapBTP
+			 -- Ẩn nhà thầu
+--			 where bp.ID_BoPhan not in (147,
+--151,
+--158,
+--164,
+--180,
+--185,
+--192,
+--196,
+--204,
+--206,
+--211,
+--216,
+--218,
+--225,
+--227,
+--251,
+--256,
+--261,
+--264,
+--266,
+--276,
+--284,
+--286,
+--292,
+--327,
+--328,
+--330,
+--336,
+--692,
+--694,
+--704,
+--710,
+--757,
+--761,
+--762,
+--765,
+--767,
+--973,
+--1073,
+--1074,
+--1076,
+--1077,
+--1078,
+--1082,
+--1083,
+--1086,
+--1087,
+--1099) or bp.ID_BoPhan is null
+ --where dv.ID_DonVi <> 32 or dv.ID_DonVi is null
+where ((dv.ID_DonVi <> 32 or dv.ID_DonVi is null )and @IsAn = 1
+ or @IsAn =0)
+ORDER BY a.TrangThai, a.Ngay_NhapBTP DESC, a.ID_PhieuNhapBTP DESC
+END
+ELSE
+BEGIN
+	IF @ID_PhieuNhapBTP > 0 BEGIN	
+	INSERT INTO #tblPhieuNhapBTP (ID_PhieuNhapBTP) VALUES(@ID_PhieuNhapBTP)	
+END
+
+ELSE IF @ID_PhieuXuatBTP > 0 BEGIN
+	INSERT INTO #tblPhieuNhapBTP
+	SELECT ID_PhieuNhapBTP
+	FROM dbo.PhieuNhapBTP
+	WHERE TonTai = 1
+	  AND ID_PhieuXuatBTP = @ID_PhieuXuatBTP
+END
+
+ELSE BEGIN
+
+	INSERT INTO #tblPhieuNhapBTP
+	SELECT ID_PhieuNhapBTP
+	FROM dbo.PhieuNhapBTP
+	WHERE TonTai = 1
+	  AND (@TuNgay IS NULL OR Ngay_NhapBTP >= @TuNgay)
+	  AND (@DenNgay IS NULL OR Ngay_NhapBTP < DATEADD(d, 1, @DenNgay))
+END
+
+SELECT a.ID_PhieuNhapBTP, a.So_PhieuNhapBTP, a.Ngay_NhapBTP,	 
+	   a.ID_KhoNhap, kn.Ten_Kho AS Ten_KhoNhap,    
+	   a.ID_HinhThucNhapBTP, ht.Ten_HinhThucNhapBTP,	
+	   a.ID_PhieuXuatBTP, px.So_PhieuXuatBTP, 
+	   a.ID_QuyTrinhSanXuat, qtsx.Ten_QuyTrinhSanXuat,
+	   px.ID_KhoXuat, kx.Ten_Kho AS Ten_KhoXuat,
+	   kh.ID_KhachHang, kh.Ten_KhachHang, kh.MaSo_KhachHang,
+	   dv.ID_DonVi, dv.Ten_DonVi,	
+	   bp.ID_BoPhan, bp.Ten_BoPhan,
+	   a.ID_NhaCungCap, ncc.Ten_NhaCungCap,
+	   b.SoLuong_NhapKho,
+	   a.GhiChu,
+	   a.IsNhapKHSX,
+	   a.TaiKhoan_Lap, tk.TenDayDu AS TenDayDu_Lap,
+	   a.Ngay_Lap, a.Ngay_SuaCuoi,
+
+	   CASE WHEN a.TrangThai = 5 AND a.TaiKhoan_DuyetKy > 0 THEN 6 ELSE a.TrangThai END AS TrangThai,
+	   dbo.fn_Get_TenTrangThai_PhieuNhapXuat(CASE WHEN a.TaiKhoan_DuyetKy > 0 THEN 6 ELSE a.TrangThai END) AS Ten_TrangThai,
+	   	   
+	   Ma_DonHang = STUFF(( SELECT DISTINCT ', ' + nc.Ma_DonHang
+							FROM dbo.PhieuNhapBTP_ChiTiet na
+							INNER JOIN dbo.DonHang nc ON na.ID_DonHang = nc.ID_DonHang
+							WHERE na.ID_PhieuNhapBTP = a.ID_PhieuNhapBTP						 
+							FOR XML PATH , TYPE ).value('.[1]', 'nvarchar(max)'), 1, 2, '')
+									   	  
+FROM #tblPhieuNhapBTP lst
+INNER JOIN dbo.PhieuNhapBTP a ON lst.ID_PhieuNhapBTP = a.ID_PhieuNhapBTP
+INNER JOIN dbo.DM_Kho kn ON a.ID_KhoNhap = kn.ID_Kho
+INNER JOIN dbo.DM_QuyTrinhSanXuat qtsx ON a.ID_QuyTrinhSanXuat = qtsx.ID_QuyTrinhSanXuat
+LEFT JOIN dbo.DM_KhachHang kh ON a.ID_KhachHang = kh.ID_KhachHang
+LEFT JOIN dbo.PhieuXuatBTP px ON a.ID_PhieuXuatBTP = px.ID_PhieuXuatBTP
+LEFT JOIN dbo.DM_Kho kx ON px.ID_KhoXuat = kx.ID_Kho
+LEFT JOIN dbo.DM_HinhThucNhapBTP ht ON a.ID_HinhThucNhapBTP = ht.ID_HinhThucNhapBTP
+LEFT JOIN TAG_System.dbo.DM_DonVi dv ON a.ID_DonVi = dv.ID_DonVi
+LEFT JOIN TAG_System.dbo.DM_BoPhan bp ON a.ID_BoPhan = bp.ID_BoPhan
+LEFT JOIN dbo.DM_NhaCungCap ncc ON a.ID_NhaCungCap = ncc.ID_NhaCungCap
+
+LEFT JOIN TAG_System.dbo.TaiKhoanDangNhap tk ON a.TaiKhoan_Lap = tk.ID_TaiKhoanDangNhap	
+LEFT JOIN (SELECT ba.ID_PhieuNhapBTP, SUM(bb.SoLuong_NhapKho) AS SoLuong_NhapKho
+		   FROM #tblPhieuNhapBTP ba
+		   INNER JOIN dbo.PhieuNhapBTP_ChiTiet bb ON ba.ID_PhieuNhapBTP = bb.ID_PhieuNhapBTP
+		   GROUP BY ba.ID_PhieuNhapBTP) b ON a.ID_PhieuNhapBTP = b.ID_PhieuNhapBTP
+
+where ((dv.ID_DonVi <> 32 or dv.ID_DonVi is null )and @IsAn = 1
+ or @IsAn =0)
+ORDER BY a.TrangThai, a.Ngay_NhapBTP DESC, a.ID_PhieuNhapBTP DESC
+END
+
+
+
+---------------------------------------------------------------------------------
+-- [pr_PhieuNhapBTP_ChiTiet_Select_wPhieuNhapBTP] 1
+---------------------------------------------------------------------------------
+ALTER PROCEDURE [dbo].[pr_PhieuNhapBTP_ChiTiet_Select_wPhieuNhapBTP]	
+	@ID_PhieuNhapBTP INT	
+AS
+SET NOCOUNT ON
+-- SELECT an existing row from the table.
+DECLARE @ID_QuyTrinhSanXuat TINYINT
+SELECT @ID_QuyTrinhSanXuat = ID_QuyTrinhSanXuat
+FROM dbo.PhieuNhapBTP
+WHERE ID_PhieuNhapBTP = @ID_PhieuNhapBTP
+
+SELECT ct.ID_DonHang_LoSanXuat, ct.ID_DonHang_SanPham,
+	   dh.ID_DonHang, dh.Ma_DonHang, lo.So_LoSanXuat,
+	   ISNULL(sp.Ten_SanPham, dh.Ma_DonHang) AS Ten_SanPham,
+	   sp.ItemCode,
+	   dvt.ID_DonViTinh, dvt.Ten_DonViTinh,
+	   sp.SoLuong_SanPham AS SoLuong_KeHoach,
+	   a.SoLuong_SanXuat,
+	   b.SoLuong_DaNhap,
+	   ISNULL(a.SoLuong_SanXuat, 0) - ISNULL(b.SoLuong_DaNhap, 0) AS SoLuong_ConLai,
+	   ct.SoLuong_NhapKho,
+	   ct.DonGia,
+	   ct.ThanhTien
+FROM dbo.PhieuNhapBTP_ChiTiet ct
+INNER JOIN dbo.DonHang dh ON ct.ID_DonHang = dh.ID_DonHang
+INNER JOIN dbo.PhieuNhapBTP pn ON ct.ID_PhieuNhapBTP = pn.ID_PhieuNhapBTP
+INNER JOIN dbo.DM_QuyTrinhSanXuat qtsx ON pn.ID_QuyTrinhSanXuat = qtsx.ID_QuyTrinhSanXuat
+LEFT JOIN dbo.DonHang_QuyTrinhSanXuat dhqt ON dh.ID_DonHang = dhqt.ID_DonHang AND pn.ID_QuyTrinhSanXuat = dhqt.ID_QuyTrinhSanXuat
+LEFT JOIN dbo.DonHang_SanPham sp ON ct.ID_DonHang_SanPham = sp.ID_DonHang_SanPham
+LEFT JOIN dbo.DonHang_LoSanXuat lo ON ct.ID_DonHang_LoSanXuat = lo.ID_DonHang_LoSanXuat
+LEFT JOIN dbo.DM_DonViTinh dvt ON ISNULL(dhqt.ID_DonViTinh, ISNULL(qtsx.ID_DonViTinh, sp.ID_DonViTinh)) = dvt.ID_DonViTinh
+
+LEFT JOIN (SELECT ad.ID_DonHang, aa.ID_DonHang_LoSanXuat, aa.ID_DonHang_SanPham,
+				  SUM(aa.SoLuong_SanPham) AS SoLuong_SanXuat
+		   FROM TAG_QLSX.dbo.TienDoSanXuat aa
+		   INNER JOIN TAG_QLSX.dbo.KeHoachSanXuat ab ON aa.ID_KeHoachSanXuat = ab.ID_KeHoachSanXuat
+		   INNER JOIN TAG_QLSX.dbo.LenhSanXuat ac ON ab.ID_LenhSanXuat = ac.ID_LenhSanXuat
+		   INNER JOIN dbo.DonHang ad ON ac.ID_DonHang = ad.ID_DonHang
+		   INNER JOIN dbo.DM_QuyTrinhSanXuat ae ON ab.ID_QuyTrinhSanXuat = ae.ID_QuyTrinhSanXuat
+		   INNER JOIN dbo.PhieuNhapBTP_ChiTiet af ON aa.ID_DonHang_LoSanXuat = af.ID_DonHang_LoSanXuat AND aa.ID_DonHang_SanPham = af.ID_DonHang_SanPham
+		   INNER JOIN dbo.PhieuNhapBTP ag ON ab.ID_QuyTrinhSanXuat = ag.ID_QuyTrinhSanXuat AND af.ID_PhieuNhapBTP = ag.ID_PhieuNhapBTP
+		   WHERE ab.TonTai = 1 AND ac.TonTai = 1 AND ad.TonTai = 1						 
+			 AND af.ID_PhieuNhapBTP = @ID_PhieuNhapBTP
+		   GROUP BY  ad.ID_DonHang, aa.ID_DonHang_LoSanXuat, aa.ID_DonHang_SanPham) a ON ct.ID_DonHang = a.ID_DonHang AND ct.ID_DonHang_LoSanXuat = a.ID_DonHang_LoSanXuat AND ct.ID_DonHang_SanPham = a.ID_DonHang_SanPham
+
+LEFT JOIN (SELECT ba.ID_DonHang, ba.ID_DonHang_LoSanXuat, ba.ID_DonHang_SanPham,
+		          SUM(ba.SoLuong_NhapKho) AS SoLuong_DaNhap
+		   FROM dbo.PhieuNhapBTP_ChiTiet ba
+		   INNER JOIN dbo.PhieuNhapBTP bb ON ba.ID_PhieuNhapBTP = bb.ID_PhieuNhapBTP
+		   INNER JOIN dbo.PhieuNhapBTP_ChiTiet bc ON ba.ID_DonHang_LoSanXuat = bc.ID_DonHang_LoSanXuat AND ba.ID_DonHang_SanPham = bc.ID_DonHang_SanPham
+		   WHERE bb.TonTai = 1		
+		     AND bc.ID_PhieuNhapBTP = @ID_PhieuNhapBTP	 
+			 AND bb.ID_QuyTrinhSanXuat = @ID_QuyTrinhSanXuat
+           GROUP BY ba.ID_DonHang, ba.ID_DonHang_LoSanXuat, ba.ID_DonHang_SanPham) b ON a.ID_DonHang = b.ID_DonHang AND a.ID_DonHang_LoSanXuat = b.ID_DonHang_LoSanXuat AND a.ID_DonHang_SanPham = b.ID_DonHang_SanPham 	
+
+WHERE ct.ID_PhieuNhapBTP = @ID_PhieuNhapBTP
+
+
+
+ORDER BY dh.ID_DonHang, lo.ID_DonHang_LoSanXuat, sp.STT_SanPham

@@ -4,6 +4,7 @@ import Login from '../features/Login';
 import Dashboard from '../features/Dashboard/Dashboard';
 import PhieuKiemList from '../features/PhieuKiem/pages/PhieuKiemList';
 import PhieuKiemDetail from '../features/PhieuKiem/pages/PhieuKiemDetail';
+import SxbtDetail from '../features/PhieuKiem/pages/SxbtDetail';
 import PhieuKiemCreate from '../features/PhieuKiem/pages/PhieuKiemCreate';
 import ProtectedRoute from './ProtectedRoute';
 import DanhMucManager from '../features/DanhMuc/DanhMucManager'
@@ -21,6 +22,7 @@ export default function AppRoutes() {
                 <Route element={<AppLayout />}>
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/phieu-kiem" element={<PhieuKiemList />} />
+                    <Route path="/phieu-kiem/sxbt/:id" element={<SxbtDetail />} />
                     <Route path="/phieu-kiem/:id" element={<PhieuKiemDetail />} />
                     <Route path="/phieu-kiem/create" element={<PhieuKiemCreate />} />
                     <Route path="/danh-muc" element={<DanhMucManager />} />

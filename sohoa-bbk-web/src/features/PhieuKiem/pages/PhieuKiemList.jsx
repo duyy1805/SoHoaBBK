@@ -236,7 +236,7 @@ export default function PhieuKiemList() {
                                         <TableRow
                                             key={item.Id}
                                             hover
-                                            onClick={() => navigate(`/phieu-kiem/${item.Id}`)}
+                                            onClick={() => navigate(item.LoaiKiemId === 4 ? `/phieu-kiem/sxbt/${item.Id}` : `/phieu-kiem/${item.Id}`)}
                                             sx={{ cursor: "pointer", transition: "0.2s" }}
                                         >
                                             <TableCell sx={{ fontWeight: 600, color: 'primary.main' }}>
@@ -268,8 +268,8 @@ export default function PhieuKiemList() {
                                                         color="primary"
                                                         size="small"
                                                         onClick={(e) => {
-                                                            e.stopPropagation(); // Ngăn sự kiện click bubble lên TableRow
-                                                            navigate(`/phieu-kiem/${item.Id}`);
+                                                            e.stopPropagation();
+                                                            navigate(item.LoaiKiemId === 4 ? `/phieu-kiem/sxbt/${item.Id}` : `/phieu-kiem/${item.Id}`);
                                                         }}
                                                     >
                                                         <VisibilityIcon fontSize="small" />

@@ -74,3 +74,18 @@ export const getThongSoKq = (phieuKiemId) => {
 export const saveThongSoKq = (phieuKiemId, results) => {
   return axiosClient.post(`/phieu-kiem/${phieuKiemId}/thong-so-kq`, { results });
 };
+
+/* ================================
+   Sản Xuất Bổ Trợ
+================================ */
+
+export const getBtpItems = (phieuKiemId) => {
+  return axiosClient.get(`/phieu-kiem/${phieuKiemId}/btp-items`);
+};
+
+export const saveSxbtData = (data) => {
+  return axiosClient.post("/phieu-kiem/sxbt-save", data);
+};
+export const completeSxbt = (phieuKiemId, ketLuan) => {
+  return axiosClient.post("/phieu-kiem/sxbt-complete", { phieuKiemId, ketLuan });
+};

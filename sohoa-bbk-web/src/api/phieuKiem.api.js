@@ -37,6 +37,10 @@ export const createPhieuKiem = (data) => {
     return axiosClient.post("/phieu-kiem/create", data);
 };
 
+export const createPhieuKiemSXBT = (data) => {
+    return axiosClient.post("/phieu-kiem/create-sxbt", data);
+};
+
 export const getLichDongContChuaKiem = () =>
     axiosClient.get("/phieu-kiem/lich-dong-cont/chua-kiem");
 
@@ -55,6 +59,9 @@ export const getChungTuNhapChuaKiem = () =>
 
 export const getKeHoachSanXuatChuaKiem = () =>
     axiosClient.get("/phieu-kiem/ke-hoach-san-xuat/chua-kiem");
+
+export const getPhieuNhapBTPChuaKiem = () =>
+    axiosClient.get("/phieu-kiem/phieu-nhap-btp/chua-kiem");
 /* =========================================================
    PHÂN BỔ (TO_TRUONG_KCS)
 ========================================================= */

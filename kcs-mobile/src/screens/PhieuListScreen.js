@@ -57,7 +57,8 @@ export default function PhieuListScreen({ navigation }) {
         setRefreshing(false);
     }, []);
 
-    const getStatusStyle = (status) => {
+    const getStatusStyle = (item) => {
+        const status = item?.TrangThai;
         switch (status) {
             case "HOAN_TAT":
                 return { backgroundColor: "#dcfce7", color: "#15803d", text: "Hoàn tất" };
@@ -69,7 +70,11 @@ export default function PhieuListScreen({ navigation }) {
                 return { backgroundColor: "#e0f2fe", color: "#0369a1", text: "Đang kiểm" };
 
             case "CHO_XUONG_XAC_NHAN":
-                return { backgroundColor: "#fef3c7", color: "#b45309", text: "Chờ PX" };
+                return {
+                    backgroundColor: "#fef3c7",
+                    color: "#b45309",
+                    text: item?.LoaiKiemId === 4 ? "Chờ Kho" : "Chờ PX"
+                };
 
             case "CHO_KIEM_NGHIEM":
                 return { backgroundColor: "#ede9fe", color: "#6d28d9", text: "Chờ kiểm nghiệm" };
@@ -80,15 +85,18 @@ export default function PhieuListScreen({ navigation }) {
     };
 
     const renderItem = ({ item }) => {
-        const statusStyle = getStatusStyle(item.TrangThai);
-
+        const statusStyle = getStatusStyle(item);
         return (
             <TouchableOpacity
                 style={styles.card}
                 activeOpacity={0.8}
-                onPress={() =>
-                    navigation.navigate("PhieuDetail", { id: item.Id })
-                }
+                onPress={() => {
+                    if (item.LoaiKiemId === 4) {
+                        navigation.navigate("SxbtInspection", { id: item.Id });
+                    } else {
+                        navigation.navigate("PhieuDetail", { id: item.Id });
+                    }
+                }}
             >
                 <View style={styles.header}>
                     <Text style={styles.soPhieu}>{item.SoPhieu}</Text>
