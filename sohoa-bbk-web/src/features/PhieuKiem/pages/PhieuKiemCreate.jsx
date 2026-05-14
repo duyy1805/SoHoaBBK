@@ -366,11 +366,12 @@ export default function PhieuKiemCreate() {
                     payload.soLuong = row.SoLuong;
                     payload.doiTuong = `${row.Ten_DonVi || ''} ${row.Ten_BoPhan ? `- ${row.Ten_BoPhan}` : ''}`;
                     // we will need a dummy sanPhamId or allow null for this type, assuming handled in backend later
-                    payload.sanPhamId = 0; 
+                    payload.sanPhamId = 0;
                 } else {
                     payload.sourceId = getRowId(row);
                 }
-
+                console.log(row)
+                console.log(payload)
                 if (selectedLoai?.Id === 4) {
                     return createPhieuKiemSXBT(payload);
                 }

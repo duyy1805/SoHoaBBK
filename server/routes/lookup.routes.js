@@ -55,7 +55,7 @@ router.get('/kcs', authenticateToken, async (req, res) => {
       FROM USERS u
       JOIN USER_ROLE ur ON u.Id = ur.UserId
       JOIN ROLES r ON ur.RoleId = r.Id
-      WHERE r.RoleCode = 'KCS'
+      WHERE r.RoleCode = 'KCS' or r.RoleCode = 'TO_TRUONG_KCS'
         AND u.TrangThai = 1
   `);
   res.json(result.recordset);

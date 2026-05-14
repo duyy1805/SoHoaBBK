@@ -63,15 +63,16 @@ export default function PhieuDetailScreen({ route, navigation }) {
 
     const loadData = async () => {
         const res = await getPhieuKiemDetail(id);
+        const phieuData = res.data.phieu;
 
-        setPhieu(res.data.phieu);
+        setPhieu(phieuData);
         setSections(res.data.sections);
         setCheckItems(res.data.checkItems);
-        setTrangThai(res.data.phieu?.TrangThai);
-        const lot = res.data.phieu?.Lot;
+        setTrangThai(phieuData?.TrangThai);
+        const lot = phieuData?.Lot;
         setLot(lot);
         setLotConfirmed(!!lot);
-        console.log(phieu.LoaiKiemId)
+        console.log(phieuData?.LoaiKiemId);
         try {
             const thongSoRes = await getThongSoKq(id);
             const tsList = thongSoRes.data?.thongSo || [];
