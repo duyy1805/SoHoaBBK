@@ -51,7 +51,7 @@ router.get(
 router.get('/kcs', authenticateToken, async (req, res) => {
   const pool = await poolPromise;
   const result = await pool.request().query(`
-      SELECT u.Id, u.FullName
+      SELECT DISTINCT u.Id, u.FullName
       FROM USERS u
       JOIN USER_ROLE ur ON u.Id = ur.UserId
       JOIN ROLES r ON ur.RoleId = r.Id

@@ -384,7 +384,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                     {phieu?.BienBanId && (
                         <TouchableOpacity
                             style={styles.bienBanBadge}
-                            onPress={() => navigation.navigate("BienBanDetail", { bienBanId: phieu.BienBanId })}
+                            onPress={() => navigation.navigate("BienBanSxbtDetail", { bienBanId: phieu.BienBanId })}
                         >
                             <MaterialCommunityIcons name="alert-circle" size={18} color="#ef4444" />
                             <Text style={styles.bienBanBadgeText}>Xem biên bản KPH</Text>

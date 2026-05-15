@@ -20,6 +20,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/hr', hrRouter);
 app.use('/api/phieu-kiem', require('./routes/phieuKiem'));
 app.use('/api/bien-ban', require('./routes/bienBan'));
+app.use('/api/bien-ban-sxbt', require('./routes/bienBanSxbt'));
 app.use('/api/lookup', require('./routes/lookup.routes'));
 app.use('/api/notifications', require('./routes/notifications'));
 

@@ -49,15 +49,32 @@ export default function BienBanListScreen({ navigation }) {
     };
 
     const renderItem = ({ item }) => {
+        const isSxbtBienBan = item.LoaiBienBan === "SXBT" ||
+            item.LoaiKiemId === 4 ||
+            String(item.TrangThai || "").startsWith("BB_SXBT");
+
+        const getStatusLabel = () => {
+            if (!isSxbtBienBan) return item.TrangThai;
+            if (item.TrangThai === "BB_SXBT_HOAN_TAT") return "SXBT hoàn tất";
+            if (item.TrangThai === "BB_SXBT_CHO_XAC_NHAN") {
+                const waitingDepartment = item.MaBoPhanDangCho || item.TenBoPhanDangCho;
+                return waitingDepartment ? `Chờ ${waitingDepartment}` : "Đang xử lý SXBT";
+            }
+            if (item.TrangThai === "BB_SXBT_MOI" || item.TrangThai === "BB_SXBT_TP_B8_DRAFT") {
+                return "Chờ xác nhận mức";
+            }
+            return item.TrangThai;
+        };
 
         return (
             <TouchableOpacity
                 style={styles.card}
-                onPress={() =>
-                    navigation.navigate("BienBanDetail", {
-                        bienBanId: item.BienBanId
-                    })
-                }
+                onPress={() => {
+                    const screenName = isSxbtBienBan
+                        ? "BienBanSxbtDetail"
+                        : "BienBanDetail";
+                    navigation.navigate(screenName, { bienBanId: item.BienBanId });
+                }}
             >
 
                 <Text style={styles.title}>
@@ -79,11 +96,15 @@ export default function BienBanListScreen({ navigation }) {
                 <View style={styles.row}>
 
                     <Text>
-                        Ý kiến {item.DaCoYKien}/{item.SoBoPhan}
+                        {isSxbtBienBan
+                            ? item.SoBoPhan > 0
+                                ? `Xác nhận ${item.DaCoYKien}/${item.SoBoPhan}`
+                                : "Chưa mở luồng"
+                            : `Ý kiến ${item.DaCoYKien}/${item.SoBoPhan}`}
                     </Text>
 
                     <Text style={styles.status}>
-                        {item.TrangThai}
+                        {getStatusLabel()}
                     </Text>
 
                 </View>

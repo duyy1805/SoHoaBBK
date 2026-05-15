@@ -56,7 +56,33 @@ export default function BienBanList() {
         }
     };
 
-    const renderTrangThaiChip = (trangThai) => {
+    const isSxbtBienBan = (item) =>
+        item.LoaiBienBan === "SXBT" ||
+        item.LoaiKiemId === 4 ||
+        String(item.TrangThai || "").startsWith("BB_SXBT");
+
+    const renderTrangThaiChip = (item) => {
+        const { TrangThai: trangThai } = item;
+        if (isSxbtBienBan(item)) {
+            if (trangThai === "BB_SXBT_HOAN_TAT") {
+                return <Chip label="SXBT hoàn tất" color="success" size="small" sx={{ fontWeight: 500 }} />;
+            }
+            if (trangThai === "BB_SXBT_CHO_XAC_NHAN") {
+                const waitingDepartment = item.MaBoPhanDangCho || item.TenBoPhanDangCho;
+                return (
+                    <Chip
+                        label={waitingDepartment ? `Chờ ${waitingDepartment}` : "Đang xử lý SXBT"}
+                        color="info"
+                        size="small"
+                        sx={{ fontWeight: 500 }}
+                    />
+                );
+            }
+            if (trangThai === "BB_SXBT_MOI" || trangThai === "BB_SXBT_TP_B8_DRAFT") {
+                return <Chip label="Chờ xác nhận mức" color="warning" size="small" sx={{ fontWeight: 500 }} />;
+            }
+        }
+
         const statusMap = {
             "BB_MOI": { label: "Mới tạo", color: "default" },
             "CHO_PHAN_BO_XY_LY": { label: "Xin ý kiến", color: "warning" },
@@ -172,6 +198,10 @@ export default function BienBanList() {
                             <MenuItem value="DA_KET_LUAN">Đã kết luận</MenuItem>
                             <MenuItem value="CHO_XAC_NHAN">Chờ xác nhận</MenuItem>
                             <MenuItem value="DA_XAC_NHAN">Đã xác nhận</MenuItem>
+                            <MenuItem value="BB_SXBT_MOI">SXBT chờ xác nhận mức</MenuItem>
+                            <MenuItem value="BB_SXBT_TP_B8_DRAFT">SXBT chờ xác nhận mức</MenuItem>
+                            <MenuItem value="BB_SXBT_CHO_XAC_NHAN">SXBT đang xử lý</MenuItem>
+                            <MenuItem value="BB_SXBT_HOAN_TAT">SXBT hoàn tất</MenuItem>
                         </TextField>
                     </Stack>
                 </Stack>
@@ -228,7 +258,11 @@ export default function BienBanList() {
                                             <TableCell onClick={(e) => e.stopPropagation() /* Tránh click bar làm trigger row click */}>
                                                 <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
                                                     <Typography variant="caption" color="text.secondary">
-                                                        {item.DaCoYKien}/{item.SoBoPhan} bộ phận
+                                                        {isSxbtBienBan(item)
+                                                            ? item.SoBoPhan > 0
+                                                                ? `Xác nhận ${item.DaCoYKien}/${item.SoBoPhan} bộ phận`
+                                                                : "Chưa mở luồng"
+                                                            : `${item.DaCoYKien}/${item.SoBoPhan} bộ phận`}
                                                     </Typography>
                                                     <Typography variant="caption" fontWeight="bold" color="primary">
                                                         {item.ProgressPercent}%
@@ -241,7 +275,7 @@ export default function BienBanList() {
                                                 />
                                             </TableCell>
                                             <TableCell align="center">
-                                                {renderTrangThaiChip(item.TrangThai)}
+                                                {renderTrangThaiChip(item)}
                                             </TableCell>
                                             <TableCell align="center">
                                                 <Tooltip title="Xem chi tiết">

@@ -11,6 +11,7 @@ import CheckItemScreen from "../screens/CheckItemScreen";
 // (Sau này thêm BienBanListScreen)
 import BienBanListScreen from "../screens/BienBanListScreen";
 import BienBanDetailScreen from "../screens/BienBanDetailScreen"
+import BienBanSxbtDetailScreen from "../screens/BienBanSxbtDetailScreen";
 import NotificationScreen from "../screens/NotificationScreen";
 import KiemDacBietScreen from "../screens/KiemDacBietScreen";
 import SxbtInspectionScreen from "../screens/SxbtInspectionScreen";
@@ -82,6 +83,11 @@ export default function AppNavigator() {
                 name="BienBanDetail"
                 component={BienBanDetailScreen}
                 options={{ title: "Chi tiết biên bản" }}
+            />
+            <Stack.Screen
+                name="BienBanSxbtDetail"
+                component={BienBanSxbtDetailScreen}
+                options={{ title: "Biên bản SXBT" }}
             />
             <Stack.Screen
                 name="KiemDacBiet"

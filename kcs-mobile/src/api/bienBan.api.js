@@ -106,3 +106,40 @@ export const getDeNghiXuLy = () => {
 export const getBoPhan = () => {
     return axiosClient.get("/lookup/bo-phan");
 };
+
+/* ================================
+   Biên bản SXBT
+================================ */
+export const getBienBanSxbtDetail = (bienBanId) => {
+    return axiosClient.get(`/bien-ban-sxbt/${bienBanId}`);
+};
+
+export const saveBienBanSxbtDraftByTPB8 = (bienBanId, data) => {
+    return axiosClient.post(`/bien-ban-sxbt/${bienBanId}/save-draft-by-tpb8`, data);
+};
+
+export const saveBienBanSxbtDraft = (bienBanId, data) => {
+    return axiosClient.post(`/bien-ban-sxbt/${bienBanId}/save-draft-by-tpb8`, data);
+};
+
+export const addBienBanSxbtXuLyRow = (bienBanId, data) => {
+    return axiosClient.post(`/bien-ban-sxbt/${bienBanId}/xu-ly-row`, data);
+};
+
+export const confirmBienBanSxbtMucDo = (bienBanId, mucDoKhongPhuHop) => {
+    return axiosClient.post(`/bien-ban-sxbt/${bienBanId}/confirm-muc-do`, {
+        mucDoKhongPhuHop
+    });
+};
+
+export const submitBienBanSxbt = (bienBanId) => {
+    return axiosClient.post(`/bien-ban-sxbt/${bienBanId}/submit`);
+};
+
+export const confirmBienBanSxbtStep = (bienBanId) => {
+    return axiosClient.post(`/bien-ban-sxbt/${bienBanId}/confirm-step`);
+};
+
+export const completeBienBanSxbt = (bienBanId) => {
+    return axiosClient.post(`/bien-ban-sxbt/${bienBanId}/complete`);
+};

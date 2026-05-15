@@ -9,3 +9,5 @@ build/
 
 shbbk.sql
 dbo.sql
+
+*.sql
