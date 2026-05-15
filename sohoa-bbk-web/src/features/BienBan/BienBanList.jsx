@@ -243,7 +243,11 @@ export default function BienBanList() {
                                         <TableRow
                                             key={item.BienBanId}
                                             hover
-                                            onClick={() => navigate(`/bien-ban/${item.BienBanId}`)}
+                                            onClick={() => navigate(
+                                                isSxbtBienBan(item)
+                                                    ? `/bien-ban/sxbt/${item.BienBanId}`
+                                                    : `/bien-ban/${item.BienBanId}`
+                                            )}
                                             sx={{ cursor: "pointer", transition: "0.2s" }}
                                         >
                                             <TableCell sx={{ fontWeight: 500, color: 'primary.main' }}>
@@ -284,7 +288,11 @@ export default function BienBanList() {
                                                         color="primary"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            navigate(`/bien-ban/${item.BienBanId}`);
+                                                            navigate(
+                                                                isSxbtBienBan(item)
+                                                                    ? `/bien-ban/sxbt/${item.BienBanId}`
+                                                                    : `/bien-ban/${item.BienBanId}`
+                                                            );
                                                         }}
                                                     >
                                                         <VisibilityIcon fontSize="small" />

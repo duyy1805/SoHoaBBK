@@ -10,6 +10,7 @@ import ProtectedRoute from './ProtectedRoute';
 import DanhMucManager from '../features/DanhMuc/DanhMucManager'
 import BienBanDetail from '../features/BienBan/BienBanDetail';
 import BienBanList from '../features/BienBan/BienBanList';
+import BienBanSxbtDetail from '../features/BienBan/BienBanSxbtDetail';
 
 export default function AppRoutes() {
     return (
@@ -27,6 +28,7 @@ export default function AppRoutes() {
                     <Route path="/phieu-kiem/create" element={<PhieuKiemCreate />} />
                     <Route path="/danh-muc" element={<DanhMucManager />} />
                     <Route path="/bien-ban" element={<BienBanList />} />
+                    <Route path="/bien-ban/sxbt/:id" element={<BienBanSxbtDetail />} />
                     <Route path="/bien-ban/:id" element={<BienBanDetail />} />
                 </Route>
             </Route>

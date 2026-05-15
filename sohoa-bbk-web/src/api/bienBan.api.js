@@ -107,3 +107,28 @@ export const getBoPhan = () => {
 export const saveBienBanCustomFields = (data) => {
     return axiosClient.post("/bien-ban/custom-fields", data);
 };
+
+/* ================================
+   Biên bản SXBT
+================================ */
+export const getBienBanSxbtDetail = (bienBanId) => {
+    return axiosClient.get(`/bien-ban-sxbt/${bienBanId}`);
+};
+
+export const saveBienBanSxbtDraft = (bienBanId, data) => {
+    return axiosClient.post(`/bien-ban-sxbt/${bienBanId}/save-draft-by-tpb8`, data);
+};
+
+export const addBienBanSxbtXuLyRow = (bienBanId, data) => {
+    return axiosClient.post(`/bien-ban-sxbt/${bienBanId}/xu-ly-row`, data);
+};
+
+export const confirmBienBanSxbtMucDo = (bienBanId, mucDoKhongPhuHop) => {
+    return axiosClient.post(`/bien-ban-sxbt/${bienBanId}/confirm-muc-do`, {
+        mucDoKhongPhuHop
+    });
+};
+
+export const confirmBienBanSxbtStep = (bienBanId) => {
+    return axiosClient.post(`/bien-ban-sxbt/${bienBanId}/confirm-step`);
+};
