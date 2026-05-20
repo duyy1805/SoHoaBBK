@@ -23,16 +23,17 @@ import BugReportIcon from "@mui/icons-material/BugReport";
 
 import { SxbtPrintTemplate } from "../components/SxbtPrintTemplate";
 import { getPhieuKiemDetail } from "../../../api/phieuKiem.api";
+import { getBienBanSxbtDetail } from "../../../api/bienBan.api";
 
 // ============================================================
 // Helpers
 // ============================================================
 const STATUS_MAP = {
-    CHUA_KIEM:         { label: "Chưa kiểm",          color: "default" },
-    CHO_KIEM_NGHIEM:   { label: "Chờ kiểm nghiệm",    color: "info" },
-    CHO_XUONG_XAC_NHAN:{ label: "Chờ Kho xác nhận",    color: "warning" },
-    HOAN_THANH:        { label: "Hoàn thành",          color: "success" },
-    HOAN_TAT:          { label: "Hoàn thành",          color: "success" },
+    CHUA_KIEM: { label: "Chưa kiểm", color: "default" },
+    CHO_KIEM_NGHIEM: { label: "Chờ kiểm nghiệm", color: "info" },
+    CHO_XUONG_XAC_NHAN: { label: "Chờ Kho xác nhận", color: "warning" },
+    HOAN_THANH: { label: "Hoàn thành", color: "success" },
+    HOAN_TAT: { label: "Hoàn thành", color: "success" },
 };
 
 function TrangThaiChip({ value }) {
@@ -75,11 +76,11 @@ function SectionHeader({ icon, title }) {
 
 const DEFECT_TYPE_COLOR = {
     "Nghiêm trọng": "#ef4444",
-    "CRITICAL":     "#ef4444",
-    "Nặng":         "#f59e0b",
-    "MAJOR":        "#f59e0b",
-    "Nhẹ":          "#3b82f6",
-    "MINOR":        "#3b82f6",
+    "CRITICAL": "#ef4444",
+    "Nặng": "#f59e0b",
+    "MAJOR": "#f59e0b",
+    "Nhẹ": "#3b82f6",
+    "MINOR": "#3b82f6",
 };
 
 // ============================================================
@@ -94,6 +95,7 @@ export default function SxbtDetail() {
     const [summary, setSummary] = useState(null);
     const [defects, setDefects] = useState([]);
     const [dynamicFields, setDynamicFields] = useState([]);
+    const [confirmSteps, setConfirmSteps] = useState([]);
     const [error, setError] = useState(null);
     const [openPrint, setOpenPrint] = useState(false);
 
@@ -117,6 +119,20 @@ export default function SxbtDetail() {
             setSummary(data.summary || null);
             setDefects((data.defects || []).filter(d => d.SoLuong > 0));
             setDynamicFields(data.dynamicFields || []);
+
+            if (data.phieu?.BienBanId) {
+                try {
+                    const bienBanRes = await getBienBanSxbtDetail(data.phieu.BienBanId);
+                    setConfirmSteps(
+                        (bienBanRes.data?.confirmSteps || []).filter((step) => step.TrangThai === "DA_XAC_NHAN")
+                    );
+                } catch (innerErr) {
+                    console.error("Không tải được bước xác nhận SXBT:", innerErr);
+                    setConfirmSteps([]);
+                }
+            } else {
+                setConfirmSteps([]);
+            }
         } catch (err) {
             console.error(err);
             setError("Không thể tải dữ liệu phiếu kiểm.");
@@ -146,19 +162,19 @@ export default function SxbtDetail() {
 
     // ---- Derived stats ----
     const dkThungSanXe = dynamicFields.find(f => f.FieldName === "DKVC_THUNG_SAN_XE")?.FieldValue;
-    const dkNgoaiQuan  = dynamicFields.find(f => f.FieldName === "DKVC_NGOAI_QUAN")?.FieldValue;
+    const dkNgoaiQuan = dynamicFields.find(f => f.FieldName === "DKVC_NGOAI_QUAN")?.FieldValue;
 
-    const tyLe        = summary?.TyLe        ?? 0;
-    const tyLeDat     = summary?.TyLeDat     ?? 0;
-    const tyLeCritical= summary?.TyLeLoiNghiemTrong ?? 0;
-    const tyLeMajor   = summary?.TyLeLoiNangNhe      ?? 0;
-    const soLuongMau  = summary?.SoLuongMau  ?? 0;
-    const loaiMau     = summary?.LoaiMau;
+    const tyLe = summary?.TyLe ?? 0;
+    const tyLeDat = summary?.TyLeDat ?? 0;
+    const tyLeCritical = summary?.TyLeLoiNghiemTrong ?? 0;
+    const tyLeMajor = summary?.TyLeLoiNangNhe ?? 0;
+    const soLuongMau = summary?.SoLuongMau ?? 0;
+    const loaiMau = summary?.LoaiMau;
 
     const LOAI_MAU_LABEL = {
-        LAN_1_2:           "Lần 1, 2 (100%)",
-        LAN_3:             "Lần 3 (5%)",
-        LO_TRUOC_KHONG_DAT:"Lô trước KĐ (3%)",
+        LAN_1_2: "Lần 1, 2 (100%)",
+        LAN_3: "Lần 3 (5%)",
+        LO_TRUOC_KHONG_DAT: "Lô trước KĐ (3%)",
     };
 
     return (
@@ -171,13 +187,13 @@ export default function SxbtDetail() {
                             <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(-1)} color="inherit">
                                 Danh sách phiếu kiểm
                             </Button>
-                            <Stack direction="row" spacing={1} alignItems="center">
+                            {/* <Stack direction="row" spacing={1} alignItems="center">
                                 <Typography variant="subtitle1" fontWeight={700} color="primary">
                                     {phieu?.SoPhieu}
                                 </Typography>
                                 <TrangThaiChip value={phieu?.TrangThai} />
                                 <KetLuanChip value={phieu?.KetLuan} />
-                            </Stack>
+                            </Stack> */}
                             <Stack direction="row" spacing={1}>
                                 {phieu?.BienBanId && (
                                     <Button
@@ -185,9 +201,9 @@ export default function SxbtDetail() {
                                         color="error"
                                         size="small"
                                         startIcon={<AssignmentIcon />}
-                                        onClick={() => navigate(`/bien-ban/${phieu.BienBanId}`)}
+                                        onClick={() => navigate(`/bien-ban/sxbt/${phieu.BienBanId}`)}
                                     >
-                                        Xem biên bản KPH
+                                        Xem biên bản SXBT
                                     </Button>
                                 )}
                                 <Button
@@ -446,6 +462,7 @@ export default function SxbtDetail() {
                             summary={summary}
                             defects={defects}
                             dynamicFields={dynamicFields}
+                            confirmSteps={confirmSteps}
                         />
                     </DialogContent>
                     <DialogActions>

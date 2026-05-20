@@ -32,6 +32,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../../../components/common/ToastContext";
+import StaticSelect from "../../../components/common/StaticSelect";
 
 import {
     createPhieuKiem,
@@ -266,6 +267,46 @@ export default function PhieuKiemCreate() {
         setForm(prev => ({ ...prev, [name]: value }));
     };
 
+    const handleLoaiKiemSelect = (option) => {
+        const value = option?.Id || "";
+        if (!value) {
+            setSelectedLoai(null);
+            setSelectedLichList([]);
+            setSearchTerm("");
+            setDisplaySearchTerm("");
+            setChungLoaiFilter("");
+            setDisplayChungLoaiFilter("");
+            setShowChungLoaiFilter(false);
+            setForm((prev) => ({ ...prev, loaiKiemId: "" }));
+            return;
+        }
+
+        setSelectedLoai(option);
+        setSelectedLichList([]);
+        setSearchTerm("");
+        setDisplaySearchTerm("");
+        setChungLoaiFilter("");
+        setDisplayChungLoaiFilter("");
+        setShowChungLoaiFilter(false);
+        setForm((prev) => ({ ...prev, loaiKiemId: value }));
+        fetchLichList(option);
+    };
+
+    const handleNguoiKiemSelect = (option) => {
+        setForm((prev) => ({ ...prev, nguoiKiemId: option?.Id || "" }));
+    };
+
+    const handleMucDoKiemTraSelect = (option) => {
+        setForm((prev) => ({ ...prev, mucDoKiemTra: option?.value || "" }));
+    };
+
+    const mucDoKiemTraOptions = [
+        { value: "", label: "-- Không chọn --" },
+        { value: "KT lần đầu", label: "KT lần đầu" },
+        { value: "KT thường xuyên", label: "KT thường xuyên" },
+        { value: "KT lại", label: "KT lại" }
+    ];
+
     const handleToggleRow = (row) => {
         const rowId = getRowId(row);
         setSelectedLichList(prev => {
@@ -410,53 +451,39 @@ export default function PhieuKiemCreate() {
 
                     <Grid container spacing={3}>
                         <Grid size={{ xs: 12, md: 4 }}>
-                            <TextField
-                                select
-                                fullWidth
+                            <StaticSelect
                                 label="Loại kiểm"
-                                name="loaiKiemId"
+                                placeholder="Chọn loại kiểm..."
+                                options={loaiKiemList}
                                 value={form.loaiKiemId}
-                                onChange={handleChange}
-                            >
-                                {loaiKiemList.map((lk) => (
-                                    <MenuItem key={lk.Id} value={lk.Id}>
-                                        {lk.TenLoai}
-                                    </MenuItem>
-                                ))}
-                            </TextField>
+                                onSelect={handleLoaiKiemSelect}
+                                valueField="Id"
+                                labelField="TenLoai"
+                            />
                         </Grid>
 
                         <Grid size={{ xs: 12, md: 4 }}>
-                            <TextField
-                                select
-                                fullWidth
+                            <StaticSelect
                                 label="KCS phụ trách"
-                                name="nguoiKiemId"
+                                placeholder="Chọn KCS phụ trách..."
+                                options={kcsList}
                                 value={form.nguoiKiemId}
-                                onChange={handleChange}
-                            >
-                                {kcsList.map((u) => (
-                                    <MenuItem key={u.Id} value={u.Id}>
-                                        {u.FullName}
-                                    </MenuItem>
-                                ))}
-                            </TextField>
+                                onSelect={handleNguoiKiemSelect}
+                                valueField="Id"
+                                labelField="FullName"
+                            />
                         </Grid>
 
                         <Grid size={{ xs: 12, md: 4 }}>
-                            <TextField
-                                select
-                                fullWidth
+                            <StaticSelect
                                 label="Mức độ kiểm tra"
-                                name="mucDoKiemTra"
+                                placeholder="Chọn mức độ kiểm tra..."
+                                options={mucDoKiemTraOptions}
                                 value={form.mucDoKiemTra}
-                                onChange={handleChange}
-                            >
-                                <MenuItem value=""><em>-- Không chọn --</em></MenuItem>
-                                <MenuItem value="KT lần đầu">KT lần đầu</MenuItem>
-                                <MenuItem value="KT thường xuyên">KT thường xuyên</MenuItem>
-                                <MenuItem value="KT lại">KT lại</MenuItem>
-                            </TextField>
+                                onSelect={handleMucDoKiemTraSelect}
+                                valueField="value"
+                                labelField="label"
+                            />
                         </Grid>
 
                         <Grid size={{ xs: 12 }}>

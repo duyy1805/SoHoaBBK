@@ -52,6 +52,7 @@ router.get("/:id", authenticateToken, async (req, res) => {
             .query(`
                 SELECT TOP 1
                     bb.NguoiLapId,
+                    bb.DynamicFieldsJSON,
                     ulap.FullName AS NguoiTao,
                     ISNULL(bb.MucDoKhongPhuHopConfirmed, 0) AS MucDoKhongPhuHopConfirmed
                 FROM dbo.BIEN_BAN_KIEM bb
@@ -62,13 +63,51 @@ router.get("/:id", authenticateToken, async (req, res) => {
         const recordsets = result.recordsets || [];
         const baseInfo = recordsets[0]?.[0] || null;
         const extraInfo = extraInfoResult.recordset?.[0] || {};
+        let dynamicFields = [];
+
+        if (extraInfo?.DynamicFieldsJSON) {
+            try {
+                dynamicFields = JSON.parse(extraInfo.DynamicFieldsJSON);
+            } catch (e) {
+                console.error("Lỗi parse DynamicFieldsJSON SXBT:", e);
+            }
+        }
+
+        delete extraInfo.DynamicFieldsJSON;
+        const confirmSteps = recordsets[4] || [];
+        const confirmedUserIds = [...new Set(
+            confirmSteps
+                .map((step) => step?.ConfirmedBy)
+                .filter((value) => Number.isInteger(value) || (typeof value === "number" && !Number.isNaN(value)))
+        )];
+
+        let userNameMap = new Map();
+        if (confirmedUserIds.length > 0) {
+            const confirmedUsersResult = await pool.request()
+                .query(`
+                    SELECT Id, FullName, Username
+                    FROM dbo.USERS
+                    WHERE Id IN (${confirmedUserIds.join(",")})
+                `);
+
+            userNameMap = new Map(
+                (confirmedUsersResult.recordset || []).map((user) => [
+                    Number(user.Id),
+                    user.FullName || user.Username || ""
+                ])
+            );
+        }
 
         res.json({
             info: baseInfo ? { ...baseInfo, ...extraInfo } : null,
             defects: recordsets[1] || [],
             xuLyRows: recordsets[2] || [],
             hanhDong: recordsets[3] || [],
-            confirmSteps: recordsets[4] || []
+            dynamicFields,
+            confirmSteps: confirmSteps.map((step) => ({
+                ...step,
+                TenNguoiXacNhan: step?.ConfirmedBy ? userNameMap.get(Number(step.ConfirmedBy)) || "" : ""
+            }))
         });
     } catch (err) {
         console.error("GetBienBanSxbtDetail error:", err);

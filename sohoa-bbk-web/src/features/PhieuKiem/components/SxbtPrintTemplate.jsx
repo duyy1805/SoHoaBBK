@@ -23,6 +23,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
     summary = null,
     defects = [],
     dynamicFields = [],
+    confirmSteps = [],
 }, ref) => {
     if (!phieu) return null;
 
@@ -49,6 +50,15 @@ export const SxbtPrintTemplate = React.forwardRef(({
     const majorMinorDefects = defects.filter(d =>
         d.DefectType !== 'CRITICAL' && d.DefectType !== 'Nghiêm trọng'
     );
+
+    const confirmedSteps = (confirmSteps || []).filter((step) => step?.TrangThai === "DA_XAC_NHAN");
+
+    const signatureLabels = {
+        SXBT: "BỘ PHẬN SXBT",
+        B8: "PHÒNG KIỂM NGHIỆM",
+        B7: "PHÒNG CHẤT LƯỢNG",
+        GD: "GIÁM ĐỐC"
+    };
 
     // CSS styles (inline + print rules)
     const s = {
@@ -98,6 +108,17 @@ export const SxbtPrintTemplate = React.forwardRef(({
         },
         bold: { fontWeight: 'bold' },
         section: { fontWeight: 'bold', fontSize: '9.5pt', marginBottom: '5px', marginTop: '6px' },
+        signedStamp: {
+            display: 'inline-block',
+            padding: '5px 10px',
+            border: '2px solid #d32f2f',
+            color: '#d32f2f',
+            fontWeight: 'bold',
+            fontSize: '11pt',
+            transform: 'rotate(-8deg)',
+            borderRadius: '4px',
+            marginTop: '8px'
+        }
     };
 
     // Empty rows helper
@@ -449,30 +470,41 @@ export const SxbtPrintTemplate = React.forwardRef(({
                 </div>
 
                 {/* ===== CHỮ KÝ ===== */}
-                <div className="avoid-break" style={{ display: 'flex', justifyContent: 'space-between', marginTop: '14px', fontSize: '9pt', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
-                    {/* Cột 1: PHÒNG KN */}
-                    <div style={{ width: '30%', textAlign: 'center' }}>
-                        <div style={{ fontStyle: 'italic', marginBottom: '4px' }}>Ngày.................</div>
-                        <div style={{ fontWeight: 'bold', fontSize: '10pt' }}>PHÒNG KN</div>
-                        <div style={{ height: '80px' }}></div>
-                    </div>
+                {confirmedSteps.length > 0 && (
+                    <div
+                        className="avoid-break"
+                        style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            gap: '12px',
+                            marginTop: '14px',
+                            fontSize: '9pt',
+                            pageBreakInside: 'avoid',
+                            breakInside: 'avoid'
+                        }}
+                    >
+                        {confirmedSteps.map((step, index) => {
+                            const stepDate = step.ConfirmedAt
+                                ? new Date(step.ConfirmedAt)
+                                : null;
+                            const dateLabel = stepDate
+                                ? `Ngày ${stepDate.getDate()} tháng ${stepDate.getMonth() + 1} năm ${stepDate.getFullYear()}`
+                                : 'Ngày.................';
+                            const title = signatureLabels[step.MaBoPhan] || step.TenBoPhan || step.MaBoPhan || `Bộ phận ${index + 1}`;
 
-                    {/* Cột 2: BỘ PHẬN KHO */}
-                    <div style={{ width: '30%', textAlign: 'center' }}>
-                        <div style={{ fontStyle: 'italic', marginBottom: '4px' }}>Ngày.................</div>
-                        <div style={{ fontWeight: 'bold', fontSize: '10pt' }}>BỘ PHẬN KHO</div>
-                        <div style={{ height: '80px' }}></div>
+                            return (
+                                <div key={step.Id || `${step.MaBoPhan}-${index}`} style={{ flex: 1, textAlign: 'center' }}>
+                                    <div style={{ fontStyle: 'italic', marginBottom: '4px' }}>{dateLabel}</div>
+                                    <div style={{ fontWeight: 'bold', fontSize: '10pt' }}>{title}</div>
+                                    <div style={{ height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <span style={s.signedStamp}>ĐÃ KÝ</span>
+                                    </div>
+                                    <div style={{ fontWeight: 'bold' }}>{step.TenNguoiXacNhan || ''}</div>
+                                </div>
+                            );
+                        })}
                     </div>
-
-                    {/* Cột 3: NGƯỜI LẬP */}
-                    <div style={{ width: '30%', textAlign: 'center' }}>
-                        <div style={{ fontStyle: 'italic', marginBottom: '4px' }}>Ngày.................</div>
-                        <div style={{ fontWeight: 'bold', fontSize: '10pt' }}>NGƯỜI LẬP</div>
-                        <div style={{ height: '80px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '4px' }}>
-                            <span>{phieu.TenNguoiKiem || ''}</span>
-                        </div>
-                    </div>
-                </div>
+                )}
 
             </div>
         </div>
