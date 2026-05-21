@@ -10,7 +10,8 @@ import {
     TextInput,
     Modal,
     KeyboardAvoidingView,
-    Platform
+    Platform,
+    Image
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
@@ -18,6 +19,7 @@ import { Checkbox } from "react-native-paper";
 import {
     getPhieuKiemDetail,
     getBtpItems,
+    getAssetUrl,
     getDefectList,
     saveSxbtData,
     completeSxbt,
@@ -92,7 +94,8 @@ export default function SxbtInspectionScreen({ route, navigation }) {
 
     const filteredDefects = masterDefectList.filter(d =>
         (d.TenLoi || '').toLowerCase().includes(searchText.toLowerCase()) ||
-        (d.MaLoi || '').toLowerCase().includes(searchText.toLowerCase())
+        (d.MaLoi || '').toLowerCase().includes(searchText.toLowerCase()) ||
+        (d.PhamViApDung || '').toLowerCase().includes(searchText.toLowerCase())
     );
 
     useEffect(() => {
@@ -104,7 +107,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
             setLoading(true);
             const [detailRes, defectRes, userData] = await Promise.all([
                 getPhieuKiemDetail(id),
-                getDefectList(),
+                getDefectList({ phanHe: "SXBT" }),
                 getUser()
             ]);
 
@@ -137,7 +140,9 @@ export default function SxbtInspectionScreen({ route, navigation }) {
             if (phieuInfo.KetLuan) setKetLuan(phieuInfo.KetLuan);
 
             // 4. Mục IV: Lỗi
-            const masterDefects = defectRes.data || [];
+            const masterDefects = (defectRes.data || []).filter(
+                item => String(item?.PhanHe || "").trim().toUpperCase() === "SXBT"
+            );
             setMasterDefectList(masterDefects);
 
             const savedDefects = data.defects || [];
@@ -650,10 +655,18 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                                                 <Text style={styles.defectDesc}>{d.MoTa}</Text>
                                             )}
 
-                                            {d.GhiChu && (
+                                            {d.ImageUrl && (
+                                                <Image
+                                                    source={{ uri: getAssetUrl(d.ImageUrl) }}
+                                                    style={styles.defectImage}
+                                                    resizeMode="cover"
+                                                />
+                                            )}
+
+                                            {(d.PhamViApDung || d.GhiChu) && (
                                                 <View style={styles.noteBox}>
                                                     <Ionicons name="alert-circle-outline" size={14} color="#2563eb" />
-                                                    <Text style={styles.noteText}>{d.GhiChu}</Text>
+                                                    <Text style={styles.noteText}>{d.PhamViApDung || d.GhiChu}</Text>
                                                 </View>
                                             )}
                                         </TouchableOpacity>
@@ -737,6 +750,7 @@ const styles = StyleSheet.create({
     defectCode: { fontWeight: "bold", fontSize: 14, color: "#64748b", marginLeft: 8 },
     defectName: { fontSize: 16, fontWeight: "600", color: "#0f172a", marginTop: 2 },
     defectDesc: { fontSize: 13, color: "#64748b", marginTop: 6, lineHeight: 18 },
+    defectImage: { width: "100%", height: 160, borderRadius: 12, marginTop: 10, backgroundColor: "#e2e8f0" },
     typeBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
     typeBadgeText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
     noteBox: { flexDirection: "row", alignItems: "center", marginTop: 8, backgroundColor: "#eff6ff", padding: 8, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: '#2563eb' },

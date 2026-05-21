@@ -25,7 +25,7 @@ router.get(
   "/defect-list",
   authenticateToken,
   async (req, res) => {
-    const { defectType } = req.query;
+    const { defectType, phanHe } = req.query;
 
     try {
       const pool = await poolPromise;
@@ -35,6 +35,11 @@ router.get(
           "DefectType",
           sql.NVarChar(20),
           defectType || null
+        )
+        .input(
+          "PhanHe",
+          sql.NVarChar(20),
+          phanHe || null
         )
         .execute("sp_DM_GetDefectList");
 
@@ -66,7 +71,20 @@ router.post(
   authenticateToken,
   authorize("QUAN_TRI_DM"),
   async (req, res) => {
-    const { TenLoi, DefectType, MoTa, GhiChu } = req.body;
+    const {
+      TenLoi,
+      DefectType,
+      MoTa,
+      GhiChu,
+      MaLoi,
+      PhanHe,
+      MaNhomLoi,
+      LoaiLoiSXBT,
+      PhamViApDung,
+      ThiTruong,
+      ImageUrl,
+      ThuTu
+    } = req.body;
 
     try {
       const pool = await poolPromise;
@@ -76,6 +94,14 @@ router.post(
         .input("DefectType", sql.NVarChar(20), DefectType)
         .input("MoTa", sql.NVarChar(sql.MAX), MoTa)
         .input("GhiChu", sql.NVarChar(sql.MAX), GhiChu)
+        .input("MaLoi", sql.NVarChar(50), MaLoi || null)
+        .input("PhanHe", sql.NVarChar(20), PhanHe || null)
+        .input("MaNhomLoi", sql.NVarChar(20), MaNhomLoi || null)
+        .input("LoaiLoiSXBT", sql.NVarChar(10), LoaiLoiSXBT || null)
+        .input("PhamViApDung", sql.NVarChar(500), PhamViApDung || null)
+        .input("ThiTruong", sql.NVarChar(255), ThiTruong || null)
+        .input("ImageUrl", sql.NVarChar(500), ImageUrl || null)
+        .input("ThuTu", sql.Int, ThuTu ?? null)
         .execute("sp_DM_CreateDefect");
 
       res.json({ message: "Tạo lỗi thành công" });
@@ -93,7 +119,21 @@ router.put(
   authorize("QUAN_TRI_DM"),
   async (req, res) => {
     const { id } = req.params;
-    const { TenLoi, DefectType, TrangThai, MoTa, GhiChu } = req.body;
+    const {
+      TenLoi,
+      DefectType,
+      TrangThai,
+      MoTa,
+      GhiChu,
+      MaLoi,
+      PhanHe,
+      MaNhomLoi,
+      LoaiLoiSXBT,
+      PhamViApDung,
+      ThiTruong,
+      ImageUrl,
+      ThuTu
+    } = req.body;
 
     try {
       const pool = await poolPromise;
@@ -105,6 +145,14 @@ router.put(
         .input("TrangThai", sql.Bit, TrangThai)
         .input("MoTa", sql.NVarChar(sql.MAX), MoTa)
         .input("GhiChu", sql.NVarChar(sql.MAX), GhiChu)
+        .input("MaLoi", sql.NVarChar(50), MaLoi || null)
+        .input("PhanHe", sql.NVarChar(20), PhanHe || null)
+        .input("MaNhomLoi", sql.NVarChar(20), MaNhomLoi || null)
+        .input("LoaiLoiSXBT", sql.NVarChar(10), LoaiLoiSXBT || null)
+        .input("PhamViApDung", sql.NVarChar(500), PhamViApDung || null)
+        .input("ThiTruong", sql.NVarChar(255), ThiTruong || null)
+        .input("ImageUrl", sql.NVarChar(500), ImageUrl || null)
+        .input("ThuTu", sql.Int, ThuTu ?? null)
         .execute("sp_DM_UpdateDefect");
 
       res.json({ message: "Cập nhật thành công" });

@@ -1,5 +1,12 @@
 import axiosClient from "./axiosClient";
 
+export const getAssetUrl = (url) => {
+    if (!url) return "";
+    if (/^https?:\/\//i.test(url)) return url;
+    const apiBase = axiosClient.defaults.baseURL || "";
+    return `${apiBase.replace(/\/api\/?$/, "")}${url.startsWith("/") ? url : `/${url}`}`;
+};
+
 /* =====================================================
    1️⃣ DANH MỤC LỖI (DEFECT)
 ===================================================== */

@@ -2,6 +2,13 @@
 
 import axiosClient from "./axiosClient";
 
+export const getAssetUrl = (url) => {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  const apiBase = axiosClient.defaults.baseURL || "";
+  return `${apiBase.replace(/\/api\/?$/, "")}${url.startsWith("/") ? url : `/${url}`}`;
+};
+
 /* ================================
    Lấy danh sách phiếu của KCS
 ================================ */
@@ -18,11 +25,13 @@ export const getPhieuKiemDetail = (id) => {
   return axiosClient.get(`/phieu-kiem/${id}`);
 };
 
-export const getDefectList = (defectType = null) => {
+export const getDefectList = (params = null) => {
+  const queryParams = typeof params === "string"
+    ? { defectType: params }
+    : (params || {});
+
   return axiosClient.get("/lookup/defect-list", {
-    params: defectType
-      ? { defectType }
-      : {}
+    params: queryParams
   });
 };
 

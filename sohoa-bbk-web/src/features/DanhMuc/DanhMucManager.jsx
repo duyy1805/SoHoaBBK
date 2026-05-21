@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Box, Typography, TextField, MenuItem } from "@mui/material";
 
 import DefectManager from "./components/DefectManager";
+import SxbtDefectManager from "./components/SxbtDefectManager";
 import NhomKiemManager from "./components/NhomKiemManager";
 import CheckItemManager from "./components/CheckItemManager";
 import SanPhamManger from "./components/SanPhamManager"
@@ -24,6 +25,7 @@ export default function DanhMucManager() {
                 sx={{ mb: 2, width: 300 }}
             >
                 <MenuItem value="DEFECT">Danh mục lỗi</MenuItem>
+                <MenuItem value="SXBT_DEFECT">Danh mục lỗi SXBT</MenuItem>
                 <MenuItem value="NHOM_KIEM">Nhóm kiểm</MenuItem>
                 <MenuItem value="CHECK_ITEM">Mục kiểm</MenuItem>
                 <MenuItem value="SAN_PHAM">Sản phẩm, vật tư</MenuItem>
@@ -31,6 +33,7 @@ export default function DanhMucManager() {
             </TextField>
 
             {type === "DEFECT" && <DefectManager />}
+            {type === "SXBT_DEFECT" && <SxbtDefectManager />}
             {type === "NHOM_KIEM" && <NhomKiemManager />}
             {type === "CHECK_ITEM" && <CheckItemManager />}
             {type === "SAN_PHAM" && <SanPhamManger />}

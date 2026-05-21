@@ -8,7 +8,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "server": "nodemon index.js"
+    "server": "nodemon index.js",
+    "import:sxbt-defects": "node scripts/import-sxbt-defects.js"
   },
   "dependencies": {
     "argon2": "^0.44.0",
