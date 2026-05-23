@@ -78,6 +78,23 @@ export const deleteCheckItem = (id) => {
     return axiosClient.delete(`/lookup/check-item/${id}`);
 };
 
+export const importDanhMucKiemExcel = (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    return axiosClient.post("/lookup/import-danh-muc-kiem", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 120000
+    });
+};
+
+export const downloadDanhMucKiemTemplate = () => {
+    return axiosClient.get("/lookup/import-danh-muc-kiem/template", {
+        responseType: "blob",
+        timeout: 60000
+    });
+};
+
 export const getSanPhamList = (page = 0, pageSize = 20, keyword = "") =>
     axiosClient.get("/lookup/san-pham", {
         params: { page, pageSize, keyword }
@@ -90,6 +107,12 @@ export const updateSanPham = (id, data) =>
 
 export const deleteSanPham = (id) =>
     axiosClient.delete(`/lookup/san-pham/${id}`);
+
+export const exportSanPhamDanhMucKiem = (sanPhamId) =>
+    axiosClient.get(`/lookup/san-pham/${sanPhamId}/danh-muc-kiem/export`, {
+        responseType: "blob",
+        timeout: 60000
+    });
 
 export const getSanPhamNhomKiem = (sanPhamId) =>
     axiosClient.get(`/lookup/san-pham/${sanPhamId}/nhom-kiem`);
@@ -123,6 +146,12 @@ export const getInspectionLevels = () => axiosClient.get("/lookup/inspection-lev
 
 export const getSanPhamThongSo = (sanPhamId) =>
     axiosClient.get(`/lookup/san-pham/${sanPhamId}/thong-so`);
+
+export const exportSanPhamThongSo = (sanPhamId) =>
+    axiosClient.get(`/lookup/san-pham/${sanPhamId}/thong-so/export`, {
+        responseType: "blob",
+        timeout: 60000
+    });
 
 export const createSanPhamThongSo = (data) =>
     axiosClient.post("/lookup/san-pham-thong-so", data);

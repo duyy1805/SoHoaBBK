@@ -1,10 +1,89 @@
 const express = require('express');
 const router = express.Router();
 const sql = require('mssql');
+const multer = require('multer');
+const XLSX = require('xlsx');
 
 const { poolPromise } = require('../db');
 const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
+
+const excelUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!file.originalname.toLowerCase().endsWith(".xlsx")) {
+      return cb(new Error("Chỉ hỗ trợ file .xlsx"));
+    }
+    cb(null, true);
+  }
+});
+
+const trimValue = (value) => String(value ?? "").trim();
+const normalizeKey = (value) => trimValue(value).toLowerCase();
+const buildNhomImportKey = (tenNhom, moTaNhom) => `${normalizeKey(tenNhom)}|${normalizeKey(moTaNhom)}`;
+const parseOrder = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const normalizeImportRow = (row, index) => ({
+  line: index + 2,
+  MaSanPham: trimValue(row.MaSanPham),
+  TenNhom: trimValue(row.TenNhom),
+  MoTaNhom: trimValue(row.MoTaNhom),
+  ThuTuNhom: row.ThuTuNhom,
+  TenMucKiem: trimValue(row.TenMucKiem),
+  ThamChieu: trimValue(row.ThamChieu),
+  PhuongPhapKiem: trimValue(row.PhuongPhapKiem),
+  TieuChuan: trimValue(row.TieuChuan),
+  ThuTuMuc: row.ThuTuMuc,
+  ThuTuGanNhom: row.ThuTuGanNhom
+});
+
+const requestWithTransaction = (transaction) => new sql.Request(transaction);
+
+async function getAllSanPham(pool) {
+  const pageSize = 500;
+  let page = 0;
+  let items = [];
+
+  while (true) {
+    const result = await pool.request()
+      .input("Page", page)
+      .input("PageSize", pageSize)
+      .input("Keyword", null)
+      .execute("sp_DM_GetSanPhamList");
+
+    const rows = result.recordsets?.[0] || [];
+    items = items.concat(rows);
+
+    if (rows.length < pageSize) break;
+    page += 1;
+  }
+
+  return items;
+}
+
+async function getNhomKiemListInTransaction(transaction) {
+  const result = await requestWithTransaction(transaction)
+    .execute("sp_DM_GetNhomKiemList");
+  return result.recordset || [];
+}
+
+async function getCheckItemsInTransaction(transaction, nhomKiemId) {
+  const result = await requestWithTransaction(transaction)
+    .input("NhomKiemId", sql.Int, nhomKiemId)
+    .execute("sp_DM_GetCheckItemList");
+  return result.recordset || [];
+}
+
+async function getSanPhamNhomKiemInTransaction(transaction, sanPhamId) {
+  const result = await requestWithTransaction(transaction)
+    .input("SanPhamId", sql.Int, sanPhamId)
+    .execute("sp_SANPHAM_GetNhomKiemBySanPham");
+  return result.recordset || [];
+}
 
 router.get('/loai-kiem', authenticateToken, async (req, res) => {
   try {
@@ -607,6 +686,484 @@ router.delete(
 );
 
 router.get(
+  "/import-danh-muc-kiem/template",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  async (req, res) => {
+    const rows = [
+      {
+        MaSanPham: "SP001",
+        TenNhom: "Ngoại quan",
+        MoTaNhom: "Kiểm ngoại quan của balo",
+        ThuTuNhom: 1,
+        TenMucKiem: "Bề mặt vải",
+        ThamChieu: "Bản vẽ/tiêu chuẩn",
+        PhuongPhapKiem: "Quan sát bằng mắt thường",
+        TieuChuan: "Không trầy xước, móp méo",
+        ThuTuMuc: 1,
+        ThuTuGanNhom: 1
+      },
+      {
+        MaSanPham: "SP002",
+        TenNhom: "Ngoại quan",
+        MoTaNhom: "Kiểm ngoại quan của lều",
+        ThuTuNhom: 1,
+        TenMucKiem: "Đường may mép lều",
+        ThamChieu: "Mẫu chuẩn",
+        PhuongPhapKiem: "Quan sát bằng mắt thường",
+        TieuChuan: "Đường may đều, không bung chỉ",
+        ThuTuMuc: 1,
+        ThuTuGanNhom: 1
+      }
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(rows, {
+      header: [
+        "MaSanPham",
+        "TenNhom",
+        "MoTaNhom",
+        "ThuTuNhom",
+        "TenMucKiem",
+        "ThamChieu",
+        "PhuongPhapKiem",
+        "TieuChuan",
+        "ThuTuMuc",
+        "ThuTuGanNhom"
+      ]
+    });
+
+    worksheet["!cols"] = [
+      { wch: 16 },
+      { wch: 24 },
+      { wch: 34 },
+      { wch: 12 },
+      { wch: 28 },
+      { wch: 22 },
+      { wch: 28 },
+      { wch: 34 },
+      { wch: 12 },
+      { wch: 16 }
+    ];
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, "DanhMucKiem");
+
+    const buffer = XLSX.write(workbook, {
+      type: "buffer",
+      bookType: "xlsx"
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=\"mau-import-danh-muc-kiem.xlsx\""
+    );
+    res.send(buffer);
+  }
+);
+
+router.get(
+  "/san-pham/:sanPhamId/danh-muc-kiem/export",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  async (req, res) => {
+    const { sanPhamId } = req.params;
+
+    try {
+      const pool = await poolPromise;
+      const sanPhamList = await getAllSanPham(pool);
+      const sanPham = sanPhamList.find(item => Number(item.Id) === Number(sanPhamId));
+
+      if (!sanPham) {
+        return res.status(404).json({ message: "Không tìm thấy sản phẩm/vật tư" });
+      }
+
+      const nhomResult = await pool.request()
+        .input("SanPhamId", sql.Int, sanPhamId)
+        .execute("sp_SANPHAM_GetNhomKiemBySanPham");
+
+      const allNhomResult = await pool.request()
+        .execute("sp_DM_GetNhomKiemList");
+      const nhomDetailById = new Map(
+        (allNhomResult.recordset || []).map(item => [Number(item.Id), item])
+      );
+      const nhomRows = nhomResult.recordset || [];
+      const rows = [];
+
+      for (const nhom of nhomRows.sort((a, b) => (a.ThuTu || 0) - (b.ThuTu || 0))) {
+        const nhomDetail = nhomDetailById.get(Number(nhom.NhomKiemId)) || nhom;
+        const itemResult = await pool.request()
+          .input("NhomKiemId", sql.Int, nhom.NhomKiemId)
+          .execute("sp_DM_GetCheckItemList");
+
+        const checkItems = itemResult.recordset || [];
+
+        if (!checkItems.length) {
+          rows.push({
+            MaSanPham: sanPham.MaSanPham,
+            TenNhom: nhomDetail.TenNhom || nhom.TenNhom,
+            MoTaNhom: nhomDetail.MoTa || "",
+            ThuTuNhom: nhomDetail.ThuTu || nhom.ThuTu || "",
+            TenMucKiem: "",
+            ThamChieu: "",
+            PhuongPhapKiem: "",
+            TieuChuan: "",
+            ThuTuMuc: "",
+            ThuTuGanNhom: nhom.ThuTu || ""
+          });
+          continue;
+        }
+
+        checkItems
+          .sort((a, b) => (a.ThuTu || 0) - (b.ThuTu || 0))
+          .forEach(item => {
+            rows.push({
+              MaSanPham: sanPham.MaSanPham,
+              TenNhom: nhomDetail.TenNhom || nhom.TenNhom,
+              MoTaNhom: nhomDetail.MoTa || "",
+              ThuTuNhom: nhomDetail.ThuTu || nhom.ThuTu || "",
+              TenMucKiem: item.TenMucKiem || "",
+              ThamChieu: item.ThamChieu || "",
+              PhuongPhapKiem: item.PhuongPhapKiem || "",
+              TieuChuan: item.TieuChuan || "",
+              ThuTuMuc: item.ThuTu || "",
+              ThuTuGanNhom: nhom.ThuTu || ""
+            });
+          });
+      }
+
+      const workbook = XLSX.utils.book_new();
+      const worksheet = XLSX.utils.json_to_sheet(rows, {
+        header: [
+          "MaSanPham",
+          "TenNhom",
+          "MoTaNhom",
+          "ThuTuNhom",
+          "TenMucKiem",
+          "ThamChieu",
+          "PhuongPhapKiem",
+          "TieuChuan",
+          "ThuTuMuc",
+          "ThuTuGanNhom"
+        ]
+      });
+
+      worksheet["!cols"] = [
+        { wch: 16 },
+        { wch: 24 },
+        { wch: 34 },
+        { wch: 12 },
+        { wch: 28 },
+        { wch: 22 },
+        { wch: 28 },
+        { wch: 34 },
+        { wch: 12 },
+        { wch: 16 }
+      ];
+
+      XLSX.utils.book_append_sheet(workbook, worksheet, "DanhMucKiem");
+
+      const buffer = XLSX.write(workbook, {
+        type: "buffer",
+        bookType: "xlsx"
+      });
+
+      const safeCode = String(sanPham.MaSanPham || sanPham.Id)
+        .replace(/[^\w.-]+/g, "_")
+        .slice(0, 80);
+
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="danh-muc-kiem-${safeCode}.xlsx"`
+      );
+      res.send(buffer);
+    } catch (err) {
+      console.error("Export danh muc kiem error:", err);
+      res.status(500).json({
+        message: "Không xuất được danh mục kiểm",
+        error: err.message
+      });
+    }
+  }
+);
+
+router.post(
+  "/import-danh-muc-kiem",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  (req, res, next) => {
+    excelUpload.single("file")(req, res, (err) => {
+      if (err) {
+        return res.status(400).json({ message: err.message || "File không hợp lệ" });
+      }
+      next();
+    });
+  },
+  async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ message: "Vui lòng chọn file .xlsx" });
+    }
+
+    let rows = [];
+
+    try {
+      const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+      const sheetName = workbook.SheetNames.includes("DanhMucKiem")
+        ? "DanhMucKiem"
+        : null;
+
+      if (!sheetName) {
+        return res.status(400).json({
+          message: "File phải có sheet tên DanhMucKiem",
+          errors: [{ line: 1, message: "Không tìm thấy sheet DanhMucKiem" }]
+        });
+      }
+
+      rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+        defval: "",
+        raw: false
+      }).map(normalizeImportRow);
+    } catch (err) {
+      console.error("Parse import danh muc kiem error:", err);
+      return res.status(400).json({ message: "Không đọc được file Excel" });
+    }
+
+    if (!rows.length) {
+      return res.status(400).json({
+        message: "File không có dữ liệu",
+        errors: [{ line: 1, message: "File không có dòng dữ liệu để import" }]
+      });
+    }
+
+    try {
+      const pool = await poolPromise;
+      const sanPhamList = await getAllSanPham(pool);
+      const sanPhamByCode = new Map(
+        sanPhamList.map(item => [normalizeKey(item.MaSanPham), item])
+      );
+
+      const errors = [];
+
+      rows.forEach((row) => {
+        if (!row.MaSanPham) {
+          errors.push({ line: row.line, message: "Thiếu MaSanPham" });
+        } else if (!sanPhamByCode.has(normalizeKey(row.MaSanPham))) {
+          errors.push({ line: row.line, message: `MaSanPham không tồn tại: ${row.MaSanPham}` });
+        }
+
+        if (!row.TenNhom) {
+          errors.push({ line: row.line, message: "Thiếu TenNhom" });
+        }
+
+        if (!row.MoTaNhom) {
+          errors.push({ line: row.line, message: "Thiếu MoTaNhom để phân biệt nhóm kiểm" });
+        }
+
+        if (!row.TenMucKiem) {
+          errors.push({ line: row.line, message: "Thiếu TenMucKiem" });
+        }
+      });
+
+      if (errors.length) {
+        return res.status(400).json({
+          message: "File có dữ liệu không hợp lệ",
+          errors
+        });
+      }
+
+      const nhomRows = new Map();
+      const itemRows = new Map();
+      const assignRows = new Map();
+
+      rows.forEach((row, index) => {
+        const nhomKey = buildNhomImportKey(row.TenNhom, row.MoTaNhom);
+        const sanPham = sanPhamByCode.get(normalizeKey(row.MaSanPham));
+        const nhomOrder = parseOrder(row.ThuTuNhom, index + 1);
+        const itemOrder = parseOrder(row.ThuTuMuc, index + 1);
+        const assignOrder = parseOrder(row.ThuTuGanNhom, index + 1);
+
+        if (!nhomRows.has(nhomKey)) {
+          nhomRows.set(nhomKey, {
+            TenNhom: row.TenNhom,
+            MoTa: row.MoTaNhom,
+            ThuTu: nhomOrder
+          });
+        }
+
+        const itemKey = `${nhomKey}|${normalizeKey(row.TenMucKiem)}`;
+        if (!itemRows.has(itemKey)) {
+          itemRows.set(itemKey, {
+            nhomKey,
+            TenMucKiem: row.TenMucKiem,
+            ThamChieu: row.ThamChieu,
+            PhuongPhapKiem: row.PhuongPhapKiem,
+            TieuChuan: row.TieuChuan,
+            ThuTu: itemOrder
+          });
+        }
+
+        const assignKey = `${sanPham.Id}|${nhomKey}`;
+        if (!assignRows.has(assignKey)) {
+          assignRows.set(assignKey, {
+            SanPhamId: sanPham.Id,
+            nhomKey,
+            ThuTu: assignOrder
+          });
+        }
+      });
+
+      const transaction = new sql.Transaction(pool);
+      await transaction.begin();
+
+      const summary = {
+        totalRows: rows.length,
+        createdNhom: 0,
+        updatedNhom: 0,
+        createdMuc: 0,
+        updatedMuc: 0,
+        createdGanNhom: 0,
+        updatedGanNhom: 0
+      };
+
+      try {
+        let nhomList = await getNhomKiemListInTransaction(transaction);
+        const nhomByName = new Map(
+          nhomList.map(item => [buildNhomImportKey(item.TenNhom, item.MoTa), item])
+        );
+
+        for (const [nhomKey, nhom] of nhomRows.entries()) {
+          const existed = nhomByName.get(nhomKey);
+
+          if (existed) {
+            await requestWithTransaction(transaction)
+              .input("Id", sql.Int, existed.Id)
+              .input("TenNhom", sql.NVarChar(255), nhom.TenNhom)
+              .input("MoTa", sql.NVarChar(sql.MAX), nhom.MoTa)
+              .input("ThuTu", sql.Int, nhom.ThuTu)
+              .input("TrangThai", sql.Bit, existed.TrangThai)
+              .execute("sp_DM_UpdateNhomKiem");
+            summary.updatedNhom += 1;
+          } else {
+            await requestWithTransaction(transaction)
+              .input("TenNhom", sql.NVarChar(255), nhom.TenNhom)
+              .input("MoTa", sql.NVarChar(sql.MAX), nhom.MoTa)
+              .input("ThuTu", sql.Int, nhom.ThuTu)
+              .execute("sp_DM_CreateNhomKiem");
+            summary.createdNhom += 1;
+          }
+
+          nhomList = await getNhomKiemListInTransaction(transaction);
+          nhomByName.clear();
+          nhomList.forEach(item => nhomByName.set(buildNhomImportKey(item.TenNhom, item.MoTa), item));
+        }
+
+        const itemCache = new Map();
+        const getItemByName = async (nhomKiemId, tenMucKiem) => {
+          if (!itemCache.has(nhomKiemId)) {
+            const items = await getCheckItemsInTransaction(transaction, nhomKiemId);
+            itemCache.set(
+              nhomKiemId,
+              new Map(items.map(item => [normalizeKey(item.TenMucKiem), item]))
+            );
+          }
+
+          return itemCache.get(nhomKiemId).get(normalizeKey(tenMucKiem));
+        };
+
+        for (const item of itemRows.values()) {
+          const nhom = nhomByName.get(item.nhomKey);
+          const existed = await getItemByName(nhom.Id, item.TenMucKiem);
+
+          if (existed) {
+            await requestWithTransaction(transaction)
+              .input("Id", sql.Int, existed.Id)
+              .input("TenMucKiem", sql.NVarChar(255), item.TenMucKiem)
+              .input("ThamChieu", sql.NVarChar(sql.MAX), item.ThamChieu)
+              .input("PhuongPhapKiem", sql.NVarChar(sql.MAX), item.PhuongPhapKiem)
+              .input("TieuChuan", sql.NVarChar(sql.MAX), item.TieuChuan)
+              .input("ThuTu", sql.Int, item.ThuTu)
+              .input("TrangThai", sql.Bit, existed.TrangThai)
+              .execute("sp_DM_UpdateCheckItem");
+            summary.updatedMuc += 1;
+          } else {
+            await requestWithTransaction(transaction)
+              .input("NhomKiemId", sql.Int, nhom.Id)
+              .input("TenMucKiem", sql.NVarChar(255), item.TenMucKiem)
+              .input("ThamChieu", sql.NVarChar(sql.MAX), item.ThamChieu)
+              .input("PhuongPhapKiem", sql.NVarChar(sql.MAX), item.PhuongPhapKiem)
+              .input("TieuChuan", sql.NVarChar(sql.MAX), item.TieuChuan)
+              .input("ThuTu", sql.Int, item.ThuTu)
+              .execute("sp_DM_CreateCheckItem");
+            itemCache.delete(nhom.Id);
+            summary.createdMuc += 1;
+          }
+        }
+
+        const assignmentCache = new Map();
+        const getAssignmentByNhomId = async (sanPhamId, nhomKiemId) => {
+          if (!assignmentCache.has(sanPhamId)) {
+            const assignments = await getSanPhamNhomKiemInTransaction(transaction, sanPhamId);
+            assignmentCache.set(
+              sanPhamId,
+              new Map(assignments.map(item => [Number(item.NhomKiemId), item]))
+            );
+          }
+
+          return assignmentCache.get(sanPhamId).get(Number(nhomKiemId));
+        };
+
+        for (const assignment of assignRows.values()) {
+          const nhom = nhomByName.get(assignment.nhomKey);
+          const existed = await getAssignmentByNhomId(assignment.SanPhamId, nhom.Id);
+
+          if (existed) {
+            await requestWithTransaction(transaction)
+              .input("Id", sql.Int, existed.Id)
+              .input("BatBuoc", sql.Bit, true)
+              .input("ThuTu", sql.Int, assignment.ThuTu)
+              .execute("sp_SANPHAM_UpdateNhomKiem");
+            summary.updatedGanNhom += 1;
+          } else {
+            await requestWithTransaction(transaction)
+              .input("SanPhamId", sql.Int, assignment.SanPhamId)
+              .input("NhomKiemId", sql.Int, nhom.Id)
+              .input("BatBuoc", sql.Bit, true)
+              .input("ThuTu", sql.Int, assignment.ThuTu)
+              .execute("sp_SANPHAM_AddNhomKiem");
+            assignmentCache.delete(assignment.SanPhamId);
+            summary.createdGanNhom += 1;
+          }
+        }
+
+        await transaction.commit();
+
+        res.json({
+          success: true,
+          message: "Import danh mục kiểm thành công",
+          summary
+        });
+      } catch (err) {
+        await transaction.rollback();
+        throw err;
+      }
+    } catch (err) {
+      console.error("Import danh muc kiem error:", err);
+      res.status(500).json({
+        message: "Import danh mục kiểm thất bại",
+        error: err.message
+      });
+    }
+  }
+);
+
+router.get(
   "/de-nghi-xu-ly",
   authenticateToken,
   // authorize("QUAN_TRI_DM"),
@@ -898,6 +1455,94 @@ router.get(
     } catch (err) {
       console.error("Get thong-so error:", err);
       res.status(500).json({ message: "Lỗi tải cấu hình thông số" });
+    }
+  }
+);
+
+router.get(
+  "/san-pham/:sanPhamId/thong-so/export",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  async (req, res) => {
+    const { sanPhamId } = req.params;
+
+    try {
+      const pool = await poolPromise;
+      const sanPhamList = await getAllSanPham(pool);
+      const sanPham = sanPhamList.find(item => Number(item.Id) === Number(sanPhamId));
+
+      if (!sanPham) {
+        return res.status(404).json({ message: "Không tìm thấy sản phẩm/vật tư" });
+      }
+
+      const result = await pool.request()
+        .input("SanPhamId", sql.Int, sanPhamId)
+        .execute("sp_DM_SanPhamThongSo_Get");
+
+      const rows = (result.recordset || [])
+        .sort((a, b) => (a.ThuTu || 0) - (b.ThuTu || 0))
+        .map(item => ({
+          MaSanPham: sanPham.MaSanPham,
+          NhomThongSo: item.NhomThongSo || "",
+          TenThongSo: item.TenThongSo || "",
+          GiaTriChuan: item.GiaTriChuan || "",
+          DungSaiAm: item.DungSaiAm ?? "",
+          DungSaiDuong: item.DungSaiDuong ?? "",
+          DonVi: item.DonVi || "",
+          ThuTu: item.ThuTu || ""
+        }));
+
+      const workbook = XLSX.utils.book_new();
+      const worksheet = XLSX.utils.json_to_sheet(rows, {
+        header: [
+          "MaSanPham",
+          "NhomThongSo",
+          "TenThongSo",
+          "GiaTriChuan",
+          "DungSaiAm",
+          "DungSaiDuong",
+          "DonVi",
+          "ThuTu"
+        ]
+      });
+
+      worksheet["!cols"] = [
+        { wch: 16 },
+        { wch: 28 },
+        { wch: 24 },
+        { wch: 18 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 12 },
+        { wch: 10 }
+      ];
+
+      XLSX.utils.book_append_sheet(workbook, worksheet, "ThongSoKiem");
+
+      const buffer = XLSX.write(workbook, {
+        type: "buffer",
+        bookType: "xlsx"
+      });
+
+      const safeCode = String(sanPham.MaSanPham || sanPham.Id)
+        .replace(/[^\w.-]+/g, "_")
+        .slice(0, 80);
+
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="thong-so-kiem-${safeCode}.xlsx"`
+      );
+      res.send(buffer);
+    } catch (err) {
+      console.error("Export thong-so error:", err);
+      res.status(500).json({
+        message: "Không xuất được thông số kiểm",
+        error: err.message
+      });
     }
   }
 );

@@ -13,8 +13,10 @@ import {
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
+import DownloadIcon from "@mui/icons-material/Download";
 import ChecklistRtlIcon from "@mui/icons-material/ChecklistRtl";
 import TouchAppIcon from "@mui/icons-material/TouchApp";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
 import { useToast } from "../../../components/common/ToastContext"
 import ConfirmDialog from "../../../components/common/ConfirmDialog"
 import {
@@ -22,7 +24,9 @@ import {
     getCheckItemByNhom,
     createCheckItem,
     updateCheckItem,
-    deleteCheckItem
+    deleteCheckItem,
+    importDanhMucKiemExcel,
+    downloadDanhMucKiemTemplate
 } from "../../../api/lookup.api";
 
 export default function CheckItemManager() {
@@ -34,6 +38,10 @@ export default function CheckItemManager() {
     const [form, setForm] = useState({});
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+    const [importOpen, setImportOpen] = useState(false);
+    const [importFile, setImportFile] = useState(null);
+    const [importing, setImporting] = useState(false);
+    const [importResult, setImportResult] = useState(null);
     const { showToast } = useToast();
 
     const [confirmDialog, setConfirmDialog] = useState({
@@ -127,6 +135,49 @@ export default function CheckItemManager() {
         });
     };
 
+    const handleDownloadTemplate = async () => {
+        try {
+            const res = await downloadDanhMucKiemTemplate();
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "mau-import-danh-muc-kiem.xlsx";
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            setError(err.response?.data?.message || "Không tải được file mẫu");
+        }
+    };
+
+    const handleImportExcel = async () => {
+        if (!importFile) return;
+
+        try {
+            setImporting(true);
+            setImportResult(null);
+            const res = await importDanhMucKiemExcel(importFile);
+            setImportResult({
+                type: "success",
+                message: res.data?.message || "Import thành công",
+                summary: res.data?.summary
+            });
+            setImportFile(null);
+            await loadNhom();
+            await loadData();
+            showToast("Import danh mục kiểm thành công", "success");
+        } catch (err) {
+            setImportResult({
+                type: "error",
+                message: err.response?.data?.message || "Import thất bại",
+                errors: err.response?.data?.errors || []
+            });
+        } finally {
+            setImporting(false);
+        }
+    };
+
     // Lấy object nhóm hiện tại cho Autocomplete
     const selectedNhomObj = nhomList.find(n => n.Id === selectedNhom) || null;
 
@@ -160,13 +211,11 @@ export default function CheckItemManager() {
                         isOptionEqualToValue={(opt, val) => opt.Id === val.Id}
                         sx={{ bgcolor: "background.paper" }}
                         renderOption={(props, option) => {
-                            const { key, ...rest } = props;
-
                             return (
                                 <Box
                                     component="li"
                                     key={option.Id}
-                                    {...rest}
+                                    {...props}
                                     sx={{ borderBottom: '1px solid #eee', py: 1.5 }}
                                 >
                                     <Box>
@@ -197,20 +246,34 @@ export default function CheckItemManager() {
                     )}
                 </Box>
 
-                <Button
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    disabled={!selectedNhom}
-                    onClick={() => {
-                        // Mặc định thứ tự tiếp theo
-                        const nextThuTu = data.length > 0 ? Math.max(...data.map(d => d.ThuTu || 0)) + 1 : 1;
-                        setForm({ ThuTu: nextThuTu });
-                        setOpen(true);
-                    }}
-                    sx={{ height: 56 }}
-                >
-                    Thêm mục kiểm
-                </Button>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                    <Button
+                        variant="outlined"
+                        startIcon={<UploadFileIcon />}
+                        onClick={() => {
+                            setImportResult(null);
+                            setImportOpen(true);
+                        }}
+                        sx={{ height: 56 }}
+                    >
+                        Import Excel
+                    </Button>
+
+                    <Button
+                        variant="contained"
+                        startIcon={<AddIcon />}
+                        disabled={!selectedNhom}
+                        onClick={() => {
+                            // Mặc định thứ tự tiếp theo
+                            const nextThuTu = data.length > 0 ? Math.max(...data.map(d => d.ThuTu || 0)) + 1 : 1;
+                            setForm({ ThuTu: nextThuTu });
+                            setOpen(true);
+                        }}
+                        sx={{ height: 56 }}
+                    >
+                        Thêm mục kiểm
+                    </Button>
+                </Stack>
             </Stack>
 
             {/* MAIN CONTENT AREA */}
@@ -379,6 +442,119 @@ export default function CheckItemManager() {
                 message={confirmDialog.message}
                 type={confirmDialog.type}
             />
+
+            <Dialog
+                open={importOpen}
+                onClose={() => !importing && setImportOpen(false)}
+                maxWidth="md"
+                fullWidth
+            >
+                <DialogTitle sx={{ fontWeight: "bold", pb: 1 }}>
+                    Import danh mục kiểm từ Excel
+                </DialogTitle>
+
+                <DialogContent dividers>
+                    <Stack spacing={2.5}>
+                        <Alert severity="info">
+                            File .xlsx cần có sheet <strong>DanhMucKiem</strong> với các cột: MaSanPham, TenNhom, MoTaNhom, ThuTuNhom, TenMucKiem, ThamChieu, PhuongPhapKiem, TieuChuan, ThuTuMuc, ThuTuGanNhom.
+                            <br />
+                            <strong>MoTaNhom</strong> là bắt buộc và dùng để phân biệt các nhóm kiểm trùng tên giữa từng sản phẩm/vật tư.
+                        </Alert>
+
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                            <Button
+                                variant="outlined"
+                                startIcon={<DownloadIcon />}
+                                onClick={handleDownloadTemplate}
+                                disabled={importing}
+                            >
+                                Tải file mẫu
+                            </Button>
+
+                            <Button
+                                variant="contained"
+                                component="label"
+                                startIcon={<UploadFileIcon />}
+                                disabled={importing}
+                            >
+                                Chọn file .xlsx
+                                <input
+                                    hidden
+                                    type="file"
+                                    accept=".xlsx"
+                                    onChange={(e) => {
+                                        setImportFile(e.target.files?.[0] || null);
+                                        setImportResult(null);
+                                        e.target.value = "";
+                                    }}
+                                />
+                            </Button>
+                        </Stack>
+
+                        {importFile && (
+                            <Paper variant="outlined" sx={{ p: 2 }}>
+                                <Typography fontWeight={600}>{importFile.name}</Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    {(importFile.size / 1024).toFixed(1)} KB
+                                </Typography>
+                            </Paper>
+                        )}
+
+                        {importResult && (
+                            <Alert severity={importResult.type}>
+                                <Typography fontWeight={600}>{importResult.message}</Typography>
+
+                                {importResult.summary && (
+                                    <Stack spacing={0.5} sx={{ mt: 1 }}>
+                                        <Typography variant="body2">Tổng dòng: {importResult.summary.totalRows}</Typography>
+                                        <Typography variant="body2">Nhóm kiểm: tạo {importResult.summary.createdNhom}, cập nhật {importResult.summary.updatedNhom}</Typography>
+                                        <Typography variant="body2">Mục kiểm: tạo {importResult.summary.createdMuc}, cập nhật {importResult.summary.updatedMuc}</Typography>
+                                        <Typography variant="body2">Gán sản phẩm: tạo {importResult.summary.createdGanNhom}, cập nhật {importResult.summary.updatedGanNhom}</Typography>
+                                    </Stack>
+                                )}
+                            </Alert>
+                        )}
+
+                        {importResult?.errors?.length > 0 && (
+                            <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 320 }}>
+                                <Table size="small" stickyHeader>
+                                    <TableHead>
+                                        <TableRow>
+                                            <TableCell sx={{ width: 100, fontWeight: 600 }}>Dòng</TableCell>
+                                            <TableCell sx={{ fontWeight: 600 }}>Lỗi</TableCell>
+                                        </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {importResult.errors.map((item, index) => (
+                                            <TableRow key={`${item.line}-${index}`}>
+                                                <TableCell>{item.line}</TableCell>
+                                                <TableCell>{item.message}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </TableContainer>
+                        )}
+                    </Stack>
+                </DialogContent>
+
+                <DialogActions sx={{ px: 3, py: 2, bgcolor: "#f8fafc" }}>
+                    <Button
+                        onClick={() => setImportOpen(false)}
+                        color="inherit"
+                        disabled={importing}
+                    >
+                        Đóng
+                    </Button>
+                    <Button
+                        variant="contained"
+                        onClick={handleImportExcel}
+                        disabled={!importFile || importing}
+                    >
+                        {importing ? "Đang import..." : "Import"}
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Box>
     );
 }
