@@ -30,6 +30,7 @@ import {
 import SearchIcon from "@mui/icons-material/Search";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import DownloadIcon from "@mui/icons-material/Download";
 import AddIcon from "@mui/icons-material/Add";
 import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
 import SettingsOverscanIcon from '@mui/icons-material/SettingsOverscan';
@@ -40,6 +41,8 @@ import {
     createSanPham,
     updateSanPham,
     deleteSanPham,
+    exportSanPhamDanhMucKiem,
+    exportSanPhamThongSo,
     getSanPhamNhomKiem,
     createSanPhamNhomKiem,
     deleteSanPhamNhomKiem,
@@ -66,6 +69,8 @@ export default function SanPhamManager() {
     const [page, setPage] = useState(0);
     const [pageSize] = useState(20);
     const [hasMore, setHasMore] = useState(true);
+    const [exportingId, setExportingId] = useState(null);
+    const [exportingThongSoId, setExportingThongSoId] = useState(null);
 
     const [confirmDialog, setConfirmDialog] = useState({
         open: false,
@@ -189,6 +194,60 @@ export default function SanPhamManager() {
         loadSanPhamNhom(selectedSanPham.Id);
     };
 
+    const handleExportDanhMucKiem = async (sanPham) => {
+        try {
+            setExportingId(sanPham.Id);
+            const res = await exportSanPhamDanhMucKiem(sanPham.Id);
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const link = document.createElement("a");
+            const safeCode = String(sanPham.MaSanPham || sanPham.Id).replace(/[^\w.-]+/g, "_");
+
+            link.href = url;
+            link.download = `danh-muc-kiem-${safeCode}.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            setConfirmDialog({
+                open: true,
+                title: "Không tải được file",
+                message: err.response?.data?.message || "Không xuất được danh mục kiểm của sản phẩm này",
+                type: "error",
+                onConfirm: () => setConfirmDialog(prev => ({ ...prev, open: false }))
+            });
+        } finally {
+            setExportingId(null);
+        }
+    };
+
+    const handleExportThongSo = async (sanPham) => {
+        try {
+            setExportingThongSoId(sanPham.Id);
+            const res = await exportSanPhamThongSo(sanPham.Id);
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const link = document.createElement("a");
+            const safeCode = String(sanPham.MaSanPham || sanPham.Id).replace(/[^\w.-]+/g, "_");
+
+            link.href = url;
+            link.download = `thong-so-kiem-${safeCode}.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            setConfirmDialog({
+                open: true,
+                title: "Không tải được file",
+                message: err.response?.data?.message || "Không xuất được thông số kiểm của sản phẩm này",
+                type: "error",
+                onConfirm: () => setConfirmDialog(prev => ({ ...prev, open: false }))
+            });
+        } finally {
+            setExportingThongSoId(null);
+        }
+    };
+
     return (
         <Box sx={{ p: { xs: 2, md: 3 } }}>
             {/* Header */}
@@ -278,6 +337,32 @@ export default function SanPhamManager() {
                                             >
                                                 Thông số kiểm
                                             </Button>
+                                            <Tooltip title="Tải danh mục kiểm theo mẫu import">
+                                                <span>
+                                                    <IconButton
+                                                        size="small"
+                                                        color="success"
+                                                        onClick={() => handleExportDanhMucKiem(row)}
+                                                        disabled={exportingId === row.Id}
+                                                        sx={{ ml: 1 }}
+                                                    >
+                                                        <DownloadIcon fontSize="small" />
+                                                    </IconButton>
+                                                </span>
+                                            </Tooltip>
+                                            <Tooltip title="Tải thông số kiểm">
+                                                <span>
+                                                    <IconButton
+                                                        size="small"
+                                                        color="info"
+                                                        onClick={() => handleExportThongSo(row)}
+                                                        disabled={exportingThongSoId === row.Id}
+                                                        sx={{ ml: 0.5 }}
+                                                    >
+                                                        <DownloadIcon fontSize="small" />
+                                                    </IconButton>
+                                                </span>
+                                            </Tooltip>
                                         </TableCell>
                                         <TableCell align="right">
                                             <Tooltip title="Chỉnh sửa">
