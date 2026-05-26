@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
     Card, CardContent, Table, TableHead,
     TableRow, TableCell, TableBody,
@@ -7,7 +7,7 @@ import {
     TextField, Stack, Alert,
     Box, Typography, CircularProgress,
     Autocomplete, TableContainer, Paper, Tooltip,
-    Chip
+    Chip, MenuItem
 } from "@mui/material";
 
 import EditIcon from "@mui/icons-material/Edit";
@@ -42,6 +42,8 @@ export default function CheckItemManager() {
     const [importFile, setImportFile] = useState(null);
     const [importing, setImporting] = useState(false);
     const [importResult, setImportResult] = useState(null);
+    const [keyword, setKeyword] = useState("");
+    const [referenceFilter, setReferenceFilter] = useState("ALL");
     const { showToast } = useToast();
 
     const [confirmDialog, setConfirmDialog] = useState({
@@ -180,6 +182,25 @@ export default function CheckItemManager() {
 
     // Lấy object nhóm hiện tại cho Autocomplete
     const selectedNhomObj = nhomList.find(n => n.Id === selectedNhom) || null;
+    const referenceOptions = useMemo(() => {
+        return Array.from(new Set(data.map(item => item.ThamChieu).filter(Boolean))).sort();
+    }, [data]);
+    const filteredData = useMemo(() => {
+        const value = keyword.trim().toLowerCase();
+
+        return data.filter((row) => {
+            const matchesKeyword = !value || [
+                row.TenMucKiem,
+                row.ThamChieu,
+                row.PhuongPhapKiem,
+                row.TieuChuan,
+                row.ThuTu
+            ].some((field) => String(field || "").toLowerCase().includes(value));
+            const matchesReference = referenceFilter === "ALL" || row.ThamChieu === referenceFilter;
+
+            return matchesKeyword && matchesReference;
+        });
+    }, [data, keyword, referenceFilter]);
 
     return (
         <Box sx={{ p: { xs: 2, md: 3 } }}>
@@ -247,6 +268,32 @@ export default function CheckItemManager() {
                 </Box>
 
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                    <TextField
+                        size="small"
+                        label="Tìm mục kiểm"
+                        value={keyword}
+                        onChange={(event) => setKeyword(event.target.value)}
+                        disabled={!selectedNhom}
+                        sx={{ minWidth: { sm: 220 } }}
+                    />
+                    <TextField
+                        select
+                        size="small"
+                        label="Tham chiếu"
+                        value={referenceFilter}
+                        onChange={(event) => setReferenceFilter(event.target.value)}
+                        disabled={!selectedNhom}
+                        sx={{ minWidth: 150 }}
+                    >
+                        <MenuItem value="ALL">Tất cả</MenuItem>
+                        {referenceOptions.map((value) => (
+                            <MenuItem key={value} value={value}>{value}</MenuItem>
+                        ))}
+                    </TextField>
+                    <Chip
+                        label={`${filteredData.length}/${data.length}`}
+                        sx={{ height: 56, display: selectedNhom ? "inline-flex" : "none" }}
+                    />
                     <Button
                         variant="outlined"
                         startIcon={<UploadFileIcon />}
@@ -322,7 +369,7 @@ export default function CheckItemManager() {
                             </TableHead>
 
                             <TableBody>
-                                {data.length === 0 && !loading ? (
+                                {filteredData.length === 0 && !loading ? (
                                     <TableRow>
                                         <TableCell colSpan={6} align="center" sx={{ py: 5 }}>
                                             <ChecklistRtlIcon sx={{ fontSize: 48, color: "text.disabled", mb: 1 }} />
@@ -330,7 +377,7 @@ export default function CheckItemManager() {
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    data.sort((a, b) => (a.ThuTu || 0) - (b.ThuTu || 0)).map(row => (
+                                    filteredData.sort((a, b) => (a.ThuTu || 0) - (b.ThuTu || 0)).map(row => (
                                         <TableRow key={row.Id} hover>
                                             <TableCell align="center">
                                                 <Typography fontWeight="bold" color="text.secondary">

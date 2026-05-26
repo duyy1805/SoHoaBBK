@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
     Card, Table, TableHead,
     TableRow, TableCell, TableBody,
@@ -28,6 +28,9 @@ export default function DefectManager() {
     const [form, setForm] = useState({});
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+    const [keyword, setKeyword] = useState("");
+    const [typeFilter, setTypeFilter] = useState("ALL");
+    const [statusFilter, setStatusFilter] = useState("ALL");
 
     // ================= LOAD DATA =================
     const loadData = useCallback(async () => {
@@ -87,6 +90,28 @@ export default function DefectManager() {
         }
     };
 
+    const filteredData = useMemo(() => {
+        const value = keyword.trim().toLowerCase();
+
+        return data.filter((row) => {
+            const matchesKeyword = !value || [
+                row.MaLoi,
+                row.TenLoi,
+                row.MoTa,
+                row.GhiChu,
+                row.DefectType
+            ].some((field) => String(field || "").toLowerCase().includes(value));
+            const matchesType = typeFilter === "ALL" || row.DefectType === typeFilter;
+            const isActive = row.TrangThai !== false && row.TrangThai !== 0;
+            const matchesStatus =
+                statusFilter === "ALL" ||
+                (statusFilter === "ACTIVE" && isActive) ||
+                (statusFilter === "INACTIVE" && !isActive);
+
+            return matchesKeyword && matchesType && matchesStatus;
+        });
+    }, [data, keyword, typeFilter, statusFilter]);
+
     return (
         <Box sx={{ p: { xs: 2, md: 3 } }}>
 
@@ -109,19 +134,54 @@ export default function DefectManager() {
                     <Typography variant="h5" fontWeight="bold">
                         Danh mục Lỗi (Defects)
                     </Typography>
+                    <Chip label={`${filteredData.length}/${data.length}`} size="small" />
                 </Stack>
 
-                <Button
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    onClick={() => {
-                        setForm({});
-                        setOpen(true);
-                    }}
-                    sx={{ height: { xs: 48, sm: 'auto' } }}
-                >
-                    Thêm lỗi mới
-                </Button>
+                <Stack direction={{ xs: "column", md: "row" }} spacing={1.5}>
+                    <TextField
+                        size="small"
+                        label="Tìm lỗi"
+                        value={keyword}
+                        onChange={(e) => setKeyword(e.target.value)}
+                        sx={{ minWidth: { md: 220 } }}
+                    />
+                    <TextField
+                        select
+                        size="small"
+                        label="Phân loại"
+                        value={typeFilter}
+                        onChange={(e) => setTypeFilter(e.target.value)}
+                        sx={{ minWidth: 150 }}
+                    >
+                        <MenuItem value="ALL">Tất cả</MenuItem>
+                        <MenuItem value="CRITICAL">CRITICAL</MenuItem>
+                        <MenuItem value="MAJOR">MAJOR</MenuItem>
+                        <MenuItem value="MINOR">MINOR</MenuItem>
+                    </TextField>
+                    <TextField
+                        select
+                        size="small"
+                        label="Trạng thái"
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        sx={{ minWidth: 150 }}
+                    >
+                        <MenuItem value="ALL">Tất cả</MenuItem>
+                        <MenuItem value="ACTIVE">Hoạt động</MenuItem>
+                        <MenuItem value="INACTIVE">Tạm ngưng</MenuItem>
+                    </TextField>
+                    <Button
+                        variant="contained"
+                        startIcon={<AddIcon />}
+                        onClick={() => {
+                            setForm({});
+                            setOpen(true);
+                        }}
+                        sx={{ height: { xs: 40, sm: 'auto' }, whiteSpace: "nowrap" }}
+                    >
+                        Thêm lỗi mới
+                    </Button>
+                </Stack>
             </Stack>
 
             {/* TABLE */}
@@ -158,7 +218,7 @@ export default function DefectManager() {
                         </TableHead>
 
                         <TableBody>
-                            {data.length === 0 && !loading ? (
+                            {filteredData.length === 0 && !loading ? (
                                 <TableRow>
                                     <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
                                         <BugReportIcon sx={{ fontSize: 60, color: "text.disabled", mb: 1 }} />
@@ -169,7 +229,7 @@ export default function DefectManager() {
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                data.map(row => (
+                                filteredData.map(row => (
                                     <TableRow key={row.Id} hover>
                                         <TableCell>
                                             <Typography fontWeight={600} color="text.secondary">

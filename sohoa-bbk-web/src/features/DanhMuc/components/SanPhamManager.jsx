@@ -24,7 +24,8 @@ import {
     Grid,
     Divider,
     Alert,
-    InputAdornment
+    InputAdornment,
+    MenuItem
 } from "@mui/material";
 
 import SearchIcon from "@mui/icons-material/Search";
@@ -57,6 +58,7 @@ export default function SanPhamManager() {
     const [form, setForm] = useState({});
 
     const [searchQuery, setSearchQuery] = useState("");
+    const [descriptionFilter, setDescriptionFilter] = useState("ALL");
     // State Nhóm kiểm & Thông số
     const [nhomDialog, setNhomDialog] = useState(false);
     const [thongSoDialog, setThongSoDialog] = useState(false);
@@ -150,6 +152,14 @@ export default function SanPhamManager() {
             .filter(n => !nhomData.some(d => d.NhomKiemId === n.Id))
             .sort((a, b) => a.ThuTu - b.ThuTu);
     }, [nhomList, nhomData]);
+
+    const filteredData = useMemo(() => {
+        return data.filter((row) =>
+            descriptionFilter === "ALL" ||
+            (descriptionFilter === "HAS_DESC" && row.MoTa) ||
+            (descriptionFilter === "NO_DESC" && !row.MoTa)
+        );
+    }, [data, descriptionFilter]);
 
     const handleSave = async () => {
         if (!form.MaSanPham || !form.TenSanPham) return;
@@ -278,6 +288,19 @@ export default function SanPhamManager() {
                         }}
                         sx={{ backgroundColor: "#fff", minWidth: { sm: 280 } }}
                     />
+                    <TextField
+                        select
+                        size="small"
+                        label="Mô tả"
+                        value={descriptionFilter}
+                        onChange={(e) => setDescriptionFilter(e.target.value)}
+                        sx={{ backgroundColor: "#fff", minWidth: 140 }}
+                    >
+                        <MenuItem value="ALL">Tất cả</MenuItem>
+                        <MenuItem value="HAS_DESC">Có mô tả</MenuItem>
+                        <MenuItem value="NO_DESC">Chưa mô tả</MenuItem>
+                    </TextField>
+                    <Chip label={`${filteredData.length}/${data.length}`} size="small" />
                     <Button
                         variant="contained"
                         startIcon={<AddIcon />}
@@ -306,14 +329,14 @@ export default function SanPhamManager() {
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {data.length === 0 ? (
+                            {filteredData.length === 0 ? (
                                 <TableRow>
                                     <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
                                         <Typography color="text.secondary">Chưa có dữ liệu</Typography>
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                data.map((row) => (
+                                filteredData.map((row) => (
                                     <TableRow key={row.Id} hover>
                                         <TableCell><Chip label={row.MaSanPham} size="small" color="default" /></TableCell>
                                         <TableCell sx={{ fontWeight: 500 }}>{row.TenSanPham}</TableCell>

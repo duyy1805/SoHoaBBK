@@ -38,6 +38,8 @@ import {
     updateDefect
 } from "../../../api/lookup.api";
 
+const defectGroupOptions = Array.from({ length: 8 }, (_, index) => `L${String(index + 1).padStart(2, "0")}`);
+
 const emptyForm = {
     PhanHe: "SXBT",
     MaNhomLoi: "L05",
@@ -82,6 +84,10 @@ export default function SxbtDefectManager() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [keyword, setKeyword] = useState("");
+    const [groupFilter, setGroupFilter] = useState("ALL");
+    const [typeFilter, setTypeFilter] = useState("ALL");
+    const [statusFilter, setStatusFilter] = useState("ALL");
+    const [imageFilter, setImageFilter] = useState("ALL");
 
     const loadData = useCallback(async () => {
         try {
@@ -102,12 +108,19 @@ export default function SxbtDefectManager() {
 
     const filteredData = useMemo(() => {
         const value = keyword.trim().toLowerCase();
-        if (!value) return data;
         return data.filter((row) =>
-            [row.MaLoi, row.TenLoi, row.MoTa, row.PhamViApDung, row.ThiTruong]
-                .some((field) => String(field || "").toLowerCase().includes(value))
+            (!value || [row.MaLoi, row.MaNhomLoi, row.LoaiLoiSXBT, row.TenLoi, row.MoTa, row.PhamViApDung, row.ThiTruong]
+                .some((field) => String(field || "").toLowerCase().includes(value))) &&
+            (groupFilter === "ALL" || row.MaNhomLoi === groupFilter) &&
+            (typeFilter === "ALL" || row.LoaiLoiSXBT === typeFilter) &&
+            (statusFilter === "ALL" ||
+                (statusFilter === "ACTIVE" && row.TrangThai) ||
+                (statusFilter === "INACTIVE" && !row.TrangThai)) &&
+            (imageFilter === "ALL" ||
+                (imageFilter === "HAS_IMAGE" && row.ImageUrl) ||
+                (imageFilter === "NO_IMAGE" && !row.ImageUrl))
         );
-    }, [data, keyword]);
+    }, [data, keyword, groupFilter, typeFilter, statusFilter, imageFilter]);
 
     const handleOpenCreate = () => {
         setForm(emptyForm);
@@ -192,6 +205,55 @@ export default function SxbtDefectManager() {
                         onChange={(event) => setKeyword(event.target.value)}
                         sx={{ minWidth: { sm: 260 } }}
                     />
+                    <TextField
+                        select
+                        size="small"
+                        label="Nhóm"
+                        value={groupFilter}
+                        onChange={(event) => setGroupFilter(event.target.value)}
+                        sx={{ minWidth: 110 }}
+                    >
+                        <MenuItem value="ALL">Tất cả</MenuItem>
+                        {defectGroupOptions.map((code) => (
+                            <MenuItem key={code} value={code}>{code}</MenuItem>
+                        ))}
+                    </TextField>
+                    <TextField
+                        select
+                        size="small"
+                        label="Loại"
+                        value={typeFilter}
+                        onChange={(event) => setTypeFilter(event.target.value)}
+                        sx={{ minWidth: 110 }}
+                    >
+                        <MenuItem value="ALL">Tất cả</MenuItem>
+                        <MenuItem value="B">B</MenuItem>
+                        <MenuItem value="C">C</MenuItem>
+                    </TextField>
+                    <TextField
+                        select
+                        size="small"
+                        label="Ảnh"
+                        value={imageFilter}
+                        onChange={(event) => setImageFilter(event.target.value)}
+                        sx={{ minWidth: 130 }}
+                    >
+                        <MenuItem value="ALL">Tất cả</MenuItem>
+                        <MenuItem value="HAS_IMAGE">Có ảnh</MenuItem>
+                        <MenuItem value="NO_IMAGE">Chưa có ảnh</MenuItem>
+                    </TextField>
+                    <TextField
+                        select
+                        size="small"
+                        label="Trạng thái"
+                        value={statusFilter}
+                        onChange={(event) => setStatusFilter(event.target.value)}
+                        sx={{ minWidth: 140 }}
+                    >
+                        <MenuItem value="ALL">Tất cả</MenuItem>
+                        <MenuItem value="ACTIVE">Hoạt động</MenuItem>
+                        <MenuItem value="INACTIVE">Tạm ngưng</MenuItem>
+                    </TextField>
                     <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreate}>
                         Thêm lỗi SXBT
                     </Button>

@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
     Card, CardContent, Table, TableHead,
     TableRow, TableCell, TableBody,
     IconButton, Button, Dialog,
     DialogTitle, DialogContent, DialogActions,
-    TextField, Stack, Chip, Alert,
+    TextField, Stack, Chip, Alert, MenuItem,
     Box, Typography, CircularProgress
 } from "@mui/material";
 
@@ -25,6 +25,8 @@ export default function NhomKiemManager() {
     const [form, setForm] = useState({});
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+    const [keyword, setKeyword] = useState("");
+    const [statusFilter, setStatusFilter] = useState("ALL");
 
     // ✅ loadData chuẩn
     const loadData = useCallback(async () => {
@@ -81,6 +83,25 @@ export default function NhomKiemManager() {
         }
     };
 
+    const filteredData = useMemo(() => {
+        const value = keyword.trim().toLowerCase();
+
+        return data.filter((row) => {
+            const matchesKeyword = !value || [
+                row.TenNhom,
+                row.MoTa,
+                row.ThuTu
+            ].some((field) => String(field || "").toLowerCase().includes(value));
+            const isActive = row.TrangThai !== false && row.TrangThai !== 0;
+            const matchesStatus =
+                statusFilter === "ALL" ||
+                (statusFilter === "ACTIVE" && isActive) ||
+                (statusFilter === "INACTIVE" && !isActive);
+
+            return matchesKeyword && matchesStatus;
+        });
+    }, [data, keyword, statusFilter]);
+
     return (
         <Box sx={{ p: 0 }}>
 
@@ -102,15 +123,38 @@ export default function NhomKiemManager() {
                     Danh sách nhóm kiểm
                 </Typography>
 
-                <Button
-                    variant="contained"
-                    onClick={() => {
-                        setForm({});
-                        setOpen(true);
-                    }}
-                >
-                    Thêm nhóm kiểm
-                </Button>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                    <TextField
+                        size="small"
+                        label="Tìm nhóm"
+                        value={keyword}
+                        onChange={(e) => setKeyword(e.target.value)}
+                        sx={{ minWidth: { sm: 220 } }}
+                    />
+                    <TextField
+                        select
+                        size="small"
+                        label="Trạng thái"
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        sx={{ minWidth: 150 }}
+                    >
+                        <MenuItem value="ALL">Tất cả</MenuItem>
+                        <MenuItem value="ACTIVE">Hoạt động</MenuItem>
+                        <MenuItem value="INACTIVE">Ngưng</MenuItem>
+                    </TextField>
+                    <Chip label={`${filteredData.length}/${data.length}`} sx={{ height: 40 }} />
+                    <Button
+                        variant="contained"
+                        onClick={() => {
+                            setForm({});
+                            setOpen(true);
+                        }}
+                        sx={{ whiteSpace: "nowrap" }}
+                    >
+                        Thêm nhóm kiểm
+                    </Button>
+                </Stack>
             </Box>
 
             <Card elevation={2}>
@@ -144,7 +188,13 @@ export default function NhomKiemManager() {
                         </TableHead>
 
                         <TableBody>
-                            {data.map(row => (
+                            {filteredData.length === 0 && !loading ? (
+                                <TableRow>
+                                    <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                                        <Typography color="text.secondary">Không có nhóm kiểm phù hợp</Typography>
+                                    </TableCell>
+                                </TableRow>
+                            ) : filteredData.map(row => (
                                 <TableRow key={row.Id} hover>
                                     <TableCell>{row.TenNhom}</TableCell>
                                     <TableCell>{row.MoTa}</TableCell>
