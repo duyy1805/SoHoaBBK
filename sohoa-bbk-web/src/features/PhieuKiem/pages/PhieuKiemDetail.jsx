@@ -19,7 +19,8 @@ import {
     TextField,
     MenuItem,
     Paper,
-    Container
+    Container,
+    Alert
 } from "@mui/material";
 import { PhieuKiemPrintTemplate } from "../components/PhieuKiemPrintTemplate";
 import { PhieuGiamDinhPrintTemplate } from "../components/PhieuGiamDinhPrintTemplate"
@@ -37,7 +38,10 @@ import {
     getPhieuKiemDetail,
     createAllSection,
     saveCustomFields,
-    getThongSoKq
+    getThongSoKq,
+    completePhieuKiem,
+    confirmPX,
+    confirmKN
 } from "../../../api/phieuKiem.api";
 
 import { getSanPhamNhomKiem, getInspectionLevels } from "../../../api/lookup.api"
@@ -63,6 +67,8 @@ export default function PhieuKiemDetail() {
 
     const [loading, setLoading] = useState(true);
     const [creatingSection, setCreatingSection] = useState(false);
+    const [loadingAction, setLoadingAction] = useState(false);
+    const [actionNotice, setActionNotice] = useState(null);
     const componentRef = useRef();
     const [openPrintModal, setOpenPrintModal] = useState(false);
 
@@ -229,9 +235,87 @@ export default function PhieuKiemDetail() {
         }
     };
 
+    const isKCS = hasPermission("THUC_HIEN_KIEM");
+    const isLeader = hasPermission("PHAN_BO_KIEM");
+    const isPX = hasPermission("XAC_NHAN_PX");
+    const isKN = hasPermission("XAC_NHAN_KIEM_NGHIEM");
+    const isAllConfirmed = sections.length > 0 && sections.every(s => s.KetLuan);
+    const hasReject = sections.some(s => s.KetLuan === "REJECT");
+    const hasSpecialReject = thongSoKqList.some(kq => {
+        const ts = thongSoList.find(t => Number(t.Id) === Number(kq.ThongSoId));
+        if (!ts || kq.GiaTriDo === null || kq.GiaTriDo === undefined || kq.GiaTriDo === "") return false;
+        const num = Number(kq.GiaTriDo);
+        const chuan = Number(ts.GiaTriChuan);
+        if (Number.isNaN(num) || Number.isNaN(chuan)) return false;
+        const min = chuan - Number(ts.DungSaiAm || 0);
+        const max = chuan + Number(ts.DungSaiDuong || 0);
+        return num < min || num > max;
+    });
+    const finalResult = (hasReject || hasSpecialReject) ? "KHONG_DAT" : "DAT";
+
+    const handleComplete = async () => {
+        try {
+            setLoadingAction(true);
+            setActionNotice(null);
+            await completePhieuKiem(id);
+            await loadData();
+            setActionNotice({ type: "success", message: "Xác nhận hoàn tất phiếu kiểm thành công" });
+        } catch (err) {
+            setActionNotice({
+                type: "error",
+                message: err?.response?.data?.message || "Không thể hoàn tất phiếu kiểm"
+            });
+        } finally {
+            setLoadingAction(false);
+        }
+    };
+
+    const handleConfirmPX = async () => {
+        try {
+            setLoadingAction(true);
+            setActionNotice(null);
+            await confirmPX(id);
+            await loadData();
+            setActionNotice({ type: "success", message: "Xác nhận trưởng bộ phận thành công" });
+        } catch (err) {
+            setActionNotice({
+                type: "error",
+                message: err?.response?.data?.message || "Không thể xác nhận trưởng bộ phận"
+            });
+        } finally {
+            setLoadingAction(false);
+        }
+    };
+
+    const handleConfirmKN = async () => {
+        try {
+            setLoadingAction(true);
+            setActionNotice(null);
+            await confirmKN(id);
+            await loadData();
+            setActionNotice({ type: "success", message: "Xác nhận kiểm nghiệm thành công" });
+        } catch (err) {
+            setActionNotice({
+                type: "error",
+                message: err?.response?.data?.message || "Không thể xác nhận kiểm nghiệm"
+            });
+        } finally {
+            setLoadingAction(false);
+        }
+    };
+
     return (
         <Fade in timeout={300}>
             <Box>
+                {actionNotice && (
+                    <Alert
+                        severity={actionNotice.type}
+                        onClose={() => setActionNotice(null)}
+                        sx={{ mb: 2 }}
+                    >
+                        {actionNotice.message}
+                    </Alert>
+                )}
 
                 {/* HEADER */}
 
@@ -498,6 +582,50 @@ export default function PhieuKiemDetail() {
                     );
 
                 })}
+
+                {isAllConfirmed && (phieu?.TrangThai === "DANG_KIEM" || phieu?.TrangThai === "DA_TAO_SECTION") && (isKCS || isLeader) && (
+                    <Paper sx={{ position: "sticky", bottom: 0, zIndex: 9, mt: 2, p: 2, borderTop: "1px solid #e0e0e0" }}>
+                        <Stack direction="row" justifyContent="flex-end">
+                            <Button
+                                variant="contained"
+                                color={(hasReject || hasSpecialReject) ? "error" : "success"}
+                                onClick={handleComplete}
+                                disabled={loadingAction}
+                            >
+                                {loadingAction ? "Đang xử lý..." : `Xác nhận - ${finalResult}`}
+                            </Button>
+                        </Stack>
+                    </Paper>
+                )}
+
+                {phieu?.TrangThai === "CHO_XUONG_XAC_NHAN" && isPX && (
+                    <Paper sx={{ position: "sticky", bottom: 0, zIndex: 9, mt: 2, p: 2, borderTop: "1px solid #e0e0e0" }}>
+                        <Stack direction="row" justifyContent="flex-end">
+                            <Button
+                                variant="contained"
+                                onClick={handleConfirmPX}
+                                disabled={loadingAction}
+                            >
+                                {loadingAction ? "Đang xử lý..." : "Xác nhận trưởng bộ phận"}
+                            </Button>
+                        </Stack>
+                    </Paper>
+                )}
+
+                {phieu?.TrangThai === "CHO_KIEM_NGHIEM" && isKN && (
+                    <Paper sx={{ position: "sticky", bottom: 0, zIndex: 9, mt: 2, p: 2, borderTop: "1px solid #e0e0e0" }}>
+                        <Stack direction="row" justifyContent="flex-end">
+                            <Button
+                                variant="contained"
+                                color="secondary"
+                                onClick={handleConfirmKN}
+                                disabled={loadingAction}
+                            >
+                                {loadingAction ? "Đang xử lý..." : "Xác nhận kiểm nghiệm"}
+                            </Button>
+                        </Stack>
+                    </Paper>
+                )}
                 {/* Print Preview Modal */}
                 <Dialog open={openPrintModal} onClose={() => setOpenPrintModal(false)} maxWidth="lg" fullWidth>
                     <DialogTitle>Xem trước bản in</DialogTitle>

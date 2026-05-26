@@ -95,6 +95,14 @@ export const completePhieuKiem = (phieuKiemId) => {
     return axiosClient.post("/phieu-kiem/complete", { phieuKiemId });
 };
 
+export const confirmPX = (phieuKiemId) => {
+    return axiosClient.post("/phieu-kiem/xac-nhan-px", { phieuKiemId });
+};
+
+export const confirmKN = (phieuKiemId) => {
+    return axiosClient.post("/phieu-kiem/xac-nhan-kiem-nghiem", { phieuKiemId });
+};
+
 /* =========================================================
    KẾT LUẬN (TP_B8 / LANH_DAO)
 ========================================================= */
