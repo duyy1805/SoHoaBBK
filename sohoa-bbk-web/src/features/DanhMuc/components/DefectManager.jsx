@@ -241,7 +241,7 @@ export default function DefectManager() {
     };
 
     return (
-        <Box sx={{ p: { xs: 2, md: 3 } }}>
+        <Box sx={{ p: { xs: 2, md: 3 }, width: "100%", maxWidth: "100%", overflowX: "hidden" }}>
             {error && (
                 <Alert severity="error" onClose={() => setError("")} sx={{ mb: 3 }}>
                     {error}
@@ -249,36 +249,40 @@ export default function DefectManager() {
             )}
 
             <Stack
-                direction={{ xs: "column", md: "row" }}
+                direction={{ xs: "column", lg: "row" }}
                 justifyContent="space-between"
-                alignItems={{ xs: "stretch", md: "center" }}
+                alignItems={{ xs: "stretch", lg: "center" }}
                 spacing={2}
-                sx={{ mb: 3 }}
+                sx={{ mb: 3, width: "100%", minWidth: 0 }}
             >
-                <Stack direction="row" alignItems="center" spacing={1}>
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0, flexWrap: "wrap" }}>
                     <BugReportIcon color="primary" fontSize="large" />
-                    <Typography variant="h5" fontWeight={700}>
+                    <Typography variant="h5" fontWeight={700} sx={{ minWidth: 0 }}>
                         Danh mục lỗi dùng chung
                     </Typography>
                     <Chip label={`${filteredData.length}/${data.length}`} size="small" />
                 </Stack>
 
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                <Stack
+                    direction={{ xs: "column", sm: "row" }}
+                    spacing={1.5}
+                    sx={{ width: { xs: "100%", lg: "auto" }, minWidth: 0, flexShrink: 1 }}
+                >
                     <TextField
                         size="small"
                         label="Tìm lỗi"
                         value={keyword}
                         onChange={(event) => setKeyword(event.target.value)}
-                        sx={{ minWidth: { sm: 300 } }}
+                        sx={{ minWidth: 0, width: { xs: "100%", sm: 320, lg: 420 }, maxWidth: "100%" }}
                     />
-                    <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreate}>
+                    <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreate} sx={{ whiteSpace: "nowrap" }}>
                         Thêm lỗi mới
                     </Button>
                 </Stack>
             </Stack>
 
-            <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider", borderRadius: 2, overflow: "hidden" }}>
-                <TableContainer component={Paper} sx={{ position: "relative", boxShadow: "none" }}>
+            <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider", borderRadius: 2, overflow: "hidden", maxWidth: "100%" }}>
+                <TableContainer component={Paper} sx={{ position: "relative", boxShadow: "none", width: "100%", maxWidth: "100%", overflowX: "auto" }}>
                     {loading && (
                         <Box
                             sx={{
@@ -295,7 +299,7 @@ export default function DefectManager() {
                         </Box>
                     )}
 
-                    <Table size="small" stickyHeader sx={{ minWidth: 1260, "& tbody tr:hover": { bgcolor: "#f8fbff" } }}>
+                    <Table size="small" stickyHeader sx={{ minWidth: 1100, "& tbody tr:hover": { bgcolor: "#f8fbff" } }}>
                         <TableHead>
                             <TableRow>
                                 <TableCell sx={{ ...headerCellSx, width: 78 }}>STT</TableCell>

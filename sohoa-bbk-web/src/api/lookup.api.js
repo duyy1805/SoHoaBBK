@@ -170,6 +170,23 @@ export const exportSanPhamThongSo = (sanPhamId) =>
         timeout: 60000
     });
 
+export const importThongSoKiemExcel = (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    return axiosClient.post("/lookup/import-thong-so-kiem", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 120000
+    });
+};
+
+export const downloadThongSoKiemTemplate = () => {
+    return axiosClient.get("/lookup/import-thong-so-kiem/template", {
+        responseType: "blob",
+        timeout: 60000
+    });
+};
+
 export const createSanPhamThongSo = (data) =>
     axiosClient.post("/lookup/san-pham-thong-so", data);
 

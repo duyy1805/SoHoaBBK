@@ -70,6 +70,18 @@ const normalizeImportRow = (row, index) => ({
   ThuTuGanNhom: row.ThuTuGanNhom
 });
 
+const normalizeThongSoImportRow = (row, index) => ({
+  line: index + 2,
+  MaSanPham: trimValue(row.MaSanPham),
+  NhomThongSo: trimValue(row.NhomThongSo),
+  TenThongSo: trimValue(row.TenThongSo),
+  GiaTriChuan: trimValue(row.GiaTriChuan),
+  DungSaiAm: row.DungSaiAm,
+  DungSaiDuong: row.DungSaiDuong,
+  DonVi: trimValue(row.DonVi),
+  ThuTu: row.ThuTu
+});
+
 const requestWithTransaction = (transaction) => new sql.Request(transaction);
 
 async function getAllSanPham(pool) {
@@ -111,6 +123,13 @@ async function getSanPhamNhomKiemInTransaction(transaction, sanPhamId) {
   const result = await requestWithTransaction(transaction)
     .input("SanPhamId", sql.Int, sanPhamId)
     .execute("sp_SANPHAM_GetNhomKiemBySanPham");
+  return result.recordset || [];
+}
+
+async function getThongSoInTransaction(transaction, sanPhamId) {
+  const result = await requestWithTransaction(transaction)
+    .input("SanPhamId", sql.Int, sanPhamId)
+    .execute("sp_DM_SanPhamThongSo_Get");
   return result.recordset || [];
 }
 
@@ -1553,6 +1572,233 @@ router.get(
 );
 
 // --- CẤU HÌNH THÔNG SỐ ĐẶC BIỆT ---
+router.get(
+  "/import-thong-so-kiem/template",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  async (req, res) => {
+    const rows = [
+      {
+        MaSanPham: "SP001",
+        NhomThongSo: "Kích thước sản phẩm",
+        TenThongSo: "Dài",
+        GiaTriChuan: "580",
+        DungSaiAm: 5,
+        DungSaiDuong: 5,
+        DonVi: "mm",
+        ThuTu: 1
+      },
+      {
+        MaSanPham: "SP001",
+        NhomThongSo: "Kích thước sản phẩm",
+        TenThongSo: "Rộng",
+        GiaTriChuan: "320",
+        DungSaiAm: 3,
+        DungSaiDuong: 3,
+        DonVi: "mm",
+        ThuTu: 2
+      }
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(rows, {
+      header: [
+        "MaSanPham",
+        "NhomThongSo",
+        "TenThongSo",
+        "GiaTriChuan",
+        "DungSaiAm",
+        "DungSaiDuong",
+        "DonVi",
+        "ThuTu"
+      ]
+    });
+
+    worksheet["!cols"] = [
+      { wch: 16 },
+      { wch: 28 },
+      { wch: 24 },
+      { wch: 18 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 10 }
+    ];
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, "ThongSoKiem");
+
+    const buffer = XLSX.write(workbook, {
+      type: "buffer",
+      bookType: "xlsx"
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=\"mau-import-thong-so-kiem.xlsx\""
+    );
+    res.send(buffer);
+  }
+);
+
+router.post(
+  "/import-thong-so-kiem",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  (req, res, next) => {
+    excelUpload.single("file")(req, res, (err) => {
+      if (err) {
+        return res.status(400).json({ message: err.message || "File không hợp lệ" });
+      }
+      next();
+    });
+  },
+  async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ message: "Vui lòng chọn file .xlsx" });
+    }
+
+    let rows = [];
+
+    try {
+      const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+      const sheetName = workbook.SheetNames.includes("ThongSoKiem")
+        ? "ThongSoKiem"
+        : null;
+
+      if (!sheetName) {
+        return res.status(400).json({
+          message: "File phải có sheet tên ThongSoKiem",
+          errors: [{ line: 1, message: "Không tìm thấy sheet ThongSoKiem" }]
+        });
+      }
+
+      rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+        defval: "",
+        raw: false
+      }).map(normalizeThongSoImportRow);
+    } catch (err) {
+      console.error("Parse import thong-so error:", err);
+      return res.status(400).json({ message: "Không đọc được file Excel" });
+    }
+
+    if (!rows.length) {
+      return res.status(400).json({
+        message: "File không có dữ liệu",
+        errors: [{ line: 1, message: "File không có dòng dữ liệu để import" }]
+      });
+    }
+
+    try {
+      const pool = await poolPromise;
+      const sanPhamList = await getAllSanPham(pool);
+      const sanPhamByCode = new Map(
+        sanPhamList.map(item => [normalizeKey(item.MaSanPham), item])
+      );
+
+      const errors = [];
+
+      rows.forEach((row) => {
+        if (!row.MaSanPham) {
+          errors.push({ line: row.line, message: "Thiếu MaSanPham" });
+        } else if (!sanPhamByCode.has(normalizeKey(row.MaSanPham))) {
+          errors.push({ line: row.line, message: `MaSanPham không tồn tại: ${row.MaSanPham}` });
+        }
+
+        if (!row.NhomThongSo) {
+          errors.push({ line: row.line, message: "Thiếu NhomThongSo" });
+        }
+
+        if (!row.GiaTriChuan) {
+          errors.push({ line: row.line, message: "Thiếu GiaTriChuan" });
+        }
+      });
+
+      if (errors.length) {
+        return res.status(400).json({
+          message: "File có dữ liệu không hợp lệ",
+          errors
+        });
+      }
+
+      const transaction = new sql.Transaction(pool);
+      await transaction.begin();
+
+      const summary = {
+        totalRows: rows.length,
+        created: 0,
+        updated: 0
+      };
+
+      try {
+        const thongSoCache = new Map();
+        const getExistingThongSo = async (sanPhamId, nhomThongSo, tenThongSo) => {
+          if (!thongSoCache.has(sanPhamId)) {
+            const items = await getThongSoInTransaction(transaction, sanPhamId);
+            thongSoCache.set(
+              sanPhamId,
+              new Map(items.map(item => [
+                `${normalizeKey(item.NhomThongSo)}|${normalizeKey(item.TenThongSo)}`,
+                item
+              ]))
+            );
+          }
+
+          return thongSoCache
+            .get(sanPhamId)
+            .get(`${normalizeKey(nhomThongSo)}|${normalizeKey(tenThongSo)}`);
+        };
+
+        for (const [index, row] of rows.entries()) {
+          const sanPham = sanPhamByCode.get(normalizeKey(row.MaSanPham));
+          const existed = await getExistingThongSo(sanPham.Id, row.NhomThongSo, row.TenThongSo);
+          const thuTu = parseOrder(row.ThuTu, index + 1);
+          const dungSaiAm = Number.parseFloat(row.DungSaiAm);
+          const dungSaiDuong = Number.parseFloat(row.DungSaiDuong);
+
+          await requestWithTransaction(transaction)
+            .input("Id", sql.Int, existed?.Id || null)
+            .input("SanPhamId", sql.Int, sanPham.Id)
+            .input("NhomThongSo", sql.NVarChar(100), row.NhomThongSo)
+            .input("TenThongSo", sql.NVarChar(100), row.TenThongSo || null)
+            .input("GiaTriChuan", sql.NVarChar(100), row.GiaTriChuan)
+            .input("DungSaiAm", sql.Float, Number.isFinite(dungSaiAm) ? dungSaiAm : 0)
+            .input("DungSaiDuong", sql.Float, Number.isFinite(dungSaiDuong) ? dungSaiDuong : 0)
+            .input("DonVi", sql.NVarChar(50), row.DonVi || null)
+            .input("ThuTu", sql.Int, thuTu)
+            .execute("sp_DM_SanPhamThongSo_Save");
+
+          if (existed) {
+            summary.updated += 1;
+          } else {
+            summary.created += 1;
+            thongSoCache.delete(sanPham.Id);
+          }
+        }
+
+        await transaction.commit();
+        res.json({
+          success: true,
+          message: "Import thông số kiểm thành công",
+          summary
+        });
+      } catch (err) {
+        await transaction.rollback();
+        throw err;
+      }
+    } catch (err) {
+      console.error("Import thong-so error:", err);
+      res.status(500).json({
+        message: "Import thông số kiểm thất bại",
+        error: err.message
+      });
+    }
+  }
+);
+
 router.get(
   "/san-pham/:sanPhamId/thong-so",
   authenticateToken,

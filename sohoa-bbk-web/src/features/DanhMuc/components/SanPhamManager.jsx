@@ -32,6 +32,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DownloadIcon from "@mui/icons-material/Download";
 import AddIcon from "@mui/icons-material/Add";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
 import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
 import SettingsOverscanIcon from '@mui/icons-material/SettingsOverscan';
 import ConfirmDialog from "../../../components/common/ConfirmDialog"
@@ -43,6 +44,8 @@ import {
     deleteSanPham,
     exportSanPhamDanhMucKiem,
     exportSanPhamThongSo,
+    importThongSoKiemExcel,
+    downloadThongSoKiemTemplate,
     getSanPhamNhomKiem,
     createSanPhamNhomKiem,
     deleteSanPhamNhomKiem,
@@ -71,6 +74,10 @@ export default function SanPhamManager() {
     const [hasMore, setHasMore] = useState(true);
     const [exportingId, setExportingId] = useState(null);
     const [exportingThongSoId, setExportingThongSoId] = useState(null);
+    const [importOpen, setImportOpen] = useState(false);
+    const [importFile, setImportFile] = useState(null);
+    const [importing, setImporting] = useState(false);
+    const [importResult, setImportResult] = useState(null);
 
     const [confirmDialog, setConfirmDialog] = useState({
         open: false,
@@ -248,6 +255,52 @@ export default function SanPhamManager() {
         }
     };
 
+    const handleDownloadThongSoTemplate = async () => {
+        try {
+            const res = await downloadThongSoKiemTemplate();
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "mau-import-thong-so-kiem.xlsx";
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            setConfirmDialog({
+                open: true,
+                title: "Không tải được file",
+                message: err.response?.data?.message || "Không tải được file mẫu import thông số kiểm",
+                type: "error",
+                onConfirm: () => setConfirmDialog(prev => ({ ...prev, open: false }))
+            });
+        }
+    };
+
+    const handleImportThongSoExcel = async () => {
+        if (!importFile) return;
+
+        try {
+            setImporting(true);
+            setImportResult(null);
+            const res = await importThongSoKiemExcel(importFile);
+            setImportResult({
+                type: "success",
+                message: res.data?.message || "Import thành công",
+                summary: res.data?.summary
+            });
+            setImportFile(null);
+        } catch (err) {
+            setImportResult({
+                type: "error",
+                message: err.response?.data?.message || "Import thất bại",
+                errors: err.response?.data?.errors || []
+            });
+        } finally {
+            setImporting(false);
+        }
+    };
+
     return (
         <Box sx={{ p: { xs: 2, md: 3 } }}>
             {/* Header */}
@@ -288,6 +341,14 @@ export default function SanPhamManager() {
                         sx={{ whiteSpace: "nowrap" }}
                     >
                         Thêm sản phẩm
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        startIcon={<UploadFileIcon />}
+                        onClick={() => setImportOpen(true)}
+                        sx={{ whiteSpace: "nowrap" }}
+                    >
+                        Import thông số
                     </Button>
                 </Stack>
             </Stack>
@@ -570,6 +631,98 @@ export default function SanPhamManager() {
                 message={confirmDialog.message}
                 type={confirmDialog.type}
             />
+
+            <Dialog
+                open={importOpen}
+                onClose={() => !importing && setImportOpen(false)}
+                maxWidth="md"
+                fullWidth
+            >
+                <DialogTitle sx={{ fontWeight: "bold", pb: 1 }}>
+                    Import thông số kiểm từ Excel
+                </DialogTitle>
+                <DialogContent dividers>
+                    <Stack spacing={2.5}>
+                        <Alert severity="info">
+                            File .xlsx cần có sheet <strong>ThongSoKiem</strong> với các cột: MaSanPham, NhomThongSo, TenThongSo, GiaTriChuan, DungSaiAm, DungSaiDuong, DonVi, ThuTu.
+                        </Alert>
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                            <Button
+                                variant="outlined"
+                                startIcon={<DownloadIcon />}
+                                onClick={handleDownloadThongSoTemplate}
+                                disabled={importing}
+                            >
+                                Tải file mẫu
+                            </Button>
+                            <Button
+                                variant="contained"
+                                component="label"
+                                startIcon={<UploadFileIcon />}
+                                disabled={importing}
+                            >
+                                Chọn file .xlsx
+                                <input
+                                    hidden
+                                    type="file"
+                                    accept=".xlsx"
+                                    onChange={(e) => {
+                                        setImportFile(e.target.files?.[0] || null);
+                                        setImportResult(null);
+                                        e.target.value = "";
+                                    }}
+                                />
+                            </Button>
+                        </Stack>
+                        {importFile && (
+                            <Paper variant="outlined" sx={{ p: 2 }}>
+                                <Typography fontWeight={600}>{importFile.name}</Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    {(importFile.size / 1024).toFixed(1)} KB
+                                </Typography>
+                            </Paper>
+                        )}
+                        {importResult && (
+                            <Alert severity={importResult.type}>
+                                <Typography fontWeight={600}>{importResult.message}</Typography>
+                                {importResult.summary && (
+                                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                                        Tổng dòng: {importResult.summary.totalRows}, tạo: {importResult.summary.created ?? 0}, cập nhật: {importResult.summary.updated ?? 0}
+                                    </Typography>
+                                )}
+                            </Alert>
+                        )}
+                        {importResult?.errors?.length > 0 && (
+                            <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 320 }}>
+                                <Table size="small" stickyHeader>
+                                    <TableHead>
+                                        <TableRow>
+                                            <TableCell sx={{ width: 100, fontWeight: 600 }}>Dòng</TableCell>
+                                            <TableCell sx={{ fontWeight: 600 }}>Lỗi</TableCell>
+                                        </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {importResult.errors.map((item, index) => (
+                                            <TableRow key={`${item.line}-${index}`}>
+                                                <TableCell>{item.line}</TableCell>
+                                                <TableCell>{item.message}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </TableContainer>
+                        )}
+                    </Stack>
+                </DialogContent>
+                <DialogActions sx={{ px: 3, py: 2, bgcolor: "#f8fafc" }}>
+                    <Button onClick={() => setImportOpen(false)} color="inherit" disabled={importing}>
+                        Đóng
+                    </Button>
+                    <Button variant="contained" onClick={handleImportThongSoExcel} disabled={!importFile || importing}>
+                        {importing ? "Đang import..." : "Import"}
+                    </Button>
+                </DialogActions>
+            </Dialog>
 
             {/* Dialog Thông số đặc biệt */}
             <SanPhamThongSoDialog
