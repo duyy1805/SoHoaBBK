@@ -3,6 +3,10 @@ const router = express.Router();
 const sql = require('mssql');
 const multer = require('multer');
 const XLSX = require('xlsx');
+const fs = require('fs');
+const path = require('path');
+const sharp = require('sharp');
+sharp.cache(false);
 
 const { poolPromise } = require('../db');
 const authenticateToken = require('../middlewares/auth.middleware');
@@ -18,6 +22,31 @@ const excelUpload = multer({
     cb(null, true);
   }
 });
+
+const defectImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!/^image\//i.test(file.mimetype)) {
+      return cb(new Error("Chỉ hỗ trợ file ảnh"));
+    }
+    cb(null, true);
+  }
+});
+
+const defectUploadDir = path.join(__dirname, "..", "uploads", "defects");
+const publicDefectUploadDir = "/uploads/defects";
+
+const slugifyFilePart = (value) => {
+  const normalized = String(value || "defect")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || "defect";
+};
 
 const trimValue = (value) => String(value ?? "").trim();
 const normalizeKey = (value) => trimValue(value).toLowerCase();
@@ -105,6 +134,7 @@ router.get(
   authenticateToken,
   async (req, res) => {
     const { defectType, phanHe } = req.query;
+    const phanHeFilter = phanHe || "ALL";
 
     try {
       const pool = await poolPromise;
@@ -118,7 +148,7 @@ router.get(
         .input(
           "PhanHe",
           sql.NVarChar(20),
-          phanHe || null
+          phanHeFilter
         )
         .execute("sp_DM_GetDefectList");
 
@@ -128,6 +158,40 @@ router.get(
       res.status(500).json({
         message: "Không lấy được danh mục lỗi"
       });
+    }
+  }
+);
+
+router.post(
+  "/defect-image",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  defectImageUpload.single("image"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "Vui lòng chọn ảnh lỗi" });
+      }
+
+      fs.mkdirSync(defectUploadDir, { recursive: true });
+
+      const baseName = slugifyFilePart(req.body.maLoi || req.body.tenLoi || "defect");
+      const fileName = `${baseName}-${Date.now()}-${Math.round(Math.random() * 1E9)}.jpg`;
+      const outputPath = path.join(defectUploadDir, fileName);
+
+      await sharp(req.file.buffer)
+        .rotate()
+        .resize({ width: 1280, height: 1280, fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 82 })
+        .toFile(outputPath);
+
+      res.json({
+        success: true,
+        imageUrl: `${publicDefectUploadDir}/${fileName}`
+      });
+    } catch (err) {
+      console.error("Upload defect image error:", err);
+      res.status(500).json({ message: "Không thể tải ảnh lỗi lên server" });
     }
   }
 );

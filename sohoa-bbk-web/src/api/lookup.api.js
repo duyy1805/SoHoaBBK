@@ -31,6 +31,16 @@ export const deleteDefect = (id) => {
     return axiosClient.delete(`/lookup/defect/${id}`);
 };
 
+export const uploadDefectImage = (file, meta = {}) => {
+    const formData = new FormData();
+    formData.append("image", file);
+    if (meta.maLoi) formData.append("maLoi", meta.maLoi);
+    if (meta.tenLoi) formData.append("tenLoi", meta.tenLoi);
+    return axiosClient.post("/lookup/defect-image", formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+    });
+};
+
 
 
 /* =====================================================

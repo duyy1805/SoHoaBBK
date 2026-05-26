@@ -12,7 +12,6 @@ import {
     DialogActions,
     DialogContent,
     DialogTitle,
-    Divider,
     FormControl,
     Grid,
     InputLabel,
@@ -20,6 +19,12 @@ import {
     Paper,
     Select,
     Stack,
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
     TextField,
     Typography
 } from "@mui/material";
@@ -43,6 +48,7 @@ import {
     saveBienBanCustomFields,
     saveBienBanSxbtDraft
 } from "../../api/bienBan.api";
+import { getAssetUrl } from "../../api/lookup.api";
 import { getCurrentUser } from "../../utils/auth";
 import { useToast } from "../../components/common/ToastContext";
 import { useReactToPrint } from "react-to-print";
@@ -58,22 +64,70 @@ const statusLabel = (status) => {
 };
 
 const cardShellSx = {
-    borderRadius: 3,
-    border: "1px solid rgba(15, 23, 42, 0.08)",
-    boxShadow: "0 10px 28px rgba(15, 23, 42, 0.06)"
+    borderRadius: 2,
+    border: "1px solid #e2e8f0",
+    boxShadow: "0 12px 30px rgba(15, 23, 42, 0.06)"
 };
 
 const mutedLabelSx = {
     fontSize: 12,
-    fontWeight: 700,
-    letterSpacing: "0.08em",
+    fontWeight: 800,
+    letterSpacing: 0,
     textTransform: "uppercase",
     color: "text.secondary"
+};
+
+const sectionTitleSx = {
+    fontSize: 17,
+    fontWeight: 850,
+    color: "#0f172a"
+};
+
+const tableSx = {
+    minWidth: 720,
+    "& .MuiTableCell-head": {
+        bgcolor: "#f8fafc",
+        color: "#64748b",
+        fontSize: 12,
+        fontWeight: 850,
+        textTransform: "uppercase",
+        letterSpacing: 0,
+        borderBottomColor: "#e2e8f0"
+    },
+    "& .MuiTableCell-body": {
+        color: "#1e293b",
+        borderBottomColor: "#eef2f7",
+        verticalAlign: "top"
+    },
+    "& .MuiTableRow-root:last-child .MuiTableCell-body": {
+        borderBottom: 0
+    }
 };
 
 const formatDate = (value) => {
     if (!value) return "---";
     return new Date(value).toLocaleDateString("vi-VN");
+};
+
+const parseImageUrls = (value) => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value.filter(Boolean);
+    if (typeof value !== "string") return [];
+
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed.filter(Boolean) : [parsed].filter(Boolean);
+    } catch {
+        return [value].filter(Boolean);
+    }
+};
+
+const getDefectImages = (defect) => {
+    const urls = [
+        ...parseImageUrls(defect?.ImageUrls),
+        ...parseImageUrls(defect?.ImageUrl)
+    ];
+    return [...new Set(urls)];
 };
 
 export default function BienBanSxbtDetail() {
@@ -96,6 +150,7 @@ export default function BienBanSxbtDetail() {
     const [openXuLy, setOpenXuLy] = useState(false);
     const [openHanhDong, setOpenHanhDong] = useState(false);
     const [openPrint, setOpenPrint] = useState(false);
+    const [previewImage, setPreviewImage] = useState("");
 
     useEffect(() => {
         loadData();
@@ -128,6 +183,7 @@ export default function BienBanSxbtDetail() {
         () => confirmSteps.find((step) => step.TrangThai !== "DA_XAC_NHAN"),
         [confirmSteps]
     );
+    const completedSteps = confirmSteps.filter((step) => step.TrangThai === "DA_XAC_NHAN").length;
     const canConfirmCurrentStep = !!currentPendingStep &&
         Number(currentPendingStep.BoPhanId) === Number(currentUser?.boPhanId);
     const canEditBeforeFlow = !isMucDoConfirmed && !isCompleted;
@@ -214,11 +270,7 @@ export default function BienBanSxbtDetail() {
 
             inputs.forEach((input) => {
                 if (!input.name) return;
-                if (input.type === "checkbox") {
-                    fieldsData[input.name] = input.checked;
-                } else {
-                    fieldsData[input.name] = input.value;
-                }
+                fieldsData[input.name] = input.type === "checkbox" ? input.checked : input.value;
             });
 
             await saveBienBanCustomFields({
@@ -241,21 +293,15 @@ export default function BienBanSxbtDetail() {
     }
 
     return (
-        <Box
-            sx={{
-                minHeight: "100vh",
-                pb: 5,
-                background: "#f5f7fb"
-            }}
-        >
+        <Box sx={{ minHeight: "100vh", pb: 5, background: "#f4f7fb" }}>
             <Paper
                 elevation={0}
                 sx={{
-                    p: 2,
-                    mb: 4,
-                    borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
-                    bgcolor: "rgba(255,255,255,0.88)",
-                    backdropFilter: "blur(16px)",
+                    p: 1.5,
+                    mb: 3,
+                    borderBottom: "1px solid #e2e8f0",
+                    bgcolor: "rgba(255,255,255,0.94)",
+                    backdropFilter: "blur(12px)",
                     position: "sticky",
                     top: 0,
                     zIndex: 10
@@ -276,11 +322,7 @@ export default function BienBanSxbtDetail() {
                                     Xem phiếu kiểm
                                 </Button>
                             )}
-                            <Button
-                                variant="outlined"
-                                startIcon={<PrintIcon />}
-                                onClick={() => setOpenPrint(true)}
-                            >
+                            <Button variant="contained" startIcon={<PrintIcon />} onClick={() => setOpenPrint(true)} sx={{ bgcolor: "#172033" }}>
                                 Xem in
                             </Button>
                         </Stack>
@@ -289,329 +331,314 @@ export default function BienBanSxbtDetail() {
             </Paper>
 
             <Container maxWidth="xl">
-                <Grid container spacing={3}>
-                    <Grid size={{ xs: 12, lg: 4 }}>
-                        <Stack spacing={3}>
-                            <Card sx={{ ...cardShellSx, overflow: "hidden" }}>
-                                <CardContent>
-                                    <Box
-                                        sx={{
-                                            mx: -2,
-                                            mt: -2,
-                                            mb: 3,
-                                            px: 2.5,
-                                            py: 2.25,
-                                            background: "#eef2f7",
-                                            color: "#1e293b",
-                                            borderBottom: "1px solid rgba(15, 23, 42, 0.08)"
-                                        }}
-                                    >
-                                        <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={2}>
-                                            <Box>
-                                                <Typography sx={{ color: "text.secondary", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.12em" }}>
-                                                    Biên bản SXBT
-                                                </Typography>
-                                                <Typography
-                                                    sx={{
-                                                        mt: 0.5,
-                                                        fontSize: { xs: 42, md: 48 },
-                                                        lineHeight: 1.02,
-                                                        fontWeight: 800,
-                                                        letterSpacing: "-0.04em",
-                                                        whiteSpace: "nowrap",
-                                                        overflow: "hidden",
-                                                        textOverflow: "ellipsis",
-                                                        color: "#0f172a"
-                                                    }}
-                                                >
-                                                    {info?.SoPhieu || "---"}
-                                                </Typography>
-                                                <Typography sx={{ color: "text.secondary", mt: 0.75, fontSize: 15 }}>
-                                                    {info?.SoBienBan || "Xử lý sản xuất bổ trợ"}
-                                                </Typography>
-                                            </Box>
-                                            <Chip
-                                                label={statusLabel(info?.TrangThai)}
-                                                color={isCompleted ? "success" : "default"}
-                                                sx={{
-                                                    alignSelf: "flex-start",
-                                                    bgcolor: isCompleted ? undefined : "rgba(15, 23, 42, 0.06)",
-                                                    color: isCompleted ? undefined : "#334155",
-                                                    fontWeight: 700,
-                                                    borderRadius: 2
-                                                }}
-                                            />
-                                        </Stack>
-                                    </Box>
-                                    <Stack spacing={2}>
-                                        <Box>
-                                            <Typography sx={mutedLabelSx}>Người tạo</Typography>
-                                            <Stack direction="row" spacing={1} alignItems="center" mt={0.5}>
-                                                <PersonOutlineOutlinedIcon sx={{ fontSize: 18, color: "text.secondary" }} />
-                                                <Typography fontWeight={600}>{info?.NguoiTao || "---"}</Typography>
-                                            </Stack>
-                                        </Box>
-                                        <Box>
-                                            <Typography sx={mutedLabelSx}>Mức độ</Typography>
-                                            <Stack direction="row" spacing={1} mt={1}>
-                                                {LEVEL_OPTIONS.map((level) => (
-                                                    <Chip
-                                                        key={level}
-                                                        label={`Mức ${level}`}
-                                                        color={mucDo === level ? "primary" : "default"}
-                                                        variant={mucDo === level ? "filled" : "outlined"}
-                                                        sx={{ fontWeight: 700 }}
-                                                    />
-                                                ))}
-                                            </Stack>
-                                        </Box>
-                                        <Grid container spacing={1.5}>
-                                            <Grid size={{ xs: 6 }}>
-                                                <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2.5, bgcolor: "#f8fafc" }}>
-                                                    <Typography sx={mutedLabelSx}>Bước đã xác nhận</Typography>
-                                                    <Typography variant="h5" fontWeight={800}>
-                                                        {confirmSteps.filter((step) => step.TrangThai === "DA_XAC_NHAN").length}/{confirmSteps.length}
-                                                    </Typography>
-                                                </Paper>
-                                            </Grid>
-                                            <Grid size={{ xs: 6 }}>
-                                                <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2.5, bgcolor: "#f8fafc" }}>
-                                                    <Typography sx={mutedLabelSx}>Phương án / Hành động</Typography>
-                                                    <Typography variant="h5" fontWeight={800}>
-                                                        {xuLyRows.length + hanhDongRows.length}
-                                                    </Typography>
-                                                </Paper>
-                                            </Grid>
-                                        </Grid>
+                <Stack spacing={3}>
+                    <Card sx={{ ...cardShellSx, overflow: "hidden" }}>
+                        <CardContent sx={{ p: { xs: 2, md: 3 }, "&:last-child": { pb: { xs: 2, md: 3 } } }}>
+                            <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={3}>
+                                <Box sx={{ minWidth: 0 }}>
+                                    <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap">
+                                        <Typography sx={{ fontSize: { xs: 26, md: 34 }, fontWeight: 850, color: "#0f172a", lineHeight: 1.15 }}>
+                                            {info?.SoPhieu || "---"}
+                                        </Typography>
+                                        <Chip
+                                            label={statusLabel(info?.TrangThai)}
+                                            color={isCompleted ? "success" : "warning"}
+                                            variant={isCompleted ? "filled" : "outlined"}
+                                            sx={{ fontWeight: 800, borderRadius: 1.5 }}
+                                        />
                                     </Stack>
-                                </CardContent>
-                            </Card>
-
-                            <Card sx={cardShellSx}>
-                                <CardContent>
-                                    <Stack direction="row" spacing={1.2} alignItems="center" mb={2}>
-                                        <DescriptionOutlinedIcon color="action" />
-                                        <Typography variant="h6" fontWeight={700}>Mô tả chung</Typography>
-                                    </Stack>
-                                    <TextField
-                                        fullWidth
-                                        multiline
-                                        minRows={6}
-                                        placeholder="Nhập mô tả chung của biên bản SXBT..."
-                                        value={moTaChung}
-                                        onChange={(e) => setMoTaChung(e.target.value)}
-                                        disabled={!canEditBeforeFlow}
-                                        sx={{
-                                            "& .MuiInputBase-root": {
-                                                borderRadius: 2.5,
-                                                bgcolor: canEditBeforeFlow ? "white" : "#f8fafc"
-                                            }
-                                        }}
-                                    />
-                                </CardContent>
-                            </Card>
-
-                            <Card sx={cardShellSx}>
-                                <CardContent>
-                                    <Stack direction="row" spacing={1.2} alignItems="center" mb={2}>
-                                        <ReportProblemOutlinedIcon color="error" />
-                                        <Typography variant="h6" fontWeight={700}>Chi tiết lỗi</Typography>
-                                    </Stack>
-                                    {defects.length === 0 ? (
-                                        <Typography color="text.secondary">Chưa có dữ liệu lỗi</Typography>
-                                    ) : defects.map((item, index) => (
-                                        <Paper
-                                            key={`${item.MaLoi}-${index}`}
-                                            variant="outlined"
-                                            sx={{
-                                                p: 2,
-                                                mb: 1.5,
-                                                borderRadius: 3,
-                                                bgcolor: "#fffdf8",
-                                                borderColor: "rgba(245, 158, 11, 0.18)"
-                                            }}
-                                        >
-                                            <Stack direction="row" justifyContent="space-between" spacing={2}>
-                                                <Box>
-                                                    <Typography fontWeight={700}>{item.TenLoi || item.MaLoi}</Typography>
-                                                    <Typography variant="body2" color="text.secondary" mt={0.5}>
-                                                        {item.MoTa || "---"}
-                                                    </Typography>
-                                                </Box>
-                                                <Chip label={`SL ${item.SoLuong || 0}`} color="warning" variant="outlined" />
-                                            </Stack>
-                                        </Paper>
-                                    ))}
-                                </CardContent>
-                            </Card>
-                        </Stack>
-                    </Grid>
-
-                    <Grid size={{ xs: 12, lg: 8 }}>
-                        <Stack spacing={3}>
-                            <Card sx={cardShellSx}>
-                                <CardContent>
-                                    <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={2} alignItems={{ xs: "flex-start", md: "center" }} mb={2}>
-                                        <Box>
-                                            <Typography variant="h6" fontWeight={700}>Mức không phù hợp</Typography>
-                                            <Typography variant="body2" color="text.secondary">
-                                                Xác nhận mức độ để khởi tạo chuỗi xử lý SXBT.
-                                            </Typography>
-                                        </Box>
-                                        {isMucDoConfirmed && <Chip label={`Đã xác nhận mức ${mucDo}`} color="success" />}
-                                    </Stack>
-                                    <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "center" }}>
-                                        {LEVEL_OPTIONS.map((level) => (
-                                            <Button
-                                                key={level}
-                                                variant={mucDo === level ? "contained" : "outlined"}
-                                                onClick={() => setMucDo(level)}
-                                                disabled={!canEditBeforeFlow}
-                                                sx={{
-                                                    minWidth: 112,
-                                                    borderRadius: 2.5,
-                                                    py: 1,
-                                                    fontWeight: 700
-                                                }}
-                                            >
-                                                Mức {level}
-                                            </Button>
-                                        ))}
-                                        {canEditBeforeFlow && (
-                                            <Button
-                                                variant="contained"
-                                                color="success"
-                                                disabled={saving}
-                                                onClick={handleConfirmMucDo}
-                                                sx={{ borderRadius: 2.5, px: 3, py: 1, fontWeight: 700 }}
-                                            >
-                                                Xác nhận mức độ
-                                            </Button>
-                                        )}
-                                    </Stack>
-                                </CardContent>
-                            </Card>
-
-                            {isMucDoConfirmed && (
-                                <>
-                                    <SxbtXuLySection rows={xuLyRows} canEdit={canEditContent} onAdd={() => setOpenXuLy(true)} />
-                                    <SxbtHanhDongSection rows={hanhDongRows} canEdit={canEditContent} onAdd={() => setOpenHanhDong(true)} />
-                                </>
-                            )}
-
-                            <Card sx={cardShellSx}>
-                                <CardContent>
-                                    <Stack direction="row" spacing={1.2} alignItems="center" mb={2}>
-                                        <RuleFolderOutlinedIcon color="action" />
-                                        <Typography variant="h6" fontWeight={700}>Chuỗi xác nhận</Typography>
-                                    </Stack>
-                                    {currentPendingStep && !isCompleted && (
-                                        <Paper
-                                            variant="outlined"
-                                            sx={{
-                                                mb: 2,
-                                                p: 1.5,
-                                                borderRadius: 2.5,
-                                                bgcolor: "#eff6ff",
-                                                borderColor: "rgba(37, 99, 235, 0.18)"
-                                            }}
-                                        >
-                                            <Typography variant="body2" sx={{ color: "#1d4ed8", fontWeight: 700 }}>
-                                                Đang chờ: {currentPendingStep.MaBoPhan || currentPendingStep.TenBoPhan}
-                                            </Typography>
-                                        </Paper>
-                                    )}
-                                    {confirmSteps.length === 0 ? (
-                                        <Typography color="text.secondary">Chưa có chuỗi xác nhận</Typography>
-                                    ) : confirmSteps.map((step) => (
-                                        <Stack key={step.Id} direction="row" spacing={2} sx={{ position: "relative", pb: 2 }}>
-                                            <Stack alignItems="center" sx={{ minWidth: 36 }}>
-                                                <Box
-                                                    sx={{
-                                                        width: 32,
-                                                        height: 32,
-                                                        borderRadius: "50%",
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        justifyContent: "center",
-                                                        bgcolor: step.TrangThai === "DA_XAC_NHAN" ? "success.main" : "warning.light",
-                                                        color: step.TrangThai === "DA_XAC_NHAN" ? "white" : "warning.dark",
-                                                        fontWeight: 800
-                                                    }}
-                                                >
-                                                    {step.StepOrder}
-                                                </Box>
-                                                {step !== confirmSteps[confirmSteps.length - 1] && (
-                                                    <Box sx={{ width: 2, flex: 1, minHeight: 26, bgcolor: "rgba(148, 163, 184, 0.35)", mt: 0.5 }} />
-                                                )}
-                                            </Stack>
-                                            <Paper
-                                                variant="outlined"
-                                                sx={{
-                                                    flex: 1,
-                                                    p: 1.5,
-                                                    borderRadius: 2.5,
-                                                    bgcolor: step.TrangThai === "DA_XAC_NHAN" ? "#f0fdf4" : "#fffaf0",
-                                                    borderColor: step.TrangThai === "DA_XAC_NHAN"
-                                                        ? "rgba(34, 197, 94, 0.2)"
-                                                        : "rgba(245, 158, 11, 0.2)"
-                                                }}
-                                            >
-                                                <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={1}>
-                                                    <Box>
-                                                        <Typography fontWeight={700}>{step.TenBoPhan || step.MaBoPhan}</Typography>
-                                                        <Typography variant="body2" color="text.secondary">
-                                                            Bộ phận {step.MaBoPhan || `BP ${step.BoPhanId}`}
-                                                        </Typography>
-                                                    </Box>
-                                                    <Chip
-                                                        size="small"
-                                                        label={step.TrangThai === "DA_XAC_NHAN" ? "Đã xác nhận" : "Chờ xác nhận"}
-                                                        color={step.TrangThai === "DA_XAC_NHAN" ? "success" : "warning"}
-                                                    />
-                                                </Stack>
-                                            </Paper>
-                                        </Stack>
-                                    ))}
-                                </CardContent>
-                            </Card>
-
-                            {canConfirmCurrentStep && !isCompleted && (
-                                <Button
-                                    variant="contained"
-                                    size="large"
-                                    startIcon={<CheckCircleIcon />}
-                                    disabled={saving}
-                                    onClick={handleConfirmStep}
-                                    sx={{
-                                        borderRadius: 2.5,
-                                        py: 1.2,
-                                        px: 3.5,
-                                        alignSelf: "flex-start",
-                                        boxShadow: "0 10px 24px rgba(37, 99, 235, 0.18)"
-                                    }}
-                                >
-                                    Xác nhận bước hiện tại
-                                </Button>
-                            )}
-                            {isCompleted && (
-                                <Paper
-                                    variant="outlined"
-                                    sx={{
-                                        p: 2,
-                                        borderRadius: 2.5,
-                                        bgcolor: "#f0fdf4",
-                                        borderColor: "rgba(34, 197, 94, 0.18)"
-                                    }}
-                                >
-                                    <Typography sx={{ color: "success.dark", fontWeight: 800 }}>
-                                        Biên bản SXBT đã hoàn tất.
+                                    <Typography sx={{ mt: 0.75, color: "#64748b", fontSize: 16, fontWeight: 600 }}>
+                                        {info?.SoBienBan || "Biên bản xử lý sản xuất bổ trợ"}
                                     </Typography>
-                                </Paper>
-                            )}
-                        </Stack>
+                                </Box>
+
+                                <Grid container spacing={1.5} sx={{ minWidth: { lg: 640 } }}>
+                                    <Grid size={{ xs: 6, md: 3 }}>
+                                        <InfoTile icon={<PersonOutlineOutlinedIcon />} label="Người tạo" value={info?.NguoiTao || "---"} />
+                                    </Grid>
+                                    <Grid size={{ xs: 6, md: 3 }}>
+                                        <InfoTile icon={<ApartmentOutlinedIcon />} label="Loại phát sinh" value={info?.LoaiPhatSinh || "SXBT"} />
+                                    </Grid>
+                                    <Grid size={{ xs: 6, md: 3 }}>
+                                        <InfoTile icon={<ReportProblemOutlinedIcon />} label="Mức độ" value={`Mức ${mucDo || "---"}`} />
+                                    </Grid>
+                                    <Grid size={{ xs: 6, md: 3 }}>
+                                        <InfoTile icon={<RuleFolderOutlinedIcon />} label="Luồng" value={`${completedSteps}/${confirmSteps.length || 0}`} />
+                                    </Grid>
+                                </Grid>
+                            </Stack>
+                        </CardContent>
+                    </Card>
+
+                    <Grid container spacing={3} alignItems="flex-start">
+                        <Grid size={{ xs: 12, lg: 8.5 }}>
+                            <Stack spacing={3}>
+                                <Card sx={cardShellSx}>
+                                    <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+                                        <Stack direction={{ xs: "column", md: "row" }} spacing={2.5}>
+                                            <Box sx={{ flex: 1 }}>
+                                                <Stack direction="row" spacing={1} alignItems="center" mb={1.5}>
+                                                    <DescriptionOutlinedIcon sx={{ color: "#2563eb" }} />
+                                                    <Typography sx={sectionTitleSx}>Thông tin chung</Typography>
+                                                </Stack>
+                                                {canEditBeforeFlow ? (
+                                                    <TextField
+                                                        fullWidth
+                                                        multiline
+                                                        minRows={4}
+                                                        placeholder="Nhập mô tả chung của biên bản SXBT..."
+                                                        value={moTaChung}
+                                                        onChange={(e) => setMoTaChung(e.target.value)}
+                                                        sx={{
+                                                            "& .MuiInputBase-root": {
+                                                                borderRadius: 2,
+                                                                bgcolor: "white"
+                                                            }
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <Paper
+                                                        elevation={0}
+                                                        sx={{
+                                                            p: 2,
+                                                            minHeight: 126,
+                                                            borderRadius: 2,
+                                                            bgcolor: "#f8fbff",
+                                                            borderLeft: "4px solid #2563eb"
+                                                        }}
+                                                    >
+                                                        <Typography sx={{ color: "#1e293b", fontSize: 16, lineHeight: 1.7, fontWeight: 600 }}>
+                                                            {moTaChung || "Chưa có mô tả chung"}
+                                                        </Typography>
+                                                    </Paper>
+                                                )}
+                                            </Box>
+                                            <Box sx={{ width: { xs: "100%", md: 300 } }}>
+                                                <Typography sx={mutedLabelSx}>Mức không phù hợp</Typography>
+                                                <Stack direction="row" spacing={1} mt={1} mb={2}>
+                                                    {LEVEL_OPTIONS.map((level) => (
+                                                        <Box
+                                                            key={level}
+                                                            onClick={() => {
+                                                                if (canEditBeforeFlow) setMucDo(level);
+                                                            }}
+                                                            sx={{
+                                                                minWidth: 96,
+                                                                px: 2,
+                                                                py: 1.15,
+                                                                borderRadius: 1.5,
+                                                                textAlign: "center",
+                                                                cursor: canEditBeforeFlow ? "pointer" : "default",
+                                                                fontWeight: 850,
+                                                                bgcolor: mucDo === level ? "#172033" : "#f8fafc",
+                                                                color: mucDo === level ? "white" : "#475569",
+                                                                border: mucDo === level ? "1px solid #172033" : "1px solid #cbd5e1",
+                                                                boxShadow: mucDo === level ? "0 8px 18px rgba(15, 23, 42, 0.16)" : "none",
+                                                                opacity: canEditBeforeFlow || mucDo === level ? 1 : 0.72
+                                                            }}
+                                                        >
+                                                            {`Mức ${level}`}
+                                                        </Box>
+                                                    ))}
+                                                </Stack>
+                                                {isMucDoConfirmed ? (
+                                                    <Chip
+                                                        icon={<CheckCircleIcon />}
+                                                        label={`Đã xác nhận mức ${mucDo}`}
+                                                        sx={{
+                                                            bgcolor: "#dcfce7",
+                                                            color: "#166534",
+                                                            fontWeight: 850,
+                                                            borderRadius: 1.5,
+                                                            "& .MuiChip-icon": { color: "#16a34a" }
+                                                        }}
+                                                    />
+                                                ) : canEditBeforeFlow && (
+                                                    <Button fullWidth variant="contained" color="success" disabled={saving} onClick={handleConfirmMucDo} sx={{ borderRadius: 1.5, fontWeight: 800 }}>
+                                                        Xác nhận mức độ
+                                                    </Button>
+                                                )}
+                                            </Box>
+                                        </Stack>
+                                    </CardContent>
+                                </Card>
+
+                                <Card sx={cardShellSx}>
+                                    <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+                                        <Stack direction="row" spacing={1} alignItems="center" mb={2}>
+                                            <ReportProblemOutlinedIcon sx={{ color: "#dc2626" }} />
+                                            <Typography sx={sectionTitleSx}>Danh sách lỗi</Typography>
+                                        </Stack>
+                                        <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2, borderColor: "#e2e8f0" }}>
+                                            <Table size="small" sx={tableSx}>
+                                                <TableHead>
+                                                    <TableRow>
+                                                        <TableCell width={70}>STT</TableCell>
+                                                        <TableCell width={120}>Ảnh</TableCell>
+                                                        <TableCell>Mã lỗi</TableCell>
+                                                        <TableCell>Tên lỗi</TableCell>
+                                                        <TableCell>Mô tả</TableCell>
+                                                        <TableCell align="right">Số lượng</TableCell>
+                                                    </TableRow>
+                                                </TableHead>
+                                                <TableBody>
+                                                    {defects.length === 0 ? (
+                                                        <EmptyTableRow colSpan={6} label="Chưa có dữ liệu lỗi" />
+                                                    ) : defects.map((item, index) => {
+                                                        const images = getDefectImages(item);
+                                                        return (
+                                                            <TableRow key={`${item.MaLoi}-${index}`}>
+                                                                <TableCell>{index + 1}</TableCell>
+                                                                <TableCell>
+                                                                    {images.length > 0 ? (
+                                                                        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                                                                            {images.slice(0, 3).map((url, imageIndex) => {
+                                                                                const imageUrl = getAssetUrl(url);
+                                                                                return (
+                                                                                    <Box
+                                                                                        key={`${url}-${imageIndex}`}
+                                                                                        component="img"
+                                                                                        src={imageUrl}
+                                                                                        alt={item.TenLoi || item.MaLoi || "Ảnh lỗi"}
+                                                                                        onClick={() => setPreviewImage(imageUrl)}
+                                                                                        sx={{
+                                                                                            width: 52,
+                                                                                            height: 52,
+                                                                                            objectFit: "cover",
+                                                                                            borderRadius: 1.25,
+                                                                                            border: "1px solid #cbd5e1",
+                                                                                            cursor: "pointer",
+                                                                                            bgcolor: "#f8fafc",
+                                                                                            boxShadow: "0 4px 10px rgba(15, 23, 42, 0.08)",
+                                                                                            "&:hover": { opacity: 0.86 }
+                                                                                        }}
+                                                                                    />
+                                                                                );
+                                                                            })}
+                                                                        </Stack>
+                                                                    ) : (
+                                                                        <Typography variant="body2" color="text.secondary">---</Typography>
+                                                                    )}
+                                                                </TableCell>
+                                                                <TableCell sx={{ fontWeight: 800 }}>{item.MaLoi || "---"}</TableCell>
+                                                                <TableCell>{item.TenLoi || "---"}</TableCell>
+                                                                <TableCell>{item.MoTa || "---"}</TableCell>
+                                                                <TableCell align="right">{item.SoLuong || 0}</TableCell>
+                                                            </TableRow>
+                                                        );
+                                                    })}
+                                                </TableBody>
+                                            </Table>
+                                        </TableContainer>
+                                    </CardContent>
+                                </Card>
+
+                                {isMucDoConfirmed && (
+                                    <>
+                                        <SxbtXuLySection rows={xuLyRows} canEdit={canEditContent} onAdd={() => setOpenXuLy(true)} />
+                                        <SxbtHanhDongSection rows={hanhDongRows} canEdit={canEditContent} onAdd={() => setOpenHanhDong(true)} />
+                                    </>
+                                )}
+                            </Stack>
+                        </Grid>
+
+                        <Grid size={{ xs: 12, lg: 3.5 }}>
+                            <Stack spacing={3} sx={{ position: { lg: "sticky" }, top: { lg: 92 } }}>
+                                <Card sx={cardShellSx}>
+                                    <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+                                        <Stack direction="row" spacing={1} alignItems="center" mb={2}>
+                                            <RuleFolderOutlinedIcon sx={{ color: "#2563eb" }} />
+                                            <Typography sx={sectionTitleSx}>Luồng hiện tại</Typography>
+                                        </Stack>
+
+                                        {currentPendingStep && !isCompleted && (
+                                            <Paper variant="outlined" sx={{ mb: 2, p: 1.5, borderRadius: 2, bgcolor: "#eff6ff", borderColor: "#bfdbfe" }}>
+                                                <Typography sx={{ color: "#1d4ed8", fontSize: 13, fontWeight: 800 }}>
+                                                    Đang chờ
+                                                </Typography>
+                                                <Typography sx={{ mt: 0.5, fontWeight: 850, color: "#0f172a" }}>
+                                                    {currentPendingStep.TenBoPhan || currentPendingStep.MaBoPhan || "---"}
+                                                </Typography>
+                                            </Paper>
+                                        )}
+
+                                        {confirmSteps.length === 0 ? (
+                                            <Typography color="text.secondary">Chưa có chuỗi xác nhận</Typography>
+                                        ) : confirmSteps.map((step, index) => {
+                                            const done = step.TrangThai === "DA_XAC_NHAN";
+                                            const active = currentPendingStep?.Id === step.Id && !isCompleted;
+                                            return (
+                                                <Stack key={step.Id || index} direction="row" spacing={1.5} sx={{ pb: index === confirmSteps.length - 1 ? 0 : 2 }}>
+                                                    <Stack alignItems="center" sx={{ minWidth: 30 }}>
+                                                        <Box
+                                                            sx={{
+                                                                width: 28,
+                                                                height: 28,
+                                                                borderRadius: "50%",
+                                                                display: "flex",
+                                                                alignItems: "center",
+                                                                justifyContent: "center",
+                                                                bgcolor: done ? "#16a34a" : active ? "#2563eb" : "#e2e8f0",
+                                                                color: done || active ? "white" : "#64748b",
+                                                                fontSize: 13,
+                                                                fontWeight: 850
+                                                            }}
+                                                        >
+                                                            {step.StepOrder || index + 1}
+                                                        </Box>
+                                                        {index < confirmSteps.length - 1 && (
+                                                            <Box sx={{ width: 2, flex: 1, minHeight: 30, bgcolor: "#e2e8f0", mt: 0.5 }} />
+                                                        )}
+                                                    </Stack>
+                                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                                        <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="flex-start">
+                                                            <Box>
+                                                                <Typography sx={{ fontWeight: 800, color: "#0f172a" }}>
+                                                                    {step.TenBoPhan || step.MaBoPhan || "---"}
+                                                                </Typography>
+                                                                <Typography variant="body2" color="text.secondary">
+                                                                    {step.MaBoPhan || `BP ${step.BoPhanId}`}
+                                                                </Typography>
+                                                            </Box>
+                                                            <Chip
+                                                                size="small"
+                                                                label={done ? "Xong" : active ? "Hiện tại" : "Chờ"}
+                                                                color={done ? "success" : active ? "primary" : "default"}
+                                                                variant={done || active ? "filled" : "outlined"}
+                                                                sx={{ borderRadius: 1.25, fontWeight: 700 }}
+                                                            />
+                                                        </Stack>
+                                                    </Box>
+                                                </Stack>
+                                            );
+                                        })}
+                                    </CardContent>
+                                </Card>
+
+                                {canConfirmCurrentStep && !isCompleted && (
+                                    <Button
+                                        variant="contained"
+                                        size="large"
+                                        startIcon={<CheckCircleIcon />}
+                                        disabled={saving}
+                                        onClick={handleConfirmStep}
+                                        sx={{ borderRadius: 1.5, py: 1.2, fontWeight: 850 }}
+                                    >
+                                        Xác nhận bước hiện tại
+                                    </Button>
+                                )}
+
+                                {isCompleted && (
+                                    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: "#f0fdf4", borderColor: "#bbf7d0" }}>
+                                        <Typography sx={{ color: "success.dark", fontWeight: 850 }}>
+                                            Biên bản SXBT đã hoàn tất.
+                                        </Typography>
+                                    </Paper>
+                                )}
+                            </Stack>
+                        </Grid>
                     </Grid>
-                </Grid>
+                </Stack>
             </Container>
 
             <SxbtXuLyDialog open={openXuLy} onClose={() => setOpenXuLy(false)} bienBanId={bienBanId} mucDo={mucDo} reload={loadData} />
@@ -649,53 +676,92 @@ export default function BienBanSxbtDetail() {
                     </Button>
                 </DialogActions>
             </Dialog>
+
+            <Dialog open={Boolean(previewImage)} onClose={() => setPreviewImage("")} maxWidth="md" fullWidth>
+                <DialogTitle>Ảnh lỗi SXBT</DialogTitle>
+                <DialogContent dividers>
+                    <Box
+                        component="img"
+                        src={previewImage}
+                        alt="Ảnh lỗi SXBT"
+                        sx={{ display: "block", width: "100%", maxHeight: 620, objectFit: "contain" }}
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setPreviewImage("")}>Đóng</Button>
+                </DialogActions>
+            </Dialog>
         </Box>
     );
 }
 
+function InfoTile({ icon, label, value }) {
+    return (
+        <Paper variant="outlined" sx={{ p: 1.5, height: "100%", borderRadius: 2, bgcolor: "#f8fafc", borderColor: "#e2e8f0" }}>
+            <Stack direction="row" spacing={1} alignItems="center">
+                <Box sx={{ color: "#2563eb", display: "flex", "& svg": { fontSize: 19 } }}>{icon}</Box>
+                <Typography sx={mutedLabelSx}>{label}</Typography>
+            </Stack>
+            <Typography sx={{ mt: 0.75, fontWeight: 850, color: "#0f172a", wordBreak: "break-word" }}>
+                {value}
+            </Typography>
+        </Paper>
+    );
+}
+
+function EmptyTableRow({ colSpan, label }) {
+    return (
+        <TableRow>
+            <TableCell colSpan={colSpan} align="center" sx={{ py: 4, color: "text.secondary" }}>
+                {label}
+            </TableCell>
+        </TableRow>
+    );
+}
 
 function SxbtXuLySection({ rows, canEdit, onAdd }) {
     return (
         <Card sx={cardShellSx}>
-            <CardContent>
-                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+            <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2} spacing={2}>
                     <Box>
-                        <Typography variant="h6" fontWeight={700}>Ý kiến / Đề xuất xử lý</Typography>
+                        <Typography sx={sectionTitleSx}>Ý kiến / đề xuất xử lý</Typography>
                         <Typography variant="body2" color="text.secondary">
-                            Ghi nhận phương án xử lý, bộ phận trách nhiệm và thời hạn.
+                            Phương án xử lý, bộ phận chịu trách nhiệm và thời hạn.
                         </Typography>
                     </Box>
                     {canEdit && <Button startIcon={<AddIcon />} onClick={onAdd} variant="outlined">Thêm</Button>}
                 </Stack>
-                {rows.length === 0 ? <Typography color="text.secondary">Chưa có phương án xử lý</Typography> : rows.map((item, index) => (
-                    <Paper
-                        key={item.Id || index}
-                        variant="outlined"
-                        sx={{
-                            p: 2,
-                            mb: 1.5,
-                            borderRadius: 2.5,
-                            bgcolor: "#f8fbff",
-                            borderColor: "rgba(59, 130, 246, 0.12)"
-                        }}
-                    >
-                        <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={1.5}>
-                            <Box sx={{ flex: 1 }}>
-                                <Typography fontWeight={700}>{item.NoiDung || "---"}</Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                                    Trách nhiệm: {item.TrachNhiem || "---"}
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                    Người nhập: {item.NguoiNhap || "---"}
-                                </Typography>
-                            </Box>
-                            <Stack spacing={1} alignItems={{ xs: "flex-start", md: "flex-end" }}>
-                                <Chip label={`Chi phí: ${item.ChiPhi || "---"}`} variant="outlined" />
-                                <Chip icon={<AccessTimeOutlinedIcon />} label={formatDate(item.ThoiHan)} color="warning" variant="outlined" />
-                            </Stack>
-                        </Stack>
-                    </Paper>
-                ))}
+                <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2, borderColor: "#e2e8f0" }}>
+                    <Table size="small" sx={tableSx}>
+                        <TableHead>
+                            <TableRow>
+                                <TableCell width={70}>STT</TableCell>
+                                <TableCell>Nội dung</TableCell>
+                                <TableCell>Trách nhiệm</TableCell>
+                                <TableCell>Người nhập</TableCell>
+                                <TableCell>Chi phí</TableCell>
+                                <TableCell>Thời hạn</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {rows.length === 0 ? (
+                                <EmptyTableRow colSpan={6} label="Chưa có phương án xử lý" />
+                            ) : rows.map((item, index) => (
+                                <TableRow key={item.Id || index}>
+                                    <TableCell>{index + 1}</TableCell>
+                                    <TableCell sx={{ fontWeight: 700 }}>{item.NoiDung || "---"}</TableCell>
+                                    <TableCell>{item.TrachNhiem || item.TenBoPhan || item.MaBoPhan || "---"}</TableCell>
+                                    <TableCell>{item.NguoiNhap || "---"}</TableCell>
+                                    <TableCell>{item.ChiPhi || "---"}</TableCell>
+                                    <TableCell>
+                                        <Chip size="small" icon={<AccessTimeOutlinedIcon />} label={formatDate(item.ThoiHan)} variant="outlined" />
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
             </CardContent>
         </Card>
     );
@@ -704,40 +770,44 @@ function SxbtXuLySection({ rows, canEdit, onAdd }) {
 function SxbtHanhDongSection({ rows, canEdit, onAdd }) {
     return (
         <Card sx={cardShellSx}>
-            <CardContent>
-                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+            <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2} spacing={2}>
                     <Box>
-                        <Typography variant="h6" fontWeight={700}>Hành động khắc phục</Typography>
+                        <Typography sx={sectionTitleSx}>Hành động khắc phục</Typography>
                         <Typography variant="body2" color="text.secondary">
                             Theo dõi đầu việc khắc phục theo bộ phận thực hiện.
                         </Typography>
                     </Box>
                     {canEdit && <Button startIcon={<AddIcon />} onClick={onAdd} variant="outlined">Thêm</Button>}
                 </Stack>
-                {rows.length === 0 ? <Typography color="text.secondary">Chưa có hành động cụ thể</Typography> : rows.map((item, index) => (
-                    <Paper
-                        key={item.Id || index}
-                        variant="outlined"
-                        sx={{
-                            p: 2,
-                            mb: 1.5,
-                            borderRadius: 2.5,
-                            bgcolor: "#fcfcff",
-                            borderColor: "rgba(99, 102, 241, 0.12)"
-                        }}
-                    >
-                        <Typography fontWeight={700}>{item.NoiDung || "---"}</Typography>
-                        <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} justifyContent="space-between" mt={1.5}>
-                            <Stack spacing={0.5}>
-                                <Typography variant="body2" color="text.secondary">
-                                    Bộ phận thực hiện: {item.MaBoPhan && item.TenBoPhan ? `${item.MaBoPhan} - ${item.TenBoPhan}` : "---"}
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">Người nhập: {item.NguoiNhap || "---"}</Typography>
-                            </Stack>
-                            <Chip icon={<AccessTimeOutlinedIcon />} label={formatDate(item.ThoiHan)} variant="outlined" />
-                        </Stack>
-                    </Paper>
-                ))}
+                <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2, borderColor: "#e2e8f0" }}>
+                    <Table size="small" sx={tableSx}>
+                        <TableHead>
+                            <TableRow>
+                                <TableCell width={70}>STT</TableCell>
+                                <TableCell>Nội dung hành động</TableCell>
+                                <TableCell>Bộ phận thực hiện</TableCell>
+                                <TableCell>Người nhập</TableCell>
+                                <TableCell>Thời hạn</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {rows.length === 0 ? (
+                                <EmptyTableRow colSpan={5} label="Chưa có hành động cụ thể" />
+                            ) : rows.map((item, index) => (
+                                <TableRow key={item.Id || index}>
+                                    <TableCell>{index + 1}</TableCell>
+                                    <TableCell sx={{ fontWeight: 700 }}>{item.NoiDung || "---"}</TableCell>
+                                    <TableCell>{item.MaBoPhan && item.TenBoPhan ? `${item.MaBoPhan} - ${item.TenBoPhan}` : item.TenBoPhan || item.MaBoPhan || "---"}</TableCell>
+                                    <TableCell>{item.NguoiNhap || "---"}</TableCell>
+                                    <TableCell>
+                                        <Chip size="small" icon={<AccessTimeOutlinedIcon />} label={formatDate(item.ThoiHan)} variant="outlined" />
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
             </CardContent>
         </Card>
     );
