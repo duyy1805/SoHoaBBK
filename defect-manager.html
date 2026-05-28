@@ -625,6 +625,8 @@
                             <th style="width: 310px;">Tên / mô tả lỗi</th>
                             <th style="width: 120px;">Phân loại</th>
                             <th class="center" style="width: 90px;">Loại</th>
+                            <th style="width: 170px;">Sản phẩm</th>
+                            <th style="width: 140px;">Chủng loại</th>
                             <th style="width: 190px;">Phạm vi</th>
                             <th style="width: 130px;">Thị trường</th>
                             <th class="center" style="width: 110px;">Ảnh</th>
@@ -673,15 +675,20 @@
                     </div>
 
                     <div class="field">
-                        <label for="DefectType">Phân loại độ nghiêm trọng *</label>
-                        <select id="DefectType" name="DefectType" required>
-                            <option value="CRITICAL">CRITICAL (Nghiêm trọng)</option>
-                            <option value="MAJOR">MAJOR (Nặng)</option>
-                            <option value="MINOR">MINOR (Nhẹ)</option>
+                        <label for="LoaiLoiSXBT">Loại B/C</label>
+                        <select id="LoaiLoiSXBT" name="LoaiLoiSXBT">
+                            <option value="">Chưa phân loại</option>
+                            <option value="B">B</option>
+                            <option value="C">C</option>
                         </select>
                     </div>
 
                     <div class="field">
+                        <label for="DefectType">Phân loại độ nghiêm trọng *</label>
+                        <select id="DefectType" name="DefectType" required></select>
+                    </div>
+
+                    <div id="TrangThaiField" class="field">
                         <label for="TrangThai">Trạng thái</label>
                         <select id="TrangThai" name="TrangThai">
                             <option value="1">Hoạt động</option>
@@ -695,8 +702,13 @@
                     </div>
 
                     <div class="field">
-                        <label for="LoaiLoiSXBT">Loại B/C</label>
-                        <input id="LoaiLoiSXBT" name="LoaiLoiSXBT">
+                        <label for="TenSanPham">Tên sản phẩm</label>
+                        <input id="TenSanPham" name="TenSanPham">
+                    </div>
+
+                    <div class="field span-2">
+                        <label for="ChungLoai">Chủng loại</label>
+                        <input id="ChungLoai" name="ChungLoai">
                     </div>
 
                     <div class="field">
@@ -761,6 +773,8 @@
             GhiChu: "",
             MaNhomLoi: "",
             LoaiLoiSXBT: "",
+            TenSanPham: "",
+            ChungLoai: "",
             PhamViApDung: "",
             ThiTruong: "",
             ImageUrl: "",
@@ -979,6 +993,8 @@
                         row.TenLoi,
                         row.MoTa,
                         row.GhiChu,
+                        row.TenSanPham,
+                        row.ChungLoai,
                         row.PhamViApDung,
                         row.ThiTruong,
                         row.MaNhomLoi,
@@ -996,11 +1012,32 @@
             return "chip-major";
         }
 
+        function normalizeDefectType(loaiLoiSXBT, defectType) {
+            const loai = String(loaiLoiSXBT || "").trim().toUpperCase();
+            const type = String(defectType || "").trim().toUpperCase();
+            if (loai === "C") return "CRITICAL";
+            if (loai === "B" && type === "CRITICAL") return "MAJOR";
+            return type || "MAJOR";
+        }
+
+        function renderDefectTypeOptions() {
+            const loai = document.getElementById("LoaiLoiSXBT").value;
+            const select = document.getElementById("DefectType");
+            const current = normalizeDefectType(loai, select.value || state.form.DefectType);
+            const options = loai === "C"
+                ? [["CRITICAL", "CRITICAL (Nghiêm trọng)"]]
+                : [["MAJOR", "MAJOR (Nặng)"], ["MINOR", "MINOR (Nhẹ)"]];
+
+            select.innerHTML = options.map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+            select.value = options.some(([value]) => value === current) ? current : options[0][0];
+            select.disabled = loai === "C";
+        }
+
         function renderTable() {
             if (!state.filtered.length) {
                 els.defectTableBody.innerHTML = `
                     <tr>
-                        <td colspan="10">
+                        <td colspan="12">
                             <div class="empty-state">
                                 <div class="icon">!</div>
                                 <div class="strong">Chưa có dữ liệu lỗi</div>
@@ -1028,6 +1065,8 @@
                         </td>
                         <td><span class="chip ${getDefectTypeClass(type)}">${escapeHtml(type)}</span></td>
                         <td class="center">${row.LoaiLoiSXBT ? `<span class="chip chip-major">${escapeHtml(row.LoaiLoiSXBT)}</span>` : "--"}</td>
+                        <td><span class="${row.TenSanPham ? "" : "muted"}">${escapeHtml(row.TenSanPham || "--")}</span></td>
+                        <td><span class="${row.ChungLoai ? "" : "muted"}">${escapeHtml(row.ChungLoai || "--")}</span></td>
                         <td><div class="line-clamp ${row.PhamViApDung ? "" : "muted"}" title="${escapeHtml(row.PhamViApDung || "")}">${escapeHtml(row.PhamViApDung || "--")}</div></td>
                         <td><span class="${row.ThiTruong ? "" : "muted"}">${escapeHtml(row.ThiTruong || "--")}</span></td>
                         <td class="center">
@@ -1055,6 +1094,9 @@
                 ...row,
                 TrangThai: row.TrangThai !== false && row.TrangThai !== 0,
                 ThuTu: row.ThuTu ?? "",
+                TenSanPham: row.TenSanPham || "",
+                ChungLoai: row.ChungLoai || "",
+                DefectType: normalizeDefectType(row.LoaiLoiSXBT, row.DefectType),
                 PhamViApDung: row.PhamViApDung || ""
             };
 
@@ -1069,6 +1111,7 @@
                 }
             });
 
+            renderDefectTypeOptions();
             updateImagePreview();
         }
 
@@ -1077,6 +1120,8 @@
             setFormValues({ ...emptyForm });
             els.modalTitle.textContent = "Thêm mã lỗi mới";
             els.saveButton.textContent = "Lưu dữ liệu";
+            document.getElementById("TrangThaiField").classList.add("hidden");
+            document.getElementById("TrangThai").value = "1";
             els.defectModal.classList.remove("hidden");
             document.getElementById("MaLoi").focus();
         }
@@ -1089,6 +1134,7 @@
             setFormValues(row);
             els.modalTitle.textContent = "Cập nhật thông tin lỗi";
             els.saveButton.textContent = "Cập nhật";
+            document.getElementById("TrangThaiField").classList.remove("hidden");
             els.defectModal.classList.remove("hidden");
             document.getElementById("TenLoi").focus();
         }
@@ -1130,11 +1176,13 @@
                 ...state.form,
                 MaLoi: String(formData.get("MaLoi") || "").trim() || null,
                 TenLoi: String(formData.get("TenLoi") || "").trim(),
-                DefectType: formData.get("DefectType") || "MAJOR",
+                DefectType: normalizeDefectType(formData.get("LoaiLoiSXBT"), formData.get("DefectType")),
                 MoTa: formData.get("MoTa") || String(formData.get("TenLoi") || "").trim() || null,
                 GhiChu: formData.get("GhiChu") || null,
                 MaNhomLoi: formData.get("MaNhomLoi") || null,
                 LoaiLoiSXBT: formData.get("LoaiLoiSXBT") || null,
+                TenSanPham: formData.get("TenSanPham") || null,
+                ChungLoai: formData.get("ChungLoai") || null,
                 PhamViApDung: formData.get("PhamViApDung") || null,
                 ThiTruong: formData.get("ThiTruong") || null,
                 ImageUrl: state.form.ImageUrl || null,
@@ -1257,6 +1305,7 @@
         els.reloadButton.addEventListener("click", () => loadDefects({ showSuccess: true }));
         els.createButton.addEventListener("click", openCreateModal);
         els.defectForm.addEventListener("submit", saveDefect);
+        document.getElementById("LoaiLoiSXBT").addEventListener("change", renderDefectTypeOptions);
 
         document.querySelectorAll("[data-close-modal]").forEach((button) => {
             button.addEventListener("click", closeDefectModal);

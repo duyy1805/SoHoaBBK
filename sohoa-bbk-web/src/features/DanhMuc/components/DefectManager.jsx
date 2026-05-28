@@ -48,6 +48,8 @@ const emptyForm = {
     GhiChu: "",
     MaNhomLoi: "",
     LoaiLoiSXBT: "",
+    TenSanPham: "",
+    ChungLoai: "",
     PhamViApDung: "",
     ThiTruong: "",
     ImageUrl: "",
@@ -94,6 +96,31 @@ const getDefectTypeProps = (type) => {
     }
 };
 
+const getDefectTypeOptions = (loaiLoiSXBT) => {
+    if (loaiLoiSXBT === "C") {
+        return [{ value: "CRITICAL", label: "CRITICAL (Nghiêm trọng)", color: "error.main" }];
+    }
+
+    if (loaiLoiSXBT === "B") {
+        return [
+            { value: "MAJOR", label: "MAJOR (Nặng)", color: "warning.main" },
+            { value: "MINOR", label: "MINOR (Nhẹ)", color: "info.main" }
+        ];
+    }
+
+    return [
+        { value: "CRITICAL", label: "CRITICAL (Nghiêm trọng)", color: "error.main" },
+        { value: "MAJOR", label: "MAJOR (Nặng)", color: "warning.main" },
+        { value: "MINOR", label: "MINOR (Nhẹ)", color: "info.main" }
+    ];
+};
+
+const normalizeDefectType = (loaiLoiSXBT, defectType) => {
+    if (loaiLoiSXBT === "C") return "CRITICAL";
+    if (loaiLoiSXBT === "B" && defectType === "CRITICAL") return "MAJOR";
+    return defectType || "MAJOR";
+};
+
 export default function DefectManager() {
     const [data, setData] = useState([]);
     const [open, setOpen] = useState(false);
@@ -138,6 +165,8 @@ export default function DefectManager() {
                 row.TenLoi,
                 row.MoTa,
                 row.GhiChu,
+                row.TenSanPham,
+                row.ChungLoai,
                 row.PhamViApDung,
                 row.ThiTruong,
                 row.MaNhomLoi,
@@ -158,6 +187,9 @@ export default function DefectManager() {
             ...emptyForm,
             ...row,
             PhamViApDung: row.PhamViApDung || "",
+            TenSanPham: row.TenSanPham || "",
+            ChungLoai: row.ChungLoai || "",
+            DefectType: normalizeDefectType(row.LoaiLoiSXBT, row.DefectType),
             TrangThai: row.TrangThai !== false && row.TrangThai !== 0,
             ThuTu: row.ThuTu ?? ""
         });
@@ -170,12 +202,14 @@ export default function DefectManager() {
         ...form,
         TenLoi: form.TenLoi?.trim(),
         MaLoi: form.MaLoi?.trim() || null,
-        DefectType: form.DefectType || "MAJOR",
+        DefectType: normalizeDefectType(form.LoaiLoiSXBT, form.DefectType),
         MoTa: form.MoTa || form.TenLoi || null,
         GhiChu: form.GhiChu || null,
         PhanHe: form.PhanHe || null,
         MaNhomLoi: form.MaNhomLoi || null,
         LoaiLoiSXBT: form.LoaiLoiSXBT || null,
+        TenSanPham: form.TenSanPham || null,
+        ChungLoai: form.ChungLoai || null,
         PhamViApDung: form.PhamViApDung || null,
         ThiTruong: form.ThiTruong || null,
         ImageUrl: form.ImageUrl || null,
@@ -195,6 +229,16 @@ export default function DefectManager() {
         setImagePreview("");
         setForm({ ...form, ImageUrl: "" });
     };
+
+    const handleLoaiLoiChange = (value) => {
+        setForm({
+            ...form,
+            LoaiLoiSXBT: value,
+            DefectType: normalizeDefectType(value, form.DefectType)
+        });
+    };
+
+    const defectTypeOptions = getDefectTypeOptions(form.LoaiLoiSXBT);
 
     const handleSave = async () => {
         if (!form.TenLoi || !form.DefectType) return;
@@ -299,7 +343,7 @@ export default function DefectManager() {
                         </Box>
                     )}
 
-                    <Table size="small" stickyHeader sx={{ minWidth: 1100, "& tbody tr:hover": { bgcolor: "#f8fbff" } }}>
+                    <Table size="small" stickyHeader sx={{ minWidth: 1320, "& tbody tr:hover": { bgcolor: "#f8fbff" } }}>
                         <TableHead>
                             <TableRow>
                                 <TableCell sx={{ ...headerCellSx, width: 78 }}>STT</TableCell>
@@ -307,6 +351,8 @@ export default function DefectManager() {
                                 <TableCell sx={{ ...headerCellSx, width: 300 }}>Tên / mô tả lỗi</TableCell>
                                 <TableCell sx={{ ...headerCellSx, width: 120 }}>Phân loại</TableCell>
                                 <TableCell sx={{ ...headerCellSx, width: 90 }} align="center">Loại</TableCell>
+                                <TableCell sx={{ ...headerCellSx, width: 180 }}>Sản phẩm</TableCell>
+                                <TableCell sx={{ ...headerCellSx, width: 150 }}>Chủng loại</TableCell>
                                 <TableCell sx={{ ...headerCellSx, width: 180 }}>Phạm vi</TableCell>
                                 <TableCell sx={{ ...headerCellSx, width: 130 }}>Thị trường</TableCell>
                                 <TableCell sx={{ ...headerCellSx, width: 110 }} align="center">Ảnh</TableCell>
@@ -318,7 +364,7 @@ export default function DefectManager() {
                         <TableBody>
                             {filteredData.length === 0 && !loading ? (
                                 <TableRow>
-                                    <TableCell colSpan={10} align="center" sx={{ py: 6 }}>
+                                    <TableCell colSpan={12} align="center" sx={{ py: 6 }}>
                                         <BugReportIcon sx={{ fontSize: 60, color: "text.disabled", mb: 1 }} />
                                         <Typography variant="h6" color="text.secondary">Chưa có dữ liệu lỗi</Typography>
                                         <Typography variant="body2" color="text.secondary">
@@ -397,6 +443,18 @@ export default function DefectManager() {
                                                     sx={{ width: 34, height: 26, borderRadius: "50%", fontWeight: 800 }}
                                                 />
                                             ) : "--"}
+                                        </TableCell>
+
+                                        <TableCell sx={cellSx}>
+                                            <Typography variant="body2" noWrap color={row.TenSanPham ? "text.primary" : "text.disabled"}>
+                                                {row.TenSanPham || "--"}
+                                            </Typography>
+                                        </TableCell>
+
+                                        <TableCell sx={cellSx}>
+                                            <Typography variant="body2" noWrap color={row.ChungLoai ? "text.primary" : "text.disabled"}>
+                                                {row.ChungLoai || "--"}
+                                            </Typography>
                                         </TableCell>
 
                                         <TableCell sx={cellSx}>
@@ -533,26 +591,38 @@ export default function DefectManager() {
                             onChange={(event) => setForm({ ...form, GhiChu: event.target.value })}
                         />
 
+
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                            <TextField
+                                select
+                                label="Loại B/C"
+                                fullWidth
+                                value={form.LoaiLoiSXBT || ""}
+                                onChange={(event) => handleLoaiLoiChange(event.target.value)}
+                            >
+                                <MenuItem value="">Chưa phân loại</MenuItem>
+                                <MenuItem value="B">B</MenuItem>
+                                <MenuItem value="C">C</MenuItem>
+                            </TextField>
+
                             <TextField
                                 select
                                 label="Phân loại độ nghiêm trọng"
                                 required
                                 fullWidth
-                                value={form.DefectType || "MAJOR"}
+                                value={normalizeDefectType(form.LoaiLoiSXBT, form.DefectType)}
                                 onChange={(event) => setForm({ ...form, DefectType: event.target.value })}
+                                disabled={form.LoaiLoiSXBT === "C"}
                             >
-                                <MenuItem value="CRITICAL">
-                                    <Typography color="error.main" fontWeight={600}>CRITICAL (Nghiêm trọng)</Typography>
-                                </MenuItem>
-                                <MenuItem value="MAJOR">
-                                    <Typography color="warning.main" fontWeight={600}>MAJOR (Nặng)</Typography>
-                                </MenuItem>
-                                <MenuItem value="MINOR">
-                                    <Typography color="info.main" fontWeight={600}>MINOR (Nhẹ)</Typography>
-                                </MenuItem>
+                                {defectTypeOptions.map((option) => (
+                                    <MenuItem key={option.value} value={option.value}>
+                                        <Typography color={option.color} fontWeight={600}>{option.label}</Typography>
+                                    </MenuItem>
+                                ))}
                             </TextField>
+                        </Stack>
 
+                        {form.Id && (
                             <TextField
                                 select
                                 label="Trạng thái"
@@ -563,7 +633,7 @@ export default function DefectManager() {
                                 <MenuItem value="1">Hoạt động</MenuItem>
                                 <MenuItem value="0">Tạm ngưng</MenuItem>
                             </TextField>
-                        </Stack>
+                        )}
 
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                             <TextField
@@ -573,12 +643,19 @@ export default function DefectManager() {
                                 onChange={(event) => setForm({ ...form, MaNhomLoi: event.target.value })}
                             />
                             <TextField
-                                label="Loại B/C"
+                                label="Tên sản phẩm"
                                 fullWidth
-                                value={form.LoaiLoiSXBT || ""}
-                                onChange={(event) => setForm({ ...form, LoaiLoiSXBT: event.target.value })}
+                                value={form.TenSanPham || ""}
+                                onChange={(event) => setForm({ ...form, TenSanPham: event.target.value })}
                             />
                         </Stack>
+
+                        <TextField
+                            label="Chủng loại"
+                            fullWidth
+                            value={form.ChungLoai || ""}
+                            onChange={(event) => setForm({ ...form, ChungLoai: event.target.value })}
+                        />
 
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                             <TextField

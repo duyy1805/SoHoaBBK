@@ -48,6 +48,15 @@ const slugifyFilePart = (value) => {
   return normalized || "defect";
 };
 
+const normalizeDefectType = (loaiLoiSXBT, defectType) => {
+  const loai = String(loaiLoiSXBT || "").trim().toUpperCase();
+  const type = String(defectType || "").trim().toUpperCase();
+
+  if (loai === "C") return "CRITICAL";
+  if (loai === "B" && type === "CRITICAL") return "MAJOR";
+  return type || "MAJOR";
+};
+
 const trimValue = (value) => String(value ?? "").trim();
 const normalizeKey = (value) => trimValue(value).toLowerCase();
 const buildNhomImportKey = (tenNhom, moTaNhom) => `${normalizeKey(tenNhom)}|${normalizeKey(moTaNhom)}`;
@@ -242,6 +251,8 @@ router.post(
       PhanHe,
       MaNhomLoi,
       LoaiLoiSXBT,
+      TenSanPham,
+      ChungLoai,
       PhamViApDung,
       ThiTruong,
       ImageUrl,
@@ -250,16 +261,19 @@ router.post(
 
     try {
       const pool = await poolPromise;
+      const normalizedDefectType = normalizeDefectType(LoaiLoiSXBT, DefectType);
 
       await pool.request()
         .input("TenLoi", sql.NVarChar(255), TenLoi)
-        .input("DefectType", sql.NVarChar(20), DefectType)
+        .input("DefectType", sql.NVarChar(20), normalizedDefectType)
         .input("MoTa", sql.NVarChar(sql.MAX), MoTa)
         .input("GhiChu", sql.NVarChar(sql.MAX), GhiChu)
         .input("MaLoi", sql.NVarChar(50), MaLoi || null)
         .input("PhanHe", sql.NVarChar(20), PhanHe || null)
         .input("MaNhomLoi", sql.NVarChar(20), MaNhomLoi || null)
         .input("LoaiLoiSXBT", sql.NVarChar(10), LoaiLoiSXBT || null)
+        .input("TenSanPham", sql.NVarChar(255), TenSanPham || null)
+        .input("ChungLoai", sql.NVarChar(255), ChungLoai || null)
         .input("PhamViApDung", sql.NVarChar(500), PhamViApDung || null)
         .input("ThiTruong", sql.NVarChar(255), ThiTruong || null)
         .input("ImageUrl", sql.NVarChar(500), ImageUrl || null)
@@ -291,6 +305,8 @@ router.put(
       PhanHe,
       MaNhomLoi,
       LoaiLoiSXBT,
+      TenSanPham,
+      ChungLoai,
       PhamViApDung,
       ThiTruong,
       ImageUrl,
@@ -299,11 +315,12 @@ router.put(
 
     try {
       const pool = await poolPromise;
+      const normalizedDefectType = normalizeDefectType(LoaiLoiSXBT, DefectType);
 
       await pool.request()
         .input("Id", sql.Int, id)
         .input("TenLoi", sql.NVarChar(255), TenLoi)
-        .input("DefectType", sql.NVarChar(20), DefectType)
+        .input("DefectType", sql.NVarChar(20), normalizedDefectType)
         .input("TrangThai", sql.Bit, TrangThai)
         .input("MoTa", sql.NVarChar(sql.MAX), MoTa)
         .input("GhiChu", sql.NVarChar(sql.MAX), GhiChu)
@@ -311,6 +328,8 @@ router.put(
         .input("PhanHe", sql.NVarChar(20), PhanHe || null)
         .input("MaNhomLoi", sql.NVarChar(20), MaNhomLoi || null)
         .input("LoaiLoiSXBT", sql.NVarChar(10), LoaiLoiSXBT || null)
+        .input("TenSanPham", sql.NVarChar(255), TenSanPham || null)
+        .input("ChungLoai", sql.NVarChar(255), ChungLoai || null)
         .input("PhamViApDung", sql.NVarChar(500), PhamViApDung || null)
         .input("ThiTruong", sql.NVarChar(255), ThiTruong || null)
         .input("ImageUrl", sql.NVarChar(500), ImageUrl || null)

@@ -95,6 +95,8 @@ export default function SxbtInspectionScreen({ route, navigation }) {
     const filteredDefects = masterDefectList.filter(d =>
         (d.TenLoi || '').toLowerCase().includes(searchText.toLowerCase()) ||
         (d.MaLoi || '').toLowerCase().includes(searchText.toLowerCase()) ||
+        (d.TenSanPham || '').toLowerCase().includes(searchText.toLowerCase()) ||
+        (d.ChungLoai || '').toLowerCase().includes(searchText.toLowerCase()) ||
         (d.PhamViApDung || '').toLowerCase().includes(searchText.toLowerCase())
     );
 
@@ -653,6 +655,12 @@ export default function SxbtInspectionScreen({ route, navigation }) {
 
                                             {d.MoTa && (
                                                 <Text style={styles.defectDesc}>{d.MoTa}</Text>
+                                            )}
+
+                                            {(d.TenSanPham || d.ChungLoai) && (
+                                                <Text style={styles.defectDesc}>
+                                                    {[d.TenSanPham, d.ChungLoai].filter(Boolean).join(" - ")}
+                                                </Text>
                                             )}
 
                                             {d.ImageUrl && (

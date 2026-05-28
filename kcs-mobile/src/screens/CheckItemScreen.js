@@ -68,9 +68,11 @@ export default function CheckItemScreen({ route, navigation }) {
         const keyword = searchText.toLowerCase();
 
         const filtered = defects.filter((d) =>
-            d.MaLoi.toLowerCase().includes(keyword) ||
-            d.TenLoi.toLowerCase().includes(keyword) ||
-            d.DefectType.toLowerCase().includes(keyword)
+            String(d.MaLoi || "").toLowerCase().includes(keyword) ||
+            String(d.TenLoi || "").toLowerCase().includes(keyword) ||
+            String(d.DefectType || "").toLowerCase().includes(keyword) ||
+            String(d.TenSanPham || "").toLowerCase().includes(keyword) ||
+            String(d.ChungLoai || "").toLowerCase().includes(keyword)
         );
 
         setFilteredDefects(filtered);
@@ -203,6 +205,8 @@ export default function CheckItemScreen({ route, navigation }) {
                 TenLoi: d.TenLoi,
                 MoTa: d.MoTa,
                 GhiChu: d.GhiChu,
+                TenSanPham: d.TenSanPham,
+                ChungLoai: d.ChungLoai,
                 DefectType: d.DefectType,
                 soLuong: 1
             }
