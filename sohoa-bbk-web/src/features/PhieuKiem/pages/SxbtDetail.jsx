@@ -22,8 +22,14 @@ import BarChartIcon from "@mui/icons-material/BarChart";
 import BugReportIcon from "@mui/icons-material/BugReport";
 
 import { SxbtPrintTemplate } from "../components/SxbtPrintTemplate";
-import { getPhieuKiemDetail } from "../../../api/phieuKiem.api";
+import {
+    completeSxbt,
+    confirmKN,
+    confirmPX,
+    getPhieuKiemDetail
+} from "../../../api/phieuKiem.api";
 import { getBienBanSxbtDetail } from "../../../api/bienBan.api";
+import { hasPermission } from "../../../utils/auth";
 
 // ============================================================
 // Helpers
@@ -97,6 +103,8 @@ export default function SxbtDetail() {
     const [dynamicFields, setDynamicFields] = useState([]);
     const [confirmSteps, setConfirmSteps] = useState([]);
     const [error, setError] = useState(null);
+    const [actionNotice, setActionNotice] = useState(null);
+    const [loadingAction, setLoadingAction] = useState(false);
     const [openPrint, setOpenPrint] = useState(false);
 
     const triggerPrint = useReactToPrint({
@@ -177,9 +185,81 @@ export default function SxbtDetail() {
         LO_TRUOC_KHONG_DAT: "Lô trước KĐ (3%)",
     };
 
+    const isKCS = hasPermission("THUC_HIEN_KIEM");
+    const isPX = hasPermission("XAC_NHAN_PX");
+    const isKN = hasPermission("XAC_NHAN_KIEM_NGHIEM");
+    const isCompleted = ["CHO_KIEM_NGHIEM", "CHO_XUONG_XAC_NHAN", "HOAN_THANH", "HOAN_TAT"].includes(phieu?.TrangThai);
+
+    const inferredKetLuan = phieu?.KetLuan ||
+        (dkThungSanXe === "KHONG_DAT" || dkNgoaiQuan === "KHONG_DAT" || defects.length > 0 ? "KHONG_DAT" : "DAT");
+
+    const handleComplete = async () => {
+        const label = inferredKetLuan === "DAT" ? "Đạt" : "Không đạt";
+        if (!window.confirm(`Xác nhận hoàn tất phiếu SXBT với kết luận: ${label}?`)) return;
+
+        try {
+            setLoadingAction(true);
+            setActionNotice(null);
+            await completeSxbt(id, inferredKetLuan);
+            await loadData();
+            setActionNotice({ type: "success", message: "Hoàn tất phiếu SXBT thành công. Phiếu đã chuyển sang bước xác nhận tiếp theo." });
+        } catch (err) {
+            setActionNotice({
+                type: "error",
+                message: err?.response?.data?.message || "Không thể hoàn tất phiếu SXBT"
+            });
+        } finally {
+            setLoadingAction(false);
+        }
+    };
+
+    const handleConfirmPX = async () => {
+        try {
+            setLoadingAction(true);
+            setActionNotice(null);
+            await confirmPX(id);
+            await loadData();
+            setActionNotice({ type: "success", message: "Kho đã xác nhận phiếu SXBT thành công" });
+        } catch (err) {
+            setActionNotice({
+                type: "error",
+                message: err?.response?.data?.message || "Không thể xác nhận phiếu SXBT"
+            });
+        } finally {
+            setLoadingAction(false);
+        }
+    };
+
+    const handleConfirmKN = async () => {
+        try {
+            setLoadingAction(true);
+            setActionNotice(null);
+            await confirmKN(id);
+            await loadData();
+            setActionNotice({ type: "success", message: "Đã xác nhận kiểm nghiệm phiếu SXBT thành công" });
+        } catch (err) {
+            setActionNotice({
+                type: "error",
+                message: err?.response?.data?.message || "Không thể xác nhận kiểm nghiệm phiếu SXBT"
+            });
+        } finally {
+            setLoadingAction(false);
+        }
+    };
+
     return (
         <Fade in timeout={300}>
             <Box>
+                {actionNotice && (
+                    <Alert
+                        severity={actionNotice.type}
+                        onClose={() => setActionNotice(null)}
+                        sx={{ mb: 2 }}
+                    >
+                        {actionNotice.message}
+                    </Alert>
+                )}
+
                 {/* ---- Sticky Header ---- */}
                 <Paper elevation={0} sx={{ p: 2, mb: 3, borderBottom: "1px solid #e0e0e0", position: "sticky", top: 0, zIndex: 10, bgcolor: "background.paper" }}>
                     <Container maxWidth="xl">
@@ -449,6 +529,50 @@ export default function SxbtDetail() {
                             )}
                         </CardContent>
                     </Card>
+
+                    {!isCompleted && isKCS && (
+                        <Paper sx={{ position: "sticky", bottom: 0, zIndex: 9, mt: 2, mb: 3, p: 2, borderTop: "1px solid #e0e0e0" }}>
+                            <Stack direction="row" justifyContent="flex-end">
+                                <Button
+                                    variant="contained"
+                                    color={inferredKetLuan === "DAT" ? "success" : "error"}
+                                    onClick={handleComplete}
+                                    disabled={loadingAction}
+                                >
+                                    {loadingAction ? "Đang xử lý..." : `Hoàn tất - ${inferredKetLuan === "DAT" ? "Đạt" : "Không đạt"}`}
+                                </Button>
+                            </Stack>
+                        </Paper>
+                    )}
+
+                    {phieu?.TrangThai === "CHO_XUONG_XAC_NHAN" && isPX && (
+                        <Paper sx={{ position: "sticky", bottom: 0, zIndex: 9, mt: 2, mb: 3, p: 2, borderTop: "1px solid #e0e0e0" }}>
+                            <Stack direction="row" justifyContent="flex-end">
+                                <Button
+                                    variant="contained"
+                                    onClick={handleConfirmPX}
+                                    disabled={loadingAction}
+                                >
+                                    {loadingAction ? "Đang xử lý..." : "Kho xác nhận"}
+                                </Button>
+                            </Stack>
+                        </Paper>
+                    )}
+
+                    {phieu?.TrangThai === "CHO_KIEM_NGHIEM" && isKN && (
+                        <Paper sx={{ position: "sticky", bottom: 0, zIndex: 9, mt: 2, mb: 3, p: 2, borderTop: "1px solid #e0e0e0" }}>
+                            <Stack direction="row" justifyContent="flex-end">
+                                <Button
+                                    variant="contained"
+                                    color="secondary"
+                                    onClick={handleConfirmKN}
+                                    disabled={loadingAction}
+                                >
+                                    {loadingAction ? "Đang xử lý..." : "Xác nhận kiểm nghiệm"}
+                                </Button>
+                            </Stack>
+                        </Paper>
+                    )}
                 </Container>
 
                 {/* ===== DIALOG IN PHIẾU ===== */}

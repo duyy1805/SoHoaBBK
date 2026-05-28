@@ -103,6 +103,10 @@ export const confirmKN = (phieuKiemId) => {
     return axiosClient.post("/phieu-kiem/xac-nhan-kiem-nghiem", { phieuKiemId });
 };
 
+export const completeSxbt = (phieuKiemId, ketLuan) => {
+    return axiosClient.post("/phieu-kiem/sxbt-complete", { phieuKiemId, ketLuan });
+};
+
 /* =========================================================
    KẾT LUẬN (TP_B8 / LANH_DAO)
 ========================================================= */

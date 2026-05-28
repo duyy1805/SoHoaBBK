@@ -14,7 +14,7 @@ const SIGNATURE_FLOW_BY_LEVEL = {
 const SIGNATURE_LABELS = {
     SXBT: "BỘ PHẬN SXBT",
     B8: "PHÒNG KIỂM NGHIỆM",
-    B7: "PHÒNG CHẤT LƯỢNG",
+    B7: "KỸ THUẬT CÔNG NGHỆ",
     GD: "GIÁM ĐỐC"
 };
 
@@ -102,6 +102,7 @@ export const BienBanSxbtPrintTemplate = React.forwardRef(({
     const mucBRows = xuLyRows.filter((row) => !row.MucDo || row.MucDo === "B");
     const mucCRows = xuLyRows.filter((row) => !row.MucDo || row.MucDo === "C");
     const signatureFlow = SIGNATURE_FLOW_BY_LEVEL[mucDo] || SIGNATURE_FLOW_BY_LEVEL.B;
+    const signatureDisplayFlow = [...signatureFlow].reverse();
 
     const renderEmptyRows = (count, columns) => Array.from({ length: count }).map((_, index) => (
         <tr key={`empty-${columns}-${index}`}>
@@ -144,8 +145,9 @@ export const BienBanSxbtPrintTemplate = React.forwardRef(({
 
         return (
             <Box className="avoid-break" style={styles.signatureBlock}>
-                {signatureFlow.map((maBoPhan, index) => {
-                    const step = stepByMaBoPhan.get(maBoPhan) || confirmSteps.find((item) => item?.StepOrder === index + 1);
+                {signatureDisplayFlow.map((maBoPhan) => {
+                    const originalOrder = signatureFlow.indexOf(maBoPhan) + 1;
+                    const step = stepByMaBoPhan.get(maBoPhan) || confirmSteps.find((item) => item?.StepOrder === originalOrder);
                     const ngayKy = step?.ConfirmedAt ? formatLongDate(step.ConfirmedAt) : "Ngày................";
                     const nhanKy = SIGNATURE_LABELS[maBoPhan] || maBoPhan;
 

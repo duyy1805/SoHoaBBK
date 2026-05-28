@@ -217,10 +217,10 @@ router.post("/:id/confirm-muc-do", authenticateToken, async (req, res) => {
                         bp.Id AS BoPhanId,
                         v.StepOrder
                     FROM (VALUES
-                        ('B', 'SXBT', 1),
-                        ('B', 'B8', 2),
-                        ('C', 'SXBT', 1),
-                        ('C', 'B8', 2),
+                        ('B', 'B8', 1),
+                        ('B', 'SXBT', 2),
+                        ('C', 'B8', 1),
+                        ('C', 'SXBT', 2),
                         ('C', 'B7', 3),
                         ('C', 'GD', 4)
                     ) v(MucDo, MaBoPhan, StepOrder)
@@ -233,7 +233,7 @@ router.post("/:id/confirm-muc-do", authenticateToken, async (req, res) => {
             const expectedStepCount = mucDoKhongPhuHop === "B" ? 2 : 4;
 
             if (steps.length !== expectedStepCount) {
-                throw new Error("Thiếu cấu hình bộ phận SXBT/B8/B7/GD");
+                throw new Error("Thiếu cấu hình bộ phận B8/SXBT/B7/GD");
             }
 
             await new sql.Request(transaction)

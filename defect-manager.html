@@ -1,0 +1,1323 @@
+<!doctype html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Quản lý danh mục lỗi</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f4f7fb;
+            --surface: #ffffff;
+            --surface-soft: #f8fafc;
+            --border: #d8e0ea;
+            --border-strong: #b8c4d4;
+            --text: #172033;
+            --muted: #667085;
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --danger: #dc2626;
+            --warning: #d97706;
+            --success: #15803d;
+            --info: #0369a1;
+            --shadow: 0 14px 40px rgba(21, 32, 55, 0.12);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            color: var(--text);
+            background: var(--bg);
+        }
+
+        button,
+        input,
+        select,
+        textarea {
+            font: inherit;
+        }
+
+        button {
+            border: 0;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .login-page {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background:
+                linear-gradient(135deg, rgba(37, 99, 235, 0.16), transparent 44%),
+                linear-gradient(225deg, rgba(14, 116, 144, 0.14), transparent 42%),
+                #eef4fb;
+        }
+
+        .login-card {
+            width: min(440px, 100%);
+            padding: 32px;
+            background: rgba(255, 255, 255, 0.96);
+            border: 1px solid rgba(216, 224, 234, 0.88);
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .brand-mark {
+            width: 46px;
+            height: 46px;
+            display: grid;
+            place-items: center;
+            border-radius: 8px;
+            color: white;
+            background: #1f5fbf;
+            font-weight: 800;
+        }
+
+        .brand h1,
+        .page-title h1 {
+            margin: 0;
+            font-size: 24px;
+            line-height: 1.2;
+        }
+
+        .brand p,
+        .page-title p {
+            margin: 4px 0 0;
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .app-shell {
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        .topbar {
+            max-width: 1480px;
+            margin: 0 auto 18px;
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+            justify-content: space-between;
+        }
+
+        .page-title {
+            min-width: 0;
+        }
+
+        .user-panel {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+
+        .toolbar {
+            max-width: 1480px;
+            margin: 0 auto 16px;
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .main-card {
+            max-width: 1480px;
+            margin: 0 auto;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(21, 32, 55, 0.04);
+            overflow: hidden;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .field label {
+            color: #344054;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .field input,
+        .field select,
+        .field textarea {
+            width: 100%;
+            min-height: 42px;
+            padding: 9px 11px;
+            color: var(--text);
+            background: white;
+            border: 1px solid var(--border-strong);
+            border-radius: 6px;
+            outline: none;
+        }
+
+        .field textarea {
+            min-height: 82px;
+            resize: vertical;
+        }
+
+        .field input:focus,
+        .field select:focus,
+        .field textarea:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.13);
+        }
+
+        .actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            min-height: 38px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 8px 13px;
+            border-radius: 6px;
+            border: 1px solid transparent;
+            background: white;
+            color: var(--text);
+            cursor: pointer;
+            font-weight: 700;
+            transition: 0.15s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.55;
+            transform: none;
+        }
+
+        .btn-primary {
+            color: white;
+            background: var(--primary);
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+        }
+
+        .btn-ghost {
+            border-color: var(--border);
+        }
+
+        .btn-danger {
+            color: white;
+            background: var(--danger);
+        }
+
+        .btn-icon {
+            width: 34px;
+            height: 34px;
+            min-height: 34px;
+            padding: 0;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: white;
+        }
+
+        .table-wrap {
+            position: relative;
+            overflow: auto;
+        }
+
+        table {
+            width: 100%;
+            min-width: 1120px;
+            border-collapse: collapse;
+        }
+
+        thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: var(--surface-soft);
+            color: #475467;
+            font-size: 13px;
+            font-weight: 800;
+            text-align: left;
+            white-space: nowrap;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th,
+        td {
+            padding: 11px 12px;
+            border-bottom: 1px solid #edf1f7;
+            vertical-align: middle;
+        }
+
+        tbody tr:hover {
+            background: #f8fbff;
+        }
+
+        .center {
+            text-align: center;
+        }
+
+        .right {
+            text-align: right;
+        }
+
+        .muted {
+            color: var(--muted);
+        }
+
+        .strong {
+            font-weight: 800;
+        }
+
+        .line-clamp {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            line-height: 1.35;
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            max-width: 100%;
+            min-height: 24px;
+            padding: 3px 8px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: white;
+            font-size: 12px;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .chip-critical {
+            color: #b42318;
+            background: #fef3f2;
+            border-color: #fecdca;
+        }
+
+        .chip-major {
+            color: #b54708;
+            background: #fffaeb;
+            border-color: #fedf89;
+        }
+
+        .chip-minor {
+            color: #026aa2;
+            background: #f0f9ff;
+            border-color: #b9e6fe;
+        }
+
+        .chip-success {
+            color: #027a48;
+            background: #ecfdf3;
+            border-color: #abefc6;
+        }
+
+        .image-thumb {
+            width: 58px;
+            height: 44px;
+            padding: 0;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+            background: var(--surface-soft);
+            cursor: pointer;
+        }
+
+        .image-thumb img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: cover;
+        }
+
+        .empty-state {
+            padding: 52px 20px;
+            text-align: center;
+            color: var(--muted);
+        }
+
+        .empty-state .icon {
+            font-size: 48px;
+            line-height: 1;
+            margin-bottom: 8px;
+        }
+
+        .loading-cover {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            display: grid;
+            place-items: center;
+            background: rgba(255, 255, 255, 0.74);
+        }
+
+        .spinner {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 4px solid #dbeafe;
+            border-top-color: var(--primary);
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .alert {
+            max-width: 1480px;
+            margin: 0 auto 14px;
+            padding: 12px 14px;
+            border-radius: 6px;
+            border: 1px solid;
+            font-weight: 700;
+        }
+
+        .alert-error {
+            color: #912018;
+            background: #fef3f2;
+            border-color: #fecdca;
+        }
+
+        .alert-success {
+            color: #05603a;
+            background: #ecfdf3;
+            border-color: #abefc6;
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            z-index: 20;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(15, 23, 42, 0.55);
+        }
+
+        .modal {
+            width: min(920px, 100%);
+            max-height: min(92vh, 900px);
+            display: flex;
+            flex-direction: column;
+            background: white;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .modal-small {
+            width: min(640px, 100%);
+        }
+
+        .modal-header,
+        .modal-footer {
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            background: white;
+        }
+
+        .modal-header {
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-footer {
+            border-top: 1px solid var(--border);
+            background: var(--surface-soft);
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 20px;
+        }
+
+        .modal-body {
+            padding: 20px;
+            overflow: auto;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+        }
+
+        .form-grid .span-2 {
+            grid-column: 1 / -1;
+        }
+
+        .image-picker {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: 120px 1fr auto;
+            gap: 16px;
+            align-items: center;
+            padding: 16px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface-soft);
+        }
+
+        .image-preview {
+            width: 112px;
+            height: 84px;
+            display: grid;
+            place-items: center;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+            background: white;
+            color: var(--muted);
+        }
+
+        .image-preview img,
+        .preview-large img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+
+        .preview-large {
+            min-height: 280px;
+            max-height: 560px;
+            display: grid;
+            place-items: center;
+            background: var(--surface-soft);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        @media (max-width: 840px) {
+            .app-shell {
+                padding: 16px;
+            }
+
+            .topbar,
+            .toolbar {
+                grid-template-columns: 1fr;
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .toolbar {
+                display: flex;
+            }
+
+            .user-panel {
+                justify-content: space-between;
+                white-space: normal;
+            }
+
+            .form-grid,
+            .image-picker {
+                grid-template-columns: 1fr;
+            }
+
+            .form-grid .span-2 {
+                grid-column: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main id="loginPage" class="login-page hidden">
+        <section class="login-card">
+            <div class="brand">
+                <div class="brand-mark">KCS</div>
+                <div>
+                    <h1>Quản lý danh mục lỗi</h1>
+                    <p>Đăng nhập để truy cập dữ liệu từ hệ thống.</p>
+                </div>
+            </div>
+
+            <div id="loginAlert" class="alert alert-error hidden"></div>
+
+            <form id="loginForm">
+                <div class="field">
+                    <label for="username">Tên đăng nhập</label>
+                    <input id="username" name="username" autocomplete="username" required>
+                </div>
+
+                <div class="field" style="margin-top: 14px;">
+                    <label for="password">Mật khẩu</label>
+                    <input id="password" name="password" type="password" autocomplete="current-password" required>
+                </div>
+
+                <button id="loginButton" class="btn btn-primary" type="submit" style="width: 100%; margin-top: 20px;">
+                    Đăng nhập
+                </button>
+            </form>
+        </section>
+    </main>
+
+    <main id="appPage" class="app-shell hidden">
+        <header class="topbar">
+            <div class="page-title">
+                <h1>Danh mục lỗi dùng chung</h1>
+                <p>Quản lý mã lỗi, phân loại, phạm vi áp dụng và ảnh minh họa.</p>
+            </div>
+            <div class="user-panel">
+                <span id="currentUser" class="muted"></span>
+                <button id="logoutButton" class="btn btn-ghost" type="button">Đăng xuất</button>
+            </div>
+        </header>
+
+        <div id="appAlert" class="alert hidden"></div>
+
+        <section class="toolbar">
+            <div class="field">
+                <label for="keyword">Tìm lỗi</label>
+                <input id="keyword" type="search" placeholder="Nhập mã lỗi, tên lỗi, mô tả, phạm vi, thị trường...">
+            </div>
+            <button id="reloadButton" class="btn btn-ghost" type="button">Tải lại</button>
+            <button id="createButton" class="btn btn-primary" type="button">Thêm lỗi mới</button>
+        </section>
+
+        <section class="main-card">
+            <div class="table-wrap">
+                <div id="loadingCover" class="loading-cover hidden">
+                    <div class="spinner" aria-label="Đang tải"></div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 76px;">STT</th>
+                            <th style="width: 130px;">Mã lỗi</th>
+                            <th style="width: 310px;">Tên / mô tả lỗi</th>
+                            <th style="width: 120px;">Phân loại</th>
+                            <th class="center" style="width: 90px;">Loại</th>
+                            <th style="width: 190px;">Phạm vi</th>
+                            <th style="width: 130px;">Thị trường</th>
+                            <th class="center" style="width: 110px;">Ảnh</th>
+                            <th class="center" style="width: 130px;">Trạng thái</th>
+                            <th class="right" style="width: 110px;">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody id="defectTableBody"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <section id="defectModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <form id="defectForm" class="modal">
+            <div class="modal-header">
+                <h2 id="modalTitle">Thêm mã lỗi mới</h2>
+                <button class="btn btn-icon" type="button" data-close-modal aria-label="Đóng">×</button>
+            </div>
+
+            <div class="modal-body">
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="MaLoi">Mã lỗi</label>
+                        <input id="MaLoi" name="MaLoi" placeholder="Tự sinh nếu để trống">
+                    </div>
+
+                    <div class="field">
+                        <label for="ThuTu">STT</label>
+                        <input id="ThuTu" name="ThuTu" type="number" min="0" step="1">
+                    </div>
+
+                    <div class="field span-2">
+                        <label for="TenLoi">Tên lỗi *</label>
+                        <textarea id="TenLoi" name="TenLoi" required placeholder="Ví dụ: Thùng móp méo, Vải không đạt yêu cầu..."></textarea>
+                    </div>
+
+                    <div class="field span-2">
+                        <label for="MoTa">Mô tả chi tiết</label>
+                        <textarea id="MoTa" name="MoTa"></textarea>
+                    </div>
+
+                    <div class="field span-2">
+                        <label for="GhiChu">Ghi chú / Lưu ý</label>
+                        <input id="GhiChu" name="GhiChu">
+                    </div>
+
+                    <div class="field">
+                        <label for="DefectType">Phân loại độ nghiêm trọng *</label>
+                        <select id="DefectType" name="DefectType" required>
+                            <option value="CRITICAL">CRITICAL (Nghiêm trọng)</option>
+                            <option value="MAJOR">MAJOR (Nặng)</option>
+                            <option value="MINOR">MINOR (Nhẹ)</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label for="TrangThai">Trạng thái</label>
+                        <select id="TrangThai" name="TrangThai">
+                            <option value="1">Hoạt động</option>
+                            <option value="0">Tạm ngưng</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label for="MaNhomLoi">Mã nhóm lỗi</label>
+                        <input id="MaNhomLoi" name="MaNhomLoi">
+                    </div>
+
+                    <div class="field">
+                        <label for="LoaiLoiSXBT">Loại B/C</label>
+                        <input id="LoaiLoiSXBT" name="LoaiLoiSXBT">
+                    </div>
+
+                    <div class="field">
+                        <label for="PhamViApDung">Phạm vi áp dụng</label>
+                        <textarea id="PhamViApDung" name="PhamViApDung"></textarea>
+                    </div>
+
+                    <div class="field">
+                        <label for="ThiTruong">Thị trường</label>
+                        <input id="ThiTruong" name="ThiTruong">
+                    </div>
+
+                    <div class="image-picker">
+                        <div id="imagePreviewBox" class="image-preview">Ảnh lỗi</div>
+                        <div>
+                            <div class="strong">Ảnh lỗi</div>
+                            <p id="imageHelp" class="muted" style="margin: 6px 0 0;">
+                                Chọn ảnh từ máy. Hệ thống sẽ nén ảnh và lưu đường dẫn vào dữ liệu lỗi.
+                            </p>
+                        </div>
+                        <div class="actions">
+                            <label class="btn btn-ghost" for="ImageFile">Chọn ảnh</label>
+                            <input id="ImageFile" name="ImageFile" type="file" accept="image/*" class="hidden">
+                            <button id="removeImageButton" class="btn btn-ghost" type="button">Xóa ảnh</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-ghost" type="button" data-close-modal>Hủy bỏ</button>
+                <button id="saveButton" class="btn btn-primary" type="submit">Lưu dữ liệu</button>
+            </div>
+        </form>
+    </section>
+
+    <section id="previewModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
+        <div class="modal modal-small">
+            <div class="modal-header">
+                <h2 id="previewTitle">Ảnh lỗi</h2>
+                <button class="btn btn-icon" type="button" data-close-preview aria-label="Đóng">×</button>
+            </div>
+            <div class="modal-body">
+                <div id="previewImageBox" class="preview-large"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" type="button" data-close-preview>Đóng</button>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        const API_BASE = "https://z76api.z76.vn/api";
+        const ASSET_BASE = API_BASE.replace(/\/api\/?$/, "");
+
+        const emptyForm = {
+            Id: null,
+            TenLoi: "",
+            MaLoi: "",
+            DefectType: "MAJOR",
+            MoTa: "",
+            GhiChu: "",
+            MaNhomLoi: "",
+            LoaiLoiSXBT: "",
+            PhamViApDung: "",
+            ThiTruong: "",
+            ImageUrl: "",
+            ThuTu: "",
+            TrangThai: true
+        };
+
+        const state = {
+            defects: [],
+            filtered: [],
+            keyword: "",
+            form: { ...emptyForm },
+            imageFile: null,
+            imagePreviewUrl: "",
+            loading: false
+        };
+
+        const els = {
+            loginPage: document.getElementById("loginPage"),
+            appPage: document.getElementById("appPage"),
+            loginForm: document.getElementById("loginForm"),
+            loginAlert: document.getElementById("loginAlert"),
+            loginButton: document.getElementById("loginButton"),
+            currentUser: document.getElementById("currentUser"),
+            logoutButton: document.getElementById("logoutButton"),
+            appAlert: document.getElementById("appAlert"),
+            keyword: document.getElementById("keyword"),
+            reloadButton: document.getElementById("reloadButton"),
+            createButton: document.getElementById("createButton"),
+            loadingCover: document.getElementById("loadingCover"),
+            defectTableBody: document.getElementById("defectTableBody"),
+            defectModal: document.getElementById("defectModal"),
+            defectForm: document.getElementById("defectForm"),
+            modalTitle: document.getElementById("modalTitle"),
+            saveButton: document.getElementById("saveButton"),
+            imageFile: document.getElementById("ImageFile"),
+            imagePreviewBox: document.getElementById("imagePreviewBox"),
+            imageHelp: document.getElementById("imageHelp"),
+            removeImageButton: document.getElementById("removeImageButton"),
+            previewModal: document.getElementById("previewModal"),
+            previewImageBox: document.getElementById("previewImageBox")
+        };
+
+        function getToken() {
+            return localStorage.getItem("defectManagerToken") || localStorage.getItem("token") || "";
+        }
+
+        function setToken(token) {
+            localStorage.setItem("defectManagerToken", token);
+            localStorage.setItem("token", token);
+        }
+
+        function getUser() {
+            const userValue = localStorage.getItem("defectManagerUser") || localStorage.getItem("user");
+            if (!userValue) return null;
+            try {
+                return JSON.parse(userValue);
+            } catch {
+                return null;
+            }
+        }
+
+        function setUser(user) {
+            localStorage.setItem("defectManagerUser", JSON.stringify(user || {}));
+            localStorage.setItem("user", JSON.stringify(user || {}));
+        }
+
+        function clearAuth() {
+            localStorage.removeItem("defectManagerToken");
+            localStorage.removeItem("defectManagerUser");
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+        }
+
+        function isTokenExpired(token) {
+            if (!token) return true;
+            try {
+                const payload = JSON.parse(atob(token.split(".")[1]));
+                return !payload.exp || payload.exp < Date.now() / 1000;
+            } catch {
+                return true;
+            }
+        }
+
+        function showLogin() {
+            els.loginPage.classList.remove("hidden");
+            els.appPage.classList.add("hidden");
+        }
+
+        function showApp() {
+            const user = getUser();
+            els.currentUser.textContent = user?.fullName || user?.username || "Đã đăng nhập";
+            els.loginPage.classList.add("hidden");
+            els.appPage.classList.remove("hidden");
+        }
+
+        function showAlert(message, type = "error") {
+            els.appAlert.textContent = message;
+            els.appAlert.className = `alert alert-${type}`;
+            els.appAlert.classList.remove("hidden");
+            window.clearTimeout(showAlert.timer);
+            showAlert.timer = window.setTimeout(() => {
+                els.appAlert.classList.add("hidden");
+            }, 6500);
+        }
+
+        function showLoginAlert(message) {
+            els.loginAlert.textContent = message;
+            els.loginAlert.classList.remove("hidden");
+        }
+
+        function setLoading(value) {
+            state.loading = value;
+            els.loadingCover.classList.toggle("hidden", !value);
+            els.reloadButton.disabled = value;
+        }
+
+        function getAssetUrl(url) {
+            if (!url) return "";
+            if (/^https?:\/\//i.test(url)) return url;
+            return `${ASSET_BASE}${url.startsWith("/") ? url : `/${url}`}`;
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? "")
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#039;");
+        }
+
+        async function apiFetch(path, options = {}) {
+            const headers = {
+                ...(options.headers || {})
+            };
+
+            if (!(options.body instanceof FormData)) {
+                headers["Content-Type"] = "application/json";
+            }
+
+            const token = getToken();
+            if (token) {
+                headers.Authorization = `Bearer ${token}`;
+            }
+
+            const response = await fetch(`${API_BASE}${path}`, {
+                ...options,
+                headers
+            });
+
+            const contentType = response.headers.get("content-type") || "";
+            const data = contentType.includes("application/json") ? await response.json() : await response.text();
+
+            if (!response.ok) {
+                if (response.status === 401) {
+                    clearAuth();
+                    showLogin();
+                    throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+                }
+
+                if (response.status === 403) {
+                    throw new Error("Tài khoản không có quyền QUAN_TRI_DM để thực hiện thao tác này.");
+                }
+
+                throw new Error(data?.message || data || "Có lỗi xảy ra khi gọi API.");
+            }
+
+            return data;
+        }
+
+        async function login(username, password) {
+            const response = await fetch(`${API_BASE}/auth/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data?.message || "Tên đăng nhập hoặc mật khẩu không đúng.");
+            }
+
+            if (!data.token) {
+                throw new Error("API đăng nhập không trả về token.");
+            }
+
+            setToken(data.token);
+            setUser(data.user);
+            return data;
+        }
+
+        async function loadDefects(options = {}) {
+            setLoading(true);
+            try {
+                state.defects = await apiFetch("/lookup/defect-list");
+                applyFilter();
+                if (options.showSuccess) {
+                    showAlert("Đã tải danh mục lỗi.", "success");
+                }
+            } catch (error) {
+                showAlert(error.message);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function applyFilter() {
+            const keyword = state.keyword.trim().toLowerCase();
+            if (!keyword) {
+                state.filtered = [...state.defects];
+            } else {
+                state.filtered = state.defects.filter((row) => {
+                    return [
+                        row.MaLoi,
+                        row.TenLoi,
+                        row.MoTa,
+                        row.GhiChu,
+                        row.PhamViApDung,
+                        row.ThiTruong,
+                        row.MaNhomLoi,
+                        row.LoaiLoiSXBT
+                    ].some((field) => String(field || "").toLowerCase().includes(keyword));
+                });
+            }
+
+            renderTable();
+        }
+
+        function getDefectTypeClass(type) {
+            if (type === "CRITICAL") return "chip-critical";
+            if (type === "MINOR") return "chip-minor";
+            return "chip-major";
+        }
+
+        function renderTable() {
+            if (!state.filtered.length) {
+                els.defectTableBody.innerHTML = `
+                    <tr>
+                        <td colspan="10">
+                            <div class="empty-state">
+                                <div class="icon">!</div>
+                                <div class="strong">Chưa có dữ liệu lỗi</div>
+                                <p>${state.defects.length ? "Không tìm thấy lỗi phù hợp với từ khóa." : "Bấm \"Thêm lỗi mới\" để tạo danh mục lỗi."}</p>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            els.defectTableBody.innerHTML = state.filtered.map((row, index) => {
+                const imageUrl = getAssetUrl(row.ImageUrl);
+                const type = row.DefectType || "MAJOR";
+                return `
+                    <tr>
+                        <td><span class="strong muted">${escapeHtml(row.ThuTu || index + 1)}</span></td>
+                        <td>
+                            <span class="chip" title="${escapeHtml(row.MaLoi || "")}">${escapeHtml(row.MaLoi || "--")}</span>
+                        </td>
+                        <td>
+                            <div class="strong line-clamp" title="${escapeHtml(row.TenLoi || "")}">${escapeHtml(row.TenLoi || "")}</div>
+                            ${row.MoTa && row.MoTa !== row.TenLoi ? `<div class="muted line-clamp" style="font-size: 12px;">${escapeHtml(row.MoTa)}</div>` : ""}
+                            ${row.GhiChu ? `<div class="line-clamp" style="font-size: 12px; color: var(--primary);">${escapeHtml(row.GhiChu)}</div>` : ""}
+                        </td>
+                        <td><span class="chip ${getDefectTypeClass(type)}">${escapeHtml(type)}</span></td>
+                        <td class="center">${row.LoaiLoiSXBT ? `<span class="chip chip-major">${escapeHtml(row.LoaiLoiSXBT)}</span>` : "--"}</td>
+                        <td><div class="line-clamp ${row.PhamViApDung ? "" : "muted"}" title="${escapeHtml(row.PhamViApDung || "")}">${escapeHtml(row.PhamViApDung || "--")}</div></td>
+                        <td><span class="${row.ThiTruong ? "" : "muted"}">${escapeHtml(row.ThiTruong || "--")}</span></td>
+                        <td class="center">
+                            ${imageUrl ? `
+                                <button class="image-thumb" type="button" data-preview="${escapeHtml(imageUrl)}" title="Xem ảnh lỗi">
+                                    <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(row.TenLoi || "Ảnh lỗi")}">
+                                </button>
+                            ` : `<span class="muted">Không có</span>`}
+                        </td>
+                        <td class="center">
+                            <span class="chip ${row.TrangThai ? "chip-success" : ""}">${row.TrangThai ? "Hoạt động" : "Tạm ngưng"}</span>
+                        </td>
+                        <td class="right">
+                            <button class="btn btn-icon" type="button" data-edit="${escapeHtml(row.Id)}" title="Chỉnh sửa">✎</button>
+                            <button class="btn btn-icon" type="button" data-delete="${escapeHtml(row.Id)}" title="Xóa">×</button>
+                        </td>
+                    </tr>
+                `;
+            }).join("");
+        }
+
+        function setFormValues(row) {
+            state.form = {
+                ...emptyForm,
+                ...row,
+                TrangThai: row.TrangThai !== false && row.TrangThai !== 0,
+                ThuTu: row.ThuTu ?? "",
+                PhamViApDung: row.PhamViApDung || ""
+            };
+
+            Object.entries(state.form).forEach(([key, value]) => {
+                const input = document.getElementById(key);
+                if (!input) return;
+
+                if (key === "TrangThai") {
+                    input.value = value ? "1" : "0";
+                } else {
+                    input.value = value ?? "";
+                }
+            });
+
+            updateImagePreview();
+        }
+
+        function openCreateModal() {
+            clearImageSelection();
+            setFormValues({ ...emptyForm });
+            els.modalTitle.textContent = "Thêm mã lỗi mới";
+            els.saveButton.textContent = "Lưu dữ liệu";
+            els.defectModal.classList.remove("hidden");
+            document.getElementById("MaLoi").focus();
+        }
+
+        function openEditModal(id) {
+            const row = state.defects.find((item) => String(item.Id) === String(id));
+            if (!row) return;
+
+            clearImageSelection();
+            setFormValues(row);
+            els.modalTitle.textContent = "Cập nhật thông tin lỗi";
+            els.saveButton.textContent = "Cập nhật";
+            els.defectModal.classList.remove("hidden");
+            document.getElementById("TenLoi").focus();
+        }
+
+        function closeDefectModal() {
+            els.defectModal.classList.add("hidden");
+            clearImageSelection();
+        }
+
+        function clearImageSelection() {
+            if (state.imagePreviewUrl) {
+                URL.revokeObjectURL(state.imagePreviewUrl);
+            }
+            state.imageFile = null;
+            state.imagePreviewUrl = "";
+            els.imageFile.value = "";
+        }
+
+        function updateImagePreview() {
+            const previewUrl = state.imagePreviewUrl || getAssetUrl(state.form.ImageUrl);
+            if (previewUrl) {
+                els.imagePreviewBox.innerHTML = `<img src="${escapeHtml(previewUrl)}" alt="Ảnh lỗi">`;
+            } else {
+                els.imagePreviewBox.textContent = "Ảnh lỗi";
+            }
+
+            if (state.imageFile) {
+                els.imageHelp.textContent = `Ảnh mới: ${state.imageFile.name}`;
+            } else if (state.form.ImageUrl) {
+                els.imageHelp.textContent = `Ảnh hiện tại: ${state.form.ImageUrl}`;
+            } else {
+                els.imageHelp.textContent = "Chọn ảnh từ máy. Hệ thống sẽ nén ảnh và lưu đường dẫn vào dữ liệu lỗi.";
+            }
+        }
+
+        function collectPayload() {
+            const formData = new FormData(els.defectForm);
+            return {
+                ...state.form,
+                MaLoi: String(formData.get("MaLoi") || "").trim() || null,
+                TenLoi: String(formData.get("TenLoi") || "").trim(),
+                DefectType: formData.get("DefectType") || "MAJOR",
+                MoTa: formData.get("MoTa") || String(formData.get("TenLoi") || "").trim() || null,
+                GhiChu: formData.get("GhiChu") || null,
+                MaNhomLoi: formData.get("MaNhomLoi") || null,
+                LoaiLoiSXBT: formData.get("LoaiLoiSXBT") || null,
+                PhamViApDung: formData.get("PhamViApDung") || null,
+                ThiTruong: formData.get("ThiTruong") || null,
+                ImageUrl: state.form.ImageUrl || null,
+                ThuTu: formData.get("ThuTu") === "" ? null : Number(formData.get("ThuTu")),
+                TrangThai: formData.get("TrangThai") === "1"
+            };
+        }
+
+        async function uploadImageIfNeeded(payload) {
+            if (!state.imageFile) return payload.ImageUrl || null;
+
+            const body = new FormData();
+            body.append("image", state.imageFile);
+            if (payload.MaLoi) body.append("maLoi", payload.MaLoi);
+            if (payload.TenLoi) body.append("tenLoi", payload.TenLoi);
+
+            const result = await apiFetch("/lookup/defect-image", {
+                method: "POST",
+                body
+            });
+
+            return result?.imageUrl || payload.ImageUrl || null;
+        }
+
+        async function saveDefect(event) {
+            event.preventDefault();
+
+            const payload = collectPayload();
+            if (!payload.TenLoi || !payload.DefectType) {
+                showAlert("Vui lòng nhập tên lỗi và phân loại độ nghiêm trọng.");
+                return;
+            }
+
+            els.saveButton.disabled = true;
+            try {
+                payload.ImageUrl = await uploadImageIfNeeded(payload);
+
+                if (state.form.Id) {
+                    await apiFetch(`/lookup/defect/${state.form.Id}`, {
+                        method: "PUT",
+                        body: JSON.stringify(payload)
+                    });
+                    showAlert("Đã cập nhật danh mục lỗi.", "success");
+                } else {
+                    await apiFetch("/lookup/defect", {
+                        method: "POST",
+                        body: JSON.stringify(payload)
+                    });
+                    showAlert("Đã tạo danh mục lỗi.", "success");
+                }
+
+                closeDefectModal();
+                await loadDefects();
+            } catch (error) {
+                showAlert(error.message);
+            } finally {
+                els.saveButton.disabled = false;
+            }
+        }
+
+        async function deleteDefect(id) {
+            const row = state.defects.find((item) => String(item.Id) === String(id));
+            const label = row?.MaLoi || row?.TenLoi || `ID ${id}`;
+            if (!window.confirm(`Bạn có chắc chắn muốn xóa lỗi "${label}"?`)) return;
+
+            setLoading(true);
+            try {
+                await apiFetch(`/lookup/defect/${id}`, { method: "DELETE" });
+                showAlert("Đã xóa danh mục lỗi.", "success");
+                await loadDefects();
+            } catch (error) {
+                showAlert(error.message);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function openPreview(url) {
+            els.previewImageBox.innerHTML = `<img src="${escapeHtml(url)}" alt="Ảnh lỗi">`;
+            els.previewModal.classList.remove("hidden");
+        }
+
+        function closePreview() {
+            els.previewModal.classList.add("hidden");
+            els.previewImageBox.innerHTML = "";
+        }
+
+        els.loginForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            els.loginAlert.classList.add("hidden");
+            els.loginButton.disabled = true;
+            els.loginButton.textContent = "Đang đăng nhập...";
+
+            try {
+                const formData = new FormData(els.loginForm);
+                await login(formData.get("username"), formData.get("password"));
+                showApp();
+                await loadDefects();
+            } catch (error) {
+                showLoginAlert(error.message);
+            } finally {
+                els.loginButton.disabled = false;
+                els.loginButton.textContent = "Đăng nhập";
+            }
+        });
+
+        els.logoutButton.addEventListener("click", () => {
+            clearAuth();
+            state.defects = [];
+            state.filtered = [];
+            renderTable();
+            showLogin();
+        });
+
+        els.keyword.addEventListener("input", (event) => {
+            state.keyword = event.target.value;
+            applyFilter();
+        });
+
+        els.reloadButton.addEventListener("click", () => loadDefects({ showSuccess: true }));
+        els.createButton.addEventListener("click", openCreateModal);
+        els.defectForm.addEventListener("submit", saveDefect);
+
+        document.querySelectorAll("[data-close-modal]").forEach((button) => {
+            button.addEventListener("click", closeDefectModal);
+        });
+
+        document.querySelectorAll("[data-close-preview]").forEach((button) => {
+            button.addEventListener("click", closePreview);
+        });
+
+        els.imageFile.addEventListener("change", (event) => {
+            const file = event.target.files?.[0] || null;
+            if (state.imagePreviewUrl) {
+                URL.revokeObjectURL(state.imagePreviewUrl);
+            }
+            state.imageFile = file;
+            state.imagePreviewUrl = file ? URL.createObjectURL(file) : "";
+            updateImagePreview();
+        });
+
+        els.removeImageButton.addEventListener("click", () => {
+            clearImageSelection();
+            state.form.ImageUrl = "";
+            updateImagePreview();
+        });
+
+        els.defectTableBody.addEventListener("click", (event) => {
+            const editButton = event.target.closest("[data-edit]");
+            const deleteButton = event.target.closest("[data-delete]");
+            const previewButton = event.target.closest("[data-preview]");
+
+            if (editButton) openEditModal(editButton.dataset.edit);
+            if (deleteButton) deleteDefect(deleteButton.dataset.delete);
+            if (previewButton) openPreview(previewButton.dataset.preview);
+        });
+
+        [els.defectModal, els.previewModal].forEach((modal) => {
+            modal.addEventListener("click", (event) => {
+                if (event.target === modal) {
+                    if (modal === els.defectModal) closeDefectModal();
+                    if (modal === els.previewModal) closePreview();
+                }
+            });
+        });
+
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            if (!els.previewModal.classList.contains("hidden")) closePreview();
+            if (!els.defectModal.classList.contains("hidden")) closeDefectModal();
+        });
+
+        (async function init() {
+            const token = getToken();
+            if (!token || isTokenExpired(token)) {
+                clearAuth();
+                showLogin();
+                return;
+            }
+
+            showApp();
+            await loadDefects();
+        })();
+    </script>
+</body>
+</html>

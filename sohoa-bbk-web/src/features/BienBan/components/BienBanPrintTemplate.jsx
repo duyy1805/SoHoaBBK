@@ -17,8 +17,45 @@ export const BienBanPrintTemplate = React.forwardRef(({
         return acc;
     }, {});
 
+    const normalizeText = (value) =>
+        String(value || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toUpperCase();
+
+    const inferPhatHienTu = () => {
+        if (customData.PhatHienTu || info.PhatHienTu) {
+            return customData.PhatHienTu || info.PhatHienTu;
+        }
+
+        const loaiKiemText = normalizeText([
+            info.MaLoai,
+            info.MaLoaiKiem,
+            info.LoaiKiem,
+            info.TenLoai,
+            info.TenLoaiKiem,
+            info.TenLoaiKiemTra
+        ].filter(Boolean).join(' '));
+        const loaiKiemId = Number(info.LoaiKiemId);
+
+        if (loaiKiemText.includes('DAU_VAO') || loaiKiemText.includes('DAU VAO') || loaiKiemId === 1) {
+            return 'KIEM_TRA_DAU_VAO';
+        }
+
+        if (
+            loaiKiemText.includes('KIEM_DONG_CONT') ||
+            loaiKiemText.includes('KIEM CUOI') ||
+            loaiKiemText.includes('DONG CONT') ||
+            loaiKiemId === 5
+        ) {
+            return 'KIEM_DONG_CONT';
+        }
+
+        return '';
+    };
+
     // 2. State quản lý Mục 2
-    const [phatHienTu, setPhatHienTu] = useState(customData.PhatHienTu || info.PhatHienTu || '');
+    const [phatHienTu, setPhatHienTu] = useState(inferPhatHienTu);
 
     // 3. State quản lý Mục 3 (chuyển sang string để chỉ chọn 1)
     const [mucDo, setMucDo] = useState(() => {
