@@ -23,6 +23,7 @@ app.use('/api/bien-ban', require('./routes/bienBan'));
 app.use('/api/bien-ban-sxbt', require('./routes/bienBanSxbt'));
 app.use('/api/lookup', require('./routes/lookup.routes'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/dashboard', require('./routes/dashboard'));
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 

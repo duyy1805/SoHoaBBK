@@ -280,9 +280,9 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', textAlign: 'right' }}>hộp</td>
                             </tr>
                             <tr>
-                                <td style={{ padding: '4px 4px 4px 0', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}></td>
+                                <td style={{ padding: '4px 4px 4px 0', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Số LOT</td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', height: '26px' }}>
-                                    <input name="Extra2" className="custom-field" type="text" defaultValue={customData.Extra2 || ''} style={styles.inputField} />
+                                    <input name="Lot" className="custom-field" type="text" defaultValue={phieu.Lot || customData.Lot || ''} style={styles.inputField} />
                                 </td>
                                 <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Nơi đến</td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>

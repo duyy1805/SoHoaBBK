@@ -23,6 +23,54 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
     const [loaiKiemTra, setLoaiKiemTra] = useState(customData.LoaiKiemTra || phieu.LoaiKiemTra || '');
     if (!phieu) return null;
 
+    const getDefectImageUrl = (url) => {
+        if (!url) return '';
+        return /^https?:\/\//i.test(url) ? url : `https://z76api.z76.vn${url.startsWith('/') ? url : `/${url}`}`;
+    };
+
+    const getDefectImages = () => {
+        const imageRows = [];
+        const seen = new Set();
+        const sourceDefects = [
+            ...(defects || []),
+            ...(checkItems || []).flatMap(item =>
+                (item.Defects || []).map(defect => ({
+                    ...defect,
+                    CheckItemId: defect.CheckItemId || item.Id
+                }))
+            )
+        ];
+
+        sourceDefects.forEach(defect => {
+            let urls = [];
+            try {
+                if (Array.isArray(defect.ImageUrls)) {
+                    urls = defect.ImageUrls;
+                } else if (typeof defect.ImageUrls === 'string' && defect.ImageUrls.trim() !== '') {
+                    urls = JSON.parse(defect.ImageUrls);
+                }
+            } catch (e) {
+                console.error("Error parsing ImageUrls for defect:", defect.Id, e);
+            }
+
+            const checkItem = checkItems.find(item => item.Id === defect.CheckItemId);
+            urls.forEach(url => {
+                const imageUrl = getDefectImageUrl(url);
+                const key = `${defect.CheckItemId || ''}|${defect.DefectId || defect.Id || ''}|${imageUrl}`;
+                if (!imageUrl || seen.has(key)) return;
+
+                seen.add(key);
+                imageRows.push({
+                    url: imageUrl,
+                    tenMucKiem: checkItem?.TenMucKiem || 'N/A',
+                    loaiLoi: defect.DefectType
+                });
+            });
+        });
+
+        return imageRows;
+    };
+
     const styles = {
         previewBackground: {
             backgroundColor: '#e5e7eb',
@@ -414,30 +462,7 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
 
                                 {/* ================= HÌNH ẢNH LỖI ================= */}
                                 {(() => {
-                                    const defectImages = [];
-                                    defects.forEach(d => {
-                                        let urls = [];
-                                        try {
-                                            if (Array.isArray(d.ImageUrls)) {
-                                                urls = d.ImageUrls;
-                                            } else if (typeof d.ImageUrls === 'string' && d.ImageUrls.trim() !== '') {
-                                                urls = JSON.parse(d.ImageUrls);
-                                            }
-                                        } catch (e) {
-                                            console.error("Error parsing ImageUrls for defect:", d.Id, e);
-                                        }
-
-                                        if (urls && urls.length > 0) {
-                                            const checkItem = checkItems.find(ci => ci.Id === d.CheckItemId);
-                                            urls.forEach(url => {
-                                                defectImages.push({
-                                                    url: url,
-                                                    tenMucKiem: checkItem?.TenMucKiem || 'N/A',
-                                                    loaiLoi: d.DefectType
-                                                });
-                                            });
-                                        }
-                                    });
+                                    const defectImages = getDefectImages();
 
                                     if (defectImages.length === 0) return null;
 
@@ -451,7 +476,7 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                                     <Grid item xs={4} key={idx} sx={{ mb: 2 }}>
                                                         <Box style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center', height: '100%' }}>
                                                             <img
-                                                                src={`https://z76api.z76.vn${img.url}`}
+                                                                src={img.url}
                                                                 alt="defect"
                                                                 style={{ width: '100%', height: '200px', objectFit: 'contain', display: 'block' }}
                                                                 crossOrigin="anonymous"
