@@ -30,6 +30,8 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import BugReportIcon from "@mui/icons-material/BugReport";
 import ImageIcon from "@mui/icons-material/Image";
+import DownloadIcon from "@mui/icons-material/Download";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
 
 import {
     getDefectList,
@@ -37,7 +39,9 @@ import {
     updateDefect,
     deleteDefect,
     getAssetUrl,
-    uploadDefectImage
+    uploadDefectImage,
+    importDefectExcel,
+    downloadDefectTemplate
 } from "../../../api/lookup.api";
 
 const emptyForm = {
@@ -56,6 +60,12 @@ const emptyForm = {
     ThuTu: "",
     TrangThai: true
 };
+
+const phamViApDungOptions = [
+    "Kiểm đầu vào",
+    "Kiểm công đoạn",
+    "Kiểm hoàn chỉnh"
+];
 
 const cellSx = {
     py: 1,
@@ -131,6 +141,10 @@ export default function DefectManager() {
     const [previewImage, setPreviewImage] = useState("");
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState("");
+    const [importOpen, setImportOpen] = useState(false);
+    const [importFile, setImportFile] = useState(null);
+    const [importing, setImporting] = useState(false);
+    const [importResult, setImportResult] = useState(null);
 
     const loadData = useCallback(async () => {
         try {
@@ -175,14 +189,14 @@ export default function DefectManager() {
         );
     }, [data, keyword]);
 
-    const handleOpenCreate = () => {
+    const handleOpenCreate = useCallback(() => {
         setForm(emptyForm);
         setImageFile(null);
         setImagePreview("");
         setOpen(true);
-    };
+    }, []);
 
-    const handleOpenEdit = (row) => {
+    const handleOpenEdit = useCallback((row) => {
         setForm({
             ...emptyForm,
             ...row,
@@ -196,7 +210,7 @@ export default function DefectManager() {
         setImageFile(null);
         setImagePreview("");
         setOpen(true);
-    };
+    }, []);
 
     const buildPayload = () => ({
         ...form,
@@ -227,16 +241,16 @@ export default function DefectManager() {
     const handleRemoveImage = () => {
         setImageFile(null);
         setImagePreview("");
-        setForm({ ...form, ImageUrl: "" });
+        setForm((prev) => ({ ...prev, ImageUrl: "" }));
     };
 
-    const handleLoaiLoiChange = (value) => {
-        setForm({
-            ...form,
+    const handleLoaiLoiChange = useCallback((value) => {
+        setForm((prev) => ({
+            ...prev,
             LoaiLoiSXBT: value,
-            DefectType: normalizeDefectType(value, form.DefectType)
-        });
-    };
+            DefectType: normalizeDefectType(value, prev.DefectType)
+        }));
+    }, []);
 
     const defectTypeOptions = getDefectTypeOptions(form.LoaiLoiSXBT);
 
@@ -273,7 +287,7 @@ export default function DefectManager() {
         }
     };
 
-    const handleDelete = async (id) => {
+    const handleDelete = useCallback(async (id) => {
         if (!window.confirm("Bạn có chắc chắn muốn xóa mã lỗi này?")) return;
 
         try {
@@ -282,7 +296,227 @@ export default function DefectManager() {
         } catch (err) {
             setError(err.response?.data?.message || "Không thể xoá");
         }
+    }, [loadData]);
+
+    const handleDownloadTemplate = async () => {
+        try {
+            const res = await downloadDefectTemplate();
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "mau-import-danh-muc-loi.xlsx";
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            setError(err.response?.data?.message || "Không tải được file mẫu import danh mục lỗi");
+        }
     };
+
+    const handleImportExcel = async () => {
+        if (!importFile) return;
+
+        try {
+            setImporting(true);
+            setImportResult(null);
+            const res = await importDefectExcel(importFile);
+            setImportResult({
+                type: "success",
+                message: res.data?.message || "Import thành công",
+                summary: res.data?.summary
+            });
+            setImportFile(null);
+            await loadData();
+        } catch (err) {
+            setImportResult({
+                type: "error",
+                message: err.response?.data?.message || "Import thất bại",
+                errors: err.response?.data?.errors || []
+            });
+        } finally {
+            setImporting(false);
+        }
+    };
+
+    const tableBody = useMemo(() => {
+        if (filteredData.length === 0 && !loading) {
+            return (
+                <TableRow>
+                    <TableCell colSpan={12} align="center" sx={{ py: 6 }}>
+                        <BugReportIcon sx={{ fontSize: 60, color: "text.disabled", mb: 1 }} />
+                        <Typography variant="h6" color="text.secondary">Chưa có dữ liệu lỗi</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                            Bấm "Thêm lỗi mới" để tạo danh mục lỗi.
+                        </Typography>
+                    </TableCell>
+                </TableRow>
+            );
+        }
+
+        return filteredData.map((row, index) => (
+            <TableRow key={row.Id} hover>
+                <TableCell sx={cellSx}>
+                    <Typography variant="body2" color="text.secondary" fontWeight={700}>
+                        {row.ThuTu || index + 1}
+                    </Typography>
+                </TableCell>
+
+                <TableCell sx={cellSx}>
+                    <Tooltip title={row.MaLoi || ""}>
+                        <Chip
+                            label={row.MaLoi || "--"}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                                maxWidth: "100%",
+                                borderRadius: 1,
+                                fontWeight: 700,
+                                color: "text.primary",
+                                "& .MuiChip-label": {
+                                    display: "block",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis"
+                                }
+                            }}
+                        />
+                    </Tooltip>
+                    {row.PhanHe && (
+                        <Typography variant="caption" display="block" color="text.disabled" sx={{ mt: 0.5 }}>
+                            {/* {row.PhanHe} */}
+                        </Typography>
+                    )}
+                </TableCell>
+
+                <TableCell sx={cellSx}>
+                    <Tooltip title={row.TenLoi || ""}>
+                        <Typography variant="body2" fontWeight={700} sx={clampTextSx}>
+                            {row.TenLoi}
+                        </Typography>
+                    </Tooltip>
+                    {row.MoTa && row.MoTa !== row.TenLoi && (
+                        <Typography variant="caption" color="text.secondary" sx={clampTextSx}>
+                            {row.MoTa}
+                        </Typography>
+                    )}
+                    {row.GhiChu && (
+                        <Typography variant="caption" color="primary.main" sx={clampTextSx}>
+                            {row.GhiChu}
+                        </Typography>
+                    )}
+                </TableCell>
+
+                <TableCell sx={cellSx}>
+                    <Chip
+                        label={getDefectTypeProps(row.DefectType).label}
+                        color={getDefectTypeProps(row.DefectType).color}
+                        size="small"
+                        sx={{ fontWeight: 700, borderRadius: 1 }}
+                    />
+                </TableCell>
+
+                <TableCell sx={cellSx} align="center">
+                    {row.LoaiLoiSXBT ? (
+                        <Chip
+                            label={row.LoaiLoiSXBT}
+                            color="warning"
+                            size="small"
+                            sx={{ width: 34, height: 26, borderRadius: "50%", fontWeight: 800 }}
+                        />
+                    ) : "--"}
+                </TableCell>
+
+                <TableCell sx={cellSx}>
+                    <Typography variant="body2" noWrap color={row.TenSanPham ? "text.primary" : "text.disabled"}>
+                        {row.TenSanPham || "--"}
+                    </Typography>
+                </TableCell>
+
+                <TableCell sx={cellSx}>
+                    <Typography variant="body2" noWrap color={row.ChungLoai ? "text.primary" : "text.disabled"}>
+                        {row.ChungLoai || "--"}
+                    </Typography>
+                </TableCell>
+
+                <TableCell sx={cellSx}>
+                    <Tooltip title={row.PhamViApDung || ""}>
+                        <Typography
+                            variant="body2"
+                            color={row.PhamViApDung ? "text.primary" : "text.disabled"}
+                            sx={clampTextSx}
+                        >
+                            {row.PhamViApDung || "--"}
+                        </Typography>
+                    </Tooltip>
+                </TableCell>
+
+                <TableCell sx={cellSx}>
+                    <Typography variant="body2" noWrap color={row.ThiTruong ? "text.primary" : "text.disabled"}>
+                        {row.ThiTruong || "--"}
+                    </Typography>
+                </TableCell>
+
+                <TableCell sx={cellSx} align="center">
+                    {row.ImageUrl ? (
+                        <Tooltip title="Xem ảnh lỗi">
+                            <Box
+                                component="button"
+                                type="button"
+                                onClick={() => setPreviewImage(getAssetUrl(row.ImageUrl))}
+                                sx={{
+                                    width: 58,
+                                    height: 44,
+                                    p: 0,
+                                    border: "1px solid",
+                                    borderColor: "divider",
+                                    borderRadius: 1,
+                                    overflow: "hidden",
+                                    cursor: "pointer",
+                                    bgcolor: "#f8fafc"
+                                }}
+                            >
+                                <Box
+                                    component="img"
+                                    src={getAssetUrl(row.ImageUrl)}
+                                    alt={row.TenLoi || "Ảnh lỗi"}
+                                    loading="lazy"
+                                    sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                                />
+                            </Box>
+                        </Tooltip>
+                    ) : (
+                        <ImageIcon sx={{ color: "text.disabled", fontSize: 22 }} />
+                    )}
+                </TableCell>
+
+                <TableCell sx={cellSx} align="center">
+                    <Chip
+                        label={row.TrangThai ? "Hoạt động" : "Tạm ngưng"}
+                        color={row.TrangThai ? "success" : "default"}
+                        size="small"
+                        variant="outlined"
+                        sx={{ borderRadius: 1, height: 24, fontSize: 12 }}
+                    />
+                </TableCell>
+
+                <TableCell sx={cellSx} align="right">
+                    <Stack direction="row" spacing={0.25} justifyContent="flex-end">
+                        <Tooltip title="Chỉnh sửa">
+                            <IconButton size="small" color="primary" onClick={() => handleOpenEdit(row)}>
+                                <EditIcon fontSize="small" />
+                            </IconButton>
+                        </Tooltip>
+
+                        <Tooltip title="Xóa">
+                            <IconButton size="small" color="error" onClick={() => handleDelete(row.Id)}>
+                                <DeleteIcon fontSize="small" />
+                            </IconButton>
+                        </Tooltip>
+                    </Stack>
+                </TableCell>
+            </TableRow>
+        ));
+    }, [filteredData, handleDelete, handleOpenEdit, loading]);
 
     return (
         <Box sx={{ p: { xs: 2, md: 3 }, width: "100%", maxWidth: "100%", overflowX: "hidden" }}>
@@ -319,6 +553,26 @@ export default function DefectManager() {
                         onChange={(event) => setKeyword(event.target.value)}
                         sx={{ minWidth: 0, width: { xs: "100%", sm: 320, lg: 420 }, maxWidth: "100%" }}
                     />
+                    <Button
+                        variant="outlined"
+                        startIcon={<DownloadIcon />}
+                        onClick={handleDownloadTemplate}
+                        disabled={importing}
+                        sx={{ whiteSpace: "nowrap" }}
+                    >
+                        Tải file mẫu
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        startIcon={<UploadFileIcon />}
+                        onClick={() => {
+                            setImportOpen(true);
+                            setImportResult(null);
+                        }}
+                        sx={{ whiteSpace: "nowrap" }}
+                    >
+                        Import Excel
+                    </Button>
                     <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreate} sx={{ whiteSpace: "nowrap" }}>
                         Thêm lỗi mới
                     </Button>
@@ -361,181 +615,7 @@ export default function DefectManager() {
                             </TableRow>
                         </TableHead>
 
-                        <TableBody>
-                            {filteredData.length === 0 && !loading ? (
-                                <TableRow>
-                                    <TableCell colSpan={12} align="center" sx={{ py: 6 }}>
-                                        <BugReportIcon sx={{ fontSize: 60, color: "text.disabled", mb: 1 }} />
-                                        <Typography variant="h6" color="text.secondary">Chưa có dữ liệu lỗi</Typography>
-                                        <Typography variant="body2" color="text.secondary">
-                                            Bấm "Thêm lỗi mới" để tạo danh mục lỗi.
-                                        </Typography>
-                                    </TableCell>
-                                </TableRow>
-                            ) : (
-                                filteredData.map((row, index) => (
-                                    <TableRow key={row.Id} hover>
-                                        <TableCell sx={cellSx}>
-                                            <Typography variant="body2" color="text.secondary" fontWeight={700}>
-                                                {row.ThuTu || index + 1}
-                                            </Typography>
-                                        </TableCell>
-
-                                        <TableCell sx={cellSx}>
-                                            <Tooltip title={row.MaLoi || ""}>
-                                                <Chip
-                                                    label={row.MaLoi || "--"}
-                                                    size="small"
-                                                    variant="outlined"
-                                                    sx={{
-                                                        maxWidth: "100%",
-                                                        borderRadius: 1,
-                                                        fontWeight: 700,
-                                                        color: "text.primary",
-                                                        "& .MuiChip-label": {
-                                                            display: "block",
-                                                            overflow: "hidden",
-                                                            textOverflow: "ellipsis"
-                                                        }
-                                                    }}
-                                                />
-                                            </Tooltip>
-                                            {row.PhanHe && (
-                                                <Typography variant="caption" display="block" color="text.disabled" sx={{ mt: 0.5 }}>
-                                                    {row.PhanHe}
-                                                </Typography>
-                                            )}
-                                        </TableCell>
-
-                                        <TableCell sx={cellSx}>
-                                            <Tooltip title={row.TenLoi || ""}>
-                                                <Typography variant="body2" fontWeight={700} sx={clampTextSx}>
-                                                    {row.TenLoi}
-                                                </Typography>
-                                            </Tooltip>
-                                            {row.MoTa && row.MoTa !== row.TenLoi && (
-                                                <Typography variant="caption" color="text.secondary" sx={clampTextSx}>
-                                                    {row.MoTa}
-                                                </Typography>
-                                            )}
-                                            {row.GhiChu && (
-                                                <Typography variant="caption" color="primary.main" sx={clampTextSx}>
-                                                    {row.GhiChu}
-                                                </Typography>
-                                            )}
-                                        </TableCell>
-
-                                        <TableCell sx={cellSx}>
-                                            <Chip
-                                                label={getDefectTypeProps(row.DefectType).label}
-                                                color={getDefectTypeProps(row.DefectType).color}
-                                                size="small"
-                                                sx={{ fontWeight: 700, borderRadius: 1 }}
-                                            />
-                                        </TableCell>
-
-                                        <TableCell sx={cellSx} align="center">
-                                            {row.LoaiLoiSXBT ? (
-                                                <Chip
-                                                    label={row.LoaiLoiSXBT}
-                                                    color="warning"
-                                                    size="small"
-                                                    sx={{ width: 34, height: 26, borderRadius: "50%", fontWeight: 800 }}
-                                                />
-                                            ) : "--"}
-                                        </TableCell>
-
-                                        <TableCell sx={cellSx}>
-                                            <Typography variant="body2" noWrap color={row.TenSanPham ? "text.primary" : "text.disabled"}>
-                                                {row.TenSanPham || "--"}
-                                            </Typography>
-                                        </TableCell>
-
-                                        <TableCell sx={cellSx}>
-                                            <Typography variant="body2" noWrap color={row.ChungLoai ? "text.primary" : "text.disabled"}>
-                                                {row.ChungLoai || "--"}
-                                            </Typography>
-                                        </TableCell>
-
-                                        <TableCell sx={cellSx}>
-                                            <Tooltip title={row.PhamViApDung || ""}>
-                                                <Typography
-                                                    variant="body2"
-                                                    color={row.PhamViApDung ? "text.primary" : "text.disabled"}
-                                                    sx={clampTextSx}
-                                                >
-                                                    {row.PhamViApDung || "--"}
-                                                </Typography>
-                                            </Tooltip>
-                                        </TableCell>
-
-                                        <TableCell sx={cellSx}>
-                                            <Typography variant="body2" noWrap color={row.ThiTruong ? "text.primary" : "text.disabled"}>
-                                                {row.ThiTruong || "--"}
-                                            </Typography>
-                                        </TableCell>
-
-                                        <TableCell sx={cellSx} align="center">
-                                            {row.ImageUrl ? (
-                                                <Tooltip title="Xem ảnh lỗi">
-                                                    <Box
-                                                        component="button"
-                                                        type="button"
-                                                        onClick={() => setPreviewImage(getAssetUrl(row.ImageUrl))}
-                                                        sx={{
-                                                            width: 58,
-                                                            height: 44,
-                                                            p: 0,
-                                                            border: "1px solid",
-                                                            borderColor: "divider",
-                                                            borderRadius: 1,
-                                                            overflow: "hidden",
-                                                            cursor: "pointer",
-                                                            bgcolor: "#f8fafc"
-                                                        }}
-                                                    >
-                                                        <Box
-                                                            component="img"
-                                                            src={getAssetUrl(row.ImageUrl)}
-                                                            alt={row.TenLoi || "Ảnh lỗi"}
-                                                            sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                                                        />
-                                                    </Box>
-                                                </Tooltip>
-                                            ) : (
-                                                <ImageIcon sx={{ color: "text.disabled", fontSize: 22 }} />
-                                            )}
-                                        </TableCell>
-
-                                        <TableCell sx={cellSx} align="center">
-                                            <Chip
-                                                label={row.TrangThai ? "Hoạt động" : "Tạm ngưng"}
-                                                color={row.TrangThai ? "success" : "default"}
-                                                size="small"
-                                                variant="outlined"
-                                                sx={{ borderRadius: 1, height: 24, fontSize: 12 }}
-                                            />
-                                        </TableCell>
-
-                                        <TableCell sx={cellSx} align="right">
-                                            <Stack direction="row" spacing={0.25} justifyContent="flex-end">
-                                                <Tooltip title="Chỉnh sửa">
-                                                    <IconButton size="small" color="primary" onClick={() => handleOpenEdit(row)}>
-                                                        <EditIcon fontSize="small" />
-                                                    </IconButton>
-                                                </Tooltip>
-
-                                                <Tooltip title="Xóa">
-                                                    <IconButton size="small" color="error" onClick={() => handleDelete(row.Id)}>
-                                                        <DeleteIcon fontSize="small" />
-                                                    </IconButton>
-                                                </Tooltip>
-                                            </Stack>
-                                        </TableCell>
-                                    </TableRow>
-                                ))
-                            )}
-                        </TableBody>
+                        <TableBody>{tableBody}</TableBody>
                     </Table>
                 </TableContainer>
             </Card>
@@ -659,13 +739,19 @@ export default function DefectManager() {
 
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                             <TextField
+                                select
                                 label="Phạm vi áp dụng"
                                 fullWidth
-                                multiline
-                                minRows={2}
                                 value={form.PhamViApDung || ""}
                                 onChange={(event) => setForm({ ...form, PhamViApDung: event.target.value })}
-                            />
+                            >
+                                <MenuItem value="">Chưa chọn</MenuItem>
+                                {phamViApDungOptions.map((option) => (
+                                    <MenuItem key={option} value={option}>
+                                        {option}
+                                    </MenuItem>
+                                ))}
+                            </TextField>
                             <TextField
                                 label="Thị trường"
                                 fullWidth
@@ -747,6 +833,104 @@ export default function DefectManager() {
                         disabled={!form.TenLoi || !form.DefectType}
                     >
                         {form.Id ? "Cập nhật" : "Lưu dữ liệu"}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog open={importOpen} onClose={() => setImportOpen(false)} maxWidth="md" fullWidth>
+                <DialogTitle sx={{ fontWeight: 700 }}>
+                    Import danh mục lỗi từ Excel
+                </DialogTitle>
+
+                <DialogContent dividers>
+                    <Stack spacing={2.5}>
+                        <Alert severity="info">
+                            File .xlsx cần có sheet <strong>DanhMucLoi</strong>. Cột bắt buộc: <strong>MaLoi</strong>, <strong>TenLoi</strong>. Cột <strong>Anh</strong> dùng để chèn ảnh trực tiếp vào ô cùng dòng.
+                        </Alert>
+
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                            <Button
+                                variant="outlined"
+                                startIcon={<DownloadIcon />}
+                                onClick={handleDownloadTemplate}
+                                disabled={importing}
+                            >
+                                Tải file mẫu
+                            </Button>
+
+                            <Button
+                                variant="contained"
+                                component="label"
+                                startIcon={<UploadFileIcon />}
+                                disabled={importing}
+                            >
+                                Chọn file .xlsx
+                                <input
+                                    hidden
+                                    type="file"
+                                    accept=".xlsx"
+                                    onChange={(event) => {
+                                        setImportFile(event.target.files?.[0] || null);
+                                        setImportResult(null);
+                                        event.target.value = "";
+                                    }}
+                                />
+                            </Button>
+                        </Stack>
+
+                        {importFile && (
+                            <Paper variant="outlined" sx={{ p: 2 }}>
+                                <Typography fontWeight={600}>{importFile.name}</Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    {(importFile.size / 1024).toFixed(1)} KB
+                                </Typography>
+                            </Paper>
+                        )}
+
+                        {importResult && (
+                            <Alert severity={importResult.type}>
+                                <Typography fontWeight={600}>{importResult.message}</Typography>
+
+                                {importResult.summary && (
+                                    <Stack spacing={0.5} sx={{ mt: 1 }}>
+                                        <Typography variant="body2">Tổng dòng: {importResult.summary.totalRows}</Typography>
+                                        <Typography variant="body2">Tạo mới: {importResult.summary.created}</Typography>
+                                        <Typography variant="body2">Cập nhật: {importResult.summary.updated}</Typography>
+                                        <Typography variant="body2">Có ảnh: {importResult.summary.withImages}</Typography>
+                                    </Stack>
+                                )}
+                            </Alert>
+                        )}
+
+                        {importResult?.errors?.length > 0 && (
+                            <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 320 }}>
+                                <Table size="small" stickyHeader>
+                                    <TableHead>
+                                        <TableRow>
+                                            <TableCell sx={{ width: 100, fontWeight: 600 }}>Dòng</TableCell>
+                                            <TableCell sx={{ fontWeight: 600 }}>Lỗi</TableCell>
+                                        </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {importResult.errors.map((item, index) => (
+                                            <TableRow key={`${item.line}-${index}`}>
+                                                <TableCell>{item.line}</TableCell>
+                                                <TableCell>{item.message}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </TableContainer>
+                        )}
+                    </Stack>
+                </DialogContent>
+
+                <DialogActions sx={{ px: 3, py: 2, bgcolor: "#f8fafc" }}>
+                    <Button onClick={() => setImportOpen(false)} color="inherit" disabled={importing}>
+                        Đóng
+                    </Button>
+                    <Button variant="contained" onClick={handleImportExcel} disabled={!importFile || importing}>
+                        {importing ? "Đang import..." : "Import"}
                     </Button>
                 </DialogActions>
             </Dialog>

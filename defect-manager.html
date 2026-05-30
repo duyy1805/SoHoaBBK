@@ -133,7 +133,7 @@
             max-width: 1480px;
             margin: 0 auto 16px;
             display: grid;
-            grid-template-columns: 1fr auto auto;
+            grid-template-columns: 1fr auto auto auto auto;
             gap: 12px;
             align-items: center;
         }
@@ -526,6 +526,39 @@
             overflow: hidden;
         }
 
+        .import-file {
+            padding: 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface-soft);
+        }
+
+        .import-summary {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+            font-size: 13px;
+        }
+
+        .import-summary div {
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: white;
+        }
+
+        .import-errors table {
+            min-width: 0;
+        }
+
+        .import-errors {
+            max-height: 320px;
+            overflow: auto;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
         @media (max-width: 840px) {
             .app-shell {
                 padding: 16px;
@@ -548,7 +581,8 @@
             }
 
             .form-grid,
-            .image-picker {
+            .image-picker,
+            .import-summary {
                 grid-template-columns: 1fr;
             }
 
@@ -609,6 +643,8 @@
                 <input id="keyword" type="search" placeholder="Nhập mã lỗi, tên lỗi, mô tả, phạm vi, thị trường...">
             </div>
             <button id="reloadButton" class="btn btn-ghost" type="button">Tải lại</button>
+            <button id="downloadTemplateButton" class="btn btn-ghost" type="button">Tải file mẫu</button>
+            <button id="importButton" class="btn btn-ghost" type="button">Import Excel</button>
             <button id="createButton" class="btn btn-primary" type="button">Thêm lỗi mới</button>
         </section>
 
@@ -713,7 +749,12 @@
 
                     <div class="field">
                         <label for="PhamViApDung">Phạm vi áp dụng</label>
-                        <textarea id="PhamViApDung" name="PhamViApDung"></textarea>
+                        <select id="PhamViApDung" name="PhamViApDung">
+                            <option value="">Chưa chọn</option>
+                            <option value="Kiểm đầu vào">Kiểm đầu vào</option>
+                            <option value="Kiểm công đoạn">Kiểm công đoạn</option>
+                            <option value="Kiểm hoàn chỉnh">Kiểm hoàn chỉnh</option>
+                        </select>
                     </div>
 
                     <div class="field">
@@ -743,6 +784,33 @@
                 <button id="saveButton" class="btn btn-primary" type="submit">Lưu dữ liệu</button>
             </div>
         </form>
+    </section>
+
+    <section id="importModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="importTitle">
+        <div class="modal modal-small">
+            <div class="modal-header">
+                <h2 id="importTitle">Import danh mục lỗi từ Excel</h2>
+                <button class="btn btn-icon" type="button" data-close-import aria-label="Đóng">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-success" style="margin: 0 0 16px; max-width: none;">
+                    File .xlsx cần có sheet <strong>DanhMucLoi</strong>. Cột bắt buộc: <strong>MaLoi</strong>, <strong>TenLoi</strong>. Cột <strong>Anh</strong> dùng để chèn ảnh trực tiếp vào ô cùng dòng.
+                </div>
+
+                <div class="actions" style="margin-bottom: 16px;">
+                    <button id="downloadTemplateInModalButton" class="btn btn-ghost" type="button">Tải file mẫu</button>
+                    <label class="btn btn-primary" for="ImportFile">Chọn file .xlsx</label>
+                    <input id="ImportFile" type="file" accept=".xlsx" class="hidden">
+                </div>
+
+                <div id="importFileInfo" class="import-file hidden"></div>
+                <div id="importResult" style="margin-top: 16px;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" type="button" data-close-import>Đóng</button>
+                <button id="startImportButton" class="btn btn-primary" type="button" disabled>Import</button>
+            </div>
+        </div>
     </section>
 
     <section id="previewModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
@@ -789,7 +857,9 @@
             form: { ...emptyForm },
             imageFile: null,
             imagePreviewUrl: "",
-            loading: false
+            loading: false,
+            importFile: null,
+            importing: false
         };
 
         const els = {
@@ -803,6 +873,8 @@
             appAlert: document.getElementById("appAlert"),
             keyword: document.getElementById("keyword"),
             reloadButton: document.getElementById("reloadButton"),
+            downloadTemplateButton: document.getElementById("downloadTemplateButton"),
+            importButton: document.getElementById("importButton"),
             createButton: document.getElementById("createButton"),
             loadingCover: document.getElementById("loadingCover"),
             defectTableBody: document.getElementById("defectTableBody"),
@@ -814,6 +886,12 @@
             imagePreviewBox: document.getElementById("imagePreviewBox"),
             imageHelp: document.getElementById("imageHelp"),
             removeImageButton: document.getElementById("removeImageButton"),
+            importModal: document.getElementById("importModal"),
+            importFile: document.getElementById("ImportFile"),
+            importFileInfo: document.getElementById("importFileInfo"),
+            importResult: document.getElementById("importResult"),
+            startImportButton: document.getElementById("startImportButton"),
+            downloadTemplateInModalButton: document.getElementById("downloadTemplateInModalButton"),
             previewModal: document.getElementById("previewModal"),
             previewImageBox: document.getElementById("previewImageBox")
         };
@@ -940,10 +1018,36 @@
                     throw new Error("Tài khoản không có quyền QUAN_TRI_DM để thực hiện thao tác này.");
                 }
 
-                throw new Error(data?.message || data || "Có lỗi xảy ra khi gọi API.");
+                const error = new Error(data?.message || data || "Có lỗi xảy ra khi gọi API.");
+                error.data = data;
+                throw error;
             }
 
             return data;
+        }
+
+        async function downloadBlob(path, fileName) {
+            const headers = {};
+            const token = getToken();
+            if (token) {
+                headers.Authorization = `Bearer ${token}`;
+            }
+
+            const response = await fetch(`${API_BASE}${path}`, { headers });
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data?.message || "Không tải được file.");
+            }
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
         }
 
         async function login(username, password) {
@@ -1270,6 +1374,138 @@
             els.previewImageBox.innerHTML = "";
         }
 
+        async function downloadDefectTemplate() {
+            try {
+                await downloadBlob("/lookup/import-defect/template", "mau-import-danh-muc-loi.xlsx");
+            } catch (error) {
+                showAlert(error.message);
+            }
+        }
+
+        function openImportModal() {
+            state.importFile = null;
+            els.importFile.value = "";
+            els.importFileInfo.classList.add("hidden");
+            els.importFileInfo.innerHTML = "";
+            els.importResult.innerHTML = "";
+            els.startImportButton.disabled = true;
+            els.importModal.classList.remove("hidden");
+        }
+
+        function closeImportModal() {
+            if (state.importing) return;
+            els.importModal.classList.add("hidden");
+        }
+
+        function setImporting(value) {
+            state.importing = value;
+            els.startImportButton.disabled = value || !state.importFile;
+            els.startImportButton.textContent = value ? "Đang import..." : "Import";
+            els.importFile.disabled = value;
+            els.downloadTemplateInModalButton.disabled = value;
+            els.downloadTemplateButton.disabled = value;
+            els.importButton.disabled = value;
+        }
+
+        function setImportFile(file) {
+            state.importFile = file;
+            els.importResult.innerHTML = "";
+            els.startImportButton.disabled = !file || state.importing;
+
+            if (!file) {
+                els.importFileInfo.classList.add("hidden");
+                els.importFileInfo.innerHTML = "";
+                return;
+            }
+
+            els.importFileInfo.classList.remove("hidden");
+            els.importFileInfo.innerHTML = `
+                <div class="strong">${escapeHtml(file.name)}</div>
+                <div class="muted" style="margin-top: 4px;">${(file.size / 1024).toFixed(1)} KB</div>
+            `;
+        }
+
+        function renderImportResult(result) {
+            if (!result) {
+                els.importResult.innerHTML = "";
+                return;
+            }
+
+            if (result.type === "success") {
+                const summary = result.summary || {};
+                els.importResult.innerHTML = `
+                    <div class="alert alert-success" style="margin: 0; max-width: none;">
+                        <div>${escapeHtml(result.message)}</div>
+                        <div class="import-summary">
+                            <div><span class="muted">Tổng dòng</span><br><strong>${escapeHtml(summary.totalRows ?? 0)}</strong></div>
+                            <div><span class="muted">Tạo mới</span><br><strong>${escapeHtml(summary.created ?? 0)}</strong></div>
+                            <div><span class="muted">Cập nhật</span><br><strong>${escapeHtml(summary.updated ?? 0)}</strong></div>
+                            <div><span class="muted">Có ảnh</span><br><strong>${escapeHtml(summary.withImages ?? 0)}</strong></div>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            const errors = result.errors || [];
+            els.importResult.innerHTML = `
+                <div class="alert alert-error" style="margin: 0 0 12px; max-width: none;">${escapeHtml(result.message)}</div>
+                ${errors.length ? `
+                    <div class="import-errors">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width: 90px;">Dòng</th>
+                                    <th>Lỗi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${errors.map((item) => `
+                                    <tr>
+                                        <td>${escapeHtml(item.line ?? "")}</td>
+                                        <td>${escapeHtml(item.message || "")}</td>
+                                    </tr>
+                                `).join("")}
+                            </tbody>
+                        </table>
+                    </div>
+                ` : ""}
+            `;
+        }
+
+        async function importDefectExcel() {
+            if (!state.importFile) return;
+
+            const body = new FormData();
+            body.append("file", state.importFile);
+
+            setImporting(true);
+            renderImportResult(null);
+            try {
+                const result = await apiFetch("/lookup/import-defect", {
+                    method: "POST",
+                    body
+                });
+
+                renderImportResult({
+                    type: "success",
+                    message: result?.message || "Import thành công",
+                    summary: result?.summary
+                });
+                setImportFile(null);
+                await loadDefects();
+                showAlert("Import danh mục lỗi thành công.", "success");
+            } catch (error) {
+                renderImportResult({
+                    type: "error",
+                    message: error.message || "Import thất bại",
+                    errors: error.data?.errors || []
+                });
+            } finally {
+                setImporting(false);
+            }
+        }
+
         els.loginForm.addEventListener("submit", async (event) => {
             event.preventDefault();
             els.loginAlert.classList.add("hidden");
@@ -1303,6 +1539,14 @@
         });
 
         els.reloadButton.addEventListener("click", () => loadDefects({ showSuccess: true }));
+        els.downloadTemplateButton.addEventListener("click", downloadDefectTemplate);
+        els.downloadTemplateInModalButton.addEventListener("click", downloadDefectTemplate);
+        els.importButton.addEventListener("click", openImportModal);
+        els.startImportButton.addEventListener("click", importDefectExcel);
+        els.importFile.addEventListener("change", (event) => {
+            setImportFile(event.target.files?.[0] || null);
+            event.target.value = "";
+        });
         els.createButton.addEventListener("click", openCreateModal);
         els.defectForm.addEventListener("submit", saveDefect);
         document.getElementById("LoaiLoiSXBT").addEventListener("change", renderDefectTypeOptions);
@@ -1313,6 +1557,10 @@
 
         document.querySelectorAll("[data-close-preview]").forEach((button) => {
             button.addEventListener("click", closePreview);
+        });
+
+        document.querySelectorAll("[data-close-import]").forEach((button) => {
+            button.addEventListener("click", closeImportModal);
         });
 
         els.imageFile.addEventListener("change", (event) => {
@@ -1341,11 +1589,12 @@
             if (previewButton) openPreview(previewButton.dataset.preview);
         });
 
-        [els.defectModal, els.previewModal].forEach((modal) => {
+        [els.defectModal, els.previewModal, els.importModal].forEach((modal) => {
             modal.addEventListener("click", (event) => {
                 if (event.target === modal) {
                     if (modal === els.defectModal) closeDefectModal();
                     if (modal === els.previewModal) closePreview();
+                    if (modal === els.importModal) closeImportModal();
                 }
             });
         });
@@ -1353,6 +1602,7 @@
         document.addEventListener("keydown", (event) => {
             if (event.key !== "Escape") return;
             if (!els.previewModal.classList.contains("hidden")) closePreview();
+            if (!els.importModal.classList.contains("hidden")) closeImportModal();
             if (!els.defectModal.classList.contains("hidden")) closeDefectModal();
         });
 

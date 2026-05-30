@@ -41,6 +41,23 @@ export const uploadDefectImage = (file, meta = {}) => {
     });
 };
 
+export const importDefectExcel = (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    return axiosClient.post("/lookup/import-defect", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 120000
+    });
+};
+
+export const downloadDefectTemplate = () => {
+    return axiosClient.get("/lookup/import-defect/template", {
+        responseType: "blob",
+        timeout: 60000
+    });
+};
+
 
 
 /* =====================================================

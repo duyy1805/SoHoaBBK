@@ -3,6 +3,7 @@ const router = express.Router();
 const sql = require('mssql');
 const multer = require('multer');
 const XLSX = require('xlsx');
+const JSZip = require('jszip');
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
@@ -15,6 +16,17 @@ const authorize = require('../middlewares/permission.middleware');
 const excelUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!file.originalname.toLowerCase().endsWith(".xlsx")) {
+      return cb(new Error("Chỉ hỗ trợ file .xlsx"));
+    }
+    cb(null, true);
+  }
+});
+
+const defectExcelUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 30 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (!file.originalname.toLowerCase().endsWith(".xlsx")) {
       return cb(new Error("Chỉ hỗ trợ file .xlsx"));
@@ -36,6 +48,26 @@ const defectImageUpload = multer({
 
 const defectUploadDir = path.join(__dirname, "..", "uploads", "defects");
 const publicDefectUploadDir = "/uploads/defects";
+const defectImportUploadDir = path.join(defectUploadDir, "import");
+const publicDefectImportUploadDir = `${publicDefectUploadDir}/import`;
+const defectImportHeaders = [
+  "MaLoi",
+  "TenLoi",
+  "DefectType",
+  "LoaiLoiSXBT",
+  "PhanHe",
+  "MaNhomLoi",
+  "TenSanPham",
+  "ChungLoai",
+  "MoTa",
+  "GhiChu",
+  "PhamViApDung",
+  "ThiTruong",
+  "ThuTu",
+  "TrangThai",
+  "Anh"
+];
+const requiredDefectImportHeaders = ["MaLoi", "TenLoi"];
 
 const slugifyFilePart = (value) => {
   const normalized = String(value || "defect")
@@ -64,6 +96,212 @@ const parseOrder = (value, fallback) => {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
+const parseOptionalOrder = (value) => {
+  if (trimValue(value) === "") return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+const decodeXml = (value = "") => value
+  .replace(/&lt;/g, "<")
+  .replace(/&gt;/g, ">")
+  .replace(/&amp;/g, "&")
+  .replace(/&quot;/g, '"')
+  .replace(/&apos;/g, "'");
+const getXmlAttr = (xml, name) => {
+  const match = xml.match(new RegExp(`${name}="([^"]*)"`, "i"));
+  return match ? decodeXml(match[1]) : "";
+};
+const normalizeZipTarget = (baseDir, target) => {
+  const normalized = target.startsWith("/")
+    ? path.posix.normalize(target)
+    : path.posix.normalize(path.posix.join(baseDir, target));
+  return normalized.replace(/^\/+/, "");
+};
+const parseZipRelationships = (xml, baseDir) => {
+  const rels = {};
+  for (const match of xml.matchAll(/<Relationship\b[^>]*>/g)) {
+    const id = getXmlAttr(match[0], "Id");
+    const target = getXmlAttr(match[0], "Target");
+    if (id && target) rels[id] = normalizeZipTarget(baseDir, target);
+  }
+  return rels;
+};
+const getCellText = (worksheet, rowIndex, colIndex) => {
+  const cell = worksheet[XLSX.utils.encode_cell({ r: rowIndex, c: colIndex })];
+  if (!cell) return "";
+  if (cell.w != null) return trimValue(cell.w);
+  return trimValue(cell.v);
+};
+const parseImportStatus = (value, fallback = true) => {
+  const normalized = trimValue(value).toLowerCase();
+  if (!normalized) return fallback;
+  if (["1", "true", "yes", "y", "hoạt động", "hoat dong", "active"].includes(normalized)) return true;
+  if (["0", "false", "no", "n", "tạm ngưng", "tam ngung", "inactive"].includes(normalized)) return false;
+  return null;
+};
+
+async function zipText(zip, entry) {
+  const file = zip.file(entry);
+  return file ? file.async("string") : "";
+}
+
+async function zipBuffer(zip, entry) {
+  const file = zip.file(entry);
+  return file ? file.async("nodebuffer") : null;
+}
+
+async function getSheetPathFromZip(zip, sheetName) {
+  const workbookXml = await zipText(zip, "xl/workbook.xml");
+  const workbookRelsXml = await zipText(zip, "xl/_rels/workbook.xml.rels");
+  const workbookRels = parseZipRelationships(workbookRelsXml, "xl");
+
+  for (const match of workbookXml.matchAll(/<sheet\b[^>]*>/g)) {
+    if (getXmlAttr(match[0], "name") !== sheetName) continue;
+    return workbookRels[getXmlAttr(match[0], "r:id")] || null;
+  }
+
+  return null;
+}
+
+async function getSheetDrawingPathFromZip(zip, sheetPath) {
+  const sheetXml = await zipText(zip, sheetPath);
+  const drawingMatch = sheetXml.match(/<drawing\b[^>]*r:id="([^"]+)"[^>]*\/>/);
+  if (!drawingMatch) return null;
+
+  const relPath = `${path.posix.dirname(sheetPath)}/_rels/${path.posix.basename(sheetPath)}.rels`;
+  const sheetRelsXml = await zipText(zip, relPath);
+  const sheetRels = parseZipRelationships(sheetRelsXml, path.posix.dirname(sheetPath));
+  return sheetRels[drawingMatch[1]] || null;
+}
+
+async function extractImagesByRowAndColumn(workbookBuffer, sheetName) {
+  const zip = await JSZip.loadAsync(workbookBuffer);
+  const sheetPath = await getSheetPathFromZip(zip, sheetName);
+  if (!sheetPath) return new Map();
+
+  const drawingPath = await getSheetDrawingPathFromZip(zip, sheetPath);
+  if (!drawingPath) return new Map();
+
+  const drawingXml = await zipText(zip, drawingPath);
+  const drawingRelsPath = `${path.posix.dirname(drawingPath)}/_rels/${path.posix.basename(drawingPath)}.rels`;
+  const drawingRels = parseZipRelationships(
+    await zipText(zip, drawingRelsPath),
+    path.posix.dirname(drawingPath)
+  );
+  const images = new Map();
+
+  for (const anchor of drawingXml.matchAll(/<xdr:(?:twoCellAnchor|oneCellAnchor|absoluteAnchor)\b[\s\S]*?<\/xdr:(?:twoCellAnchor|oneCellAnchor|absoluteAnchor)>/g)) {
+    const xml = anchor[0];
+    const rowMatch = xml.match(/<xdr:from>[\s\S]*?<xdr:row>(\d+)<\/xdr:row>[\s\S]*?<\/xdr:from>/);
+    const colMatch = xml.match(/<xdr:from>[\s\S]*?<xdr:col>(\d+)<\/xdr:col>[\s\S]*?<\/xdr:from>/);
+    const embedMatch = xml.match(/r:embed="([^"]+)"/);
+    if (!rowMatch || !colMatch || !embedMatch) continue;
+
+    const mediaPath = drawingRels[embedMatch[1]];
+    if (!mediaPath) continue;
+
+    const buffer = await zipBuffer(zip, mediaPath);
+    if (!buffer) continue;
+
+    const rowIndex = Number(rowMatch[1]);
+    const colIndex = Number(colMatch[1]);
+    const key = `${rowIndex}:${colIndex}`;
+    if (!images.has(key)) images.set(key, []);
+    images.get(key).push({ mediaPath, buffer });
+  }
+
+  return images;
+}
+
+function parseDefectImportRows(workbook, imagesByCell) {
+  const sheet = workbook.Sheets.DanhMucLoi;
+  if (!sheet) {
+    return {
+      rows: [],
+      errors: [{ line: 1, message: "Không tìm thấy sheet DanhMucLoi" }]
+    };
+  }
+
+  const range = XLSX.utils.decode_range(sheet["!ref"] || "A1:A1");
+  const headers = new Map();
+  for (let col = range.s.c; col <= range.e.c; col += 1) {
+    const value = getCellText(sheet, range.s.r, col);
+    if (value) headers.set(value, col);
+  }
+
+  const missingHeaders = requiredDefectImportHeaders.filter((header) => !headers.has(header));
+  if (missingHeaders.length) {
+    return {
+      rows: [],
+      errors: missingHeaders.map((header) => ({
+        line: 1,
+        message: `Thiếu cột bắt buộc ${header}`
+      }))
+    };
+  }
+
+  const imageColumn = headers.get("Anh");
+  const rows = [];
+  for (let rowIndex = range.s.r + 1; rowIndex <= range.e.r; rowIndex += 1) {
+    const values = {};
+    defectImportHeaders.forEach((header) => {
+      const colIndex = headers.get(header);
+      values[header] = colIndex == null ? "" : getCellText(sheet, rowIndex, colIndex);
+    });
+
+    const image = imageColumn == null
+      ? null
+      : imagesByCell.get(`${rowIndex}:${imageColumn}`)?.[0] || null;
+
+    const hasValue = defectImportHeaders
+      .filter((header) => header !== "Anh")
+      .some((header) => trimValue(values[header]) !== "");
+
+    if (!hasValue && !image) continue;
+
+    rows.push({
+      line: rowIndex + 1,
+      MaLoi: trimValue(values.MaLoi),
+      TenLoi: trimValue(values.TenLoi),
+      DefectType: trimValue(values.DefectType).toUpperCase(),
+      LoaiLoiSXBT: trimValue(values.LoaiLoiSXBT).toUpperCase(),
+      PhanHe: trimValue(values.PhanHe),
+      MaNhomLoi: trimValue(values.MaNhomLoi),
+      TenSanPham: trimValue(values.TenSanPham),
+      ChungLoai: trimValue(values.ChungLoai),
+      MoTa: trimValue(values.MoTa),
+      GhiChu: trimValue(values.GhiChu),
+      PhamViApDung: trimValue(values.PhamViApDung),
+      ThiTruong: trimValue(values.ThiTruong),
+      ThuTu: values.ThuTu,
+      TrangThai: values.TrangThai,
+      image
+    });
+  }
+
+  return { rows, errors: [] };
+}
+
+async function buildDefectImportImages(rows) {
+  const prepared = new Map();
+  const errors = [];
+
+  for (const row of rows) {
+    if (!row.image) continue;
+    try {
+      const imageBuffer = await sharp(row.image.buffer)
+        .rotate()
+        .resize({ width: 1280, height: 1280, fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 82 })
+        .toBuffer();
+      prepared.set(row.line, imageBuffer);
+    } catch (err) {
+      errors.push({ line: row.line, message: "Ảnh nhúng không hợp lệ hoặc không đọc được" });
+    }
+  }
+
+  return { prepared, errors };
+}
 
 const normalizeImportRow = (row, index) => ({
   line: index + 2,
@@ -220,6 +458,314 @@ router.post(
     } catch (err) {
       console.error("Upload defect image error:", err);
       res.status(500).json({ message: "Không thể tải ảnh lỗi lên server" });
+    }
+  }
+);
+
+router.get(
+  "/import-defect/template",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  async (req, res) => {
+    const rows = [
+      {
+        MaLoi: "LOI-001",
+        TenLoi: "Đường may không đều",
+        DefectType: "MAJOR",
+        LoaiLoiSXBT: "B",
+        PhanHe: "KCS",
+        MaNhomLoi: "L01",
+        TenSanPham: "Balo mẫu",
+        ChungLoai: "Balo",
+        MoTa: "Đường may lệch hoặc không đều so với mẫu chuẩn",
+        GhiChu: "",
+        PhamViApDung: "Kiểm ngoại quan",
+        ThiTruong: "Nội địa",
+        ThuTu: 1,
+        TrangThai: 1,
+        Anh: ""
+      },
+      {
+        MaLoi: "LOI-002",
+        TenLoi: "Bề mặt vải bẩn",
+        DefectType: "MINOR",
+        LoaiLoiSXBT: "B",
+        PhanHe: "KCS",
+        MaNhomLoi: "L02",
+        TenSanPham: "Lều mẫu",
+        ChungLoai: "Lều",
+        MoTa: "Có vết bẩn nhỏ trên bề mặt vải",
+        GhiChu: "Chèn ảnh trực tiếp vào cột Anh nếu cần",
+        PhamViApDung: "Kiểm ngoại quan",
+        ThiTruong: "Xuất khẩu",
+        ThuTu: 2,
+        TrangThai: 1,
+        Anh: ""
+      }
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(rows, { header: defectImportHeaders });
+
+    worksheet["!cols"] = [
+      { wch: 16 },
+      { wch: 28 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 24 },
+      { wch: 18 },
+      { wch: 42 },
+      { wch: 28 },
+      { wch: 24 },
+      { wch: 18 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 24 }
+    ];
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, "DanhMucLoi");
+
+    const buffer = XLSX.write(workbook, {
+      type: "buffer",
+      bookType: "xlsx"
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=\"mau-import-danh-muc-loi.xlsx\""
+    );
+    res.send(buffer);
+  }
+);
+
+router.post(
+  "/import-defect",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  (req, res, next) => {
+    defectExcelUpload.single("file")(req, res, (err) => {
+      if (err) {
+        return res.status(400).json({ message: err.message || "File không hợp lệ" });
+      }
+      next();
+    });
+  },
+  async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ message: "Vui lòng chọn file .xlsx" });
+    }
+
+    let rows = [];
+
+    try {
+      const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+      if (!workbook.SheetNames.includes("DanhMucLoi")) {
+        return res.status(400).json({
+          message: "File phải có sheet tên DanhMucLoi",
+          errors: [{ line: 1, message: "Không tìm thấy sheet DanhMucLoi" }]
+        });
+      }
+
+      const imagesByCell = await extractImagesByRowAndColumn(req.file.buffer, "DanhMucLoi");
+      const parsed = parseDefectImportRows(workbook, imagesByCell);
+      rows = parsed.rows;
+
+      if (parsed.errors.length) {
+        return res.status(400).json({
+          message: "File có dữ liệu không hợp lệ",
+          errors: parsed.errors
+        });
+      }
+    } catch (err) {
+      console.error("Parse import defect error:", err);
+      return res.status(400).json({ message: "Không đọc được file Excel" });
+    }
+
+    if (!rows.length) {
+      return res.status(400).json({
+        message: "File không có dữ liệu",
+        errors: [{ line: 1, message: "File không có dòng dữ liệu để import" }]
+      });
+    }
+
+    const errors = [];
+    const maLoiInFile = new Set();
+    rows.forEach((row) => {
+      if (!row.MaLoi) {
+        errors.push({ line: row.line, message: "Thiếu MaLoi" });
+      } else if (maLoiInFile.has(normalizeKey(row.MaLoi))) {
+        errors.push({ line: row.line, message: `MaLoi bị trùng trong file: ${row.MaLoi}` });
+      } else {
+        maLoiInFile.add(normalizeKey(row.MaLoi));
+      }
+
+      if (!row.TenLoi) {
+        errors.push({ line: row.line, message: "Thiếu TenLoi" });
+      }
+
+      if (row.DefectType && !["CRITICAL", "MAJOR", "MINOR"].includes(row.DefectType)) {
+        errors.push({ line: row.line, message: "DefectType chỉ nhận CRITICAL, MAJOR hoặc MINOR" });
+      }
+
+      if (trimValue(row.ThuTu) !== "" && parseOptionalOrder(row.ThuTu) == null) {
+        errors.push({ line: row.line, message: "ThuTu phải là số nguyên dương" });
+      }
+
+      if (parseImportStatus(row.TrangThai, true) == null) {
+        errors.push({ line: row.line, message: "TrangThai chỉ nhận 1/0, true/false, Hoạt động/Tạm ngưng" });
+      }
+    });
+
+    const imageResult = await buildDefectImportImages(rows);
+    errors.push(...imageResult.errors);
+
+    if (errors.length) {
+      return res.status(400).json({
+        message: "File có dữ liệu không hợp lệ",
+        errors
+      });
+    }
+
+    const savedFiles = [];
+
+    try {
+      const pool = await poolPromise;
+      const transaction = new sql.Transaction(pool);
+      await transaction.begin();
+
+      const summary = {
+        totalRows: rows.length,
+        created: 0,
+        updated: 0,
+        withImages: imageResult.prepared.size,
+        skippedImages: 0
+      };
+
+      try {
+        fs.mkdirSync(defectImportUploadDir, { recursive: true });
+
+        for (const row of rows) {
+          const existingResult = await requestWithTransaction(transaction)
+            .input("MaLoi", sql.NVarChar(50), row.MaLoi)
+            .query("SELECT Id, ImageUrl, TrangThai FROM dbo.DM_DEFECT WHERE MaLoi = @MaLoi");
+          const existing = existingResult.recordset?.[0] || null;
+
+          let imageUrl = existing?.ImageUrl || null;
+          const imageBuffer = imageResult.prepared.get(row.line);
+          if (imageBuffer) {
+            const fileName = `${slugifyFilePart(row.MaLoi)}-${Date.now()}-${Math.round(Math.random() * 1E9)}.jpg`;
+            const outputPath = path.join(defectImportUploadDir, fileName);
+            fs.writeFileSync(outputPath, imageBuffer);
+            savedFiles.push(outputPath);
+            imageUrl = `${publicDefectImportUploadDir}/${fileName}`;
+          }
+
+          const statusFallback = existing
+            ? existing.TrangThai !== false && existing.TrangThai !== 0
+            : true;
+          const trangThai = parseImportStatus(row.TrangThai, statusFallback);
+          const normalizedDefectType = normalizeDefectType(row.LoaiLoiSXBT, row.DefectType);
+          const thuTu = parseOptionalOrder(row.ThuTu);
+
+          if (existing) {
+            await requestWithTransaction(transaction)
+              .input("Id", sql.Int, existing.Id)
+              .input("TenLoi", sql.NVarChar(255), row.TenLoi)
+              .input("DefectType", sql.NVarChar(20), normalizedDefectType)
+              .input("TrangThai", sql.Bit, trangThai)
+              .input("MoTa", sql.NVarChar(sql.MAX), row.MoTa || row.TenLoi || null)
+              .input("GhiChu", sql.NVarChar(sql.MAX), row.GhiChu || null)
+              .input("MaLoi", sql.NVarChar(50), row.MaLoi)
+              .input("PhanHe", sql.NVarChar(20), row.PhanHe || null)
+              .input("MaNhomLoi", sql.NVarChar(20), row.MaNhomLoi || null)
+              .input("LoaiLoiSXBT", sql.NVarChar(10), row.LoaiLoiSXBT || null)
+              .input("TenSanPham", sql.NVarChar(255), row.TenSanPham || null)
+              .input("ChungLoai", sql.NVarChar(255), row.ChungLoai || null)
+              .input("PhamViApDung", sql.NVarChar(500), row.PhamViApDung || null)
+              .input("ThiTruong", sql.NVarChar(255), row.ThiTruong || null)
+              .input("ImageUrl", sql.NVarChar(500), imageUrl)
+              .input("ThuTu", sql.Int, thuTu)
+              .execute("sp_DM_UpdateDefect");
+            summary.updated += 1;
+          } else {
+            await requestWithTransaction(transaction)
+              .input("TenLoi", sql.NVarChar(255), row.TenLoi)
+              .input("DefectType", sql.NVarChar(20), normalizedDefectType)
+              .input("MoTa", sql.NVarChar(sql.MAX), row.MoTa || row.TenLoi || null)
+              .input("GhiChu", sql.NVarChar(sql.MAX), row.GhiChu || null)
+              .input("MaLoi", sql.NVarChar(50), row.MaLoi)
+              .input("PhanHe", sql.NVarChar(20), row.PhanHe || null)
+              .input("MaNhomLoi", sql.NVarChar(20), row.MaNhomLoi || null)
+              .input("LoaiLoiSXBT", sql.NVarChar(10), row.LoaiLoiSXBT || null)
+              .input("TenSanPham", sql.NVarChar(255), row.TenSanPham || null)
+              .input("ChungLoai", sql.NVarChar(255), row.ChungLoai || null)
+              .input("PhamViApDung", sql.NVarChar(500), row.PhamViApDung || null)
+              .input("ThiTruong", sql.NVarChar(255), row.ThiTruong || null)
+              .input("ImageUrl", sql.NVarChar(500), imageUrl)
+              .input("ThuTu", sql.Int, thuTu)
+              .execute("sp_DM_CreateDefect");
+
+            if (!trangThai) {
+              const createdResult = await requestWithTransaction(transaction)
+                .input("MaLoi", sql.NVarChar(50), row.MaLoi)
+                .query("SELECT Id FROM dbo.DM_DEFECT WHERE MaLoi = @MaLoi");
+              const created = createdResult.recordset?.[0] || null;
+
+              if (created) {
+                await requestWithTransaction(transaction)
+                  .input("Id", sql.Int, created.Id)
+                  .input("TenLoi", sql.NVarChar(255), row.TenLoi)
+                  .input("DefectType", sql.NVarChar(20), normalizedDefectType)
+                  .input("TrangThai", sql.Bit, trangThai)
+                  .input("MoTa", sql.NVarChar(sql.MAX), row.MoTa || row.TenLoi || null)
+                  .input("GhiChu", sql.NVarChar(sql.MAX), row.GhiChu || null)
+                  .input("MaLoi", sql.NVarChar(50), row.MaLoi)
+                  .input("PhanHe", sql.NVarChar(20), row.PhanHe || null)
+                  .input("MaNhomLoi", sql.NVarChar(20), row.MaNhomLoi || null)
+                  .input("LoaiLoiSXBT", sql.NVarChar(10), row.LoaiLoiSXBT || null)
+                  .input("TenSanPham", sql.NVarChar(255), row.TenSanPham || null)
+                  .input("ChungLoai", sql.NVarChar(255), row.ChungLoai || null)
+                  .input("PhamViApDung", sql.NVarChar(500), row.PhamViApDung || null)
+                  .input("ThiTruong", sql.NVarChar(255), row.ThiTruong || null)
+                  .input("ImageUrl", sql.NVarChar(500), imageUrl)
+                  .input("ThuTu", sql.Int, thuTu)
+                  .execute("sp_DM_UpdateDefect");
+              }
+            }
+
+            summary.created += 1;
+          }
+        }
+
+        await transaction.commit();
+        return res.json({
+          success: true,
+          message: "Import danh mục lỗi thành công",
+          summary
+        });
+      } catch (err) {
+        await transaction.rollback();
+        throw err;
+      }
+    } catch (err) {
+      savedFiles.forEach((filePath) => {
+        try {
+          fs.unlinkSync(filePath);
+        } catch (unlinkErr) {
+          console.warn("Cannot cleanup imported defect image:", unlinkErr.message);
+        }
+      });
+      console.error("Import defect error:", err);
+      return res.status(500).json({
+        message: "Import danh mục lỗi thất bại",
+        error: err.message
+      });
     }
   }
 );
