@@ -757,6 +757,7 @@ export default function BienBanDetail() {
                                 chiPhi={chiPhi}
                                 hanhDong={hanhDong}
                                 xacNhan={xacNhan}
+                                assigns={assigns}
                                 dynamicFields={dynamicFields}
                             />
                         </Paper>

@@ -8,6 +8,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
     chiPhi = [],
     hanhDong = [],
     xacNhan = [],
+    assigns = [],
     dynamicFields = []
 }, ref) => {
 
@@ -98,8 +99,8 @@ export const BienBanPrintTemplate = React.forwardRef(({
         td: { border: '1px solid #000', padding: '4px', fontSize: '11pt' },
         headerTable: { width: '100%', borderCollapse: 'collapse', marginBottom: '15px', border: '1px solid #000' },
         headerTd: { border: '1px solid #000', padding: '6px', textAlign: 'center', verticalAlign: 'middle' },
-        signatureBlock: { display: 'flex', justifyContent: 'space-between', marginTop: '15px', textAlign: 'center', width: '100%' },
-        signatureCol: { flex: 1, padding: '0 10px' },
+        signatureBlock: { display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', rowGap: '20px', marginTop: '15px', textAlign: 'center', width: '100%' },
+        signatureCol: { flex: 1, minWidth: '30%', padding: '0 10px' },
         layoutTable: { width: '100%', borderCollapse: 'collapse', border: 'none' },
         layoutTd: { border: 'none', padding: '4px 0', verticalAlign: 'middle' },
         flexBetween: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
@@ -154,6 +155,30 @@ export const BienBanPrintTemplate = React.forwardRef(({
             <span style={{ fontSize: '12pt' }}>{label}</span>
             {renderSquareBox(mucDo === value)}
         </div>
+    );
+
+    const formatSignatureDate = (value) => {
+        if (!value) return 'Ngày..................';
+        return `Ngày ${new Date(value).toLocaleDateString('vi-VN')
+            .replace(/\//g, ' tháng ')
+            .replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm '))}`;
+    };
+
+    const getSignatureDepartmentName = (item) => {
+        const assignedDepartment = assigns.find(assign => Number(assign.BoPhanId) === Number(item.BoPhanId));
+        return item.TenBoPhan ||
+            assignedDepartment?.TenBoPhan ||
+            item.MaBoPhan ||
+            assignedDepartment?.MaBoPhan ||
+            'BỘ PHẬN XÁC NHẬN';
+    };
+
+    const signatureRows = Array.from(
+        (xacNhan || []).reduce((map, item) => {
+            const key = item.BoPhanId || item.NguoiXacNhanId || item.Id;
+            if (key) map.set(String(key), item);
+            return map;
+        }, new Map()).values()
     );
 
     return (
@@ -257,7 +282,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                     <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: '12px', ...styles.text }}>
                                         <span style={{ whiteSpace: 'nowrap' }}>Đơn vị sản xuất:</span>
                                         <span style={styles.dottedLine}>
-                                            <input name="TenBoPhan" className="custom-field" type="text" defaultValue={customData.TenBoPhan || info.TenBoPhan || ''} style={styles.inputField} />
+                                            <input name="TenBoPhan" className="custom-field" type="text" defaultValue={customData.TenBoPhan || ''} style={styles.inputField} />
                                         </span>
                                         <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Mã ĐVSX:</span>
                                         <span style={{ ...styles.dottedLine, flexGrow: 0.6 }}>
@@ -365,8 +390,8 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                                     <td style={styles.td}>{d.TenLoi}</td>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{d.SoLuongKiem || 0}</td>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>
-                                                        {(d.SoLuong && d.SoLuongKiem) 
-                                                            ? ((d.SoLuong / d.SoLuongKiem) * 100).toFixed(0) + '%' 
+                                                        {(d.SoLuong && d.SoLuongKiem)
+                                                            ? ((d.SoLuong / d.SoLuongKiem) * 100).toFixed(0) + '%'
                                                             : (d.SoLuong > 0 && !d.SoLuongKiem) ? '100%' : '0%'}
                                                     </td>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{d.DefectType}</td>
@@ -518,39 +543,20 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                 </Box>
 
                                 {/* Chữ ký 2 */}
-                                <Box className="avoid-break" style={styles.signatureBlock}>
-                                    <Box style={styles.signatureCol}>
-                                        <div style={{ ...styles.text, fontStyle: 'italic' }}>
-                                            Ngày {xacNhan.find(item => item.BoPhanId === 1)?.ThoiGian ? new Date(xacNhan.find(item => item.BoPhanId === 1).ThoiGian).toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm ')) : new Date().toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm '))}
-                                        </div>
-                                        <div style={styles.boldText}>PHÒNG KN</div>
-                                        <Box height="90px"></Box>
+                                {signatureRows.length > 0 && (
+                                    <Box className="avoid-break" style={{ ...styles.signatureBlock, justifyContent: 'flex-start', direction: 'rtl' }}>
+                                        {signatureRows.map((item) => (
+                                            <Box style={{ ...styles.signatureCol, direction: 'ltr', flex: '0 0 30%', maxWidth: '33.33%' }} key={item.Id || item.BoPhanId || item.NguoiXacNhanId}>
+                                                <div style={{ ...styles.text, fontStyle: 'italic', whiteSpace: 'nowrap' }}>
+                                                    {formatSignatureDate(item.ThoiGian)}
+                                                </div>
+                                                <div style={styles.boldText}>{getSignatureDepartmentName(item).toUpperCase()}</div>
+                                                <Box height="90px"></Box>
+                                                <div style={styles.text}>{item.FullName || '(Ký, họ tên)'}</div>
+                                            </Box>
+                                        ))}
                                     </Box>
-                                    {
-                                        xacNhan && xacNhan.some(item => item.BoPhanId === 3) && (
-                                            <Box style={styles.signatureCol}>
-                                                <div style={{ ...styles.text, fontStyle: 'italic' }}>
-                                                    Ngày {xacNhan.find(item => item.BoPhanId === 3)?.ThoiGian ? new Date(xacNhan.find(item => item.BoPhanId === 3).ThoiGian).toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm ')) : new Date().toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm '))}
-                                                </div>
-                                                <div style={styles.boldText}>PHÒNG KTCN</div>
-                                                <Box height="90px"></Box>
-                                                <div style={styles.text}>{xacNhan.BoPhan}</div>
-                                            </Box>
-                                        )
-                                    }
-                                    {
-                                        xacNhan && xacNhan.some(item => item.BoPhanId === 2) && (
-                                            <Box style={styles.signatureCol}>
-                                                <div style={{ ...styles.text, fontStyle: 'italic' }}>
-                                                    Ngày {xacNhan.find(item => item.BoPhanId === 2)?.ThoiGian ? new Date(xacNhan.find(item => item.BoPhanId === 2).ThoiGian).toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm ')) : new Date().toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm '))}
-                                                </div>
-                                                <div style={styles.boldText}>PHÒNG VT</div>
-                                                <Box height="90px"></Box>
-                                                <div style={styles.text}>{xacNhan.find(item => item.BoPhanId === 2)?.FullName}</div>
-                                            </Box>
-                                        )
-                                    }
-                                </Box>
+                                )}
 
                                 {/* 8. Theo dõi */}
                                 <Box className="avoid-break" mt={2} pt={0}>

@@ -48,6 +48,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
 
     // Mục III: Tỷ lệ
     const [loaiMau, setLoaiMau] = useState("LAN_1_2");
+    const [tyLeMauInput, setTyLeMauInput] = useState("100");
     const [soLuongMau, setSoLuongMau] = useState("");
     const [ketLuan, setKetLuan] = useState("DAT");
 
@@ -131,10 +132,19 @@ export default function SxbtInspectionScreen({ route, navigation }) {
 
             // 3. Mục III: Tỷ lệ (từ summary)
             if (data.summary && data.summary.SoLuongMau) {
-                setLoaiMau(data.summary.LoaiMau || "LAN_1_2");
+                const savedLoaiMau = data.summary.LoaiMau || "LAN_1_2";
+                setLoaiMau(savedLoaiMau);
                 setSoLuongMau(String(data.summary.SoLuongMau));
+                if (data.summary.TyLe !== undefined && data.summary.TyLe !== null) {
+                    setTyLeMauInput(String(Number(data.summary.TyLe).toFixed(1)).replace(/\.0$/, ""));
+                } else {
+                    const total = phieuInfo.SoLuong || 0;
+                    const savedSamples = Number(data.summary.SoLuongMau) || 0;
+                    setTyLeMauInput(total > 0 ? String(((savedSamples / total) * 100).toFixed(1)).replace(/\.0$/, "") : String(getDefaultSampleRate(savedLoaiMau)));
+                }
             } else {
                 setLoaiMau("LAN_1_2");
+                setTyLeMauInput("100");
                 if (phieuInfo.SoLuong) {
                     setSoLuongMau(String(phieuInfo.SoLuong)); // Mặc định Lần 1,2 là 100%
                 }
@@ -174,20 +184,52 @@ export default function SxbtInspectionScreen({ route, navigation }) {
         setSelectedBtp(prev => ({ ...prev, [field]: value }));
     };
 
+    const inputValue = (value) => value === undefined || value === null ? "" : String(value);
+
     const saveBtpItem = () => {
-        setBtpItems(prev => prev.map(item => item.Id === selectedBtp.Id ? selectedBtp : item));
+        const { SoBoHang, SoCaiBo, ...cleanBtp } = selectedBtp || {};
+        cleanBtp.SoLuongNhap = cleanBtp.SoLuongNhap === "" || cleanBtp.SoLuongNhap === undefined || cleanBtp.SoLuongNhap === null
+            ? null
+            : Number(cleanBtp.SoLuongNhap) || 0;
+        setBtpItems(prev => prev.map(item => item.Id === cleanBtp.Id ? cleanBtp : item));
         setBtpModalVisible(false);
     };
+
+    const getDefaultSampleRate = (type) => {
+        if (type === 'LAN_3') return 5;
+        if (type === 'LO_TRUOC_KHONG_DAT') return 5;
+        return 100;
+    };
+
+    const formatPercentInput = (value) => String(Number(value).toFixed(1)).replace(/\.0$/, "");
 
     // Handle Loai Mau Change
     const handleLoaiMauChange = (type) => {
         setLoaiMau(type);
+        const rate = getDefaultSampleRate(type);
+        setTyLeMauInput(String(rate));
         const total = phieu?.SoLuong || 0;
         if (total > 0) {
-            let rate = 1; // LAN_1_2 is 100%
-            if (type === 'LAN_3') rate = 0.05;
-            if (type === 'LO_TRUOC_KHONG_DAT') rate = 0.03;
-            setSoLuongMau(String(Math.ceil(total * rate)));
+            setSoLuongMau(String(Math.ceil(total * rate / 100)));
+        }
+    };
+
+    const handleTyLeMauChange = (value) => {
+        const normalized = value.replace(',', '.');
+        setTyLeMauInput(normalized);
+        const rate = Number(normalized);
+        const total = phieu?.SoLuong || 0;
+        if (!Number.isNaN(rate) && total > 0) {
+            setSoLuongMau(String(Math.ceil(total * rate / 100)));
+        }
+    };
+
+    const handleSoLuongMauChange = (value) => {
+        setSoLuongMau(value);
+        const samples = Number(value);
+        const total = phieu?.SoLuong || 0;
+        if (!Number.isNaN(samples) && total > 0) {
+            setTyLeMauInput(formatPercentInput((samples / total) * 100));
         }
     };
 
@@ -228,7 +270,10 @@ export default function SxbtInspectionScreen({ route, navigation }) {
     const criticalDefects = defectList.filter(d => d.DefectType === 'Nghiêm trọng').reduce((sum, d) => sum + d.SoLuong, 0);
     const majorMinorDefects = totalDefects - criticalDefects;
 
-    const tyLe = totalSamples > 0 ? (totalSamples / (phieu?.SoLuong || 1)) * 100 : 0;
+    const manualSampleRate = Number(tyLeMauInput);
+    const tyLe = tyLeMauInput !== "" && !Number.isNaN(manualSampleRate)
+        ? manualSampleRate
+        : (totalSamples > 0 ? (totalSamples / (phieu?.SoLuong || 1)) * 100 : 0);
     const tyLeLoi = totalSamples > 0 ? (totalDefects / totalSamples) * 100 : 0;
     const tyLeDat = 100 - tyLeLoi;
     const tyLeCritical = totalSamples > 0 ? (criticalDefects / totalSamples) * 100 : 0;
@@ -438,16 +483,17 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                         >
                             <View style={{ flex: 1 }}>
                                 <Text style={styles.itemName}>{item.TenSanPham}</Text>
-                                <Text style={styles.itemSub}>SL: {item.SoLuong} {item.DonViTinh}</Text>
+                                <Text style={styles.itemSub}>SL phiếu: {item.SoLuong} {item.DonViTinh}</Text>
                                 <View style={styles.btpDetailBox}>
+                                    {item.SoLuongNhap !== undefined && item.SoLuongNhap !== null && item.SoLuongNhap !== "" && (
+                                        <Text style={styles.btpDetailText}>• Số lượng nhập: <Text style={{ fontWeight: 'bold' }}>{item.SoLuongNhap}</Text></Text>
+                                    )}
                                     {!!item.DauTuanGS1 && <Text style={styles.btpDetailText}>• Dấu tuần/GS1: <Text style={{ fontWeight: 'bold' }}>{item.DauTuanGS1}</Text></Text>}
                                     {!!item.ThuTu && <Text style={styles.btpDetailText}>• TT: <Text style={{ fontWeight: 'bold' }}>{item.ThuTu}</Text></Text>}
                                     {!!item.LxvtLot && <Text style={styles.btpDetailText}>• LXVT/LOT: <Text style={{ fontWeight: 'bold' }}>{item.LxvtLot}</Text></Text>}
                                     {!!item.SoLotSX && <Text style={styles.btpDetailText}>• Số Lot SX: <Text style={{ fontWeight: 'bold' }}>{item.SoLotSX}</Text></Text>}
-                                    {!!item.SoBoHang && <Text style={styles.btpDetailText}>• Số bó hàng: <Text style={{ fontWeight: 'bold' }}>{item.SoBoHang}</Text></Text>}
-                                    {!!item.SoCaiBo && <Text style={styles.btpDetailText}>• Số cái/bó: <Text style={{ fontWeight: 'bold' }}>{item.SoCaiBo}</Text></Text>}
 
-                                    {!item.DauTuanGS1 && !item.ThuTu && !item.LxvtLot && !item.SoLotSX && !item.SoBoHang && !item.SoCaiBo && (
+                                    {(item.SoLuongNhap === undefined || item.SoLuongNhap === null || item.SoLuongNhap === "") && !item.DauTuanGS1 && !item.ThuTu && !item.LxvtLot && !item.SoLotSX && (
                                         <Text style={[styles.btpDetailText, { color: '#9ca3af', fontStyle: 'italic' }]}>Chưa nhập thông tin chi tiết</Text>
                                     )}
                                 </View>
@@ -476,14 +522,31 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                         ))}
                     </View>
 
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Số lượng mẫu"
-                        keyboardType="numeric"
-                        value={String(soLuongMau)}
-                        editable={!isCompleted}
-                        onChangeText={setSoLuongMau}
-                    />
+                    {loaiMau !== 'LAN_1_2' && (
+                        <View style={styles.formGroup}>
+                            <Text style={styles.inputLabel}>Tỷ lệ mẫu (%)</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Nhập tỷ lệ mẫu"
+                                keyboardType="decimal-pad"
+                                value={String(tyLeMauInput)}
+                                editable={!isCompleted}
+                                onChangeText={handleTyLeMauChange}
+                            />
+                        </View>
+                    )}
+
+                    <View style={styles.formGroup}>
+                        <Text style={styles.inputLabel}>Số lượng mẫu</Text>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Số lượng mẫu"
+                            keyboardType="numeric"
+                            value={String(soLuongMau)}
+                            editable={!isCompleted}
+                            onChangeText={handleSoLuongMauChange}
+                        />
+                    </View>
 
                     <View style={styles.statsBox}>
                         <Text>Tỷ lệ mẫu: {tyLe.toFixed(1)}%</Text>
@@ -588,14 +651,71 @@ export default function SxbtInspectionScreen({ route, navigation }) {
             {/* BTP Input Modal */}
             <Modal visible={btpModalVisible} transparent animationType="slide">
                 <View style={styles.modalBg}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Cập nhật BTP</Text>
-                        <TextInput style={styles.input} placeholder="Dấu tuần/GS1" value={selectedBtp?.DauTuanGS1} onChangeText={(t) => handleBtpChange('DauTuanGS1', t)} />
-                        <TextInput style={styles.input} placeholder="TT" value={selectedBtp?.ThuTu} onChangeText={(t) => handleBtpChange('ThuTu', t)} />
-                        <TextInput style={styles.input} placeholder="LXVT/LOT" value={selectedBtp?.LxvtLot} onChangeText={(t) => handleBtpChange('LxvtLot', t)} />
-                        <TextInput style={styles.input} placeholder="Số Lot SX" value={selectedBtp?.SoLotSX} onChangeText={(t) => handleBtpChange('SoLotSX', t)} />
-                        <TextInput style={styles.input} placeholder="Số bó hàng" value={selectedBtp?.SoBoHang} onChangeText={(t) => handleBtpChange('SoBoHang', t)} />
-                        <TextInput style={styles.input} placeholder="Số cái/bó" value={selectedBtp?.SoCaiBo} onChangeText={(t) => handleBtpChange('SoCaiBo', t)} />
+                    <KeyboardAvoidingView
+                        behavior={Platform.OS === "ios" ? "padding" : "height"}
+                        style={styles.btpModalContent}
+                    >
+                        <Text style={styles.btpModalTitle}>Cập nhật thông tin BTP</Text>
+
+                        <View style={styles.btpInfoBox}>
+                            <Text style={styles.btpInfoName}>{selectedBtp?.TenSanPham || "BTP"}</Text>
+                            {!!selectedBtp?.DonViTinh && (
+                                <Text style={styles.btpInfoMeta}>Đơn vị tính: {selectedBtp.DonViTinh}</Text>
+                            )}
+                        </View>
+
+                        <ScrollView keyboardShouldPersistTaps="handled">
+                            <View style={styles.formGroup}>
+                                <Text style={styles.inputLabel}>Số lượng</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Nhập số lượng"
+                                    value={inputValue(selectedBtp?.SoLuongNhap)}
+                                    onChangeText={(t) => handleBtpChange('SoLuongNhap', t)}
+                                    keyboardType="number-pad"
+                                />
+                            </View>
+
+                            <View style={styles.formGroup}>
+                                <Text style={styles.inputLabel}>Dấu tuần/GS1</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Nhập dấu tuần/GS1"
+                                    value={inputValue(selectedBtp?.DauTuanGS1)}
+                                    onChangeText={(t) => handleBtpChange('DauTuanGS1', t)}
+                                />
+                            </View>
+
+                            <View style={styles.formGroup}>
+                                <Text style={styles.inputLabel}>TT</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Nhập TT"
+                                    value={inputValue(selectedBtp?.ThuTu)}
+                                    onChangeText={(t) => handleBtpChange('ThuTu', t)}
+                                />
+                            </View>
+
+                            <View style={styles.formGroup}>
+                                <Text style={styles.inputLabel}>LXVT/LOT</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Nhập LXVT/LOT"
+                                    value={inputValue(selectedBtp?.LxvtLot)}
+                                    onChangeText={(t) => handleBtpChange('LxvtLot', t)}
+                                />
+                            </View>
+
+                            <View style={styles.formGroup}>
+                                <Text style={styles.inputLabel}>Số Lot SX</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Nhập số Lot SX"
+                                    value={inputValue(selectedBtp?.SoLotSX)}
+                                    onChangeText={(t) => handleBtpChange('SoLotSX', t)}
+                                />
+                            </View>
+                        </ScrollView>
 
                         <View style={styles.modalActions}>
                             <TouchableOpacity style={styles.modalBtnCancel} onPress={() => setBtpModalVisible(false)}>
@@ -605,7 +725,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                                 <Text style={{ color: '#fff' }}>Xong</Text>
                             </TouchableOpacity>
                         </View>
-                    </View>
+                    </KeyboardAvoidingView>
                 </View>
             </Modal>
 
@@ -742,6 +862,13 @@ const styles = StyleSheet.create({
     modalBg: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 20 },
     modalContent: { backgroundColor: "#fff", padding: 20, borderRadius: 8 },
     modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 16 },
+    btpModalContent: { backgroundColor: "#fff", borderRadius: 16, padding: 18, maxHeight: "85%" },
+    btpModalTitle: { fontSize: 18, fontWeight: "bold", color: "#0f172a", marginBottom: 12 },
+    btpInfoBox: { backgroundColor: "#f8fafc", borderRadius: 12, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: "#e2e8f0" },
+    btpInfoName: { fontSize: 15, fontWeight: "700", color: "#0f172a" },
+    btpInfoMeta: { fontSize: 12, color: "#64748b", marginTop: 4 },
+    formGroup: { marginBottom: 2 },
+    inputLabel: { fontSize: 13, fontWeight: "600", color: "#334155", marginBottom: 6 },
     modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 16 },
     modalBtnCancel: { padding: 12 },
     modalBtnSave: { backgroundColor: "#0052cc", padding: 12, borderRadius: 6 },
