@@ -154,6 +154,11 @@ export default function PhieuKiemCreate() {
                 ]);
 
                 const lichData = lichRes.data || [];
+                console.log("[PhieuKiemCreate][KIEM_DONG_CONT] lichData sample:", lichData.slice(0, 10));
+                console.log("[PhieuKiemCreate][KIEM_DONG_CONT] ItemId sample:", lichData.slice(0, 10).map(item => ({
+                    ItemId: item.ItemId,
+                    itemIdType: typeof item.ItemId
+                })));
                 const checkedSet = new Set(checkedRes.data || []);
 
                 const filtered = lichData.filter(
@@ -355,6 +360,11 @@ export default function PhieuKiemCreate() {
 
                 if (isDongCont) {
                     const itemCode = row.ItemId;
+                    console.log("[PhieuKiemCreate][KIEM_DONG_CONT] resolve ItemId:", {
+                        ItemId: row.ItemId,
+                        itemIdType: typeof row.ItemId,
+                        row
+                    });
                     if (spCache.has(itemCode)) {
                         mappedSpId = spCache.get(itemCode);
                     } else {

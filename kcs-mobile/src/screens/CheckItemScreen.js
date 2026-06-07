@@ -20,6 +20,72 @@ import {
     getDefectList,
     uploadImages
 } from "../api/phieuKiem.api";
+import * as FileSystem from 'expo-file-system';
+
+const IMAGE_PICKER_OPTIONS = {
+    mediaTypes: ['images'],
+    quality: 0.7,
+    allowsEditing: false,
+};
+
+const isPermissionGranted = (status) => status === 'granted' || status === 'limited';
+
+const getAssetUri = (asset) => typeof asset === "string" ? asset : asset?.uri;
+
+const getExtensionFromMime = (mimeType) => {
+    if (!mimeType) return "jpg";
+    const subtype = mimeType.split("/")[1]?.split(";")[0]?.toLowerCase();
+    if (!subtype) return "jpg";
+    if (subtype === "jpeg" || subtype === "jpg") return "jpg";
+    if (subtype === "png") return "png";
+    if (subtype === "heic" || subtype === "heif") return "heic";
+    return subtype.replace(/[^a-z0-9]/g, "") || "jpg";
+};
+
+const getMimeFromName = (fileName) => {
+    const ext = String(fileName || "").split(".").pop()?.toLowerCase();
+    if (ext === "png") return "image/png";
+    if (ext === "heic") return "image/heic";
+    if (ext === "heif") return "image/heif";
+    return "image/jpeg";
+};
+
+const normalizeImageAsset = (asset) => {
+    const uri = asset?.uri;
+    if (!uri) return null;
+
+    const mimeType = asset.mimeType || getMimeFromName(asset.fileName || uri);
+    const extension = getExtensionFromMime(mimeType);
+    const uriName = uri.split("/").pop()?.split("?")[0];
+    const fileName = asset.fileName || uriName || `check-item-${Date.now()}.${extension}`;
+
+    return {
+        uri,
+        fileName: fileName.includes(".") ? fileName : `${fileName}.${extension}`,
+        mimeType,
+        width: asset.width,
+        height: asset.height
+    };
+};
+
+const createUploadFile = (asset, defectIndex, imageIndex, uriOverride = null) => {
+    const uri = uriOverride || getAssetUri(asset);
+    const mimeType = typeof asset === "string"
+        ? getMimeFromName(uri)
+        : (asset?.mimeType || getMimeFromName(asset?.fileName || uri));
+    const extension = getExtensionFromMime(mimeType);
+    const fallbackName = `check-item-${Date.now()}-${defectIndex}-${imageIndex}.${extension}`;
+    const rawName = typeof asset === "string"
+        ? uri?.split("/").pop()?.split("?")[0]
+        : asset?.fileName;
+    const name = rawName || fallbackName;
+
+    return {
+        uri,
+        name: name.includes(".") ? name : `${name}.${extension}`,
+        type: mimeType
+    };
+};
 
 export default function CheckItemScreen({ route, navigation }) {
 
@@ -89,21 +155,22 @@ export default function CheckItemScreen({ route, navigation }) {
                     onPress: async () => {
                         try {
                             const { status } = await ImagePicker.requestCameraPermissionsAsync();
-                            if (status !== 'granted') {
+                            if (!isPermissionGranted(status)) {
                                 Alert.alert("Lỗi", "Bạn cần cấp quyền camera để chụp ảnh.");
                                 return;
                             }
 
-                            const result = await ImagePicker.launchCameraAsync({
-                                mediaTypes: 'images',
-                                quality: 0.7,
-                            });
+                            const result = await ImagePicker.launchCameraAsync(IMAGE_PICKER_OPTIONS);
 
                             if (!result.canceled) {
-                                const newUri = result.assets[0].uri;
+                                const imageAsset = normalizeImageAsset(result.assets?.[0]);
+                                if (!imageAsset) {
+                                    Alert.alert("Lỗi", "Không đọc được ảnh đã chụp.");
+                                    return;
+                                }
                                 setSelectedDefects(prev => prev.map((d, i) =>
                                     i === index
-                                        ? { ...d, localImages: [...(d.localImages || []), newUri] }
+                                        ? { ...d, localImages: [...(d.localImages || []), imageAsset] }
                                         : d
                                 ));
                             }
@@ -118,21 +185,22 @@ export default function CheckItemScreen({ route, navigation }) {
                     onPress: async () => {
                         try {
                             const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-                            if (status !== 'granted') {
+                            if (!isPermissionGranted(status)) {
                                 Alert.alert("Lỗi", "Bạn cần cấp quyền truy cập thư viện để chọn ảnh.");
                                 return;
                             }
 
-                            const result = await ImagePicker.launchImageLibraryAsync({
-                                mediaTypes: 'images',
-                                quality: 0.7,
-                            });
+                            const result = await ImagePicker.launchImageLibraryAsync(IMAGE_PICKER_OPTIONS);
 
                             if (!result.canceled) {
-                                const newUri = result.assets[0].uri;
+                                const imageAsset = normalizeImageAsset(result.assets?.[0]);
+                                if (!imageAsset) {
+                                    Alert.alert("Lỗi", "Không đọc được ảnh đã chọn.");
+                                    return;
+                                }
                                 setSelectedDefects(prev => prev.map((d, i) =>
                                     i === index
-                                        ? { ...d, localImages: [...(d.localImages || []), newUri] }
+                                        ? { ...d, localImages: [...(d.localImages || []), imageAsset] }
                                         : d
                                 ));
                             }
@@ -234,6 +302,68 @@ export default function CheckItemScreen({ route, navigation }) {
 
     };
 
+    const appendImagesToFormData = (formData, images, defectIndex, uriOverrides = {}) => {
+        images.forEach((asset, imageIndex) => {
+            const uri = uriOverrides[imageIndex] || getAssetUri(asset);
+            if (!uri) return;
+            formData.append('images', createUploadFile(asset, defectIndex, imageIndex, uri));
+        });
+    };
+
+    const copyImagesToCache = async (images, defectIndex) => {
+        const cachedUris = {};
+
+        for (let imageIndex = 0; imageIndex < images.length; imageIndex++) {
+            const asset = images[imageIndex];
+            const sourceUri = getAssetUri(asset);
+            if (!sourceUri) continue;
+
+            const uploadFile = createUploadFile(asset, defectIndex, imageIndex);
+            const extension = getExtensionFromMime(uploadFile.type);
+            const destination = `${FileSystem.cacheDirectory}check-item-${Date.now()}-${defectIndex}-${imageIndex}.${extension}`;
+
+            await FileSystem.copyAsync({
+                from: sourceUri,
+                to: destination
+            });
+
+            cachedUris[imageIndex] = destination;
+        }
+
+        return cachedUris;
+    };
+
+    const uploadDefectImages = async (images, defectIndex) => {
+        const formData = new FormData();
+        appendImagesToFormData(formData, images, defectIndex);
+
+        try {
+            const uploadRes = await uploadImages(formData);
+            return uploadRes.data?.filePaths || [];
+        } catch (error) {
+            if (Platform.OS !== "android") {
+                throw error;
+            }
+
+            if (__DEV__) {
+                console.error("[CheckItemScreen] Android image upload failed, retrying from cache:", {
+                    error,
+                    images: images.map(image => ({
+                        uri: getAssetUri(image),
+                        fileName: image?.fileName,
+                        mimeType: image?.mimeType
+                    }))
+                });
+            }
+
+            const cachedUris = await copyImagesToCache(images, defectIndex);
+            const retryFormData = new FormData();
+            appendImagesToFormData(retryFormData, images, defectIndex, cachedUris);
+            const retryUploadRes = await uploadImages(retryFormData);
+            return retryUploadRes.data?.filePaths || [];
+        }
+    };
+
     const handleSave = async () => {
         if (!ketQua) return Alert.alert("Thiếu thông tin", "Vui lòng chọn kết quả");
         if (ketQua === "KHONG_DAT" && selectedDefects.length === 0) return Alert.alert("Thiếu thông tin", "Chọn ít nhất 1 lỗi");
@@ -253,16 +383,7 @@ export default function CheckItemScreen({ route, navigation }) {
 
                     // Nếu có ảnh MỚI chụp, mang đi upload
                     if (defect.localImages && defect.localImages.length > 0) {
-                        const formData = new FormData();
-                        defect.localImages.forEach((uri) => {
-                            const filename = uri.split('/').pop();
-                            const match = /\.(\w+)$/.exec(filename);
-                            const type = match ? `image/${match[1]}` : `image/jpeg`;
-                            formData.append('images', { uri, name: filename, type });
-                        });
-
-                        const uploadRes = await uploadImages(formData);
-                        const newUploadedUrls = uploadRes.data?.filePaths || [];
+                        const newUploadedUrls = await uploadDefectImages(defect.localImages, i);
 
                         // GỘP MẢNG: [Ảnh cũ user chưa xoá] + [Ảnh mới vừa upload]
                         finalDefects[i].imageUrls = [...finalDefects[i].imageUrls, ...newUploadedUrls];
@@ -410,22 +531,27 @@ export default function CheckItemScreen({ route, navigation }) {
                                     ))}
 
                                     {/* RENDER ẢNH MỚI (CHƯA LƯU) */}
-                                    {d.localImages?.map((uri, imgIndex) => (
-                                        <View key={`local-${imgIndex}`} style={{ marginRight: 12, marginBottom: 12, position: 'relative' }}>
-                                            <TouchableOpacity onPress={() => handlePreviewImage(uri)}>
-                                                <Image
-                                                    source={{ uri }}
-                                                    style={{ width: 60, height: 60, borderRadius: 8 }}
-                                                />
-                                            </TouchableOpacity>
-                                            <TouchableOpacity
-                                                style={{ position: 'absolute', top: -8, right: -8, backgroundColor: 'white', borderRadius: 12, zIndex: 1 }}
-                                                onPress={() => removeLocalImage(index, imgIndex)}
-                                            >
-                                                <Ionicons name="close-circle" size={22} color="#ef4444" />
-                                            </TouchableOpacity>
-                                        </View>
-                                    ))}
+                                    {d.localImages?.map((asset, imgIndex) => {
+                                        const uri = getAssetUri(asset);
+                                        if (!uri) return null;
+
+                                        return (
+                                            <View key={`local-${imgIndex}`} style={{ marginRight: 12, marginBottom: 12, position: 'relative' }}>
+                                                <TouchableOpacity onPress={() => handlePreviewImage(uri)}>
+                                                    <Image
+                                                        source={{ uri }}
+                                                        style={{ width: 60, height: 60, borderRadius: 8 }}
+                                                    />
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    style={{ position: 'absolute', top: -8, right: -8, backgroundColor: 'white', borderRadius: 12, zIndex: 1 }}
+                                                    onPress={() => removeLocalImage(index, imgIndex)}
+                                                >
+                                                    <Ionicons name="close-circle" size={22} color="#ef4444" />
+                                                </TouchableOpacity>
+                                            </View>
+                                        );
+                                    })}
 
                                 </View>
                             </View>

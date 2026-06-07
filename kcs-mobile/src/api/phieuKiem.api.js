@@ -73,7 +73,9 @@ export const confirmKN = (phieuKiemId) => {
 };
 
 export const uploadImages = (formData) => {
-  return axiosClient.post("/phieu-kiem/upload", formData);
+  return axiosClient.post("/phieu-kiem/upload", formData, {
+    timeout: 120000
+  });
 };
 
 export const getThongSoKq = (phieuKiemId) => {

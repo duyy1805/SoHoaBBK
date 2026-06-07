@@ -9,6 +9,14 @@
     "newArchEnabled": true,
     "plugins": [
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Cho phép ứng dụng truy cập thư viện ảnh để chọn ảnh lỗi kiểm tra.",
+          "cameraPermission": "Cho phép ứng dụng sử dụng camera để chụp ảnh lỗi kiểm tra.",
+          "microphonePermission": false
+        }
+      ],
+      [
         "expo-notifications",
         {
           "icon": "./assets/icon.png",
@@ -29,6 +37,11 @@
       }
     },
     "android": {
+      "permissions": [
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "READ_EXTERNAL_STORAGE"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
