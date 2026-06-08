@@ -777,11 +777,11 @@ export default function SxbtInspectionScreen({ route, navigation }) {
 
             {/* BTP Input Modal */}
             <Modal visible={btpModalVisible} transparent animationType="slide">
-                <View style={styles.modalBg}>
-                    <KeyboardAvoidingView
-                        behavior={Platform.OS === "ios" ? "padding" : "height"}
-                        style={styles.btpModalContent}
-                    >
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === "ios" ? "padding" : "height"}
+                    style={styles.modalBg}
+                >
+                    <View style={styles.btpModalContent}>
                         <Text style={styles.btpModalTitle}>Cập nhật thông tin BTP</Text>
 
                         <View style={styles.btpInfoBox}>
@@ -791,7 +791,13 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                             )}
                         </View>
 
-                        <ScrollView keyboardShouldPersistTaps="handled">
+                        <ScrollView
+                            style={styles.btpModalScroll}
+                            contentContainerStyle={styles.btpModalScrollContent}
+                            keyboardShouldPersistTaps="handled"
+                            keyboardDismissMode="none"
+                            showsVerticalScrollIndicator
+                        >
                             {getBtpLotRows(selectedBtp).length === 0 && (
                                 <View style={styles.emptyLotBox}>
                                     <Text style={styles.emptyLotText}>Chưa có dòng dấu tuần/lot</Text>
@@ -874,8 +880,8 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                                 <Text style={{ color: '#fff' }}>Xong</Text>
                             </TouchableOpacity>
                         </View>
-                    </KeyboardAvoidingView>
-                </View>
+                    </View>
+                </KeyboardAvoidingView>
             </Modal>
 
             {/* Defect Selection Modal */}
@@ -1009,14 +1015,16 @@ const styles = StyleSheet.create({
     lapLaiText: { fontSize: 10, color: "#6b7280" },
     saveBtn: { backgroundColor: "#10b981", padding: 16, borderRadius: 8, alignItems: "center", marginVertical: 16 },
     saveBtnText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
-    modalBg: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 20 },
+    modalBg: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end", paddingHorizontal: 12, paddingTop: 24 },
     modalContent: { backgroundColor: "#fff", padding: 20, borderRadius: 8 },
     modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 16 },
-    btpModalContent: { backgroundColor: "#fff", borderRadius: 16, padding: 18, maxHeight: "85%" },
+    btpModalContent: { backgroundColor: "#fff", borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 18, width: "100%", maxHeight: "88%" },
     btpModalTitle: { fontSize: 18, fontWeight: "bold", color: "#0f172a", marginBottom: 12 },
     btpInfoBox: { backgroundColor: "#f8fafc", borderRadius: 12, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: "#e2e8f0" },
     btpInfoName: { fontSize: 15, fontWeight: "700", color: "#0f172a" },
     btpInfoMeta: { fontSize: 12, color: "#64748b", marginTop: 4 },
+    btpModalScroll: { flexGrow: 0 },
+    btpModalScrollContent: { paddingBottom: 8 },
     formGroup: { marginBottom: 2 },
     inputLabel: { fontSize: 13, fontWeight: "600", color: "#334155", marginBottom: 6 },
     emptyLotBox: { padding: 14, borderRadius: 10, backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", marginBottom: 12 },
