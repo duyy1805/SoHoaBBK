@@ -44,6 +44,32 @@ export const SxbtPrintTemplate = React.forwardRef(({
     const tyLeMajor = summary?.TyLeLoiNangNhe != null ? Number(summary.TyLeLoiNangNhe).toFixed(1) : '';
     const ketLuan = phieu.KetLuan ?? '';
 
+    const isFilledLotRow = (row = {}) =>
+        (row.SoLuongNhap !== null && row.SoLuongNhap !== undefined && row.SoLuongNhap !== '') ||
+        row.DauTuanGS1 ||
+        row.ThuTu ||
+        row.LxvtLot ||
+        row.SoLotSX;
+
+    const getLotRows = (item = {}) => {
+        const rows = Array.isArray(item.LotRows) && item.LotRows.length > 0
+            ? item.LotRows
+            : [{
+                DauTuanGS1: item.DauTuanGS1,
+                ThuTu: item.ThuTu,
+                LxvtLot: item.LxvtLot,
+                SoLotSX: item.SoLotSX,
+                SoLuongNhap: item.SoLuongNhap,
+                SortOrder: 1
+            }].filter(isFilledLotRow);
+
+        return rows.length > 0 ? rows : [{}];
+    };
+
+    const btpPrintRows = btpItems.flatMap(item =>
+        getLotRows(item).map((lotRow, lotIndex) => ({ item, lotRow, lotIndex }))
+    );
+
     const criticalDefects = defects.filter(d =>
         d.DefectType === 'CRITICAL' || d.DefectType === 'Nghiêm trọng'
     );
@@ -256,34 +282,39 @@ export const SxbtPrintTemplate = React.forwardRef(({
                 <table style={s.table}>
                     <thead>
                         <tr>
-                            <th style={{ ...s.th, width: '28%' }}>Tên vật tư, hàng hóa</th>
-                            <th style={{ ...s.th, width: '13%' }}>Dấu tuần/ GS1</th>
+                            <th style={{ ...s.th, width: '30%' }}>Tên vật tư, hàng hóa</th>
+                            <th style={{ ...s.th, width: '10%' }}>SL nhập</th>
+                            <th style={{ ...s.th, width: '14%' }}>Dấu tuần/ GS1</th>
                             <th style={{ ...s.th, width: '7%' }}>TT</th>
-                            <th style={{ ...s.th, width: '12%' }}>LXVT/LOT</th>
-                            <th style={{ ...s.th, width: '10%' }}>Số Lot SX</th>
-                            <th style={{ ...s.th, width: '10%' }}>Số bó hàng</th>
-                            <th style={{ ...s.th, width: '10%' }}>Số cái/ bó</th>
-                            <th style={{ ...s.th, width: '10%' }}>Tổng cái (Kho xác nhận)</th>
+                            <th style={{ ...s.th, width: '14%' }}>LXVT/LOT</th>
+                            <th style={{ ...s.th, width: '12%' }}>Số Lot SX</th>
+                            <th style={{ ...s.th, width: '13%' }}>Tổng cái (Kho xác nhận)</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {btpItems.length > 0
-                            ? btpItems.map((item) => (
-                                <tr key={item.Id}>
-                                    <td style={{ ...s.td, fontWeight: 600 }}>{item.TenSanPham}</td>
-                                    <td style={s.tdc}>{item.DauTuanGS1 || ''}</td>
-                                    <td style={s.tdc}>{item.ThuTu || ''}</td>
-                                    <td style={s.tdc}>{item.LxvtLot || ''}</td>
-                                    <td style={s.tdc}>{item.SoLotSX || ''}</td>
-                                    <td style={s.tdc}>{item.SoBoHang || ''}</td>
-                                    <td style={s.tdc}>{item.SoCaiBo || ''}</td>
+                        {btpPrintRows.length > 0
+                            ? btpPrintRows.map(({ item, lotRow, lotIndex }) => {
+                                const itemRowCount = getLotRows(item).length;
+                                return (
+                                <tr key={`${item.Id}-${lotIndex}`}>
+                                    {lotIndex === 0 && (
+                                        <td rowSpan={itemRowCount} style={{ ...s.td, fontWeight: 600 }}>
+                                            {item.TenSanPham}
+                                        </td>
+                                    )}
+                                    <td style={s.tdc}>{lotRow.SoLuongNhap != null && lotRow.SoLuongNhap !== '' ? Number(lotRow.SoLuongNhap).toLocaleString('vi-VN') : ''}</td>
+                                    <td style={s.tdc}>{lotRow.DauTuanGS1 || ''}</td>
+                                    <td style={s.tdc}>{lotRow.ThuTu || ''}</td>
+                                    <td style={s.tdc}>{lotRow.LxvtLot || ''}</td>
+                                    <td style={s.tdc}>{lotRow.SoLotSX || ''}</td>
                                     <td style={{ ...s.tdc, minHeight: '18px' }}></td>
                                 </tr>
-                            ))
-                            : emptyRows(3, 8)
+                                );
+                            })
+                            : emptyRows(3, 7)
                         }
                         {/* Thêm hàng trống nếu chưa đủ 3 */}
-                        {btpItems.length > 0 && btpItems.length < 3 && emptyRows(3 - btpItems.length, 8)}
+                        {btpPrintRows.length > 0 && btpPrintRows.length < 3 && emptyRows(3 - btpPrintRows.length, 7)}
                     </tbody>
                 </table>
 

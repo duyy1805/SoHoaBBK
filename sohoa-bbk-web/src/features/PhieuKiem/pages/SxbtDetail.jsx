@@ -80,6 +80,29 @@ function SectionHeader({ icon, title }) {
     );
 }
 
+const isFilledLotRow = (row = {}) =>
+    (row.SoLuongNhap !== null && row.SoLuongNhap !== undefined && row.SoLuongNhap !== "") ||
+    row.DauTuanGS1 ||
+    row.ThuTu ||
+    row.LxvtLot ||
+    row.SoLotSX;
+
+const getBtpLotRows = (item = {}) => {
+    const rows = Array.isArray(item.LotRows) && item.LotRows.length > 0
+        ? item.LotRows
+        : [{
+            BtpItemId: item.Id,
+            DauTuanGS1: item.DauTuanGS1,
+            ThuTu: item.ThuTu,
+            LxvtLot: item.LxvtLot,
+            SoLotSX: item.SoLotSX,
+            SoLuongNhap: item.SoLuongNhap,
+            SortOrder: 1
+        }].filter(isFilledLotRow);
+
+    return rows.length > 0 ? rows : [{}];
+};
+
 const DEFECT_TYPE_COLOR = {
     "Nghiêm trọng": "#ef4444",
     "CRITICAL": "#ef4444",
@@ -390,6 +413,7 @@ export default function SxbtDetail() {
                                                 <TableCell sx={{ fontWeight: 700 }}>Tên sản phẩm</TableCell>
                                                 <TableCell align="right" sx={{ fontWeight: 700 }}>Số lượng</TableCell>
                                                 <TableCell sx={{ fontWeight: 700 }}>ĐVT</TableCell>
+                                                <TableCell align="right" sx={{ fontWeight: 700 }}>SL nhập</TableCell>
                                                 <TableCell sx={{ fontWeight: 700 }}>Dấu tuần/GS1</TableCell>
                                                 <TableCell sx={{ fontWeight: 700 }}>TT</TableCell>
                                                 <TableCell sx={{ fontWeight: 700 }}>LXVT/LOT</TableCell>
@@ -399,19 +423,26 @@ export default function SxbtDetail() {
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
-                                            {btpItems.map((item) => (
-                                                <TableRow key={item.Id} hover>
-                                                    <TableCell sx={{ fontWeight: 600 }}>{item.TenSanPham}</TableCell>
-                                                    <TableCell align="right">{item.SoLuong?.toLocaleString("vi-VN")}</TableCell>
-                                                    <TableCell>{item.DonViTinh}</TableCell>
-                                                    <TableCell>{item.DauTuanGS1 || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
-                                                    <TableCell>{item.ThuTu || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
-                                                    <TableCell>{item.LxvtLot || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
-                                                    <TableCell>{item.SoLotSX || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
-                                                    <TableCell>{item.SoBoHang || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
-                                                    <TableCell>{item.SoCaiBo || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
-                                                </TableRow>
-                                            ))}
+                                            {btpItems.flatMap((item) =>
+                                                getBtpLotRows(item).map((lotRow, lotIndex) => (
+                                                    <TableRow key={`${item.Id}-${lotIndex}`} hover>
+                                                        <TableCell sx={{ fontWeight: 600 }}>{item.TenSanPham}</TableCell>
+                                                        <TableCell align="right">{item.SoLuong?.toLocaleString("vi-VN")}</TableCell>
+                                                        <TableCell>{item.DonViTinh}</TableCell>
+                                                        <TableCell align="right">
+                                                            {lotRow.SoLuongNhap !== null && lotRow.SoLuongNhap !== undefined && lotRow.SoLuongNhap !== ""
+                                                                ? Number(lotRow.SoLuongNhap).toLocaleString("vi-VN")
+                                                                : <Typography variant="caption" color="text.disabled">—</Typography>}
+                                                        </TableCell>
+                                                        <TableCell>{lotRow.DauTuanGS1 || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
+                                                        <TableCell>{lotRow.ThuTu || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
+                                                        <TableCell>{lotRow.LxvtLot || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
+                                                        <TableCell>{lotRow.SoLotSX || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
+                                                        <TableCell>{item.SoBoHang || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
+                                                        <TableCell>{item.SoCaiBo || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
+                                                    </TableRow>
+                                                ))
+                                            )}
                                         </TableBody>
                                     </Table>
                                 </TableContainer>

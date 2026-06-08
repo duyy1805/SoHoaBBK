@@ -1,6 +1,7 @@
 // src/api/phieuKiem.api.js
 
 import axiosClient from "./axiosClient";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export const getAssetUrl = (url) => {
   if (!url) return "";
@@ -23,6 +24,10 @@ export const getMyPhieuKiem = () => {
 
 export const getPhieuKiemDetail = (id) => {
   return axiosClient.get(`/phieu-kiem/${id}`);
+};
+
+export const deletePhieuKiem = (id) => {
+  return axiosClient.delete(`/phieu-kiem/${id}`);
 };
 
 export const getDefectList = (params = null) => {
@@ -75,6 +80,43 @@ export const confirmKN = (phieuKiemId) => {
 export const uploadImages = (formData) => {
   return axiosClient.post("/phieu-kiem/upload", formData, {
     timeout: 120000
+  });
+};
+
+export const uploadImagesWithXhr = async (formData) => {
+  const token = await AsyncStorage.getItem("token");
+  const apiBase = axiosClient.defaults.baseURL || "";
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${apiBase}/phieu-kiem/upload`);
+    xhr.timeout = 120000;
+
+    if (token) {
+      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    }
+
+    xhr.onload = () => {
+      const responseText = xhr.responseText || "{}";
+      let data = {};
+
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        reject(new Error(responseText || "Upload response is not valid JSON"));
+        return;
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve({ data });
+      } else {
+        reject(new Error(data.message || `Upload failed with status ${xhr.status}`));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("Upload network error"));
+    xhr.ontimeout = () => reject(new Error("Upload timeout"));
+    xhr.send(formData);
   });
 };
 

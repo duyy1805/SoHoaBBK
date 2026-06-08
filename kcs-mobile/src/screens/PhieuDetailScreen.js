@@ -20,7 +20,8 @@ import {
     confirmPX,
     confirmKN,
     updateLot,
-    getThongSoKq
+    getThongSoKq,
+    deletePhieuKiem
 } from "../api/phieuKiem.api";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -94,6 +95,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
     const isKN = hasPermission("XAC_NHAN_KIEM_NGHIEM");
     const isLeader = hasPermission("PHAN_BO_KIEM");
     const canConfig = isKCS || isLeader;
+    const canDeletePhieu = sections.length === 0 && trangThai === "TAO_MOI" && canConfig;
 
     const isAllConfirmed =
         sections.length > 0 &&
@@ -254,6 +256,35 @@ export default function PhieuDetailScreen({ route, navigation }) {
 
     };
 
+    const handleDeletePhieu = () => {
+        Alert.alert(
+            "Xóa phiếu kiểm",
+            "Phiếu sẽ bị xóa cứng và không thể khôi phục. Bạn chắc chắn muốn xóa?",
+            [
+                { text: "Hủy", style: "cancel" },
+                {
+                    text: "Xóa",
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            setLoadingAction(true);
+                            await deletePhieuKiem(id);
+                            Alert.alert("Thành công", "Đã xoá phiếu kiểm");
+                            navigation.goBack();
+                        } catch (err) {
+                            Alert.alert(
+                                "Lỗi",
+                                err?.response?.data?.message || "Không thể xoá phiếu kiểm"
+                            );
+                        } finally {
+                            setLoadingAction(false);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
     return (
 
         <View style={{ flex: 1 }}>
@@ -354,6 +385,19 @@ export default function PhieuDetailScreen({ route, navigation }) {
                         <Text style={styles.actionText}>
                             Thiết lập nhóm kiểm
                         </Text>
+                    </TouchableOpacity>
+                )}
+
+                {canDeletePhieu && (
+                    <TouchableOpacity
+                        style={[styles.actionButton, styles.deleteButton, { marginBottom: 20 }]}
+                        onPress={handleDeletePhieu}
+                        disabled={loadingAction}
+                    >
+                        {loadingAction
+                            ? <ActivityIndicator color="#fff" />
+                            : <Text style={styles.actionText}>Xóa phiếu</Text>
+                        }
                     </TouchableOpacity>
                 )}
 
@@ -797,6 +841,10 @@ const styles = StyleSheet.create({
 
     reject: {
         backgroundColor: "#dc2626"
+    },
+
+    deleteButton: {
+        backgroundColor: "#b91c1c"
     },
 
     actionText: {

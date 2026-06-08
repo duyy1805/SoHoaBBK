@@ -101,6 +101,64 @@ export default function SxbtInspectionScreen({ route, navigation }) {
         (d.PhamViApDung || '').toLowerCase().includes(searchText.toLowerCase())
     );
 
+    const isFilledBtpLotRow = (row = {}) =>
+        (row.SoLuongNhap !== undefined && row.SoLuongNhap !== null && row.SoLuongNhap !== "") ||
+        !!row.DauTuanGS1 ||
+        !!row.ThuTu ||
+        !!row.LxvtLot ||
+        !!row.SoLotSX;
+
+    const createEmptyBtpLotRow = (btpItemId, sortOrder = 1) => ({
+        BtpItemId: btpItemId,
+        DauTuanGS1: "",
+        ThuTu: "",
+        LxvtLot: "",
+        SoLotSX: "",
+        SoLuongNhap: "",
+        SortOrder: sortOrder
+    });
+
+    const legacyLotRowFromItem = (item = {}) => {
+        item = item || {};
+        return {
+            BtpItemId: item.Id,
+            DauTuanGS1: item.DauTuanGS1 || "",
+            ThuTu: item.ThuTu || "",
+            LxvtLot: item.LxvtLot || "",
+            SoLotSX: item.SoLotSX || "",
+            SoLuongNhap: item.SoLuongNhap ?? "",
+            SortOrder: 1
+        };
+    };
+
+    const normalizeBtpLotRows = (item = {}) => {
+        item = item || {};
+        const sourceRows = Array.isArray(item.LotRows) && item.LotRows.length > 0
+            ? item.LotRows
+            : (isFilledBtpLotRow(legacyLotRowFromItem(item)) ? [legacyLotRowFromItem(item)] : []);
+
+        return sourceRows.map((row, index) => ({
+            Id: row.Id,
+            BtpItemId: row.BtpItemId || item.Id,
+            DauTuanGS1: row.DauTuanGS1 || "",
+            ThuTu: row.ThuTu || "",
+            LxvtLot: row.LxvtLot || "",
+            SoLotSX: row.SoLotSX || "",
+            SoLuongNhap: row.SoLuongNhap ?? "",
+            SortOrder: row.SortOrder || index + 1
+        }));
+    };
+
+    const normalizeBtpItem = (item = {}) => ({
+        ...item,
+        LotRows: normalizeBtpLotRows(item)
+    });
+
+    const getBtpLotRows = (item = {}) => normalizeBtpLotRows(item);
+
+    const getBtpTotalInputQuantity = (item = {}) =>
+        getBtpLotRows(item).reduce((sum, row) => sum + (Number(row.SoLuongNhap) || 0), 0);
+
     useEffect(() => {
         loadData();
     }, [id]);
@@ -128,7 +186,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
             if (dkNgoaiQuan) setDkvcNgoaiQuan(dkNgoaiQuan);
 
             // 2. Mục II: BTP Items
-            setBtpItems(data.btpItems || []);
+            setBtpItems((data.btpItems || []).map(normalizeBtpItem));
 
             // 3. Mục III: Tỷ lệ (từ summary)
             if (data.summary && data.summary.SoLuongMau) {
@@ -180,17 +238,56 @@ export default function SxbtInspectionScreen({ route, navigation }) {
     };
 
     // Handle BTP Modal
-    const handleBtpChange = (field, value) => {
-        setSelectedBtp(prev => ({ ...prev, [field]: value }));
+    const handleBtpLotChange = (index, field, value) => {
+        setSelectedBtp(prev => {
+            const rows = getBtpLotRows(prev);
+            const nextRows = rows.map((row, rowIndex) =>
+                rowIndex === index ? { ...row, [field]: value } : row
+            );
+            return { ...prev, LotRows: nextRows };
+        });
+    };
+
+    const addBtpLotRow = () => {
+        setSelectedBtp(prev => {
+            const rows = getBtpLotRows(prev);
+            return {
+                ...prev,
+                LotRows: [...rows, createEmptyBtpLotRow(prev?.Id, rows.length + 1)]
+            };
+        });
+    };
+
+    const removeBtpLotRow = (index) => {
+        setSelectedBtp(prev => {
+            const rows = getBtpLotRows(prev)
+                .filter((_, rowIndex) => rowIndex !== index)
+                .map((row, rowIndex) => ({ ...row, SortOrder: rowIndex + 1 }));
+            return { ...prev, LotRows: rows };
+        });
     };
 
     const inputValue = (value) => value === undefined || value === null ? "" : String(value);
 
     const saveBtpItem = () => {
-        const { SoBoHang, SoCaiBo, ...cleanBtp } = selectedBtp || {};
-        cleanBtp.SoLuongNhap = cleanBtp.SoLuongNhap === "" || cleanBtp.SoLuongNhap === undefined || cleanBtp.SoLuongNhap === null
-            ? null
-            : Number(cleanBtp.SoLuongNhap) || 0;
+        const cleanBtp = { ...(selectedBtp || {}) };
+        const lotRows = getBtpLotRows(cleanBtp)
+            .filter(isFilledBtpLotRow)
+            .map((row, index) => ({
+                ...row,
+                BtpItemId: cleanBtp.Id,
+                SoLuongNhap: row.SoLuongNhap === "" || row.SoLuongNhap === undefined || row.SoLuongNhap === null
+                    ? null
+                    : Number(String(row.SoLuongNhap).replace(",", ".")) || 0,
+                SortOrder: index + 1
+            }));
+        const firstLot = lotRows[0] || {};
+        cleanBtp.LotRows = lotRows;
+        cleanBtp.SoLuongNhap = firstLot.SoLuongNhap ?? null;
+        cleanBtp.DauTuanGS1 = firstLot.DauTuanGS1 || null;
+        cleanBtp.ThuTu = firstLot.ThuTu || null;
+        cleanBtp.LxvtLot = firstLot.LxvtLot || null;
+        cleanBtp.SoLotSX = firstLot.SoLotSX || null;
         setBtpItems(prev => prev.map(item => item.Id === cleanBtp.Id ? cleanBtp : item));
         setBtpModalVisible(false);
     };
@@ -242,6 +339,15 @@ export default function SxbtInspectionScreen({ route, navigation }) {
             }
             return d;
         }));
+    };
+
+    const handleDefectQuantityInput = (defectId, value) => {
+        const normalizedValue = value.replace(/[^0-9]/g, "");
+        setDefectList(prev => prev.map(d =>
+            d.DefectId === defectId
+                ? { ...d, SoLuong: normalizedValue === "" ? 0 : Number(normalizedValue) }
+                : d
+        ));
     };
 
     const toggleLapLai = (defectId) => {
@@ -474,33 +580,47 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                 {/* MỤC II */}
                 <View style={styles.card}>
                     <Text style={styles.sectionTitle}>II. Chi tiết BTP</Text>
-                    {btpItems.map((item, index) => (
+                    {btpItems.map((item, index) => {
+                        const lotRows = getBtpLotRows(item);
+                        const totalInputQuantity = getBtpTotalInputQuantity(item);
+                        const previewRows = lotRows.slice(0, 2);
+
+                        return (
                         <TouchableOpacity
                             key={item.Id}
                             style={styles.itemRow}
                             disabled={isCompleted}
-                            onPress={() => { setSelectedBtp({ ...item }); setBtpModalVisible(true); }}
+                            onPress={() => { setSelectedBtp(normalizeBtpItem(item)); setBtpModalVisible(true); }}
                         >
                             <View style={{ flex: 1 }}>
                                 <Text style={styles.itemName}>{item.TenSanPham}</Text>
                                 <Text style={styles.itemSub}>SL phiếu: {item.SoLuong} {item.DonViTinh}</Text>
                                 <View style={styles.btpDetailBox}>
-                                    {item.SoLuongNhap !== undefined && item.SoLuongNhap !== null && item.SoLuongNhap !== "" && (
-                                        <Text style={styles.btpDetailText}>• Số lượng nhập: <Text style={{ fontWeight: 'bold' }}>{item.SoLuongNhap}</Text></Text>
-                                    )}
-                                    {!!item.DauTuanGS1 && <Text style={styles.btpDetailText}>• Dấu tuần/GS1: <Text style={{ fontWeight: 'bold' }}>{item.DauTuanGS1}</Text></Text>}
-                                    {!!item.ThuTu && <Text style={styles.btpDetailText}>• TT: <Text style={{ fontWeight: 'bold' }}>{item.ThuTu}</Text></Text>}
-                                    {!!item.LxvtLot && <Text style={styles.btpDetailText}>• LXVT/LOT: <Text style={{ fontWeight: 'bold' }}>{item.LxvtLot}</Text></Text>}
-                                    {!!item.SoLotSX && <Text style={styles.btpDetailText}>• Số Lot SX: <Text style={{ fontWeight: 'bold' }}>{item.SoLotSX}</Text></Text>}
-
-                                    {(item.SoLuongNhap === undefined || item.SoLuongNhap === null || item.SoLuongNhap === "") && !item.DauTuanGS1 && !item.ThuTu && !item.LxvtLot && !item.SoLotSX && (
+                                    {lotRows.length > 0 ? (
+                                        <>
+                                            <Text style={styles.btpDetailText}>
+                                                • Đã nhập <Text style={{ fontWeight: 'bold' }}>{lotRows.length}</Text> dòng lot
+                                                {totalInputQuantity > 0 ? <Text> - Tổng SL: <Text style={{ fontWeight: 'bold' }}>{totalInputQuantity}</Text></Text> : null}
+                                            </Text>
+                                            {previewRows.map((row, rowIndex) => (
+                                                <Text key={`${item.Id}-lot-${rowIndex}`} style={styles.btpDetailText}>
+                                                    • {row.DauTuanGS1 || "Chưa có dấu tuần"} / {row.SoLotSX || "Chưa có lot"}
+                                                    {row.SoLuongNhap !== "" && row.SoLuongNhap !== null && row.SoLuongNhap !== undefined ? ` - SL ${row.SoLuongNhap}` : ""}
+                                                </Text>
+                                            ))}
+                                            {lotRows.length > previewRows.length && (
+                                                <Text style={[styles.btpDetailText, { color: '#64748b' }]}>• Còn {lotRows.length - previewRows.length} dòng khác</Text>
+                                            )}
+                                        </>
+                                    ) : (
                                         <Text style={[styles.btpDetailText, { color: '#9ca3af', fontStyle: 'italic' }]}>Chưa nhập thông tin chi tiết</Text>
                                     )}
                                 </View>
                             </View>
                             {!isCompleted && <MaterialCommunityIcons name="pencil" size={20} color="#0052cc" style={{ alignSelf: 'flex-start', marginTop: 4 }} />}
                         </TouchableOpacity>
-                    ))}
+                        );
+                    })}
                 </View>
 
                 {/* MỤC III */}
@@ -590,7 +710,14 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                                 <TouchableOpacity disabled={isCompleted} onPress={() => handleDefectChange(d.DefectId, -1)} style={styles.countBtn}>
                                     <Text style={styles.countBtnText}>-</Text>
                                 </TouchableOpacity>
-                                <Text style={styles.countText}>{d.SoLuong}</Text>
+                                <TextInput
+                                    style={styles.countInput}
+                                    value={String(d.SoLuong)}
+                                    editable={!isCompleted}
+                                    keyboardType="number-pad"
+                                    selectTextOnFocus
+                                    onChangeText={(value) => handleDefectQuantityInput(d.DefectId, value)}
+                                />
                                 <TouchableOpacity disabled={isCompleted} onPress={() => handleDefectChange(d.DefectId, 1)} style={styles.countBtn}>
                                     <Text style={styles.countBtnText}>+</Text>
                                 </TouchableOpacity>
@@ -665,56 +792,78 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                         </View>
 
                         <ScrollView keyboardShouldPersistTaps="handled">
-                            <View style={styles.formGroup}>
-                                <Text style={styles.inputLabel}>Số lượng</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    placeholder="Nhập số lượng"
-                                    value={inputValue(selectedBtp?.SoLuongNhap)}
-                                    onChangeText={(t) => handleBtpChange('SoLuongNhap', t)}
-                                    keyboardType="number-pad"
-                                />
-                            </View>
+                            {getBtpLotRows(selectedBtp).length === 0 && (
+                                <View style={styles.emptyLotBox}>
+                                    <Text style={styles.emptyLotText}>Chưa có dòng dấu tuần/lot</Text>
+                                </View>
+                            )}
 
-                            <View style={styles.formGroup}>
-                                <Text style={styles.inputLabel}>Dấu tuần/GS1</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    placeholder="Nhập dấu tuần/GS1"
-                                    value={inputValue(selectedBtp?.DauTuanGS1)}
-                                    onChangeText={(t) => handleBtpChange('DauTuanGS1', t)}
-                                />
-                            </View>
+                            {getBtpLotRows(selectedBtp).map((row, rowIndex) => (
+                                <View key={`btp-lot-${rowIndex}`} style={styles.lotCard}>
+                                    <View style={styles.lotHeader}>
+                                        <Text style={styles.lotTitle}>Dòng lot {rowIndex + 1}</Text>
+                                        <TouchableOpacity onPress={() => removeBtpLotRow(rowIndex)} style={styles.removeLotBtn}>
+                                            <MaterialCommunityIcons name="trash-can-outline" size={18} color="#ef4444" />
+                                        </TouchableOpacity>
+                                    </View>
 
-                            <View style={styles.formGroup}>
-                                <Text style={styles.inputLabel}>TT</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    placeholder="Nhập TT"
-                                    value={inputValue(selectedBtp?.ThuTu)}
-                                    onChangeText={(t) => handleBtpChange('ThuTu', t)}
-                                />
-                            </View>
+                                    <View style={styles.formGroup}>
+                                        <Text style={styles.inputLabel}>Số lượng</Text>
+                                        <TextInput
+                                            style={styles.input}
+                                            placeholder="Nhập số lượng"
+                                            value={inputValue(row.SoLuongNhap)}
+                                            onChangeText={(t) => handleBtpLotChange(rowIndex, 'SoLuongNhap', t)}
+                                            keyboardType="decimal-pad"
+                                        />
+                                    </View>
 
-                            <View style={styles.formGroup}>
-                                <Text style={styles.inputLabel}>LXVT/LOT</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    placeholder="Nhập LXVT/LOT"
-                                    value={inputValue(selectedBtp?.LxvtLot)}
-                                    onChangeText={(t) => handleBtpChange('LxvtLot', t)}
-                                />
-                            </View>
+                                    <View style={styles.formGroup}>
+                                        <Text style={styles.inputLabel}>Dấu tuần/GS1</Text>
+                                        <TextInput
+                                            style={styles.input}
+                                            placeholder="Nhập dấu tuần/GS1"
+                                            value={inputValue(row.DauTuanGS1)}
+                                            onChangeText={(t) => handleBtpLotChange(rowIndex, 'DauTuanGS1', t)}
+                                        />
+                                    </View>
 
-                            <View style={styles.formGroup}>
-                                <Text style={styles.inputLabel}>Số Lot SX</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    placeholder="Nhập số Lot SX"
-                                    value={inputValue(selectedBtp?.SoLotSX)}
-                                    onChangeText={(t) => handleBtpChange('SoLotSX', t)}
-                                />
-                            </View>
+                                    <View style={styles.formGroup}>
+                                        <Text style={styles.inputLabel}>TT</Text>
+                                        <TextInput
+                                            style={styles.input}
+                                            placeholder="Nhập TT"
+                                            value={inputValue(row.ThuTu)}
+                                            onChangeText={(t) => handleBtpLotChange(rowIndex, 'ThuTu', t)}
+                                        />
+                                    </View>
+
+                                    <View style={styles.formGroup}>
+                                        <Text style={styles.inputLabel}>LXVT/LOT</Text>
+                                        <TextInput
+                                            style={styles.input}
+                                            placeholder="Nhập LXVT/LOT"
+                                            value={inputValue(row.LxvtLot)}
+                                            onChangeText={(t) => handleBtpLotChange(rowIndex, 'LxvtLot', t)}
+                                        />
+                                    </View>
+
+                                    <View style={styles.formGroup}>
+                                        <Text style={styles.inputLabel}>Số Lot SX</Text>
+                                        <TextInput
+                                            style={styles.input}
+                                            placeholder="Nhập số Lot SX"
+                                            value={inputValue(row.SoLotSX)}
+                                            onChangeText={(t) => handleBtpLotChange(rowIndex, 'SoLotSX', t)}
+                                        />
+                                    </View>
+                                </View>
+                            ))}
+
+                            <TouchableOpacity style={styles.addLotBtn} onPress={addBtpLotRow}>
+                                <MaterialCommunityIcons name="plus" size={18} color="#0052cc" />
+                                <Text style={styles.addLotText}>Thêm dấu tuần/lot</Text>
+                            </TouchableOpacity>
                         </ScrollView>
 
                         <View style={styles.modalActions}>
@@ -855,6 +1004,7 @@ const styles = StyleSheet.create({
     countBtn: { padding: 8, width: 36, alignItems: "center" },
     countBtnText: { fontSize: 18, fontWeight: "bold", color: "#4b5563" },
     countText: { paddingHorizontal: 8, fontWeight: "bold", minWidth: 24, textAlign: "center" },
+    countInput: { paddingHorizontal: 8, paddingVertical: 6, fontWeight: "bold", minWidth: 42, textAlign: "center", color: "#0f172a" },
     lapLaiBox: { alignItems: "center" },
     lapLaiText: { fontSize: 10, color: "#6b7280" },
     saveBtn: { backgroundColor: "#10b981", padding: 16, borderRadius: 8, alignItems: "center", marginVertical: 16 },
@@ -869,6 +1019,14 @@ const styles = StyleSheet.create({
     btpInfoMeta: { fontSize: 12, color: "#64748b", marginTop: 4 },
     formGroup: { marginBottom: 2 },
     inputLabel: { fontSize: 13, fontWeight: "600", color: "#334155", marginBottom: 6 },
+    emptyLotBox: { padding: 14, borderRadius: 10, backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", marginBottom: 12 },
+    emptyLotText: { color: "#94a3b8", fontStyle: "italic", textAlign: "center" },
+    lotCard: { padding: 12, borderRadius: 12, backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", marginBottom: 12 },
+    lotHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+    lotTitle: { fontSize: 14, fontWeight: "700", color: "#0f172a" },
+    removeLotBtn: { padding: 6 },
+    addLotBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff" },
+    addLotText: { color: "#0052cc", fontWeight: "700" },
     modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 16 },
     modalBtnCancel: { padding: 12 },
     modalBtnSave: { backgroundColor: "#0052cc", padding: 12, borderRadius: 6 },

@@ -41,7 +41,8 @@ import {
     getThongSoKq,
     completePhieuKiem,
     confirmPX,
-    confirmKN
+    confirmKN,
+    deletePhieuKiem
 } from "../../../api/phieuKiem.api";
 
 import { getSanPhamNhomKiem, getInspectionLevels } from "../../../api/lookup.api"
@@ -239,6 +240,7 @@ export default function PhieuKiemDetail() {
     const isLeader = hasPermission("PHAN_BO_KIEM");
     const isPX = hasPermission("XAC_NHAN_PX");
     const isKN = hasPermission("XAC_NHAN_KIEM_NGHIEM");
+    const canDeletePhieu = sections.length === 0 && phieu?.TrangThai === "TAO_MOI" && (isKCS || isLeader);
     const isAllConfirmed = sections.length > 0 && sections.every(s => s.KetLuan);
     const hasReject = sections.some(s => s.KetLuan === "REJECT");
     const hasSpecialReject = thongSoKqList.some(kq => {
@@ -304,6 +306,25 @@ export default function PhieuKiemDetail() {
         }
     };
 
+    const handleDeletePhieu = async () => {
+        const confirmed = window.confirm("Phiếu sẽ bị xóa cứng và không thể khôi phục. Bạn chắc chắn muốn xóa?");
+        if (!confirmed) return;
+
+        try {
+            setLoadingAction(true);
+            setActionNotice(null);
+            await deletePhieuKiem(id);
+            navigate("/phieu-kiem");
+        } catch (err) {
+            setActionNotice({
+                type: "error",
+                message: err?.response?.data?.message || "Không thể xoá phiếu kiểm"
+            });
+        } finally {
+            setLoadingAction(false);
+        }
+    };
+
     return (
         <Fade in timeout={300}>
             <Box>
@@ -330,6 +351,16 @@ export default function PhieuKiemDetail() {
                                 Danh sách phiếu kiểm
                             </Button>
                             <Stack direction="row" spacing={2}>
+                                {canDeletePhieu && (
+                                    <Button
+                                        variant="outlined"
+                                        color="error"
+                                        onClick={handleDeletePhieu}
+                                        disabled={loadingAction}
+                                    >
+                                        {loadingAction ? "Đang xoá..." : "Xóa phiếu"}
+                                    </Button>
+                                )}
                                 {phieu?.BienBanId && (
                                     <Button
                                         variant="outlined"

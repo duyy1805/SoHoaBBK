@@ -33,6 +33,10 @@ export const getPhieuKiemDetail = (id) => {
     return axiosClient.get(`/phieu-kiem/${id}`);
 };
 
+export const deletePhieuKiem = (id) => {
+    return axiosClient.delete(`/phieu-kiem/${id}`);
+};
+
 export const createPhieuKiem = (data) => {
     return axiosClient.post("/phieu-kiem/create", data);
 };

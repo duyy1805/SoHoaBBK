@@ -1,5 +1,35 @@
 const express = require('express');
 const router = express.Router();
+
+const attachBtpLotRows = (btpItems = [], lotRows = []) => {
+    const rowsByItemId = lotRows.reduce((acc, row) => {
+        const key = row.BtpItemId;
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(row);
+        return acc;
+    }, {});
+
+    return btpItems.map(item => {
+        const rows = rowsByItemId[item.Id] || [];
+        return {
+            ...item,
+            LotRows: rows.length > 0
+                ? rows
+                : [{
+                    BtpItemId: item.Id,
+                    DauTuanGS1: item.DauTuanGS1,
+                    ThuTu: item.ThuTu,
+                    LxvtLot: item.LxvtLot,
+                    SoLotSX: item.SoLotSX,
+                    SoLuongNhap: item.SoLuongNhap,
+                    SortOrder: 1
+                }].filter(row =>
+                    (row.SoLuongNhap !== null && row.SoLuongNhap !== undefined) ||
+                    row.DauTuanGS1 || row.ThuTu || row.LxvtLot || row.SoLotSX
+                )
+        };
+    });
+};
 const sql = require('mssql');
 const fs = require('fs');
 const { poolPromise } = require('../db');
@@ -111,6 +141,112 @@ router.get(
         } catch (err) {
             console.error('GetLichDongCont error:', err);
             res.status(500).json({ message: 'Lỗi lấy lịch đóng cont' });
+        }
+    }
+);
+
+/* =========================================================
+   DELETE /phieu-kiem/:id
+   Xóa cứng phiếu khi chưa tạo section
+========================================================= */
+router.delete(
+    '/:id',
+    authenticateToken,
+    authorize(['PHAN_BO_KIEM', 'THUC_HIEN_KIEM']),
+    async (req, res) => {
+        const phieuKiemId = Number(req.params.id);
+
+        if (!Number.isInteger(phieuKiemId) || phieuKiemId <= 0) {
+            return res.status(400).json({ message: 'Id phiếu không hợp lệ' });
+        }
+
+        let transaction;
+
+        try {
+            const pool = await poolPromise;
+            transaction = new sql.Transaction(pool);
+            await transaction.begin();
+
+            const guard = await new sql.Request(transaction)
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .query(`
+                    SELECT
+                        ExistsFlag = CASE WHEN EXISTS (
+                            SELECT 1 FROM dbo.PHIEU_KIEM WHERE Id = @PhieuKiemId
+                        ) THEN 1 ELSE 0 END,
+                        SectionCount = (
+                            SELECT COUNT(1)
+                            FROM dbo.PHIEU_KIEM_SECTION
+                            WHERE PhieuKiemId = @PhieuKiemId
+                        ),
+                        BienBanCount = (
+                            SELECT COUNT(1)
+                            FROM dbo.BIEN_BAN_KIEM
+                            WHERE PhieuKiemId = @PhieuKiemId
+                        );
+                `);
+
+            const info = guard.recordset[0];
+
+            if (!info || info.ExistsFlag !== 1) {
+                await transaction.rollback();
+                return res.status(404).json({ message: 'Không tìm thấy phiếu kiểm' });
+            }
+
+            if (info.SectionCount > 0 || info.BienBanCount > 0) {
+                await transaction.rollback();
+                return res.status(409).json({
+                    message: 'Không thể xoá vì phiếu đã phát sinh dữ liệu kiểm hoặc biên bản'
+                });
+            }
+
+            await new sql.Request(transaction)
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .query(`
+                    DELETE FROM dbo.PhieuKiem_CustomFields
+                    WHERE PhieuKiemId = @PhieuKiemId;
+
+                    DELETE FROM dbo.PHIEU_KIEM_THONG_SO_KQ
+                    WHERE PhieuKiemId = @PhieuKiemId;
+
+                    DELETE FROM dbo.PHIEU_KIEM_XAC_NHAN
+                    WHERE PhieuKiemId = @PhieuKiemId;
+
+                    DELETE FROM dbo.PHIEU_KIEM_SXBT_SUMMARY
+                    WHERE PhieuKiemId = @PhieuKiemId;
+
+                    IF OBJECT_ID(N'dbo.PHIEU_KIEM_BTP_ITEM_LOT', N'U') IS NOT NULL
+                    BEGIN
+                        EXEC sp_executesql N'
+                            DELETE lot
+                            FROM dbo.PHIEU_KIEM_BTP_ITEM_LOT lot
+                            INNER JOIN dbo.PHIEU_KIEM_BTP_ITEM item ON item.Id = lot.BtpItemId
+                            WHERE item.PhieuKiemId = @InnerPhieuKiemId;
+                        ', N'@InnerPhieuKiemId INT', @InnerPhieuKiemId = @PhieuKiemId;
+                    END
+
+                    DELETE FROM dbo.PHIEU_KIEM_BTP_ITEM
+                    WHERE PhieuKiemId = @PhieuKiemId;
+
+                    DELETE FROM dbo.PHIEU_KIEM
+                    WHERE Id = @PhieuKiemId;
+                `);
+
+            await transaction.commit();
+
+            res.json({ success: true, message: 'Đã xoá phiếu kiểm' });
+        } catch (err) {
+            if (transaction) {
+                try {
+                    await transaction.rollback();
+                } catch { }
+            }
+
+            console.error('Delete phieu kiem error:', err);
+            res.status(500).json({
+                message: 'Không thể xoá phiếu kiểm',
+                error: err.message
+            });
         }
     }
 );
@@ -295,9 +431,11 @@ router.get(
                     delete phieu.DynamicFieldsJSON;
                 }
 
+                const btpItems = attachBtpLotRows(result.recordsets[1] || [], result.recordsets[4] || []);
+
                 return res.json({
                     phieu,
-                    btpItems: result.recordsets[1] || [],
+                    btpItems,
                     summary: result.recordsets[2][0] || null,
                     defects: result.recordsets[3] || [],
                     dynamicFields
@@ -545,10 +683,34 @@ router.get(
         try {
             const { id } = req.params;
             const pool = await poolPromise;
-            const result = await pool.request()
+            const itemsResult = await pool.request()
                 .input('PhieuKiemId', sql.Int, id)
                 .query('SELECT * FROM PHIEU_KIEM_BTP_ITEM WHERE PhieuKiemId = @PhieuKiemId');
-            res.json(result.recordset);
+            const lotResult = await pool.request()
+                .input('PhieuKiemId', sql.Int, id)
+                .query(`
+                    IF OBJECT_ID(N'dbo.PHIEU_KIEM_BTP_ITEM_LOT', N'U') IS NOT NULL
+                    BEGIN
+                        SELECT lot.*
+                        FROM dbo.PHIEU_KIEM_BTP_ITEM_LOT lot
+                        INNER JOIN dbo.PHIEU_KIEM_BTP_ITEM item ON item.Id = lot.BtpItemId
+                        WHERE item.PhieuKiemId = @PhieuKiemId
+                        ORDER BY lot.BtpItemId, lot.SortOrder, lot.Id
+                    END
+                    ELSE
+                    BEGIN
+                        SELECT TOP 0
+                            CAST(NULL AS INT) AS Id,
+                            CAST(NULL AS INT) AS BtpItemId,
+                            CAST(NULL AS NVARCHAR(100)) AS DauTuanGS1,
+                            CAST(NULL AS NVARCHAR(50)) AS ThuTu,
+                            CAST(NULL AS NVARCHAR(100)) AS LxvtLot,
+                            CAST(NULL AS NVARCHAR(100)) AS SoLotSX,
+                            CAST(NULL AS DECIMAL(18,2)) AS SoLuongNhap,
+                            CAST(NULL AS INT) AS SortOrder
+                    END
+                `);
+            res.json(attachBtpLotRows(itemsResult.recordset, lotResult.recordset));
         } catch (err) {
             console.error(err);
             res.status(500).json({ message: 'Lỗi lấy chi tiết mặt hàng BTP' });

@@ -18,9 +18,10 @@ import { Ionicons } from '@expo/vector-icons';
 import {
     saveCheckItem,
     getDefectList,
-    uploadImages
+    uploadImages,
+    uploadImagesWithXhr
 } from "../api/phieuKiem.api";
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 const IMAGE_PICKER_OPTIONS = {
     mediaTypes: ['images'],
@@ -359,7 +360,7 @@ export default function CheckItemScreen({ route, navigation }) {
             const cachedUris = await copyImagesToCache(images, defectIndex);
             const retryFormData = new FormData();
             appendImagesToFormData(retryFormData, images, defectIndex, cachedUris);
-            const retryUploadRes = await uploadImages(retryFormData);
+            const retryUploadRes = await uploadImagesWithXhr(retryFormData);
             return retryUploadRes.data?.filePaths || [];
         }
     };
