@@ -4,6 +4,7 @@ import {
     Box,
     Button,
     Card,
+    Checkbox,
     Chip,
     CircularProgress,
     Dialog,
@@ -50,6 +51,7 @@ const emptyForm = {
     DefectType: "MAJOR",
     MoTa: "",
     GhiChu: "",
+    PhuongAnXuLy: "",
     MaNhomLoi: "",
     LoaiLoiSXBT: "",
     TenSanPham: "",
@@ -66,6 +68,16 @@ const phamViApDungOptions = [
     "Kiểm công đoạn",
     "Kiểm hoàn chỉnh"
 ];
+
+const splitPhamViApDung = (value) => {
+    if (Array.isArray(value)) return value.filter(Boolean);
+    return String(value || "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+};
+
+const joinPhamViApDung = (value) => splitPhamViApDung(value).join(", ");
 
 const cellSx = {
     py: 1,
@@ -131,6 +143,27 @@ const normalizeDefectType = (loaiLoiSXBT, defectType) => {
     return defectType || "MAJOR";
 };
 
+const emptyFilters = {
+    DefectType: "",
+    LoaiLoiSXBT: "",
+    TenSanPham: "",
+    ChungLoai: "",
+    PhamViApDung: "",
+    ThiTruong: "",
+    TrangThai: ""
+};
+
+const getUniqueOptions = (rows, field) =>
+    Array.from(new Set(
+        rows
+            .map((row) => String(row[field] || "").trim())
+            .filter(Boolean)
+    )).sort((a, b) => a.localeCompare(b, "vi"));
+
+const getUniqueScopeOptions = (rows) =>
+    Array.from(new Set(rows.flatMap((row) => splitPhamViApDung(row.PhamViApDung))))
+        .sort((a, b) => a.localeCompare(b, "vi"));
+
 export default function DefectManager() {
     const [data, setData] = useState([]);
     const [open, setOpen] = useState(false);
@@ -138,6 +171,7 @@ export default function DefectManager() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [keyword, setKeyword] = useState("");
+    const [filters, setFilters] = useState(emptyFilters);
     const [previewImage, setPreviewImage] = useState("");
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState("");
@@ -169,25 +203,56 @@ export default function DefectManager() {
         };
     }, [imagePreview]);
 
+    const filterOptions = useMemo(() => ({
+        TenSanPham: getUniqueOptions(data, "TenSanPham"),
+        ChungLoai: getUniqueOptions(data, "ChungLoai"),
+        PhamViApDung: getUniqueScopeOptions(data),
+        ThiTruong: getUniqueOptions(data, "ThiTruong")
+    }), [data]);
+
+    const hasActiveFilters = useMemo(
+        () => keyword.trim() || Object.values(filters).some(Boolean),
+        [filters, keyword]
+    );
+
     const filteredData = useMemo(() => {
         const value = keyword.trim().toLowerCase();
-        if (!value) return data;
-
-        return data.filter((row) =>
-            [
+        return data.filter((row) => {
+            const matchesKeyword = !value || [
                 row.MaLoi,
                 row.TenLoi,
                 row.MoTa,
                 row.GhiChu,
+                row.PhuongAnXuLy,
                 row.TenSanPham,
                 row.ChungLoai,
                 row.PhamViApDung,
                 row.ThiTruong,
                 row.MaNhomLoi,
                 row.LoaiLoiSXBT
-            ].some((field) => String(field || "").toLowerCase().includes(value))
-        );
-    }, [data, keyword]);
+            ].some((field) => String(field || "").toLowerCase().includes(value));
+
+            const matchesFilters =
+                (!filters.DefectType || row.DefectType === filters.DefectType) &&
+                (!filters.LoaiLoiSXBT || row.LoaiLoiSXBT === filters.LoaiLoiSXBT) &&
+                (!filters.TenSanPham || row.TenSanPham === filters.TenSanPham) &&
+                (!filters.ChungLoai || row.ChungLoai === filters.ChungLoai) &&
+                (!filters.PhamViApDung || splitPhamViApDung(row.PhamViApDung).includes(filters.PhamViApDung)) &&
+                (!filters.ThiTruong || row.ThiTruong === filters.ThiTruong) &&
+                (!filters.TrangThai || String(row.TrangThai !== false && row.TrangThai !== 0) === filters.TrangThai);
+
+            return matchesKeyword && matchesFilters;
+        });
+    }, [data, filters, keyword]);
+
+    const handleFilterChange = (field, value) => {
+        setFilters((prev) => ({ ...prev, [field]: value }));
+    };
+
+    const resetFilters = () => {
+        setKeyword("");
+        setFilters(emptyFilters);
+    };
 
     const handleOpenCreate = useCallback(() => {
         setForm(emptyForm);
@@ -201,6 +266,7 @@ export default function DefectManager() {
             ...emptyForm,
             ...row,
             PhamViApDung: row.PhamViApDung || "",
+            PhuongAnXuLy: row.PhuongAnXuLy || "",
             TenSanPham: row.TenSanPham || "",
             ChungLoai: row.ChungLoai || "",
             DefectType: normalizeDefectType(row.LoaiLoiSXBT, row.DefectType),
@@ -219,12 +285,13 @@ export default function DefectManager() {
         DefectType: normalizeDefectType(form.LoaiLoiSXBT, form.DefectType),
         MoTa: form.MoTa || form.TenLoi || null,
         GhiChu: form.GhiChu || null,
+        PhuongAnXuLy: form.PhuongAnXuLy || null,
         PhanHe: form.PhanHe || null,
         MaNhomLoi: form.MaNhomLoi || null,
         LoaiLoiSXBT: form.LoaiLoiSXBT || null,
         TenSanPham: form.TenSanPham || null,
         ChungLoai: form.ChungLoai || null,
-        PhamViApDung: form.PhamViApDung || null,
+        PhamViApDung: joinPhamViApDung(form.PhamViApDung) || null,
         ThiTruong: form.ThiTruong || null,
         ImageUrl: form.ImageUrl || null,
         ThuTu: form.ThuTu === "" || form.ThuTu == null ? null : Number(form.ThuTu),
@@ -343,7 +410,7 @@ export default function DefectManager() {
         if (filteredData.length === 0 && !loading) {
             return (
                 <TableRow>
-                    <TableCell colSpan={12} align="center" sx={{ py: 6 }}>
+                    <TableCell colSpan={13} align="center" sx={{ py: 6 }}>
                         <BugReportIcon sx={{ fontSize: 60, color: "text.disabled", mb: 1 }} />
                         <Typography variant="h6" color="text.secondary">Chưa có dữ liệu lỗi</Typography>
                         <Typography variant="body2" color="text.secondary">
@@ -446,6 +513,18 @@ export default function DefectManager() {
                             sx={clampTextSx}
                         >
                             {row.PhamViApDung || "--"}
+                        </Typography>
+                    </Tooltip>
+                </TableCell>
+
+                <TableCell sx={cellSx}>
+                    <Tooltip title={row.PhuongAnXuLy || ""}>
+                        <Typography
+                            variant="body2"
+                            color={row.PhuongAnXuLy ? "text.primary" : "text.disabled"}
+                            sx={clampTextSx}
+                        >
+                            {row.PhuongAnXuLy || "--"}
                         </Typography>
                     </Tooltip>
                 </TableCell>
@@ -579,6 +658,110 @@ export default function DefectManager() {
                 </Stack>
             </Stack>
 
+            <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2, bgcolor: "#f8fafc" }}>
+                <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "center" }}>
+                    <TextField
+                        size="small"
+                        label="Phân loại"
+                        select
+                        value={filters.DefectType}
+                        onChange={(event) => handleFilterChange("DefectType", event.target.value)}
+                        sx={{ minWidth: { md: 150 } }}
+                    >
+                        <MenuItem value="">Tất cả</MenuItem>
+                        <MenuItem value="CRITICAL">CRITICAL</MenuItem>
+                        <MenuItem value="MAJOR">MAJOR</MenuItem>
+                        <MenuItem value="MINOR">MINOR</MenuItem>
+                    </TextField>
+
+                    <TextField
+                        size="small"
+                        label="Loại B/C"
+                        select
+                        value={filters.LoaiLoiSXBT}
+                        onChange={(event) => handleFilterChange("LoaiLoiSXBT", event.target.value)}
+                        sx={{ minWidth: { md: 120 } }}
+                    >
+                        <MenuItem value="">Tất cả</MenuItem>
+                        <MenuItem value="B">B</MenuItem>
+                        <MenuItem value="C">C</MenuItem>
+                    </TextField>
+
+                    <TextField
+                        size="small"
+                        label="Sản phẩm"
+                        select
+                        value={filters.TenSanPham}
+                        onChange={(event) => handleFilterChange("TenSanPham", event.target.value)}
+                        sx={{ minWidth: { md: 180 } }}
+                    >
+                        <MenuItem value="">Tất cả</MenuItem>
+                        {filterOptions.TenSanPham.map((option) => (
+                            <MenuItem key={option} value={option}>{option}</MenuItem>
+                        ))}
+                    </TextField>
+
+                    <TextField
+                        size="small"
+                        label="Chủng loại"
+                        select
+                        value={filters.ChungLoai}
+                        onChange={(event) => handleFilterChange("ChungLoai", event.target.value)}
+                        sx={{ minWidth: { md: 160 } }}
+                    >
+                        <MenuItem value="">Tất cả</MenuItem>
+                        {filterOptions.ChungLoai.map((option) => (
+                            <MenuItem key={option} value={option}>{option}</MenuItem>
+                        ))}
+                    </TextField>
+
+                    <TextField
+                        size="small"
+                        label="Phạm vi"
+                        select
+                        value={filters.PhamViApDung}
+                        onChange={(event) => handleFilterChange("PhamViApDung", event.target.value)}
+                        sx={{ minWidth: { md: 180 } }}
+                    >
+                        <MenuItem value="">Tất cả</MenuItem>
+                        {filterOptions.PhamViApDung.map((option) => (
+                            <MenuItem key={option} value={option}>{option}</MenuItem>
+                        ))}
+                    </TextField>
+
+                    <TextField
+                        size="small"
+                        label="Thị trường"
+                        select
+                        value={filters.ThiTruong}
+                        onChange={(event) => handleFilterChange("ThiTruong", event.target.value)}
+                        sx={{ minWidth: { md: 150 } }}
+                    >
+                        <MenuItem value="">Tất cả</MenuItem>
+                        {filterOptions.ThiTruong.map((option) => (
+                            <MenuItem key={option} value={option}>{option}</MenuItem>
+                        ))}
+                    </TextField>
+
+                    <TextField
+                        size="small"
+                        label="Trạng thái"
+                        select
+                        value={filters.TrangThai}
+                        onChange={(event) => handleFilterChange("TrangThai", event.target.value)}
+                        sx={{ minWidth: { md: 140 } }}
+                    >
+                        <MenuItem value="">Tất cả</MenuItem>
+                        <MenuItem value="true">Hoạt động</MenuItem>
+                        <MenuItem value="false">Tạm ngưng</MenuItem>
+                    </TextField>
+
+                    <Button variant="text" onClick={resetFilters} disabled={!hasActiveFilters} sx={{ whiteSpace: "nowrap" }}>
+                        Xóa lọc
+                    </Button>
+                </Stack>
+            </Paper>
+
             <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider", borderRadius: 2, overflow: "hidden", maxWidth: "100%" }}>
                 <TableContainer component={Paper} sx={{ position: "relative", boxShadow: "none", width: "100%", maxWidth: "100%", overflowX: "auto" }}>
                     {loading && (
@@ -597,7 +780,7 @@ export default function DefectManager() {
                         </Box>
                     )}
 
-                    <Table size="small" stickyHeader sx={{ minWidth: 1320, "& tbody tr:hover": { bgcolor: "#f8fbff" } }}>
+                    <Table size="small" stickyHeader sx={{ minWidth: 1480, "& tbody tr:hover": { bgcolor: "#f8fbff" } }}>
                         <TableHead>
                             <TableRow>
                                 <TableCell sx={{ ...headerCellSx, width: 78 }}>STT</TableCell>
@@ -608,6 +791,7 @@ export default function DefectManager() {
                                 <TableCell sx={{ ...headerCellSx, width: 180 }}>Sản phẩm</TableCell>
                                 <TableCell sx={{ ...headerCellSx, width: 150 }}>Chủng loại</TableCell>
                                 <TableCell sx={{ ...headerCellSx, width: 180 }}>Phạm vi</TableCell>
+                                <TableCell sx={{ ...headerCellSx, width: 190 }}>Phương án xử lý</TableCell>
                                 <TableCell sx={{ ...headerCellSx, width: 130 }}>Thị trường</TableCell>
                                 <TableCell sx={{ ...headerCellSx, width: 110 }} align="center">Ảnh</TableCell>
                                 <TableCell sx={{ ...headerCellSx, width: 120 }} align="center">Trạng thái</TableCell>
@@ -669,6 +853,16 @@ export default function DefectManager() {
                             fullWidth
                             value={form.GhiChu || ""}
                             onChange={(event) => setForm({ ...form, GhiChu: event.target.value })}
+                        />
+
+                        <TextField
+                            label="Phương án xử lý"
+                            fullWidth
+                            multiline
+                            minRows={2}
+                            placeholder="Ví dụ: Sửa lại, loại bỏ, trả NCC, phân loại lại..."
+                            value={form.PhuongAnXuLy || ""}
+                            onChange={(event) => setForm({ ...form, PhuongAnXuLy: event.target.value })}
                         />
 
 
@@ -742,12 +936,16 @@ export default function DefectManager() {
                                 select
                                 label="Phạm vi áp dụng"
                                 fullWidth
-                                value={form.PhamViApDung || ""}
+                                value={splitPhamViApDung(form.PhamViApDung)}
                                 onChange={(event) => setForm({ ...form, PhamViApDung: event.target.value })}
+                                SelectProps={{
+                                    multiple: true,
+                                    renderValue: (selected) => selected.join(", ")
+                                }}
                             >
-                                <MenuItem value="">Chưa chọn</MenuItem>
                                 {phamViApDungOptions.map((option) => (
                                     <MenuItem key={option} value={option}>
+                                        <Checkbox checked={splitPhamViApDung(form.PhamViApDung).includes(option)} />
                                         {option}
                                     </MenuItem>
                                 ))}

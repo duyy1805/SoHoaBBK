@@ -30,7 +30,7 @@ import { getUser } from "../utils/auth";
 
 export default function SxbtInspectionScreen({ route, navigation }) {
     const { id } = route.params;
-    
+
     // 1. All States
     const [user, setUser] = useState(null);
     const [phieu, setPhieu] = useState(null);
@@ -54,8 +54,8 @@ export default function SxbtInspectionScreen({ route, navigation }) {
 
     // Mục IV: Lỗi
     const [defects, setDefects] = useState([]);
-    const [defectList, setDefectList] = useState([]); 
-    const [masterDefectList, setMasterDefectList] = useState([]); 
+    const [defectList, setDefectList] = useState([]);
+    const [masterDefectList, setMasterDefectList] = useState([]);
     const [defectModalVisible, setDefectModalVisible] = useState(false);
     const [searchText, setSearchText] = useState("");
 
@@ -586,39 +586,39 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                         const previewRows = lotRows.slice(0, 2);
 
                         return (
-                        <TouchableOpacity
-                            key={item.Id}
-                            style={styles.itemRow}
-                            disabled={isCompleted}
-                            onPress={() => { setSelectedBtp(normalizeBtpItem(item)); setBtpModalVisible(true); }}
-                        >
-                            <View style={{ flex: 1 }}>
-                                <Text style={styles.itemName}>{item.TenSanPham}</Text>
-                                <Text style={styles.itemSub}>SL phiếu: {item.SoLuong} {item.DonViTinh}</Text>
-                                <View style={styles.btpDetailBox}>
-                                    {lotRows.length > 0 ? (
-                                        <>
-                                            <Text style={styles.btpDetailText}>
-                                                • Đã nhập <Text style={{ fontWeight: 'bold' }}>{lotRows.length}</Text> dòng lot
-                                                {totalInputQuantity > 0 ? <Text> - Tổng SL: <Text style={{ fontWeight: 'bold' }}>{totalInputQuantity}</Text></Text> : null}
-                                            </Text>
-                                            {previewRows.map((row, rowIndex) => (
-                                                <Text key={`${item.Id}-lot-${rowIndex}`} style={styles.btpDetailText}>
-                                                    • {row.DauTuanGS1 || "Chưa có dấu tuần"} / {row.SoLotSX || "Chưa có lot"}
-                                                    {row.SoLuongNhap !== "" && row.SoLuongNhap !== null && row.SoLuongNhap !== undefined ? ` - SL ${row.SoLuongNhap}` : ""}
+                            <TouchableOpacity
+                                key={item.Id}
+                                style={styles.itemRow}
+                                disabled={isCompleted}
+                                onPress={() => { setSelectedBtp(normalizeBtpItem(item)); setBtpModalVisible(true); }}
+                            >
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.itemName}>{item.TenSanPham}</Text>
+                                    <Text style={styles.itemSub}>SL phiếu: {item.SoLuong} {item.DonViTinh}</Text>
+                                    <View style={styles.btpDetailBox}>
+                                        {lotRows.length > 0 ? (
+                                            <>
+                                                <Text style={styles.btpDetailText}>
+                                                    • Đã nhập <Text style={{ fontWeight: 'bold' }}>{lotRows.length}</Text> dòng lot
+                                                    {totalInputQuantity > 0 ? <Text> - Tổng SL: <Text style={{ fontWeight: 'bold' }}>{totalInputQuantity}</Text></Text> : null}
                                                 </Text>
-                                            ))}
-                                            {lotRows.length > previewRows.length && (
-                                                <Text style={[styles.btpDetailText, { color: '#64748b' }]}>• Còn {lotRows.length - previewRows.length} dòng khác</Text>
-                                            )}
-                                        </>
-                                    ) : (
-                                        <Text style={[styles.btpDetailText, { color: '#9ca3af', fontStyle: 'italic' }]}>Chưa nhập thông tin chi tiết</Text>
-                                    )}
+                                                {previewRows.map((row, rowIndex) => (
+                                                    <Text key={`${item.Id}-lot-${rowIndex}`} style={styles.btpDetailText}>
+                                                        • {row.DauTuanGS1 || "Chưa có dấu tuần"} / {row.SoLotSX || "Chưa có lot"}
+                                                        {row.SoLuongNhap !== "" && row.SoLuongNhap !== null && row.SoLuongNhap !== undefined ? ` - SL ${row.SoLuongNhap}` : ""}
+                                                    </Text>
+                                                ))}
+                                                {lotRows.length > previewRows.length && (
+                                                    <Text style={[styles.btpDetailText, { color: '#64748b' }]}>• Còn {lotRows.length - previewRows.length} dòng khác</Text>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <Text style={[styles.btpDetailText, { color: '#9ca3af', fontStyle: 'italic' }]}>Chưa nhập thông tin chi tiết</Text>
+                                        )}
+                                    </View>
                                 </View>
-                            </View>
-                            {!isCompleted && <MaterialCommunityIcons name="pencil" size={20} color="#0052cc" style={{ alignSelf: 'flex-start', marginTop: 4 }} />}
-                        </TouchableOpacity>
+                                {!isCompleted && <MaterialCommunityIcons name="pencil" size={20} color="#0052cc" style={{ alignSelf: 'flex-start', marginTop: 4 }} />}
+                            </TouchableOpacity>
                         );
                     })}
                 </View>

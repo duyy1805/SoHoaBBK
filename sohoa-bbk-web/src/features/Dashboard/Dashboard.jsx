@@ -49,7 +49,17 @@ const emptyOverview = {
         defectReports: { value: 0, trend: 0 }
     },
     recentInspections: [],
-    weeklyCompleted: []
+    weeklyCompleted: [],
+    defectStats: {
+        summary: {
+            totalQuantity: 0,
+            totalOccurrences: 0,
+            affectedInspections: 0
+        },
+        byType: [],
+        byInspectionType: [],
+        topDefects: []
+    }
 };
 
 const formatNumber = (value) => Number(value || 0).toLocaleString("vi-VN");
@@ -93,6 +103,19 @@ const getResultProps = (result) => {
     if (result === "DAT") return { label: "Đạt", color: "success" };
     if (result === "KHONG_DAT") return { label: "Không đạt", color: "error" };
     return null;
+};
+
+const getDefectTypeProps = (type) => {
+    switch (type) {
+        case "CRITICAL":
+            return { label: "Critical", color: "error" };
+        case "MAJOR":
+            return { label: "Major", color: "warning" };
+        case "MINOR":
+            return { label: "Minor", color: "info" };
+        default:
+            return { label: type || "Khác", color: "default" };
+    }
 };
 
 const StatCard = ({ title, value, icon, color, trend, trendUnit = "%", lowerIsBetter = false }) => {
@@ -169,6 +192,14 @@ export default function Dashboard() {
                 stats: {
                     ...emptyOverview.stats,
                     ...(res.data?.stats || {})
+                },
+                defectStats: {
+                    ...emptyOverview.defectStats,
+                    ...(res.data?.defectStats || {}),
+                    summary: {
+                        ...emptyOverview.defectStats.summary,
+                        ...(res.data?.defectStats?.summary || {})
+                    }
                 }
             });
             setError("");
@@ -251,6 +282,11 @@ export default function Dashboard() {
     const weeklyMax = useMemo(
         () => Math.max(...overview.weeklyCompleted.map((item) => Number(item.CompletedCount) || 0), 1),
         [overview.weeklyCompleted]
+    );
+
+    const defectTypeTotal = useMemo(
+        () => Math.max(...overview.defectStats.byType.map((item) => Number(item.Quantity) || 0), 1),
+        [overview.defectStats.byType]
     );
 
     if (loading) {
@@ -397,6 +433,214 @@ export default function Dashboard() {
                                 );
                             })}
                         </Box>
+                    </Paper>
+
+                    <Paper sx={{ mt: 3, overflow: "hidden" }}>
+                        <Box sx={{ p: 2 }}>
+                            <Stack
+                                direction={{ xs: "column", sm: "row" }}
+                                justifyContent="space-between"
+                                alignItems={{ xs: "flex-start", sm: "center" }}
+                                spacing={1}
+                            >
+                                <Box>
+                                    <Typography variant="h6">Lỗi xuất hiện toàn thời gian</Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        Tổng hợp toàn bộ lỗi đã ghi nhận từ các phiếu kiểm.
+                                    </Typography>
+                                </Box>
+                                <Chip
+                                    icon={<ErrorIcon />}
+                                    label={`${formatNumber(overview.defectStats.summary.totalQuantity)} lỗi`}
+                                    color="error"
+                                    variant="outlined"
+                                    sx={{ fontWeight: 700 }}
+                                />
+                            </Stack>
+
+                            <Grid container spacing={1.5} sx={{ mt: 2 }}>
+                                <Grid size={{ xs: 12, sm: 4 }}>
+                                    <Card variant="outlined" sx={{ bgcolor: alpha(theme.palette.error.main, 0.04) }}>
+                                        <CardContent sx={{ py: 1.75, "&:last-child": { pb: 1.75 } }}>
+                                            <Typography variant="caption" color="text.secondary">Tổng số lượng lỗi</Typography>
+                                            <Typography variant="h5" fontWeight={800}>
+                                                {formatNumber(overview.defectStats.summary.totalQuantity)}
+                                            </Typography>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                                <Grid size={{ xs: 12, sm: 4 }}>
+                                    <Card variant="outlined">
+                                        <CardContent sx={{ py: 1.75, "&:last-child": { pb: 1.75 } }}>
+                                            <Typography variant="caption" color="text.secondary">Lượt ghi nhận</Typography>
+                                            <Typography variant="h5" fontWeight={800}>
+                                                {formatNumber(overview.defectStats.summary.totalOccurrences)}
+                                            </Typography>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                                <Grid size={{ xs: 12, sm: 4 }}>
+                                    <Card variant="outlined">
+                                        <CardContent sx={{ py: 1.75, "&:last-child": { pb: 1.75 } }}>
+                                            <Typography variant="caption" color="text.secondary">Phiếu có lỗi</Typography>
+                                            <Typography variant="h5" fontWeight={800}>
+                                                {formatNumber(overview.defectStats.summary.affectedInspections)}
+                                            </Typography>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                            </Grid>
+
+                            <Stack spacing={1.25} sx={{ mt: 2 }}>
+                                {overview.defectStats.byType.length === 0 ? (
+                                    <Typography variant="body2" color="text.secondary">
+                                        Chưa có lỗi được ghi nhận trong tháng.
+                                    </Typography>
+                                ) : overview.defectStats.byType.map((item) => {
+                                    const quantity = Number(item.Quantity) || 0;
+                                    const pct = Math.max((quantity / defectTypeTotal) * 100, quantity > 0 ? 8 : 0);
+                                    const typeProps = getDefectTypeProps(item.DefectType);
+
+                                    return (
+                                        <Box key={item.DefectType || "UNKNOWN"}>
+                                            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
+                                                <Chip label={typeProps.label} size="small" color={typeProps.color} variant="outlined" />
+                                                <Typography variant="body2" fontWeight={700}>
+                                                    {formatNumber(quantity)} lỗi / {formatNumber(item.Occurrences)} lượt
+                                                </Typography>
+                                            </Stack>
+                                            <Box sx={{ height: 8, borderRadius: 999, bgcolor: "divider", overflow: "hidden" }}>
+                                                <Box
+                                                    sx={{
+                                                        width: `${pct}%`,
+                                                        height: "100%",
+                                                        bgcolor: `${typeProps.color}.main`
+                                                    }}
+                                                />
+                                            </Box>
+                                        </Box>
+                                    );
+                                })}
+                            </Stack>
+
+                            <Box sx={{ mt: 3 }}>
+                                <Typography variant="subtitle2" fontWeight={800} sx={{ mb: 1 }}>
+                                    Theo loại kiểm
+                                </Typography>
+                                <TableContainer component={Paper} variant="outlined" sx={{ boxShadow: "none" }}>
+                                    <Table size="small">
+                                        <TableHead>
+                                            <TableRow>
+                                                <TableCell>Loại kiểm</TableCell>
+                                                <TableCell align="right">Số lượng</TableCell>
+                                                <TableCell align="right">Lượt</TableCell>
+                                                <TableCell align="right">Phiếu</TableCell>
+                                                <TableCell align="right">C/M/m</TableCell>
+                                            </TableRow>
+                                        </TableHead>
+                                        <TableBody>
+                                            {overview.defectStats.byInspectionType.length === 0 ? (
+                                                <TableRow>
+                                                    <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
+                                                        <Typography variant="body2" color="text.secondary">
+                                                            Chưa có lỗi theo loại kiểm.
+                                                        </Typography>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ) : overview.defectStats.byInspectionType.map((item) => (
+                                                <TableRow key={item.LoaiKiemId || item.TenLoai} hover>
+                                                    <TableCell>
+                                                        <Typography variant="body2" fontWeight={700}>
+                                                            {item.TenLoai || "Chưa xác định"}
+                                                        </Typography>
+                                                        {item.MaLoai && (
+                                                            <Typography variant="caption" color="text.secondary">
+                                                                {item.MaLoai}
+                                                            </Typography>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell align="right" sx={{ fontWeight: 700 }}>
+                                                        {formatNumber(item.Quantity)}
+                                                    </TableCell>
+                                                    <TableCell align="right">{formatNumber(item.Occurrences)}</TableCell>
+                                                    <TableCell align="right">{formatNumber(item.AffectedInspections)}</TableCell>
+                                                    <TableCell align="right">
+                                                        <Stack direction="row" spacing={0.5} justifyContent="flex-end" flexWrap="wrap">
+                                                            <Chip size="small" color="error" variant="outlined" label={formatNumber(item.CriticalQuantity)} />
+                                                            <Chip size="small" color="warning" variant="outlined" label={formatNumber(item.MajorQuantity)} />
+                                                            <Chip size="small" color="info" variant="outlined" label={formatNumber(item.MinorQuantity)} />
+                                                        </Stack>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </TableContainer>
+                            </Box>
+                        </Box>
+
+                        <Divider />
+                        <TableContainer>
+                            <Table size="small">
+                                <TableHead>
+                                    <TableRow>
+                                        <TableCell>Top lỗi</TableCell>
+                                        <TableCell>Loại</TableCell>
+                                        <TableCell align="right">Số lượng</TableCell>
+                                        <TableCell align="right">Lượt</TableCell>
+                                        <TableCell align="right">Phiếu</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {overview.defectStats.topDefects.length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                                                <Typography color="text.secondary">Chưa có dữ liệu lỗi.</Typography>
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : overview.defectStats.topDefects.map((item, index) => {
+                                        const typeProps = getDefectTypeProps(item.DefectType);
+                                        return (
+                                            <TableRow key={`${item.DefectId || "unknown"}-${index}`} hover>
+                                                <TableCell>
+                                                    <Typography variant="body2" fontWeight={700}>
+                                                        {item.MaLoi || "--"}
+                                                    </Typography>
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {item.TenLoi || "Chưa xác định"}
+                                                    </Typography>
+                                                    {item.MoTa && item.MoTa !== item.TenLoi && (
+                                                        <Typography
+                                                            variant="caption"
+                                                            color="text.disabled"
+                                                            sx={{
+                                                                display: "block",
+                                                                mt: 0.25,
+                                                                maxWidth: 360,
+                                                                overflow: "hidden",
+                                                                textOverflow: "ellipsis",
+                                                                whiteSpace: "nowrap"
+                                                            }}
+                                                            title={item.MoTa}
+                                                        >
+                                                            {item.MoTa}
+                                                        </Typography>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Chip label={typeProps.label} size="small" color={typeProps.color} variant="outlined" />
+                                                </TableCell>
+                                                <TableCell align="right" sx={{ fontWeight: 700 }}>
+                                                    {formatNumber(item.Quantity)}
+                                                </TableCell>
+                                                <TableCell align="right">{formatNumber(item.Occurrences)}</TableCell>
+                                                <TableCell align="right">{formatNumber(item.AffectedInspections)}</TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
                     </Paper>
                 </Grid>
 

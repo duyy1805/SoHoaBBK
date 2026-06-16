@@ -61,6 +61,7 @@ const defectImportHeaders = [
   "ChungLoai",
   "MoTa",
   "GhiChu",
+  "PhuongAnXuLy",
   "PhamViApDung",
   "ThiTruong",
   "ThuTu",
@@ -271,6 +272,7 @@ function parseDefectImportRows(workbook, imagesByCell) {
       ChungLoai: trimValue(values.ChungLoai),
       MoTa: trimValue(values.MoTa),
       GhiChu: trimValue(values.GhiChu),
+      PhuongAnXuLy: trimValue(values.PhuongAnXuLy),
       PhamViApDung: trimValue(values.PhamViApDung),
       ThiTruong: trimValue(values.ThiTruong),
       ThuTu: values.ThuTu,
@@ -479,6 +481,7 @@ router.get(
         ChungLoai: "Balo",
         MoTa: "Đường may lệch hoặc không đều so với mẫu chuẩn",
         GhiChu: "",
+        PhuongAnXuLy: "Sửa lại hoặc loại bỏ nếu không đạt tiêu chuẩn",
         PhamViApDung: "Kiểm ngoại quan",
         ThiTruong: "Nội địa",
         ThuTu: 1,
@@ -496,6 +499,7 @@ router.get(
         ChungLoai: "Lều",
         MoTa: "Có vết bẩn nhỏ trên bề mặt vải",
         GhiChu: "Chèn ảnh trực tiếp vào cột Anh nếu cần",
+        PhuongAnXuLy: "Vệ sinh lại, nếu không sạch thì phân loại lỗi",
         PhamViApDung: "Kiểm ngoại quan",
         ThiTruong: "Xuất khẩu",
         ThuTu: 2,
@@ -518,6 +522,7 @@ router.get(
       { wch: 18 },
       { wch: 42 },
       { wch: 28 },
+      { wch: 34 },
       { wch: 24 },
       { wch: 18 },
       { wch: 10 },
@@ -681,6 +686,7 @@ router.post(
               .input("TrangThai", sql.Bit, trangThai)
               .input("MoTa", sql.NVarChar(sql.MAX), row.MoTa || row.TenLoi || null)
               .input("GhiChu", sql.NVarChar(sql.MAX), row.GhiChu || null)
+              .input("PhuongAnXuLy", sql.NVarChar(sql.MAX), row.PhuongAnXuLy || null)
               .input("MaLoi", sql.NVarChar(50), row.MaLoi)
               .input("PhanHe", sql.NVarChar(20), row.PhanHe || null)
               .input("MaNhomLoi", sql.NVarChar(20), row.MaNhomLoi || null)
@@ -699,6 +705,7 @@ router.post(
               .input("DefectType", sql.NVarChar(20), normalizedDefectType)
               .input("MoTa", sql.NVarChar(sql.MAX), row.MoTa || row.TenLoi || null)
               .input("GhiChu", sql.NVarChar(sql.MAX), row.GhiChu || null)
+              .input("PhuongAnXuLy", sql.NVarChar(sql.MAX), row.PhuongAnXuLy || null)
               .input("MaLoi", sql.NVarChar(50), row.MaLoi)
               .input("PhanHe", sql.NVarChar(20), row.PhanHe || null)
               .input("MaNhomLoi", sql.NVarChar(20), row.MaNhomLoi || null)
@@ -725,6 +732,7 @@ router.post(
                   .input("TrangThai", sql.Bit, trangThai)
                   .input("MoTa", sql.NVarChar(sql.MAX), row.MoTa || row.TenLoi || null)
                   .input("GhiChu", sql.NVarChar(sql.MAX), row.GhiChu || null)
+                  .input("PhuongAnXuLy", sql.NVarChar(sql.MAX), row.PhuongAnXuLy || null)
                   .input("MaLoi", sql.NVarChar(50), row.MaLoi)
                   .input("PhanHe", sql.NVarChar(20), row.PhanHe || null)
                   .input("MaNhomLoi", sql.NVarChar(20), row.MaNhomLoi || null)
@@ -793,6 +801,7 @@ router.post(
       DefectType,
       MoTa,
       GhiChu,
+      PhuongAnXuLy,
       MaLoi,
       PhanHe,
       MaNhomLoi,
@@ -814,6 +823,7 @@ router.post(
         .input("DefectType", sql.NVarChar(20), normalizedDefectType)
         .input("MoTa", sql.NVarChar(sql.MAX), MoTa)
         .input("GhiChu", sql.NVarChar(sql.MAX), GhiChu)
+        .input("PhuongAnXuLy", sql.NVarChar(sql.MAX), PhuongAnXuLy || null)
         .input("MaLoi", sql.NVarChar(50), MaLoi || null)
         .input("PhanHe", sql.NVarChar(20), PhanHe || null)
         .input("MaNhomLoi", sql.NVarChar(20), MaNhomLoi || null)
@@ -847,6 +857,7 @@ router.put(
       TrangThai,
       MoTa,
       GhiChu,
+      PhuongAnXuLy,
       MaLoi,
       PhanHe,
       MaNhomLoi,
@@ -870,6 +881,7 @@ router.put(
         .input("TrangThai", sql.Bit, TrangThai)
         .input("MoTa", sql.NVarChar(sql.MAX), MoTa)
         .input("GhiChu", sql.NVarChar(sql.MAX), GhiChu)
+        .input("PhuongAnXuLy", sql.NVarChar(sql.MAX), PhuongAnXuLy || null)
         .input("MaLoi", sql.NVarChar(50), MaLoi || null)
         .input("PhanHe", sql.NVarChar(20), PhanHe || null)
         .input("MaNhomLoi", sql.NVarChar(20), MaNhomLoi || null)
