@@ -12,11 +12,24 @@ const calculatePercentTrend = (current, previous) => {
     return Math.round(((current - previous) / previous) * 1000) / 10;
 };
 
+const emptyDefectStats = {
+    summary: {
+        totalQuantity: 0,
+        totalOccurrences: 0,
+        affectedInspections: 0
+    },
+    byType: [],
+    byInspectionType: [],
+    topDefects: []
+};
+
 router.get("/overview", authenticateToken, async (req, res) => {
     try {
         const pool = await poolPromise;
         const result = await pool.request().execute("sp_Dashboard_GetOverview");
+        const defectStatsResult = await pool.request().execute("sp_Dashboard_GetDefectStats");
         const rawStats = result.recordsets?.[0]?.[0] || {};
+        const rawDefectSummary = defectStatsResult.recordsets?.[0]?.[0] || {};
 
         const currentCompleted = toNumber(rawStats.CurrentCompletedInspections);
         const currentPassed = toNumber(rawStats.CurrentPassedInspections);
@@ -56,7 +69,18 @@ router.get("/overview", authenticateToken, async (req, res) => {
                 }
             },
             recentInspections: result.recordsets?.[1] || [],
-            weeklyCompleted: result.recordsets?.[2] || []
+            weeklyCompleted: result.recordsets?.[2] || [],
+            defectStats: {
+                ...emptyDefectStats,
+                summary: {
+                    totalQuantity: toNumber(rawDefectSummary.TotalQuantity),
+                    totalOccurrences: toNumber(rawDefectSummary.TotalOccurrences),
+                    affectedInspections: toNumber(rawDefectSummary.AffectedInspections)
+                },
+                byType: defectStatsResult.recordsets?.[1] || [],
+                byInspectionType: defectStatsResult.recordsets?.[2] || [],
+                topDefects: defectStatsResult.recordsets?.[3] || []
+            }
         });
     } catch (err) {
         console.error("Get dashboard overview error:", err);
@@ -65,4 +89,3 @@ router.get("/overview", authenticateToken, async (req, res) => {
 });
 
 module.exports = router;
-

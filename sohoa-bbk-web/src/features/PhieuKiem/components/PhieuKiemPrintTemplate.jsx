@@ -36,9 +36,21 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
         return [dai, rong, cao].filter(v => v !== undefined && v !== null && v !== "").join(" x ");
     })();
 
+    const normalizeText = (value = "") =>
+        String(value)
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toUpperCase()
+            .trim();
+
+    const getSectionQuantity = (matchFn) => {
+        const section = sections.find(s => matchFn(normalizeText(s.TenNhom)));
+        return section?.TongSo ?? section?.SoLuongKiem ?? "";
+    };
+
     // Lấy số lượng từ các nhóm kiểm (sections) tương ứng
-    const khayQty = sections.find(s => s.TenNhom?.toUpperCase() === "KHAY HỘP CARTON")?.TongSo;
-    const palletQty = sections.find(s => s.TenNhom?.toUpperCase() === "PALLET")?.TongSo;
+    const khayQty = getSectionQuantity(name => name.includes("KHAY"));
+    const palletQty = getSectionQuantity(name => name.includes("PALLET"));
 
     const styles = {
         previewBackground: {
