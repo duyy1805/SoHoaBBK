@@ -7,3 +7,13 @@ Content-Type: application/json
     "username": "admin1",
     "password": "Abcd$12349"
 }
+
+
+###
+POST https://z76api.z76.vn/api/auth/register
+Content-Type: application/json
+
+{
+    "username": "admin1",
+    "password": "123456"
+}
