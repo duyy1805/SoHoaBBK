@@ -133,7 +133,7 @@
             max-width: 1480px;
             margin: 0 auto 16px;
             display: grid;
-            grid-template-columns: 1fr auto auto auto auto;
+            grid-template-columns: 1fr auto auto auto auto auto;
             gap: 12px;
             align-items: center;
         }
@@ -253,7 +253,7 @@
 
         table {
             width: 100%;
-            min-width: 1120px;
+            min-width: 1320px;
             border-collapse: collapse;
         }
 
@@ -268,6 +268,65 @@
             text-align: left;
             white-space: nowrap;
             border-bottom: 1px solid var(--border);
+        }
+
+        .th-filter-toggle {
+            width: 24px;
+            height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 6px;
+            padding: 0;
+            color: var(--muted);
+            background: transparent;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 13px;
+            vertical-align: middle;
+        }
+
+        .th-filter-toggle:hover,
+        .th-filter-toggle.active {
+            color: var(--primary);
+            background: #eaf1ff;
+        }
+
+        .filter-popover {
+            position: fixed;
+            z-index: 1000;
+            width: 240px;
+            padding: 10px;
+            color: var(--text);
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+        }
+
+        .filter-popover label {
+            display: block;
+            margin-bottom: 6px;
+            color: #344054;
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .filter-popover input,
+        .filter-popover select {
+            width: 100%;
+            min-height: 36px;
+            padding: 7px 9px;
+            border: 1px solid var(--border-strong);
+            border-radius: 6px;
+            outline: none;
+        }
+
+        .filter-popover-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 10px;
         }
 
         th,
@@ -341,6 +400,44 @@
             color: #027a48;
             background: #ecfdf3;
             border-color: #abefc6;
+        }
+
+        .scope-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            min-height: 28px;
+        }
+
+        .scope-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 26px;
+            padding: 3px 8px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--surface-soft);
+            color: var(--text);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .scope-tag button {
+            width: 18px;
+            height: 18px;
+            display: inline-grid;
+            place-items: center;
+            padding: 0;
+            border-radius: 50%;
+            color: var(--muted);
+            background: transparent;
+            cursor: pointer;
+        }
+
+        .scope-tag button:hover {
+            color: var(--danger);
+            background: #fee2e2;
         }
 
         .image-thumb {
@@ -643,6 +740,7 @@
                 <input id="keyword" type="search" placeholder="Nhập mã lỗi, tên lỗi, mô tả, phạm vi, thị trường...">
             </div>
             <button id="reloadButton" class="btn btn-ghost" type="button">Tải lại</button>
+            <button id="clearFiltersButton" class="btn btn-ghost" type="button">Xóa lọc</button>
             <button id="downloadTemplateButton" class="btn btn-ghost" type="button">Tải file mẫu</button>
             <button id="importButton" class="btn btn-ghost" type="button">Import Excel</button>
             <button id="createButton" class="btn btn-primary" type="button">Thêm lỗi mới</button>
@@ -657,16 +755,37 @@
                     <thead>
                         <tr>
                             <th style="width: 76px;">STT</th>
-                            <th style="width: 130px;">Mã lỗi</th>
-                            <th style="width: 310px;">Tên / mô tả lỗi</th>
-                            <th style="width: 120px;">Phân loại</th>
-                            <th class="center" style="width: 90px;">Loại</th>
-                            <th style="width: 170px;">Sản phẩm</th>
-                            <th style="width: 140px;">Chủng loại</th>
-                            <th style="width: 190px;">Phạm vi</th>
-                            <th style="width: 130px;">Thị trường</th>
+                            <th style="width: 130px;">
+                                Mã lỗi <button class="th-filter-toggle" type="button" data-toggle-filter="MaLoi" aria-label="Lọc mã lỗi">⌕</button>
+                            </th>
+                            <th style="width: 310px;">
+                                Tên / mô tả lỗi <button class="th-filter-toggle" type="button" data-toggle-filter="TenLoi" aria-label="Lọc tên lỗi">⌕</button>
+                            </th>
+                            <th style="width: 120px;">
+                                Phân loại <button class="th-filter-toggle" type="button" data-toggle-filter="DefectType" aria-label="Lọc phân loại">⌕</button>
+                            </th>
+                            <th class="center" style="width: 90px;">
+                                Loại <button class="th-filter-toggle" type="button" data-toggle-filter="LoaiLoiSXBT" aria-label="Lọc loại">⌕</button>
+                            </th>
+                            <th style="width: 170px;">
+                                Sản phẩm <button class="th-filter-toggle" type="button" data-toggle-filter="TenSanPham" aria-label="Lọc sản phẩm">⌕</button>
+                            </th>
+                            <th style="width: 140px;">
+                                Chủng loại <button class="th-filter-toggle" type="button" data-toggle-filter="ChungLoai" aria-label="Lọc chủng loại">⌕</button>
+                            </th>
+                            <th style="width: 190px;">
+                                Phạm vi <button class="th-filter-toggle" type="button" data-toggle-filter="PhamViApDung" aria-label="Lọc phạm vi">⌕</button>
+                            </th>
+                            <th style="width: 190px;">
+                                Phương án xử lý <button class="th-filter-toggle" type="button" data-toggle-filter="PhuongAnXuLy" aria-label="Lọc phương án xử lý">⌕</button>
+                            </th>
+                            <th style="width: 130px;">
+                                Thị trường <button class="th-filter-toggle" type="button" data-toggle-filter="ThiTruong" aria-label="Lọc thị trường">⌕</button>
+                            </th>
                             <th class="center" style="width: 110px;">Ảnh</th>
-                            <th class="center" style="width: 130px;">Trạng thái</th>
+                            <th class="center" style="width: 130px;">
+                                Trạng thái <button class="th-filter-toggle" type="button" data-toggle-filter="TrangThai" aria-label="Lọc trạng thái">⌕</button>
+                            </th>
                             <th class="right" style="width: 110px;">Thao tác</th>
                         </tr>
                     </thead>
@@ -685,16 +804,6 @@
 
             <div class="modal-body">
                 <div class="form-grid">
-                    <div class="field">
-                        <label for="MaLoi">Mã lỗi</label>
-                        <input id="MaLoi" name="MaLoi" placeholder="Tự sinh nếu để trống">
-                    </div>
-
-                    <div class="field">
-                        <label for="ThuTu">STT</label>
-                        <input id="ThuTu" name="ThuTu" type="number" min="0" step="1">
-                    </div>
-
                     <div class="field span-2">
                         <label for="TenLoi">Tên lỗi *</label>
                         <textarea id="TenLoi" name="TenLoi" required placeholder="Ví dụ: Thùng móp méo, Vải không đạt yêu cầu..."></textarea>
@@ -708,6 +817,11 @@
                     <div class="field span-2">
                         <label for="GhiChu">Ghi chú / Lưu ý</label>
                         <input id="GhiChu" name="GhiChu">
+                    </div>
+
+                    <div class="field span-2">
+                        <label for="PhuongAnXuLy">Phương án xử lý</label>
+                        <textarea id="PhuongAnXuLy" name="PhuongAnXuLy" placeholder="Ví dụ: Sửa lại, loại bỏ, trả NCC, phân loại lại..."></textarea>
                     </div>
 
                     <div class="field">
@@ -733,8 +847,8 @@
                     </div>
 
                     <div class="field">
-                        <label for="MaNhomLoi">Mã nhóm lỗi</label>
-                        <input id="MaNhomLoi" name="MaNhomLoi">
+                        <label for="MaNhomLoi">Mã nhóm lỗi *</label>
+                        <input id="MaNhomLoi" name="MaNhomLoi" required placeholder="Ví dụ: L05">
                     </div>
 
                     <div class="field">
@@ -749,12 +863,14 @@
 
                     <div class="field">
                         <label for="PhamViApDung">Phạm vi áp dụng</label>
-                        <select id="PhamViApDung" name="PhamViApDung">
-                            <option value="">Chưa chọn</option>
+                        <input id="PhamViApDung" name="PhamViApDung" type="hidden">
+                        <select id="PhamViApDungSelect">
+                            <option value="">Chọn phạm vi...</option>
                             <option value="Kiểm đầu vào">Kiểm đầu vào</option>
                             <option value="Kiểm công đoạn">Kiểm công đoạn</option>
                             <option value="Kiểm hoàn chỉnh">Kiểm hoàn chỉnh</option>
                         </select>
+                        <div id="PhamViApDungTags" class="scope-tags"></div>
                     </div>
 
                     <div class="field">
@@ -828,6 +944,8 @@
         </div>
     </section>
 
+    <div id="filterPopover" class="filter-popover hidden"></div>
+
     <script>
         const API_BASE = "https://z76api.z76.vn/api";
         const ASSET_BASE = API_BASE.replace(/\/api\/?$/, "");
@@ -839,6 +957,7 @@
             DefectType: "MAJOR",
             MoTa: "",
             GhiChu: "",
+            PhuongAnXuLy: "",
             MaNhomLoi: "",
             LoaiLoiSXBT: "",
             TenSanPham: "",
@@ -854,12 +973,31 @@
             defects: [],
             filtered: [],
             keyword: "",
+            filters: {
+                MaLoi: "",
+                TenLoi: "",
+                DefectType: "",
+                LoaiLoiSXBT: "",
+                TenSanPham: "",
+                ChungLoai: "",
+                PhamViApDung: "",
+                PhuongAnXuLy: "",
+                ThiTruong: "",
+                TrangThai: ""
+            },
             form: { ...emptyForm },
             imageFile: null,
             imagePreviewUrl: "",
             loading: false,
             importFile: null,
-            importing: false
+            importing: false,
+            filterOptions: {
+                TenSanPham: [],
+                ChungLoai: [],
+                PhamViApDung: [],
+                ThiTruong: []
+            },
+            activeFilterField: ""
         };
 
         const els = {
@@ -876,6 +1014,8 @@
             downloadTemplateButton: document.getElementById("downloadTemplateButton"),
             importButton: document.getElementById("importButton"),
             createButton: document.getElementById("createButton"),
+            clearFiltersButton: document.getElementById("clearFiltersButton"),
+            filterPopover: document.getElementById("filterPopover"),
             loadingCover: document.getElementById("loadingCover"),
             defectTableBody: document.getElementById("defectTableBody"),
             defectModal: document.getElementById("defectModal"),
@@ -985,6 +1125,51 @@
                 .replaceAll("'", "&#039;");
         }
 
+        function splitPhamViApDung(value) {
+            if (Array.isArray(value)) return value.filter(Boolean);
+            return String(value || "")
+                .split(",")
+                .map((item) => item.trim())
+                .filter(Boolean);
+        }
+
+        function joinPhamViApDung(value) {
+            return splitPhamViApDung(value).join(", ");
+        }
+
+        function renderPhamViApDungTags() {
+            const tagWrap = document.getElementById("PhamViApDungTags");
+            const hiddenInput = document.getElementById("PhamViApDung");
+            if (!tagWrap || !hiddenInput) return;
+
+            const selectedValues = splitPhamViApDung(state.form.PhamViApDung);
+            hiddenInput.value = joinPhamViApDung(selectedValues);
+            tagWrap.innerHTML = selectedValues.length
+                ? selectedValues.map((value) => `
+                    <span class="scope-tag">
+                        ${escapeHtml(value)}
+                        <button type="button" data-remove-scope="${escapeHtml(value)}" aria-label="Bỏ ${escapeHtml(value)}">×</button>
+                    </span>
+                `).join("")
+                : `<span class="muted" style="font-size: 12px;">Chưa chọn phạm vi</span>`;
+        }
+
+        function addPhamViApDung(value) {
+            const selectedValues = splitPhamViApDung(state.form.PhamViApDung);
+            if (value && !selectedValues.includes(value)) {
+                selectedValues.push(value);
+                state.form.PhamViApDung = joinPhamViApDung(selectedValues);
+            }
+            renderPhamViApDungTags();
+        }
+
+        function removePhamViApDung(value) {
+            state.form.PhamViApDung = joinPhamViApDung(
+                splitPhamViApDung(state.form.PhamViApDung).filter((item) => item !== value)
+            );
+            renderPhamViApDungTags();
+        }
+
         async function apiFetch(path, options = {}) {
             const headers = {
                 ...(options.headers || {})
@@ -1075,6 +1260,7 @@
             setLoading(true);
             try {
                 state.defects = await apiFetch("/lookup/defect-list");
+                renderFilterOptions();
                 applyFilter();
                 if (options.showSuccess) {
                     showAlert("Đã tải danh mục lỗi.", "success");
@@ -1086,17 +1272,102 @@
             }
         }
 
+        function getUniqueOptions(field) {
+            return Array.from(new Set(
+                state.defects
+                    .map((row) => String(row[field] || "").trim())
+                    .filter(Boolean)
+            )).sort((a, b) => a.localeCompare(b, "vi"));
+        }
+
+        function getUniqueScopeOptions() {
+            return Array.from(new Set(
+                state.defects.flatMap((row) => splitPhamViApDung(row.PhamViApDung))
+            )).sort((a, b) => a.localeCompare(b, "vi"));
+        }
+
+        function renderFilterOptions() {
+            state.filterOptions = {
+                TenSanPham: getUniqueOptions("TenSanPham"),
+                ChungLoai: getUniqueOptions("ChungLoai"),
+                PhamViApDung: getUniqueScopeOptions(),
+                ThiTruong: getUniqueOptions("ThiTruong")
+            };
+        }
+
+        const filterMeta = {
+            MaLoi: { label: "Mã lỗi", type: "text", placeholder: "Nhập mã lỗi" },
+            TenLoi: { label: "Tên / mô tả lỗi", type: "text", placeholder: "Nhập tên hoặc mô tả" },
+            DefectType: { label: "Phân loại", type: "select", options: ["CRITICAL", "MAJOR", "MINOR"] },
+            LoaiLoiSXBT: { label: "Loại B/C", type: "select", options: ["B", "C"] },
+            TenSanPham: { label: "Sản phẩm", type: "select", optionKey: "TenSanPham" },
+            ChungLoai: { label: "Chủng loại", type: "select", optionKey: "ChungLoai" },
+            PhamViApDung: { label: "Phạm vi", type: "select", optionKey: "PhamViApDung" },
+            PhuongAnXuLy: { label: "Phương án xử lý", type: "text", placeholder: "Nhập phương án" },
+            ThiTruong: { label: "Thị trường", type: "select", optionKey: "ThiTruong" },
+            TrangThai: { label: "Trạng thái", type: "select", options: [["true", "Hoạt động"], ["false", "Tạm ngưng"]] }
+        };
+
+        function getFilterOptionPairs(meta) {
+            const values = meta.options || state.filterOptions[meta.optionKey] || [];
+            return values.map((item) => Array.isArray(item) ? item : [item, item]);
+        }
+
+        function renderFilterPopover(field, anchor) {
+            const meta = filterMeta[field];
+            if (!meta) return;
+
+            state.activeFilterField = field;
+            document.querySelectorAll("[data-toggle-filter]").forEach((button) => {
+                button.classList.toggle("active", button.dataset.toggleFilter === field);
+            });
+
+            const value = state.filters[field] || "";
+            const control = meta.type === "select"
+                ? `<select id="activeFilterInput">
+                    <option value="">Tất cả</option>
+                    ${getFilterOptionPairs(meta).map(([optionValue, label]) => `
+                        <option value="${escapeHtml(optionValue)}" ${optionValue === value ? "selected" : ""}>${escapeHtml(label)}</option>
+                    `).join("")}
+                </select>`
+                : `<input id="activeFilterInput" type="search" placeholder="${escapeHtml(meta.placeholder || "Nhập giá trị lọc")}" value="${escapeHtml(value)}">`;
+
+            els.filterPopover.innerHTML = `
+                <label for="activeFilterInput">${escapeHtml(meta.label)}</label>
+                ${control}
+                <div class="filter-popover-actions">
+                    <button class="btn btn-ghost" type="button" data-filter-clear>Bỏ lọc</button>
+                    <button class="btn btn-primary" type="button" data-filter-close>Đóng</button>
+                </div>
+            `;
+
+            const rect = anchor.getBoundingClientRect();
+            els.filterPopover.style.top = `${Math.min(rect.bottom + 8, window.innerHeight - 130)}px`;
+            els.filterPopover.style.left = `${Math.min(rect.left, window.innerWidth - 260)}px`;
+            els.filterPopover.classList.remove("hidden");
+
+            const input = document.getElementById("activeFilterInput");
+            const eventName = meta.type === "select" ? "change" : "input";
+            input.addEventListener(eventName, (event) => setFilter(field, event.target.value));
+            input.focus();
+        }
+
+        function closeFilterPopover() {
+            state.activeFilterField = "";
+            els.filterPopover.classList.add("hidden");
+            els.filterPopover.innerHTML = "";
+            document.querySelectorAll("[data-toggle-filter]").forEach((button) => button.classList.remove("active"));
+        }
+
         function applyFilter() {
             const keyword = state.keyword.trim().toLowerCase();
-            if (!keyword) {
-                state.filtered = [...state.defects];
-            } else {
-                state.filtered = state.defects.filter((row) => {
-                    return [
+            state.filtered = state.defects.filter((row) => {
+                const matchesKeyword = !keyword || [
                         row.MaLoi,
                         row.TenLoi,
                         row.MoTa,
                         row.GhiChu,
+                        row.PhuongAnXuLy,
                         row.TenSanPham,
                         row.ChungLoai,
                         row.PhamViApDung,
@@ -1104,10 +1375,52 @@
                         row.MaNhomLoi,
                         row.LoaiLoiSXBT
                     ].some((field) => String(field || "").toLowerCase().includes(keyword));
-                });
-            }
+
+                const matchesFilters =
+                    (!state.filters.MaLoi || String(row.MaLoi || "").toLowerCase().includes(state.filters.MaLoi.toLowerCase())) &&
+                    (!state.filters.TenLoi || [
+                        row.TenLoi,
+                        row.MoTa,
+                        row.GhiChu
+                    ].some((field) => String(field || "").toLowerCase().includes(state.filters.TenLoi.toLowerCase()))) &&
+                    (!state.filters.DefectType || row.DefectType === state.filters.DefectType) &&
+                    (!state.filters.LoaiLoiSXBT || row.LoaiLoiSXBT === state.filters.LoaiLoiSXBT) &&
+                    (!state.filters.TenSanPham || row.TenSanPham === state.filters.TenSanPham) &&
+                    (!state.filters.ChungLoai || row.ChungLoai === state.filters.ChungLoai) &&
+                    (!state.filters.PhamViApDung || splitPhamViApDung(row.PhamViApDung).includes(state.filters.PhamViApDung)) &&
+                    (!state.filters.PhuongAnXuLy || String(row.PhuongAnXuLy || "").toLowerCase().includes(state.filters.PhuongAnXuLy.toLowerCase())) &&
+                    (!state.filters.ThiTruong || row.ThiTruong === state.filters.ThiTruong) &&
+                    (!state.filters.TrangThai || String(row.TrangThai !== false && row.TrangThai !== 0) === state.filters.TrangThai);
+
+                return matchesKeyword && matchesFilters;
+            });
 
             renderTable();
+        }
+
+        function setFilter(field, value) {
+            state.filters[field] = value;
+            applyFilter();
+        }
+
+        function clearFilters() {
+            state.keyword = "";
+            state.filters = {
+                MaLoi: "",
+                TenLoi: "",
+                DefectType: "",
+                LoaiLoiSXBT: "",
+                TenSanPham: "",
+                ChungLoai: "",
+                PhamViApDung: "",
+                PhuongAnXuLy: "",
+                ThiTruong: "",
+                TrangThai: ""
+            };
+            els.keyword.value = "";
+            renderFilterOptions();
+            closeFilterPopover();
+            applyFilter();
         }
 
         function getDefectTypeClass(type) {
@@ -1141,7 +1454,7 @@
             if (!state.filtered.length) {
                 els.defectTableBody.innerHTML = `
                     <tr>
-                        <td colspan="12">
+                        <td colspan="13">
                             <div class="empty-state">
                                 <div class="icon">!</div>
                                 <div class="strong">Chưa có dữ liệu lỗi</div>
@@ -1172,6 +1485,7 @@
                         <td><span class="${row.TenSanPham ? "" : "muted"}">${escapeHtml(row.TenSanPham || "--")}</span></td>
                         <td><span class="${row.ChungLoai ? "" : "muted"}">${escapeHtml(row.ChungLoai || "--")}</span></td>
                         <td><div class="line-clamp ${row.PhamViApDung ? "" : "muted"}" title="${escapeHtml(row.PhamViApDung || "")}">${escapeHtml(row.PhamViApDung || "--")}</div></td>
+                        <td><div class="line-clamp ${row.PhuongAnXuLy ? "" : "muted"}" title="${escapeHtml(row.PhuongAnXuLy || "")}">${escapeHtml(row.PhuongAnXuLy || "--")}</div></td>
                         <td><span class="${row.ThiTruong ? "" : "muted"}">${escapeHtml(row.ThiTruong || "--")}</span></td>
                         <td class="center">
                             ${imageUrl ? `
@@ -1201,7 +1515,8 @@
                 TenSanPham: row.TenSanPham || "",
                 ChungLoai: row.ChungLoai || "",
                 DefectType: normalizeDefectType(row.LoaiLoiSXBT, row.DefectType),
-                PhamViApDung: row.PhamViApDung || ""
+                PhamViApDung: row.PhamViApDung || "",
+                PhuongAnXuLy: row.PhuongAnXuLy || ""
             };
 
             Object.entries(state.form).forEach(([key, value]) => {
@@ -1216,6 +1531,8 @@
             });
 
             renderDefectTypeOptions();
+            document.getElementById("PhamViApDungSelect").value = "";
+            renderPhamViApDungTags();
             updateImagePreview();
         }
 
@@ -1227,7 +1544,7 @@
             document.getElementById("TrangThaiField").classList.add("hidden");
             document.getElementById("TrangThai").value = "1";
             els.defectModal.classList.remove("hidden");
-            document.getElementById("MaLoi").focus();
+            document.getElementById("TenLoi").focus();
         }
 
         function openEditModal(id) {
@@ -1278,19 +1595,20 @@
             const formData = new FormData(els.defectForm);
             return {
                 ...state.form,
-                MaLoi: String(formData.get("MaLoi") || "").trim() || null,
+                MaLoi: state.form.MaLoi || null,
                 TenLoi: String(formData.get("TenLoi") || "").trim(),
                 DefectType: normalizeDefectType(formData.get("LoaiLoiSXBT"), formData.get("DefectType")),
                 MoTa: formData.get("MoTa") || String(formData.get("TenLoi") || "").trim() || null,
                 GhiChu: formData.get("GhiChu") || null,
+                PhuongAnXuLy: formData.get("PhuongAnXuLy") || null,
                 MaNhomLoi: formData.get("MaNhomLoi") || null,
                 LoaiLoiSXBT: formData.get("LoaiLoiSXBT") || null,
                 TenSanPham: formData.get("TenSanPham") || null,
                 ChungLoai: formData.get("ChungLoai") || null,
-                PhamViApDung: formData.get("PhamViApDung") || null,
+                PhamViApDung: joinPhamViApDung(formData.get("PhamViApDung")) || null,
                 ThiTruong: formData.get("ThiTruong") || null,
                 ImageUrl: state.form.ImageUrl || null,
-                ThuTu: formData.get("ThuTu") === "" ? null : Number(formData.get("ThuTu")),
+                ThuTu: state.form.ThuTu || null,
                 TrangThai: formData.get("TrangThai") === "1"
             };
         }
@@ -1317,6 +1635,12 @@
             const payload = collectPayload();
             if (!payload.TenLoi || !payload.DefectType) {
                 showAlert("Vui lòng nhập tên lỗi và phân loại độ nghiêm trọng.");
+                return;
+            }
+
+            if (!payload.MaNhomLoi) {
+                showAlert("Vui lòng nhập mã nhóm lỗi để hệ thống tự sinh mã lỗi.");
+                document.getElementById("MaNhomLoi").focus();
                 return;
             }
 
@@ -1537,6 +1861,26 @@
             state.keyword = event.target.value;
             applyFilter();
         });
+        document.querySelectorAll("[data-toggle-filter]").forEach((button) => {
+            button.addEventListener("click", (event) => {
+                event.stopPropagation();
+                if (state.activeFilterField === button.dataset.toggleFilter) {
+                    closeFilterPopover();
+                } else {
+                    renderFilterPopover(button.dataset.toggleFilter, button);
+                }
+            });
+        });
+        els.filterPopover.addEventListener("click", (event) => {
+            event.stopPropagation();
+            if (event.target.closest("[data-filter-close]")) closeFilterPopover();
+            if (event.target.closest("[data-filter-clear]") && state.activeFilterField) {
+                setFilter(state.activeFilterField, "");
+                closeFilterPopover();
+            }
+        });
+        document.addEventListener("click", closeFilterPopover);
+        els.clearFiltersButton.addEventListener("click", clearFilters);
 
         els.reloadButton.addEventListener("click", () => loadDefects({ showSuccess: true }));
         els.downloadTemplateButton.addEventListener("click", downloadDefectTemplate);
@@ -1550,6 +1894,14 @@
         els.createButton.addEventListener("click", openCreateModal);
         els.defectForm.addEventListener("submit", saveDefect);
         document.getElementById("LoaiLoiSXBT").addEventListener("change", renderDefectTypeOptions);
+        document.getElementById("PhamViApDungSelect").addEventListener("change", (event) => {
+            addPhamViApDung(event.target.value);
+            event.target.value = "";
+        });
+        document.getElementById("PhamViApDungTags").addEventListener("click", (event) => {
+            const removeButton = event.target.closest("[data-remove-scope]");
+            if (removeButton) removePhamViApDung(removeButton.dataset.removeScope);
+        });
 
         document.querySelectorAll("[data-close-modal]").forEach((button) => {
             button.addEventListener("click", closeDefectModal);
