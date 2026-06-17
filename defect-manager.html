@@ -804,16 +804,6 @@
 
             <div class="modal-body">
                 <div class="form-grid">
-                    <div class="field">
-                        <label for="MaLoi">Mã lỗi</label>
-                        <input id="MaLoi" name="MaLoi" placeholder="Tự sinh nếu để trống">
-                    </div>
-
-                    <div class="field">
-                        <label for="ThuTu">STT</label>
-                        <input id="ThuTu" name="ThuTu" type="number" min="0" step="1">
-                    </div>
-
                     <div class="field span-2">
                         <label for="TenLoi">Tên lỗi *</label>
                         <textarea id="TenLoi" name="TenLoi" required placeholder="Ví dụ: Thùng móp méo, Vải không đạt yêu cầu..."></textarea>
@@ -857,8 +847,8 @@
                     </div>
 
                     <div class="field">
-                        <label for="MaNhomLoi">Mã nhóm lỗi</label>
-                        <input id="MaNhomLoi" name="MaNhomLoi">
+                        <label for="MaNhomLoi">Mã nhóm lỗi *</label>
+                        <input id="MaNhomLoi" name="MaNhomLoi" required placeholder="Ví dụ: L05">
                     </div>
 
                     <div class="field">
@@ -1554,7 +1544,7 @@
             document.getElementById("TrangThaiField").classList.add("hidden");
             document.getElementById("TrangThai").value = "1";
             els.defectModal.classList.remove("hidden");
-            document.getElementById("MaLoi").focus();
+            document.getElementById("TenLoi").focus();
         }
 
         function openEditModal(id) {
@@ -1605,7 +1595,7 @@
             const formData = new FormData(els.defectForm);
             return {
                 ...state.form,
-                MaLoi: String(formData.get("MaLoi") || "").trim() || null,
+                MaLoi: state.form.MaLoi || null,
                 TenLoi: String(formData.get("TenLoi") || "").trim(),
                 DefectType: normalizeDefectType(formData.get("LoaiLoiSXBT"), formData.get("DefectType")),
                 MoTa: formData.get("MoTa") || String(formData.get("TenLoi") || "").trim() || null,
@@ -1618,7 +1608,7 @@
                 PhamViApDung: joinPhamViApDung(formData.get("PhamViApDung")) || null,
                 ThiTruong: formData.get("ThiTruong") || null,
                 ImageUrl: state.form.ImageUrl || null,
-                ThuTu: formData.get("ThuTu") === "" ? null : Number(formData.get("ThuTu")),
+                ThuTu: state.form.ThuTu || null,
                 TrangThai: formData.get("TrangThai") === "1"
             };
         }
@@ -1645,6 +1635,12 @@
             const payload = collectPayload();
             if (!payload.TenLoi || !payload.DefectType) {
                 showAlert("Vui lòng nhập tên lỗi và phân loại độ nghiêm trọng.");
+                return;
+            }
+
+            if (!payload.MaNhomLoi) {
+                showAlert("Vui lòng nhập mã nhóm lỗi để hệ thống tự sinh mã lỗi.");
+                document.getElementById("MaNhomLoi").focus();
                 return;
             }
 
