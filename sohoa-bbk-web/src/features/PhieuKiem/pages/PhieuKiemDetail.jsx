@@ -115,6 +115,10 @@ export default function PhieuKiemDetail() {
         try {
             const res = await getPhieuKiemDetail(id);
             const data = res.data;
+            if (data?.phieu?.LoaiKiemId === 6) {
+                navigate(`/phieu-kiem/tren-chuyen/${id}`, { replace: true });
+                return;
+            }
             setPhieu(data.phieu);
             setSections(data.sections);
             setCheckItems(data.checkItems);

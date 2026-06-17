@@ -60,6 +60,8 @@ export default function PhieuListScreen({ navigation }) {
     const getStatusStyle = (item) => {
         const status = item?.TrangThai;
         switch (status) {
+            case "TAO_MOI":
+                return { backgroundColor: "#e0f2fe", color: "#0369a1", text: "Chưa kiểm" };
             case "HOAN_TAT":
                 return { backgroundColor: "#dcfce7", color: "#15803d", text: "Hoàn tất" };
 
@@ -93,6 +95,8 @@ export default function PhieuListScreen({ navigation }) {
                 onPress={() => {
                     if (item.LoaiKiemId === 4) {
                         navigation.navigate("SxbtInspection", { id: item.Id });
+                    } else if (item.LoaiKiemId === 6) {
+                        navigation.navigate("TrenChuyenInspection", { id: item.Id });
                     } else {
                         navigation.navigate("PhieuDetail", { id: item.Id });
                     }

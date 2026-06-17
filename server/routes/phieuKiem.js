@@ -43,6 +43,40 @@ sharp.cache(false);
 
 const { Expo } = require('expo-server-sdk');
 let expo = new Expo();
+const TREN_CHUYEN_LOAI_KIEM_ID = 6;
+
+const isTrenChuyenLoaiKiem = (loaiKiemId) => Number(loaiKiemId) === TREN_CHUYEN_LOAI_KIEM_ID;
+
+const upsertPhieuKiemCustomFields = async (pool, phieuKiemId, fields) => {
+    if (!phieuKiemId || !fields || typeof fields !== 'object' || Array.isArray(fields)) {
+        return;
+    }
+
+    await pool.request()
+        .input('PhieuKiemId', sql.Int, phieuKiemId)
+        .input('JsonData', sql.NVarChar(sql.MAX), JSON.stringify(fields))
+        .execute('SP_Upsert_PhieuKiem_CustomFields');
+};
+
+const normalizeTrenChuyenSlots = (slots = []) => slots.map((slot, slotIndex) => ({
+    gioKiem: String(slot?.gioKiem || '').trim(),
+    sortOrder: Number(slot?.sortOrder || slotIndex + 1),
+    entries: Array.isArray(slot?.entries)
+        ? slot.entries.map((entry, entryIndex) => ({
+            congDoan: String(entry?.congDoan || '').trim(),
+            ghiChu: entry?.ghiChu ? String(entry.ghiChu).trim() : '',
+            sortOrder: Number(entry?.sortOrder || entryIndex + 1),
+            defects: Array.isArray(entry?.defects)
+                ? entry.defects.map((defect, defectIndex) => ({
+                    defectId: Number(defect?.defectId || 0),
+                    soLuong: Number(defect?.soLuong || 0),
+                    ghiChu: defect?.ghiChu ? String(defect.ghiChu).trim() : '',
+                    sortOrder: Number(defect?.sortOrder || defectIndex + 1)
+                })).filter((defect) => defect.defectId > 0 && defect.soLuong > 0)
+                : []
+        }))
+        : []
+}));
 // Cấu hình Multer để lưu file
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -214,6 +248,35 @@ router.delete(
 
                     DELETE FROM dbo.PHIEU_KIEM_SXBT_SUMMARY
                     WHERE PhieuKiemId = @PhieuKiemId;
+
+                    IF OBJECT_ID(N'dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY_DEFECT', N'U') IS NOT NULL
+                    BEGIN
+                        EXEC sp_executesql N'
+                            DELETE d
+                            FROM dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY_DEFECT d
+                            INNER JOIN dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY e ON e.Id = d.EntryId
+                            INNER JOIN dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT s ON s.Id = e.SlotId
+                            WHERE s.PhieuKiemId = @InnerPhieuKiemId;
+                        ', N'@InnerPhieuKiemId INT', @InnerPhieuKiemId = @PhieuKiemId;
+                    END
+
+                    IF OBJECT_ID(N'dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY', N'U') IS NOT NULL
+                    BEGIN
+                        EXEC sp_executesql N'
+                            DELETE e
+                            FROM dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY e
+                            INNER JOIN dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT s ON s.Id = e.SlotId
+                            WHERE s.PhieuKiemId = @InnerPhieuKiemId;
+                        ', N'@InnerPhieuKiemId INT', @InnerPhieuKiemId = @PhieuKiemId;
+                    END
+
+                    IF OBJECT_ID(N'dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT', N'U') IS NOT NULL
+                    BEGIN
+                        EXEC sp_executesql N'
+                            DELETE FROM dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT
+                            WHERE PhieuKiemId = @InnerPhieuKiemId;
+                        ', N'@InnerPhieuKiemId INT', @InnerPhieuKiemId = @PhieuKiemId;
+                    END
 
                     IF OBJECT_ID(N'dbo.PHIEU_KIEM_BTP_ITEM_LOT', N'U') IS NOT NULL
                     BEGIN
@@ -442,6 +505,89 @@ router.get(
                 });
             }
 
+            if (isTrenChuyenLoaiKiem(loaiKiemId)) {
+                const result = await pool.request()
+                    .input('PhieuKiemId', sql.Int, id)
+                    .execute('sp_PhieuKiem_GetDetail_TrenChuyen');
+
+                const phieu = result.recordsets?.[0]?.[0] || null;
+                let dynamicFields = [];
+                if (phieu && phieu.DynamicFieldsJSON) {
+                    try {
+                        dynamicFields = JSON.parse(phieu.DynamicFieldsJSON);
+                    } catch (e) {
+                        console.error("Lỗi parse DynamicFieldsJSON TrenChuyen:", e);
+                    }
+                    delete phieu.DynamicFieldsJSON;
+                }
+
+                const slotRecords = result.recordsets?.[1] || [];
+                const entryDefectRecords = result.recordsets?.[2] || [];
+                const summary = result.recordsets?.[3]?.[0] || null;
+
+                const entriesBySlotId = {};
+
+                entryDefectRecords.forEach((record) => {
+                    if (!entriesBySlotId[record.SlotId]) {
+                        entriesBySlotId[record.SlotId] = {};
+                    }
+
+                    if (!entriesBySlotId[record.SlotId][record.EntryId]) {
+                        entriesBySlotId[record.SlotId][record.EntryId] = {
+                            Id: record.EntryId,
+                            SlotId: record.SlotId,
+                            CongDoan: record.CongDoan,
+                            GhiChu: record.EntryGhiChu || '',
+                            SortOrder: record.EntrySortOrder || 0,
+                            CreatedAt: record.EntryCreatedAt || null,
+                            UpdatedAt: record.EntryUpdatedAt || null,
+                            Defects: []
+                        };
+                    }
+
+                    if (record.DefectId) {
+                        const imageUrls = record.ImageUrl ? [record.ImageUrl] : [];
+
+                        entriesBySlotId[record.SlotId][record.EntryId].Defects.push({
+                            Id: record.DefectRowId,
+                            DefectId: record.DefectId,
+                            SoLuong: record.SoLuong,
+                            GhiChu: record.DefectGhiChu || '',
+                            SortOrder: record.DefectSortOrder || 0,
+                            MaLoi: record.MaLoi,
+                            TenLoi: record.TenLoi,
+                            MoTa: record.MoTa,
+                            DefectType: record.DefectType,
+                            PhuongAnXuLy: record.PhuongAnXuLy,
+                            ImageUrl: record.ImageUrl || null,
+                            ImageUrls: imageUrls
+                        });
+                    }
+                });
+
+                const slots = slotRecords.map((slot) => ({
+                    Id: slot.Id,
+                    PhieuKiemId: slot.PhieuKiemId,
+                    GioKiem: slot.GioKiem,
+                    SortOrder: slot.SortOrder,
+                    CreatedAt: slot.CreatedAt || null,
+                    UpdatedAt: slot.UpdatedAt || null,
+                    Entries: Object.values(entriesBySlotId[slot.Id] || {})
+                        .sort((a, b) => (a.SortOrder || 0) - (b.SortOrder || 0))
+                        .map((entry) => ({
+                            ...entry,
+                            Defects: [...entry.Defects].sort((a, b) => (a.SortOrder || 0) - (b.SortOrder || 0))
+                        }))
+                }));
+
+                return res.json({
+                    phieu,
+                    slots,
+                    summary,
+                    dynamicFields
+                });
+            }
+
             // 3. Mặc định cho các loại kiểm khác (1, 2, 3...)
             const result = await pool.request()
                 .input('PhieuKiemId', sql.Int, id)
@@ -556,6 +702,10 @@ router.post(
             const newPhieuId = result.recordset[0].Id;
             const soPhieu = result.recordset[0].SoPhieu;
 
+            if (isTrenChuyenLoaiKiem(loaiKiemId) && req.body.snapshotFields) {
+                await upsertPhieuKiemCustomFields(pool, newPhieuId, req.body.snapshotFields);
+            }
+
             // ---- LOGIC THÔNG BÁO ----
             const title = 'Bạn có phiếu kiểm mới! 📋';
             const message = `Tổ trưởng vừa phân công cho bạn phiếu kiểm ${soPhieu}.`;
@@ -612,6 +762,105 @@ router.post(
             console.error('CreatePhieuKiem error:', err);
             res.status(500).json({
                 message: 'Tạo phiếu kiểm thất bại'
+            });
+        }
+    }
+);
+
+router.post(
+    '/tren-chuyen/save',
+    authenticateToken,
+    authorize('THUC_HIEN_KIEM'),
+    async (req, res) => {
+        const { phieuKiemId, slots } = req.body;
+
+        if (!phieuKiemId || !Array.isArray(slots)) {
+            return res.status(400).json({ message: 'Thiếu dữ liệu lưu phiếu trên chuyền' });
+        }
+
+        try {
+            const normalizedSlots = normalizeTrenChuyenSlots(slots);
+
+            const pool = await poolPromise;
+            await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('SlotsJson', sql.NVarChar(sql.MAX), JSON.stringify(normalizedSlots))
+                .execute('sp_PhieuKiem_TrenChuyen_SaveEntries');
+
+            await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .query(`
+                    UPDATE dbo.PHIEU_KIEM
+                    SET TrangThai = CASE WHEN TrangThai = 'TAO_MOI' THEN 'DANG_KIEM' ELSE TrangThai END
+                    WHERE Id = @PhieuKiemId;
+                `);
+
+            res.json({ success: true });
+        } catch (err) {
+            console.error('TrenChuyen save error:', err);
+            res.status(500).json({
+                message: err?.originalError?.info?.message || err.message || 'Lưu phiếu kiểm trên chuyền thất bại'
+            });
+        }
+    }
+);
+
+router.post(
+    '/tren-chuyen/complete',
+    authenticateToken,
+    authorize('THUC_HIEN_KIEM'),
+    async (req, res) => {
+        const { phieuKiemId } = req.body;
+
+        if (!phieuKiemId) {
+            return res.status(400).json({ message: 'Missing phieuKiemId' });
+        }
+
+        try {
+            const pool = await poolPromise;
+            const result = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .execute('sp_PhieuKiem_TrenChuyen_Complete');
+
+            res.json({
+                success: true,
+                result: result.recordset?.[0] || null
+            });
+        } catch (err) {
+            console.error('TrenChuyen complete error:', err);
+            res.status(500).json({
+                message: err?.originalError?.info?.message || err.message || 'Hoàn tất phiếu kiểm trên chuyền thất bại'
+            });
+        }
+    }
+);
+
+router.post(
+    '/tren-chuyen/create-bien-ban',
+    authenticateToken,
+    authorize('THUC_HIEN_KIEM'),
+    async (req, res) => {
+        const { phieuKiemId } = req.body;
+
+        if (!phieuKiemId) {
+            return res.status(400).json({ message: 'Missing phieuKiemId' });
+        }
+
+        try {
+            const pool = await poolPromise;
+            const result = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('UserId', sql.Int, req.user.userId)
+                .execute('sp_PhieuKiem_TrenChuyen_CreateBienBan');
+
+            res.json({
+                success: true,
+                bienBanId: result.recordset?.[0]?.BienBanId || null
+            });
+        } catch (err) {
+            console.error('TrenChuyen create bien ban error:', err);
+            res.status(500).json({
+                message: err?.originalError?.info?.message || err.message || 'Sinh biên bản kiểm trên chuyền thất bại'
             });
         }
     }

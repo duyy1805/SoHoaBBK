@@ -356,7 +356,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
                             <Text style={styles.infoLabel}>Người kiểm</Text>
                             <Text style={styles.infoValue}>{phieu?.TenNguoiKiem || "---"}</Text>
                         </View>
-                        {phieu?.LoaiKiemId === 5 &&
+                        {phieu?.LoaiKiemId === 6 &&
                             <View style={styles.infoItem}>
                                 <Text style={styles.infoLabel}>Nơi đến</Text>
                                 <Text style={styles.infoValue}>{phieu?.DoiTuong || "---"}</Text>

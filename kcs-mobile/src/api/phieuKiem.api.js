@@ -142,3 +142,15 @@ export const saveSxbtData = (data) => {
 export const completeSxbt = (phieuKiemId, ketLuan) => {
   return axiosClient.post("/phieu-kiem/sxbt-complete", { phieuKiemId, ketLuan });
 };
+
+export const saveTrenChuyenData = (data) => {
+  return axiosClient.post("/phieu-kiem/tren-chuyen/save", data);
+};
+
+export const completeTrenChuyen = (phieuKiemId) => {
+  return axiosClient.post("/phieu-kiem/tren-chuyen/complete", { phieuKiemId });
+};
+
+export const createTrenChuyenBienBan = (phieuKiemId) => {
+  return axiosClient.post("/phieu-kiem/tren-chuyen/create-bien-ban", { phieuKiemId });
+};

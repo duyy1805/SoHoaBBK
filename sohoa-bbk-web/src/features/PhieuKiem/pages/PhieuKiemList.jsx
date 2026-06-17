@@ -44,6 +44,12 @@ export default function PhieuKiemList() {
 
     const navigate = useNavigate();
 
+    const getDetailPath = (item) => {
+        if (item.LoaiKiemId === 4) return `/phieu-kiem/sxbt/${item.Id}`;
+        if (item.LoaiKiemId === 6) return `/phieu-kiem/tren-chuyen/${item.Id}`;
+        return `/phieu-kiem/${item.Id}`;
+    };
+
     useEffect(() => {
         loadData();
     }, []);
@@ -70,6 +76,8 @@ export default function PhieuKiemList() {
 
     const renderTrangThaiChip = (trangThai) => {
         switch (trangThai) {
+            case "TAO_MOI":
+                return <Chip label="Chưa kiểm" size="small" />;
             case "DA_TAO_SECTION":
                 return <Chip label="Chưa kiểm" size="small" />;
             case "DANG_KIEM":
@@ -236,7 +244,7 @@ export default function PhieuKiemList() {
                                         <TableRow
                                             key={item.Id}
                                             hover
-                                            onClick={() => navigate(item.LoaiKiemId === 4 ? `/phieu-kiem/sxbt/${item.Id}` : `/phieu-kiem/${item.Id}`)}
+                                            onClick={() => navigate(getDetailPath(item))}
                                             sx={{ cursor: "pointer", transition: "0.2s" }}
                                         >
                                             <TableCell sx={{ fontWeight: 600, color: 'primary.main' }}>
@@ -269,7 +277,7 @@ export default function PhieuKiemList() {
                                                         size="small"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            navigate(item.LoaiKiemId === 4 ? `/phieu-kiem/sxbt/${item.Id}` : `/phieu-kiem/${item.Id}`);
+                                                            navigate(getDetailPath(item));
                                                         }}
                                                     >
                                                         <VisibilityIcon fontSize="small" />

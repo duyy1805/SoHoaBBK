@@ -412,6 +412,17 @@ export default function PhieuKiemCreate() {
                     payload.sanPhamId = row.SanPhamId;
                     payload.soLuong = row.NangSuat_DuKien;
                     payload.doiTuong = row.Ten_DonVi;
+                    payload.snapshotFields = {
+                        TrenChuyen_TenDonVi: row.Ten_DonVi || "",
+                        TrenChuyen_TenBoPhan: row.Ten_BoPhan || "",
+                        TrenChuyen_NgayKeHoach: row.Ngay || "",
+                        TrenChuyen_SoLuongKeHoach: row.SoLuongKeHoach ?? "",
+                        TrenChuyen_NangSuatDuKien: row.NangSuat_DuKien ?? "",
+                        TrenChuyen_DaSanXuat: row.DaSanXuat ?? "",
+                        TrenChuyen_TenSanPham: row.TenSanPham || "",
+                        TrenChuyen_MaSanPham: row.MaSanPham || "",
+                        TrenChuyen_IDKeHoachSanXuat: row.ID_KeHoachSanXuat ?? ""
+                    };
                 } else if (selectedLoai?.Id === 4) {
                     payload.sourceId = row.SourceId;
                     payload.soLuong = row.SoLuong;
