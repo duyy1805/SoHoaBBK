@@ -71,7 +71,7 @@ const cardShellSx = {
 
 const mutedLabelSx = {
     fontSize: 12,
-    fontWeight: 800,
+    fontWeight: 700,
     letterSpacing: 0,
     textTransform: "uppercase",
     color: "text.secondary"
@@ -79,8 +79,18 @@ const mutedLabelSx = {
 
 const sectionTitleSx = {
     fontSize: 17,
-    fontWeight: 850,
+    fontWeight: 700,
     color: "#0f172a"
+};
+
+const flowPanelSx = {
+    fontFamily: (theme) => theme.typography.fontFamily,
+    "& .MuiTypography-root": {
+        fontFamily: "inherit"
+    },
+    "& .MuiChip-label": {
+        fontFamily: "inherit"
+    }
 };
 
 const tableSx = {
@@ -89,7 +99,7 @@ const tableSx = {
         bgcolor: "#f8fafc",
         color: "#64748b",
         fontSize: 12,
-        fontWeight: 850,
+        fontWeight: 700,
         textTransform: "uppercase",
         letterSpacing: 0,
         borderBottomColor: "#e2e8f0"
@@ -337,7 +347,7 @@ export default function BienBanSxbtDetail() {
                             <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={3}>
                                 <Box sx={{ minWidth: 0 }}>
                                     <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap">
-                                        <Typography sx={{ fontSize: { xs: 26, md: 34 }, fontWeight: 850, color: "#0f172a", lineHeight: 1.15 }}>
+                                        <Typography sx={{ fontSize: { xs: 26, md: 34 }, fontWeight: 700, color: "#0f172a", lineHeight: 1.15 }}>
                                             {info?.SoPhieu || "---"}
                                         </Typography>
                                         <Chip
@@ -429,7 +439,7 @@ export default function BienBanSxbtDetail() {
                                                                 borderRadius: 1.5,
                                                                 textAlign: "center",
                                                                 cursor: canEditBeforeFlow ? "pointer" : "default",
-                                                                fontWeight: 850,
+                                                                fontWeight: 700,
                                                                 bgcolor: mucDo === level ? "#172033" : "#f8fafc",
                                                                 color: mucDo === level ? "white" : "#475569",
                                                                 border: mucDo === level ? "1px solid #172033" : "1px solid #cbd5e1",
@@ -448,7 +458,7 @@ export default function BienBanSxbtDetail() {
                                                         sx={{
                                                             bgcolor: "#dcfce7",
                                                             color: "#166534",
-                                                            fontWeight: 850,
+                                                            fontWeight: 700,
                                                             borderRadius: 1.5,
                                                             "& .MuiChip-icon": { color: "#16a34a" }
                                                         }}
@@ -545,7 +555,7 @@ export default function BienBanSxbtDetail() {
                         <Grid size={{ xs: 12, lg: 3.5 }}>
                             <Stack spacing={3} sx={{ position: { lg: "sticky" }, top: { lg: 92 } }}>
                                 <Card sx={cardShellSx}>
-                                    <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+                                    <CardContent sx={{ p: { xs: 2, md: 3 }, ...flowPanelSx }}>
                                         <Stack direction="row" spacing={1} alignItems="center" mb={2}>
                                             <RuleFolderOutlinedIcon sx={{ color: "#2563eb" }} />
                                             <Typography sx={sectionTitleSx}>Luồng hiện tại</Typography>
@@ -553,10 +563,13 @@ export default function BienBanSxbtDetail() {
 
                                         {currentPendingStep && !isCompleted && (
                                             <Paper variant="outlined" sx={{ mb: 2, p: 1.5, borderRadius: 2, bgcolor: "#eff6ff", borderColor: "#bfdbfe" }}>
-                                                <Typography sx={{ color: "#1d4ed8", fontSize: 13, fontWeight: 800 }}>
+                                                <Typography
+                                                    variant="caption"
+                                                    sx={{ color: "#1d4ed8", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0 }}
+                                                >
                                                     Đang chờ
                                                 </Typography>
-                                                <Typography sx={{ mt: 0.5, fontWeight: 850, color: "#0f172a" }}>
+                                                <Typography variant="subtitle1" sx={{ mt: 0.5, fontWeight: 700, color: "#0f172a", lineHeight: 1.35 }}>
                                                     {currentPendingStep.TenBoPhan || currentPendingStep.MaBoPhan || "---"}
                                                 </Typography>
                                             </Paper>
@@ -581,7 +594,9 @@ export default function BienBanSxbtDetail() {
                                                                 bgcolor: done ? "#16a34a" : active ? "#2563eb" : "#e2e8f0",
                                                                 color: done || active ? "white" : "#64748b",
                                                                 fontSize: 13,
-                                                                fontWeight: 850
+                                                                fontWeight: 700,
+                                                                fontFamily: "inherit",
+                                                                lineHeight: 1
                                                             }}
                                                         >
                                                             {step.StepOrder || index + 1}
@@ -593,10 +608,10 @@ export default function BienBanSxbtDetail() {
                                                     <Box sx={{ flex: 1, minWidth: 0 }}>
                                                         <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="flex-start">
                                                             <Box>
-                                                                <Typography sx={{ fontWeight: 800, color: "#0f172a" }}>
+                                                                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "#0f172a", lineHeight: 1.35 }}>
                                                                     {step.TenBoPhan || step.MaBoPhan || "---"}
                                                                 </Typography>
-                                                                <Typography variant="body2" color="text.secondary">
+                                                                <Typography variant="body2" sx={{ color: "text.secondary", fontWeight: 500, lineHeight: 1.4 }}>
                                                                     {step.MaBoPhan || `BP ${step.BoPhanId}`}
                                                                 </Typography>
                                                             </Box>
@@ -622,7 +637,7 @@ export default function BienBanSxbtDetail() {
                                         startIcon={<CheckCircleIcon />}
                                         disabled={saving}
                                         onClick={handleConfirmStep}
-                                        sx={{ borderRadius: 1.5, py: 1.2, fontWeight: 850 }}
+                                        sx={{ borderRadius: 1.5, py: 1.2, fontWeight: 700 }}
                                     >
                                         Xác nhận bước hiện tại
                                     </Button>
@@ -630,7 +645,7 @@ export default function BienBanSxbtDetail() {
 
                                 {isCompleted && (
                                     <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: "#f0fdf4", borderColor: "#bbf7d0" }}>
-                                        <Typography sx={{ color: "success.dark", fontWeight: 850 }}>
+                                        <Typography sx={{ color: "success.dark", fontWeight: 700 }}>
                                             Biên bản SXBT đã hoàn tất.
                                         </Typography>
                                     </Paper>
@@ -702,7 +717,7 @@ function InfoTile({ icon, label, value }) {
                 <Box sx={{ color: "#2563eb", display: "flex", "& svg": { fontSize: 19 } }}>{icon}</Box>
                 <Typography sx={mutedLabelSx}>{label}</Typography>
             </Stack>
-            <Typography sx={{ mt: 0.75, fontWeight: 850, color: "#0f172a", wordBreak: "break-word" }}>
+            <Typography sx={{ mt: 0.75, fontWeight: 700, color: "#0f172a", wordBreak: "break-word" }}>
                 {value}
             </Typography>
         </Paper>
