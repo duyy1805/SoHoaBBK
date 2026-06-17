@@ -77,73 +77,53 @@ router.get(
 
             const result = await request.execute("sp_BienBan_GetList");
             const rows = result.recordset || [];
-            const sxbtRows = rows.filter((item) =>
-                item.LoaiBienBan === "SXBT" ||
-                item.LoaiKiemId === 4 ||
-                String(item.TrangThai || "").startsWith("BB_SXBT")
-            );
 
-            if (sxbtRows.length === 0) {
+            if (rows.length === 0) {
                 return res.json(rows);
             }
 
-            const sxbtRequest = pool.request();
-            const sxbtIdParams = sxbtRows.map((item, index) => {
-                const paramName = `BienBanId${index}`;
-                sxbtRequest.input(paramName, sql.Int, item.BienBanId);
-                return `@${paramName}`;
-            });
+            const bienBanIds = [...new Set(
+                rows
+                    .map((item) => Number(item.BienBanId))
+                    .filter((id) => Number.isInteger(id) && id > 0)
+            )];
 
-            const sxbtProgressResult = await sxbtRequest.query(`
-                WITH RankedSteps AS (
-                    SELECT
-                        s.BienBanId,
-                        s.BoPhanId,
-                        s.TrangThai,
-                        s.StepOrder,
-                        bp.MaBoPhan,
-                        bp.TenBoPhan,
-                        ROW_NUMBER() OVER (
-                            PARTITION BY s.BienBanId
-                            ORDER BY CASE WHEN s.TrangThai <> 'DA_XAC_NHAN' THEN 0 ELSE 1 END, s.StepOrder
-                        ) AS PendingRank
-                    FROM dbo.BIEN_BAN_SXBT_CONFIRM_STEP s
-                    LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id = s.BoPhanId
-                    WHERE s.BienBanId IN (${sxbtIdParams.join(", ")})
-                )
-                SELECT
-                    BienBanId,
-                    COUNT(*) AS SoBuocXacNhan,
-                    SUM(CASE WHEN TrangThai = 'DA_XAC_NHAN' THEN 1 ELSE 0 END) AS DaXacNhan,
-                    MAX(CASE WHEN PendingRank = 1 AND TrangThai <> 'DA_XAC_NHAN' THEN MaBoPhan END) AS MaBoPhanDangCho,
-                    MAX(CASE WHEN PendingRank = 1 AND TrangThai <> 'DA_XAC_NHAN' THEN TenBoPhan END) AS TenBoPhanDangCho
-                FROM RankedSteps
-                GROUP BY BienBanId;
-            `);
+            if (bienBanIds.length === 0) {
+                return res.json(rows);
+            }
+
+            const progressResult = await pool.request()
+                .input("BienBanIds", sql.NVarChar(sql.MAX), bienBanIds.join(","))
+                .execute("sp_BienBan_GetListProgress");
 
             const progressByBienBanId = new Map(
-                (sxbtProgressResult.recordset || []).map((item) => [item.BienBanId, item])
+                (progressResult.recordset || []).map((item) => [item.BienBanId, item])
             );
 
             const normalizedRows = rows.map((item) => {
-                const isSxbt = item.LoaiBienBan === "SXBT" ||
+                const progress = progressByBienBanId.get(item.BienBanId);
+                if (!progress) return item;
+
+                const isSxbt = progress.IsSxbt === true || progress.IsSxbt === 1 ||
+                    item.LoaiBienBan === "SXBT" ||
                     item.LoaiKiemId === 4 ||
                     String(item.TrangThai || "").startsWith("BB_SXBT");
 
-                if (!isSxbt) return item;
-
-                const progress = progressByBienBanId.get(item.BienBanId);
-                const total = progress?.SoBuocXacNhan || 0;
-                const done = progress?.DaXacNhan || 0;
+                const total = Number(progress.SoBoPhan) || 0;
+                const done = Number(progress.DaCoYKien) || 0;
+                const progressPercent = Number(progress.ProgressPercent);
 
                 return {
                     ...item,
-                    LoaiBienBan: "SXBT",
+                    LoaiBienBan: isSxbt ? "SXBT" : item.LoaiBienBan,
                     DaCoYKien: done,
                     SoBoPhan: total,
-                    ProgressPercent: total > 0 ? Math.round((done / total) * 100) : 0,
+                    ProgressPercent: Number.isFinite(progressPercent)
+                        ? progressPercent
+                        : (total > 0 ? Math.round((done / total) * 100) : 0),
                     MaBoPhanDangCho: progress?.MaBoPhanDangCho || null,
-                    TenBoPhanDangCho: progress?.TenBoPhanDangCho || null
+                    TenBoPhanDangCho: progress?.TenBoPhanDangCho || null,
+                    BoPhanChuaXacNhanText: progress?.BoPhanChuaXacNhanText || null
                 };
             });
 

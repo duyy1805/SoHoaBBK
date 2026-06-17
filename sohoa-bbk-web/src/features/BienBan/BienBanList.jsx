@@ -96,6 +96,17 @@ export default function BienBanList() {
         return <Chip label={status.label} color={status.color} size="small" sx={{ fontWeight: 500 }} />;
     };
 
+    const getPendingDepartmentsText = (item) => {
+        if (!item.BoPhanChuaXacNhanText) return "";
+        if (isSxbtBienBan(item)) {
+            if (item.TrangThai === "BB_SXBT_HOAN_TAT") return "";
+            if (item.TrangThai === "BB_SXBT_MOI" || item.TrangThai === "BB_SXBT_TP_B8_DRAFT") return "";
+        } else if (item.TrangThai === "DA_XAC_NHAN") {
+            return "";
+        }
+        return `Chưa xác nhận: ${item.BoPhanChuaXacNhanText}`;
+    };
+
     // Lọc dữ liệu bằng useMemo để tối ưu hiệu năng
     const filteredData = useMemo(() => {
         return data.filter((item) => {
@@ -279,7 +290,21 @@ export default function BienBanList() {
                                                 />
                                             </TableCell>
                                             <TableCell align="center">
-                                                {renderTrangThaiChip(item)}
+                                                <Stack alignItems="center" spacing={0.5} sx={{ maxWidth: 260, mx: "auto" }}>
+                                                    {renderTrangThaiChip(item)}
+                                                    {getPendingDepartmentsText(item) && (
+                                                        <Tooltip title={getPendingDepartmentsText(item)}>
+                                                            <Typography
+                                                                variant="caption"
+                                                                color="text.secondary"
+                                                                noWrap
+                                                                sx={{ maxWidth: "100%", display: "block" }}
+                                                            >
+                                                                {getPendingDepartmentsText(item)}
+                                                            </Typography>
+                                                        </Tooltip>
+                                                    )}
+                                                </Stack>
                                             </TableCell>
                                             <TableCell align="center">
                                                 <Tooltip title="Xem chi tiết">
