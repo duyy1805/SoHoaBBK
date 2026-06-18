@@ -46,6 +46,9 @@ Mobile `kcs-mobile/`:
 - Expo, React Native, React Navigation, React Native Paper.
 - Lệnh chạy: `cd kcs-mobile && npm start` hoặc `npx expo start`.
 - Native: `npm run android`, `npm run ios`.
+- Khi dựng UI mobile:
+  - Màn chính có header navigator sẵn thường chỉ nên dùng `SafeAreaView edges={["bottom"]}` cho phần content để tránh khoảng trắng thừa phía trên.
+  - `Modal` hoặc màn full-screen có header tự dựng bên trong phải dùng `SafeAreaView edges={["top","bottom"]}` để header không bị đẩy lên sát status bar/Dynamic Island.
 
 ## 3. Quy Ước API, Auth Và Data Access
 
@@ -128,8 +131,22 @@ Luồng chung cho phiếu không phải SXBT, hiện dùng màn `PhieuKiemDetail
 ### 7.3 Kiểm Trên Chuyền
 
 - Loại kiểm có `MaLoai === 'KIEM_TREN_CHUYEN'`.
+- Mapping chắc chắn: `LoaiKiemId === 6` là kiểm trên chuyền.
 - Web tạo phiếu lấy kế hoạch sản xuất chưa kiểm qua `GET /phieu-kiem/ke-hoach-san-xuat/chua-kiem`.
-- Sau khi tạo, luồng kiểm dùng chung luồng phiếu thường.
+- Khi tạo phiếu, `PHIEU_KIEM.SourceId` lưu trực tiếp `ID_KeHoachSanXuat`.
+- Kiểm trên chuyền có luồng riêng, không dùng `section/check item/AQL` của phiếu thường.
+- Dữ liệu lưu theo 3 tầng:
+  - `slot`: khung giờ
+  - `entry`: công đoạn trong khung giờ
+  - `entry defect`: lỗi, số lượng, ảnh
+- Danh sách giờ cố định nằm ở client (`07:30 ... 16:30`), nhưng giờ nào user chọn và lưu thì DB mới tạo record giờ đó.
+- Mobile có 2 màn riêng:
+  - `TrenChuyenInspectionScreen`: tổng quan phiếu và danh sách khung giờ
+  - `TrenChuyenSlotDetailScreen`: chi tiết một khung giờ
+- Web có route detail riêng cho kiểm trên chuyền, không đi vào `PhieuKiemDetail` thường.
+- Phiếu có thể `Lưu`, `Hoàn tất phiếu`, và `Sinh biên bản`.
+- Biên bản không tự sinh khi hoàn tất; user chủ động bấm `Sinh biên bản`.
+- Nếu phiếu đã có `BienBanId`, UI phải chuyển sang `Xem biên bản`.
 
 ### 7.4 Sản Xuất Bổ Trợ, SXBT
 

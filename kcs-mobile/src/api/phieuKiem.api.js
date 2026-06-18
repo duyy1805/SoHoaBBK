@@ -154,3 +154,7 @@ export const completeTrenChuyen = (phieuKiemId) => {
 export const createTrenChuyenBienBan = (phieuKiemId) => {
   return axiosClient.post("/phieu-kiem/tren-chuyen/create-bien-ban", { phieuKiemId });
 };
+
+export const deleteTrenChuyenEntry = (entryId) => {
+  return axiosClient.delete(`/phieu-kiem/tren-chuyen/entry/${entryId}`);
+};

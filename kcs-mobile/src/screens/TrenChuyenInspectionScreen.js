@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -7,17 +7,15 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  TextInput,
   Modal
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import {
   completeTrenChuyen,
   createTrenChuyenBienBan,
-  getDefectList,
-  getPhieuKiemDetail,
-  saveTrenChuyenData
+  getPhieuKiemDetail
 } from "../api/phieuKiem.api";
 import { getUser } from "../utils/auth";
 
@@ -27,21 +25,30 @@ const getFieldValue = (fields = [], name) =>
   fields.find((field) => field?.FieldName === name)?.FieldValue ?? "";
 
 const canEditStatus = (status) => !["HOAN_TAT", "CHO_KIEM_NGHIEM", "CHO_XUONG_XAC_NHAN"].includes(status);
-
-const createEmptySlot = (gioKiem, index = 0) => ({
-  localId: `slot-${gioKiem}-${Date.now()}`,
-  gioKiem,
-  sortOrder: index + 1,
-  entries: []
-});
-
-const createEmptyEntry = (index = 0) => ({
-  localId: `entry-${Date.now()}-${index}`,
-  congDoan: "",
-  ghiChu: "",
-  sortOrder: index + 1,
-  defects: []
-});
+const getStatusMeta = (status) => {
+  switch (status) {
+    case "TAO_MOI":
+      return { label: "Chưa kiểm", bg: "#e0f2fe", color: "#0369a1" };
+    case "DANG_KIEM":
+      return { label: "Đang kiểm", bg: "#dbeafe", color: "#1d4ed8" };
+    case "HOAN_TAT":
+      return { label: "Hoàn tất", bg: "#dcfce7", color: "#15803d" };
+    case "CHO_KIEM_NGHIEM":
+      return { label: "Chờ kiểm nghiệm", bg: "#ede9fe", color: "#6d28d9" };
+    case "CHO_XUONG_XAC_NHAN":
+      return { label: "Chờ PX xác nhận", bg: "#fef3c7", color: "#b45309" };
+    default:
+      return { label: status || "---", bg: "#e2e8f0", color: "#475569" };
+  }
+};
+const getSeverityCounts = (defects = []) => defects.reduce((acc, defect) => {
+  const qty = Number(defect?.SoLuong) || 0;
+  const type = String(defect?.DefectType || "").toUpperCase();
+  if (type === "CRITICAL") acc.critical += qty;
+  else if (type === "MAJOR") acc.major += qty;
+  else acc.minor += qty;
+  return acc;
+}, { critical: 0, major: 0, minor: 0 });
 
 export default function TrenChuyenInspectionScreen({ route, navigation }) {
   const { id } = route.params;
@@ -51,27 +58,24 @@ export default function TrenChuyenInspectionScreen({ route, navigation }) {
   const [slots, setSlots] = useState([]);
   const [dynamicFields, setDynamicFields] = useState([]);
   const [summary, setSummary] = useState(null);
-  const [defectCatalog, setDefectCatalog] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [defectModalVisible, setDefectModalVisible] = useState(false);
   const [hourModalVisible, setHourModalVisible] = useState(false);
-  const [activeSlotIndex, setActiveSlotIndex] = useState(-1);
-  const [activeEntryIndex, setActiveEntryIndex] = useState(-1);
-  const [defectSearch, setDefectSearch] = useState("");
 
   const canEdit = user?.permissions?.includes("THUC_HIEN_KIEM") && canEditStatus(phieu?.TrangThai);
+  const statusMeta = getStatusMeta(phieu?.TrangThai);
 
-  useEffect(() => {
-    loadData();
-  }, [id]);
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [id])
+  );
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [detailRes, defectRes, userInfo] = await Promise.all([
+      const [detailRes, userInfo] = await Promise.all([
         getPhieuKiemDetail(id),
-        getDefectList(),
         getUser()
       ]);
 
@@ -80,35 +84,7 @@ export default function TrenChuyenInspectionScreen({ route, navigation }) {
       setDynamicFields(data.dynamicFields || []);
       setSummary(data.summary || null);
       setUser(userInfo);
-
-      const defects = Array.isArray(defectRes.data) ? defectRes.data : [];
-      setDefectCatalog(defects);
-
-      const nextSlots = Array.isArray(data.slots) ? data.slots.map((slot, slotIndex) => ({
-        localId: slot.Id || `slot-${slot.GioKiem}-${slotIndex}`,
-        id: slot.Id,
-        gioKiem: slot.GioKiem || "",
-        sortOrder: slot.SortOrder || slotIndex + 1,
-        entries: Array.isArray(slot.Entries) ? slot.Entries.map((entry, entryIndex) => ({
-          localId: entry.Id || `entry-${slot.Id || slotIndex}-${entryIndex}`,
-          id: entry.Id,
-          congDoan: entry.CongDoan || "",
-          ghiChu: entry.GhiChu || "",
-          sortOrder: entry.SortOrder || entryIndex + 1,
-          defects: Array.isArray(entry.Defects) ? entry.Defects.map((defect, defectIndex) => ({
-            localId: defect.Id || `defect-${entry.Id || entryIndex}-${defectIndex}`,
-            id: defect.Id,
-            defectId: defect.DefectId,
-            MaLoi: defect.MaLoi,
-            TenLoi: defect.TenLoi,
-            DefectType: defect.DefectType,
-            soLuong: defect.SoLuong != null ? String(defect.SoLuong) : "",
-            ghiChu: defect.GhiChu || ""
-          })) : []
-        })) : []
-      })) : [];
-
-      setSlots(nextSlots);
+      setSlots(Array.isArray(data.slots) ? data.slots : []);
     } catch (error) {
       console.error("TrenChuyen load error:", error);
       Alert.alert("Lỗi", "Không thể tải phiếu kiểm trên chuyền.");
@@ -117,241 +93,63 @@ export default function TrenChuyenInspectionScreen({ route, navigation }) {
     }
   };
 
-  const filteredDefects = useMemo(() => {
-    const keyword = defectSearch.trim().toLowerCase();
-    if (!keyword) return defectCatalog;
-    return defectCatalog.filter((item) =>
-      String(item?.MaLoi || "").toLowerCase().includes(keyword) ||
-      String(item?.TenLoi || "").toLowerCase().includes(keyword) ||
-      String(item?.MoTa || "").toLowerCase().includes(keyword)
-    );
-  }, [defectCatalog, defectSearch]);
-
   const remainingHours = useMemo(() => {
-    const used = new Set(slots.map((slot) => slot.gioKiem));
+    const used = new Set((slots || []).map((slot) => slot.GioKiem));
     return HOUR_OPTIONS.filter((hour) => !used.has(hour));
   }, [slots]);
 
-  const updateSlotEntry = (slotIndex, entryIndex, patch) => {
-    setSlots((prev) => prev.map((slot, currentSlotIndex) => {
-      if (currentSlotIndex !== slotIndex) return slot;
-      return {
-        ...slot,
-        entries: slot.entries.map((entry, currentEntryIndex) => (
-          currentEntryIndex === entryIndex ? { ...entry, ...patch } : entry
-        ))
-      };
-    }));
-  };
-
-  const addSlot = (gioKiem) => {
-    setSlots((prev) => [...prev, createEmptySlot(gioKiem, prev.length)]);
-    setHourModalVisible(false);
-  };
-
-  const removeSlot = (slotIndex) => {
-    setSlots((prev) => prev
-      .filter((_, index) => index !== slotIndex)
-      .map((slot, index) => ({ ...slot, sortOrder: index + 1 }))
+  const getSlotSummary = (slot) => {
+    const entries = Array.isArray(slot.Entries) ? slot.Entries : [];
+    const allDefects = entries.flatMap((entry) => entry.Defects || []);
+    const defectRows = entries.reduce((sum, entry) => sum + ((entry.Defects || []).length), 0);
+    const defectQty = entries.reduce(
+      (sum, entry) => sum + (entry.Defects || []).reduce((inner, defect) => inner + (Number(defect.SoLuong) || 0), 0),
+      0
     );
+    const congDoanPreview = entries
+      .map((entry) => entry.CongDoan)
+      .filter(Boolean)
+      .slice(0, 3)
+      .join(", ");
+
+    return {
+      entryCount: entries.length,
+      defectRows,
+      defectQty,
+      congDoanPreview,
+      severity: getSeverityCounts(allDefects)
+    };
   };
 
-  const addEntry = (slotIndex) => {
-    setSlots((prev) => prev.map((slot, index) => (
-      index === slotIndex
-        ? {
-            ...slot,
-            entries: [...slot.entries, createEmptyEntry(slot.entries.length)]
-          }
-        : slot
-    )));
-  };
+  const overallSeverity = useMemo(() => {
+    const allDefects = (slots || []).flatMap((slot) =>
+      (slot.Entries || []).flatMap((entry) => entry.Defects || [])
+    );
+    return getSeverityCounts(allDefects);
+  }, [slots]);
 
-  const removeEntry = (slotIndex, entryIndex) => {
-    setSlots((prev) => prev.map((slot, index) => (
-      index === slotIndex
-        ? {
-            ...slot,
-            entries: slot.entries
-              .filter((_, currentEntryIndex) => currentEntryIndex !== entryIndex)
-              .map((entry, currentEntryIndex) => ({ ...entry, sortOrder: currentEntryIndex + 1 }))
-          }
-        : slot
-    )));
-  };
-
-  const openDefectModal = (slotIndex, entryIndex) => {
-    setActiveSlotIndex(slotIndex);
-    setActiveEntryIndex(entryIndex);
-    setDefectSearch("");
-    setDefectModalVisible(true);
-  };
-
-  const addDefectToEntry = (defect) => {
-    if (activeSlotIndex < 0 || activeEntryIndex < 0) return;
-
-    setSlots((prev) => prev.map((slot, slotIndex) => {
-      if (slotIndex !== activeSlotIndex) return slot;
-      return {
-        ...slot,
-        entries: slot.entries.map((entry, entryIndex) => {
-          if (entryIndex !== activeEntryIndex) return entry;
-
-          const existingIndex = entry.defects.findIndex((item) => Number(item.defectId) === Number(defect.Id));
-          if (existingIndex >= 0) {
-            const nextDefects = [...entry.defects];
-            const current = Number(nextDefects[existingIndex].soLuong || 0);
-            nextDefects[existingIndex] = { ...nextDefects[existingIndex], soLuong: String(current + 1) };
-            return { ...entry, defects: nextDefects };
-          }
-
-          return {
-            ...entry,
-            defects: [
-              ...entry.defects,
-              {
-                localId: `defect-${Date.now()}-${defect.Id}`,
-                defectId: defect.Id,
-                MaLoi: defect.MaLoi,
-                TenLoi: defect.TenLoi,
-                DefectType: defect.DefectType,
-                soLuong: "1",
-                ghiChu: ""
-              }
-            ]
-          };
-        })
-      };
-    }));
-  };
-
-  const updateDefect = (slotIndex, entryIndex, defectIndex, patch) => {
-    setSlots((prev) => prev.map((slot, currentSlotIndex) => {
-      if (currentSlotIndex !== slotIndex) return slot;
-      return {
-        ...slot,
-        entries: slot.entries.map((entry, currentEntryIndex) => {
-          if (currentEntryIndex !== entryIndex) return entry;
-          return {
-            ...entry,
-            defects: entry.defects.map((defect, currentDefectIndex) => (
-              currentDefectIndex === defectIndex ? { ...defect, ...patch } : defect
-            ))
-          };
-        })
-      };
-    }));
-  };
-
-  const removeDefect = (slotIndex, entryIndex, defectIndex) => {
-    setSlots((prev) => prev.map((slot, currentSlotIndex) => {
-      if (currentSlotIndex !== slotIndex) return slot;
-      return {
-        ...slot,
-        entries: slot.entries.map((entry, currentEntryIndex) => (
-          currentEntryIndex === entryIndex
-            ? { ...entry, defects: entry.defects.filter((_, currentDefectIndex) => currentDefectIndex !== defectIndex) }
-            : entry
-        ))
-      };
-    }));
-  };
-
-  const buildPayloadSlots = () => slots.map((slot, slotIndex) => ({
-    gioKiem: slot.gioKiem,
-    sortOrder: slotIndex + 1,
-    entries: (slot.entries || []).map((entry, entryIndex) => ({
-      congDoan: String(entry.congDoan || "").trim(),
-      ghiChu: String(entry.ghiChu || "").trim(),
-      sortOrder: entryIndex + 1,
-      defects: (entry.defects || [])
-        .filter((defect) => Number(defect.defectId) > 0 && Number(defect.soLuong) > 0)
-        .map((defect, defectIndex) => ({
-          defectId: Number(defect.defectId),
-          soLuong: Number(defect.soLuong || 0),
-          ghiChu: String(defect.ghiChu || "").trim(),
-          sortOrder: defectIndex + 1
-        }))
-    }))
-  }));
-
-  const validateSlots = (payloadSlots, { requireData = false } = {}) => {
-    const seenHours = new Set();
-    let hasData = false;
-
-    for (const slot of payloadSlots) {
-      if (!slot.gioKiem) {
-        return "Khung giờ không hợp lệ.";
-      }
-      if (!HOUR_OPTIONS.includes(slot.gioKiem)) {
-        return "Khung giờ phải nằm trong danh sách cố định.";
-      }
-      if (seenHours.has(slot.gioKiem)) {
-        return "Không được trùng khung giờ trong cùng một phiếu.";
-      }
-      seenHours.add(slot.gioKiem);
-
-      for (const entry of slot.entries || []) {
-        const validDefects = (entry.defects || []).filter((defect) => defect.defectId > 0 && defect.soLuong > 0);
-        if (validDefects.length === 0) {
-          continue;
-        }
-        hasData = true;
-        if (!entry.congDoan) {
-          return `Khung giờ ${slot.gioKiem} có công đoạn chưa nhập.`;
-        }
-      }
-    }
-
-    if (requireData && !hasData) {
-      return "Cần có ít nhất một công đoạn có lỗi để hoàn tất phiếu.";
-    }
-
-    return "";
-  };
-
-  const handleSave = async (showSuccess = true) => {
-    const payloadSlots = buildPayloadSlots();
-    const validationMessage = validateSlots(payloadSlots);
-    if (validationMessage) {
-      Alert.alert("Dữ liệu chưa hợp lệ", validationMessage);
-      return false;
-    }
-
+  const handleCreateBienBan = async () => {
     try {
       setSaving(true);
-      await saveTrenChuyenData({
-        phieuKiemId: id,
-        slots: payloadSlots
-      });
-      if (showSuccess) {
-        Alert.alert("Thành công", "Đã lưu phiếu kiểm trên chuyền.");
-      }
+      const res = await createTrenChuyenBienBan(id);
+      const bienBanId = res?.data?.bienBanId;
+      Alert.alert("Thành công", "Đã sinh biên bản xử lý.");
       await loadData();
-      return true;
+      if (bienBanId) {
+        navigation.navigate("BienBanDetail", { bienBanId });
+      }
     } catch (error) {
-      console.error("TrenChuyen save error:", error);
-      Alert.alert("Lỗi", error?.response?.data?.message || "Không thể lưu dữ liệu.");
-      return false;
+      console.error("TrenChuyen create bien ban error:", error);
+      Alert.alert("Lỗi", error?.response?.data?.message || "Không thể sinh biên bản.");
     } finally {
       setSaving(false);
     }
   };
 
   const handleComplete = async () => {
-    const payloadSlots = buildPayloadSlots();
-    const validationMessage = validateSlots(payloadSlots, { requireData: true });
-    if (validationMessage) {
-      Alert.alert("Dữ liệu chưa hợp lệ", validationMessage);
-      return;
-    }
-
-    const saved = await handleSave(false);
-    if (!saved) return;
-
     Alert.alert(
       "Hoàn tất phiếu",
-      "Hoàn tất phiếu kiểm trên chuyền? Dữ liệu sẽ được chốt nhưng chưa tự sinh biên bản.",
+      "Chốt phiếu kiểm trên chuyền? Dữ liệu sẽ được khóa nhưng không tự sinh biên bản.",
       [
         { text: "Hủy", style: "cancel" },
         {
@@ -374,40 +172,26 @@ export default function TrenChuyenInspectionScreen({ route, navigation }) {
     );
   };
 
-  const handleCreateBienBan = async () => {
-    try {
-      setSaving(true);
-      const res = await createTrenChuyenBienBan(id);
-      const bienBanId = res?.data?.bienBanId;
-      Alert.alert("Thành công", "Đã sinh biên bản xử lý.");
-      await loadData();
-      if (bienBanId) {
-        navigation.navigate("BienBanDetail", { bienBanId });
-      }
-    } catch (error) {
-      console.error("TrenChuyen create bien ban error:", error);
-      Alert.alert("Lỗi", error?.response?.data?.message || "Không thể sinh biên bản.");
-    } finally {
-      setSaving(false);
-    }
+  const openSlot = (gioKiem) => {
+    navigation.navigate("TrenChuyenSlotDetail", { id, gioKiem });
   };
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.centered}>
+      <SafeAreaView style={styles.centered} edges={["bottom"]}>
         <ActivityIndicator size="large" color="#2563eb" />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <ScrollView contentContainerStyle={[styles.content, canEdit ? styles.contentWithBottomBar : null]}>
         <View style={styles.headerCard}>
           <View style={styles.headerTop}>
             <Text style={styles.soPhieu}>{phieu?.SoPhieu || "---"}</Text>
-            <View style={styles.statusBadge}>
-              <Text style={styles.statusBadgeText}>{phieu?.TrangThai || "---"}</Text>
+            <View style={[styles.statusBadge, { backgroundColor: statusMeta.bg }]}>
+              <Text style={[styles.statusBadgeText, { color: statusMeta.color }]}>{statusMeta.label}</Text>
             </View>
           </View>
           <Text style={styles.productText}>{getFieldValue(dynamicFields, "TrenChuyen_TenSanPham") || phieu?.TenSanPham || "---"}</Text>
@@ -415,137 +199,136 @@ export default function TrenChuyenInspectionScreen({ route, navigation }) {
           <Text style={styles.metaText}>Đơn vị / chuyền: {getFieldValue(dynamicFields, "TrenChuyen_TenDonVi") || phieu?.DoiTuong || "---"} / {getFieldValue(dynamicFields, "TrenChuyen_TenBoPhan") || "---"}</Text>
           <Text style={styles.metaText}>Ngày kế hoạch: {getFieldValue(dynamicFields, "TrenChuyen_NgayKeHoach") ? new Date(getFieldValue(dynamicFields, "TrenChuyen_NgayKeHoach")).toLocaleDateString("vi-VN") : "---"}</Text>
           <Text style={styles.metaText}>KH: {getFieldValue(dynamicFields, "TrenChuyen_SoLuongKeHoach") || "---"} | NS dự kiến: {getFieldValue(dynamicFields, "TrenChuyen_NangSuatDuKien") || "---"} | Đã SX: {getFieldValue(dynamicFields, "TrenChuyen_DaSanXuat") || "---"}</Text>
+        </View>
 
+        <View style={styles.actionRow}>
           {phieu?.BienBanId ? (
-            <TouchableOpacity style={styles.bienBanButton} onPress={() => navigation.navigate("BienBanDetail", { bienBanId: phieu.BienBanId })}>
-              <Text style={styles.bienBanButtonText}>Xem biên bản KPH</Text>
+            <TouchableOpacity style={styles.primaryActionButton} onPress={() => navigation.navigate("BienBanDetail", { bienBanId: phieu.BienBanId })}>
+              <Ionicons name="document-text-outline" size={18} color="#fff" />
+              <Text style={styles.primaryActionText}>Xem biên bản KPH</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={styles.bienBanButton} onPress={handleCreateBienBan} disabled={saving}>
-              <Text style={styles.bienBanButtonText}>Sinh biên bản</Text>
+            <TouchableOpacity style={styles.secondaryActionButton} onPress={handleCreateBienBan} disabled={saving}>
+              <Ionicons name="add-circle-outline" size={18} color="#2563eb" />
+              <Text style={styles.secondaryActionText}>Sinh biên bản</Text>
             </TouchableOpacity>
           )}
         </View>
 
         <View style={styles.summaryCard}>
           <Text style={styles.sectionTitle}>Tổng hợp</Text>
-          <Text style={styles.summaryText}>Khung giờ: {summary?.TotalSlots || 0}</Text>
-          <Text style={styles.summaryText}>Công đoạn: {summary?.TotalEntries || 0}</Text>
-          <Text style={styles.summaryText}>Dòng lỗi: {summary?.TotalDefectRows || 0}</Text>
-          <Text style={styles.summaryText}>Tổng số lỗi: {summary?.TotalDefectQuantity || 0}</Text>
+          <View style={styles.summaryHero}>
+            <Text style={styles.summaryHeroValue}>{summary?.TotalDefectQuantity || 0}</Text>
+            <Text style={styles.summaryHeroLabel}>Tổng số lỗi ghi nhận</Text>
+          </View>
+          <View style={styles.summaryStatsRow}>
+            <View style={styles.summaryStatPill}>
+              <Text style={styles.summaryStatValue}>{summary?.TotalSlots || 0}</Text>
+              <Text style={styles.summaryStatLabel}>Khung giờ</Text>
+            </View>
+            <View style={styles.summaryStatPill}>
+              <Text style={styles.summaryStatValue}>{summary?.TotalEntries || 0}</Text>
+              <Text style={styles.summaryStatLabel}>Công đoạn</Text>
+            </View>
+            <View style={styles.summaryStatPill}>
+              <Text style={styles.summaryStatValue}>{summary?.TotalDefectRows || 0}</Text>
+              <Text style={styles.summaryStatLabel}>Dòng lỗi</Text>
+            </View>
+          </View>
+          <View style={styles.summarySeverityBlock}>
+            <Text style={styles.summarySeverityTitle}>Theo mức độ</Text>
+            <View style={styles.severityRow}>
+              <View style={[styles.severityChip, styles.severityMinor]}>
+                <Text style={[styles.severityValue, styles.severityMinorText]}>{overallSeverity.minor}</Text>
+                <Text style={[styles.severityLabel, styles.severityMinorText]}>Nhẹ</Text>
+              </View>
+              <View style={[styles.severityChip, styles.severityMajor]}>
+                <Text style={[styles.severityValue, styles.severityMajorText]}>{overallSeverity.major}</Text>
+                <Text style={[styles.severityLabel, styles.severityMajorText]}>Nặng</Text>
+              </View>
+              <View style={[styles.severityChip, styles.severityCritical]}>
+                <Text style={[styles.severityValue, styles.severityCriticalText]}>{overallSeverity.critical}</Text>
+                <Text style={[styles.severityLabel, styles.severityCriticalText]}>Nghiêm trọng</Text>
+              </View>
+            </View>
+          </View>
         </View>
 
-        {slots.map((slot, slotIndex) => (
-          <View key={slot.localId} style={styles.slotCard}>
-            <View style={styles.slotHeader}>
-              <Text style={styles.slotTitle}>Khung giờ {slot.gioKiem}</Text>
-              {canEdit ? (
-                <TouchableOpacity onPress={() => removeSlot(slotIndex)}>
-                  <Ionicons name="trash-outline" size={20} color="#ef4444" />
-                </TouchableOpacity>
-              ) : null}
-            </View>
-
-            {(slot.entries || []).length === 0 ? (
-              <Text style={styles.emptyText}>Khung giờ này chưa có công đoạn lỗi.</Text>
-            ) : (slot.entries || []).map((entry, entryIndex) => (
-              <View key={entry.localId} style={styles.entryCard}>
-                <View style={styles.entryHeader}>
-                  <Text style={styles.entryTitle}>Công đoạn {entryIndex + 1}</Text>
-                  {canEdit ? (
-                    <TouchableOpacity onPress={() => removeEntry(slotIndex, entryIndex)}>
-                      <Ionicons name="close-circle" size={20} color="#ef4444" />
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-
-                <TextInput
-                  style={styles.input}
-                  placeholder="Công đoạn, ví dụ: 1.2 / 2.3"
-                  value={entry.congDoan}
-                  onChangeText={(value) => updateSlotEntry(slotIndex, entryIndex, { congDoan: value })}
-                  editable={canEdit}
-                />
-
-                <View style={styles.defectHeader}>
-                  <Text style={styles.defectTitle}>Lỗi ghi nhận</Text>
-                  {canEdit ? (
-                    <TouchableOpacity style={styles.addDefectButton} onPress={() => openDefectModal(slotIndex, entryIndex)}>
-                      <Ionicons name="add-circle-outline" size={18} color="#2563eb" />
-                      <Text style={styles.addDefectText}>Thêm lỗi</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-
-                {(entry.defects || []).length === 0 ? (
-                  <Text style={styles.emptyText}>Chưa có lỗi trong công đoạn này.</Text>
-                ) : (entry.defects || []).map((defect, defectIndex) => (
-                  <View key={defect.localId} style={styles.defectCard}>
-                    <View style={styles.defectCardHeader}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.defectName}>{defect.MaLoi || "---"} - {defect.TenLoi || "---"}</Text>
-                        <Text style={styles.defectType}>{defect.DefectType || "---"}</Text>
-                      </View>
-                      {canEdit ? (
-                        <TouchableOpacity onPress={() => removeDefect(slotIndex, entryIndex, defectIndex)}>
-                          <Ionicons name="close-circle" size={18} color="#ef4444" />
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Số lượng lỗi"
-                      keyboardType="numeric"
-                      value={defect.soLuong}
-                      onChangeText={(value) => updateDefect(slotIndex, entryIndex, defectIndex, { soLuong: value })}
-                      editable={canEdit}
-                    />
-                    <TextInput
-                      style={[styles.input, styles.textArea]}
-                      placeholder="Ghi chú lỗi"
-                      multiline
-                      value={defect.ghiChu}
-                      onChangeText={(value) => updateDefect(slotIndex, entryIndex, defectIndex, { ghiChu: value })}
-                      editable={canEdit}
-                    />
-                  </View>
-                ))}
-
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  placeholder="Ghi chú công đoạn"
-                  multiline
-                  value={entry.ghiChu}
-                  onChangeText={(value) => updateSlotEntry(slotIndex, entryIndex, { ghiChu: value })}
-                  editable={canEdit}
-                />
-              </View>
-            ))}
-
+        <View style={styles.sectionBlock}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Khung giờ ghi nhận</Text>
             {canEdit ? (
-              <TouchableOpacity style={styles.inlineAddButton} onPress={() => addEntry(slotIndex)}>
+              <TouchableOpacity style={styles.inlineAddButton} onPress={() => setHourModalVisible(true)} disabled={remainingHours.length === 0}>
                 <Ionicons name="add-circle-outline" size={18} color="#2563eb" />
-                <Text style={styles.inlineAddButtonText}>Thêm công đoạn</Text>
+                <Text style={styles.inlineAddButtonText}>Thêm giờ</Text>
               </TouchableOpacity>
             ) : null}
           </View>
-        ))}
 
-        {canEdit ? (
-          <>
-            <TouchableOpacity style={styles.outlineButton} onPress={() => setHourModalVisible(true)} disabled={remainingHours.length === 0}>
-              <Ionicons name="time-outline" size={18} color="#2563eb" />
-              <Text style={styles.outlineButtonText}>Thêm khung giờ</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.primaryButton} onPress={() => handleSave(true)} disabled={saving}>
-              {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Lưu nháp</Text>}
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.primaryButton, styles.completeButton]} onPress={handleComplete} disabled={saving}>
-              {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Hoàn tất phiếu</Text>}
-            </TouchableOpacity>
-          </>
-        ) : null}
+          {(slots || []).length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>Chưa có khung giờ nào được ghi nhận.</Text>
+            </View>
+          ) : (
+            (slots || [])
+              .slice()
+              .sort((a, b) => (a.SortOrder || 0) - (b.SortOrder || 0))
+              .map((slot) => {
+                const info = getSlotSummary(slot);
+                return (
+                  <TouchableOpacity key={slot.Id || slot.GioKiem} style={styles.slotCard} activeOpacity={0.85} onPress={() => openSlot(slot.GioKiem)}>
+                    <View style={styles.slotCardHeader}>
+                      <Text style={styles.slotTitle}>Khung giờ {slot.GioKiem}</Text>
+                      <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
+                    </View>
+                    <View style={styles.slotMetricRow}>
+                      <View style={styles.slotMetricChip}>
+                        <Text style={styles.slotMetricValue}>{info.entryCount}</Text>
+                        <Text style={styles.slotMetricLabel}>Công đoạn</Text>
+                      </View>
+                      <View style={styles.slotMetricChip}>
+                        <Text style={styles.slotMetricValue}>{info.defectRows}</Text>
+                        <Text style={styles.slotMetricLabel}>Dòng lỗi</Text>
+                      </View>
+                      <View style={styles.slotMetricChip}>
+                        <Text style={styles.slotMetricValue}>{info.defectQty}</Text>
+                        <Text style={styles.slotMetricLabel}>Tổng lỗi</Text>
+                      </View>
+                    </View>
+                    <View style={styles.severityRow}>
+                      <View style={[styles.severityChip, styles.severityMinor]}>
+                        <Text style={[styles.severityValue, styles.severityMinorText]}>{info.severity.minor}</Text>
+                        <Text style={[styles.severityLabel, styles.severityMinorText]}>Nhẹ</Text>
+                      </View>
+                      <View style={[styles.severityChip, styles.severityMajor]}>
+                        <Text style={[styles.severityValue, styles.severityMajorText]}>{info.severity.major}</Text>
+                        <Text style={[styles.severityLabel, styles.severityMajorText]}>Nặng</Text>
+                      </View>
+                      <View style={[styles.severityChip, styles.severityCritical]}>
+                        <Text style={[styles.severityValue, styles.severityCriticalText]}>{info.severity.critical}</Text>
+                        <Text style={[styles.severityLabel, styles.severityCriticalText]}>Nghiêm trọng</Text>
+                      </View>
+                    </View>
+                    {info.congDoanPreview ? (
+                      <Text style={styles.slotPreview}>Công đoạn: {info.congDoanPreview}</Text>
+                    ) : (
+                      <Text style={styles.slotPreviewEmpty}>Chưa nhập lỗi cho khung giờ này</Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })
+          )}
+        </View>
+
       </ScrollView>
+
+      {canEdit ? (
+        <View style={styles.bottomActionBar}>
+          <TouchableOpacity style={styles.primaryButton} onPress={handleComplete} disabled={saving}>
+            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Hoàn tất phiếu</Text>}
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       <Modal visible={hourModalVisible} animationType="slide" onRequestClose={() => setHourModalVisible(false)} transparent>
         <View style={styles.modalBackdrop}>
@@ -560,7 +343,10 @@ export default function TrenChuyenInspectionScreen({ route, navigation }) {
               {remainingHours.length === 0 ? (
                 <Text style={styles.emptyText}>Đã dùng hết các khung giờ.</Text>
               ) : remainingHours.map((hour) => (
-                <TouchableOpacity key={hour} style={styles.modalOption} onPress={() => addSlot(hour)}>
+                <TouchableOpacity key={hour} style={styles.modalOption} onPress={() => {
+                  setHourModalVisible(false);
+                  openSlot(hour);
+                }}>
                   <Text style={styles.modalOptionText}>{hour}</Text>
                 </TouchableOpacity>
               ))}
@@ -568,315 +354,170 @@ export default function TrenChuyenInspectionScreen({ route, navigation }) {
           </View>
         </View>
       </Modal>
-
-      <Modal visible={defectModalVisible} animationType="slide" onRequestClose={() => setDefectModalVisible(false)}>
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Chọn lỗi</Text>
-            <TouchableOpacity onPress={() => setDefectModalVisible(false)}>
-              <Ionicons name="close" size={24} color="#0f172a" />
-            </TouchableOpacity>
-          </View>
-          <TextInput
-            style={styles.input}
-            placeholder="Tìm mã lỗi / tên lỗi"
-            value={defectSearch}
-            onChangeText={setDefectSearch}
-          />
-          <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
-            {filteredDefects.map((defect) => (
-              <TouchableOpacity
-                key={defect.Id}
-                style={styles.modalDefectItem}
-                onPress={() => {
-                  addDefectToEntry(defect);
-                  setDefectModalVisible(false);
-                }}
-              >
-                <Text style={styles.modalDefectCode}>{defect.MaLoi || "---"}</Text>
-                <Text style={styles.modalDefectName}>{defect.TenLoi || "---"}</Text>
-                <Text style={styles.modalDefectMeta}>{defect.DefectType || "---"}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f8fafc"
-  },
-  centered: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  content: {
-    padding: 16,
-    gap: 16
-  },
+  container: { flex: 1, backgroundColor: "#f4f7fb" },
+  centered: { flex: 1, alignItems: "center", justifyContent: "center" },
+  content: { padding: 16, gap: 16 },
+  contentWithBottomBar: { paddingBottom: 108 },
   headerCard: {
     backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16
-  },
-  headerTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8
-  },
-  soPhieu: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#0f172a"
-  },
-  statusBadge: {
-    backgroundColor: "#dbeafe",
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6
-  },
-  statusBadgeText: {
-    color: "#1d4ed8",
-    fontWeight: "600"
-  },
-  productText: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827"
-  },
-  metaText: {
-    fontSize: 13,
-    color: "#475569",
-    marginTop: 4
-  },
-  bienBanButton: {
-    marginTop: 12,
-    alignSelf: "flex-start",
-    backgroundColor: "#0f172a",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10
-  },
-  bienBanButtonText: {
-    color: "#fff",
-    fontWeight: "600"
-  },
-  summaryCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#0f172a",
-    marginBottom: 8
-  },
-  summaryText: {
-    color: "#334155",
-    marginBottom: 4
-  },
-  slotCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16
-  },
-  slotHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12
-  },
-  slotTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#0f172a"
-  },
-  entryCard: {
+    borderRadius: 20,
+    padding: 20,
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2
   },
-  entryHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8
-  },
-  entryTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#1e293b"
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    backgroundColor: "#fff",
-    marginBottom: 10
-  },
-  textArea: {
-    minHeight: 72,
-    textAlignVertical: "top"
-  },
-  defectHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8
-  },
-  defectTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#0f172a"
-  },
-  addDefectButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4
-  },
-  addDefectText: {
-    color: "#2563eb",
-    fontWeight: "600"
-  },
-  defectCard: {
-    borderWidth: 1,
-    borderColor: "#dbeafe",
-    borderRadius: 10,
-    padding: 10,
-    backgroundColor: "#f8fbff",
-    marginBottom: 10
-  },
-  defectCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8
-  },
-  defectName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#0f172a"
-  },
-  defectType: {
-    fontSize: 12,
-    color: "#64748b",
-    marginTop: 2
-  },
-  emptyText: {
-    color: "#64748b",
-    fontStyle: "italic"
-  },
-  inlineAddButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6
-  },
-  inlineAddButtonText: {
-    color: "#2563eb",
-    fontWeight: "600"
-  },
-  outlineButton: {
-    borderWidth: 1,
-    borderColor: "#2563eb",
-    borderRadius: 12,
-    paddingVertical: 14,
+  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  soPhieu: { fontSize: 22, fontWeight: "700", color: "#0f172a" },
+  statusBadge: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
+  statusBadgeText: { fontWeight: "700", fontSize: 12 },
+  productText: { fontSize: 18, fontWeight: "700", color: "#111827" },
+  metaText: { fontSize: 14, color: "#475569", marginTop: 6, lineHeight: 21 },
+  actionRow: { flexDirection: "row", gap: 12 },
+  primaryActionButton: {
+    flex: 1,
+    minHeight: 48,
+    backgroundColor: "#2563eb",
+    borderRadius: 14,
+    paddingHorizontal: 16,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 8
   },
-  outlineButtonText: {
-    color: "#2563eb",
-    fontWeight: "700"
+  primaryActionText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  secondaryActionButton: {
+    flex: 1,
+    minHeight: 48,
+    backgroundColor: "#eff6ff",
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#bfdbfe"
+  },
+  secondaryActionText: { color: "#2563eb", fontWeight: "700", fontSize: 15 },
+  summaryCard: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "#e2e8f0"
+  },
+  sectionBlock: { backgroundColor: "#fff", borderRadius: 16, padding: 16 },
+  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  sectionTitle: { fontSize: 16, fontWeight: "700", color: "#0f172a" },
+  summaryHero: {
+    backgroundColor: "#f8fafc",
+    borderRadius: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
+    borderWidth: 1,
+    borderColor: "#e2e8f0"
+  },
+  summaryHeroValue: { fontSize: 36, lineHeight: 40, fontWeight: "800", color: "#0f172a" },
+  summaryHeroLabel: { marginTop: 6, color: "#64748b", fontSize: 14, fontWeight: "600" },
+  summaryStatsRow: { flexDirection: "row", gap: 8, marginTop: 12 },
+  summaryStatPill: {
+    flex: 1,
+    backgroundColor: "#ffffff",
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0"
+  },
+  summaryStatValue: { fontSize: 20, fontWeight: "800", color: "#0f172a" },
+  summaryStatLabel: { marginTop: 3, color: "#64748b", fontSize: 12, fontWeight: "600" },
+  summarySeverityBlock: { marginTop: 14 },
+  summarySeverityTitle: { fontSize: 12, fontWeight: "700", color: "#64748b", textTransform: "uppercase", marginBottom: 8 },
+  inlineAddButton: { flexDirection: "row", alignItems: "center", gap: 6 },
+  inlineAddButtonText: { color: "#2563eb", fontWeight: "600" },
+  slotCard: {
+    borderWidth: 1,
+    borderColor: "#dbe5f1",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    backgroundColor: "#fbfdff"
+  },
+  slotCardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  slotTitle: { fontSize: 18, fontWeight: "700", color: "#0f172a" },
+  slotMetricRow: { flexDirection: "row", gap: 8, marginTop: 4, marginBottom: 10 },
+  slotMetricChip: {
+    flex: 1,
+    backgroundColor: "#eff6ff",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#dbeafe"
+  },
+  slotMetricValue: { color: "#1d4ed8", fontSize: 16, fontWeight: "800" },
+  slotMetricLabel: { color: "#64748b", fontSize: 11, marginTop: 2, fontWeight: "600" },
+  slotPreview: { marginTop: 4, color: "#0f172a", fontWeight: "500", lineHeight: 20 },
+  slotPreviewEmpty: { marginTop: 8, color: "#94a3b8", fontStyle: "italic" },
+  severityRow: { flexDirection: "row", gap: 8, marginTop: 2, marginBottom: 2 },
+  severityChip: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderWidth: 1
+  },
+  severityValue: { fontSize: 16, fontWeight: "800" },
+  severityLabel: { marginTop: 2, fontSize: 11, fontWeight: "700" },
+  severityMinor: { backgroundColor: "#f8fafc", borderColor: "#e2e8f0" },
+  severityMinorText: { color: "#64748b" },
+  severityMajor: { backgroundColor: "#fff7ed", borderColor: "#fed7aa" },
+  severityMajorText: { color: "#c2410c" },
+  severityCritical: { backgroundColor: "#fef2f2", borderColor: "#fecaca" },
+  severityCriticalText: { color: "#b91c1c" },
+  emptyCard: { borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 12, padding: 16 },
+  emptyText: { color: "#64748b", fontStyle: "italic" },
+  bottomActionBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingTop: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    backgroundColor: "#ffffff",
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 4
   },
   primaryButton: {
     backgroundColor: "#2563eb",
-    borderRadius: 12,
+    borderRadius: 16,
+    minHeight: 52,
     paddingVertical: 14,
     alignItems: "center",
-    justifyContent: "center"
-  },
-  completeButton: {
-    backgroundColor: "#0f172a"
-  },
-  primaryButtonText: {
-    color: "#fff",
-    fontWeight: "700"
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-    padding: 16
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.35)",
     justifyContent: "center",
-    padding: 16
+    shadowColor: "#2563eb",
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 3
   },
-  modalCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
-    maxHeight: "70%"
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#0f172a"
-  },
-  modalOption: {
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    marginBottom: 8
-  },
-  modalOptionText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#0f172a"
-  },
-  modalDefectItem: {
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
-    backgroundColor: "#fff"
-  },
-  modalDefectCode: {
-    fontSize: 12,
-    color: "#1d4ed8",
-    fontWeight: "700"
-  },
-  modalDefectName: {
-    fontSize: 14,
-    color: "#0f172a",
-    fontWeight: "600",
-    marginTop: 2
-  },
-  modalDefectMeta: {
-    fontSize: 12,
-    color: "#64748b",
-    marginTop: 2
-  }
+  primaryButtonText: { color: "#fff", fontWeight: "700" },
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.35)", justifyContent: "center", padding: 16 },
+  modalCard: { backgroundColor: "#fff", borderRadius: 16, padding: 16, maxHeight: "70%" },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  modalTitle: { fontSize: 18, fontWeight: "700", color: "#0f172a" },
+  modalOption: { borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 12, marginBottom: 8 },
+  modalOptionText: { fontSize: 14, fontWeight: "600", color: "#0f172a" }
 });

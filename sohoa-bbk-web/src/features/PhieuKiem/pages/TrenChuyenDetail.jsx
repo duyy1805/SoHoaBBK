@@ -210,19 +210,25 @@ export default function TrenChuyenDetail() {
                                                     <Table size="small">
                                                         <TableHead>
                                                             <TableRow>
-                                                                <TableCell sx={{ width: 160 }}>Công đoạn</TableCell>
+                                                                <TableCell sx={{ width: 220 }}>Công đoạn</TableCell>
                                                                 <TableCell>Lỗi ghi nhận</TableCell>
-                                                                <TableCell sx={{ width: 220 }}>Ghi chú</TableCell>
                                                             </TableRow>
                                                         </TableHead>
                                                         <TableBody>
                                                             {(slot.Entries || []).length === 0 ? (
                                                                 <TableRow>
-                                                                    <TableCell colSpan={3} align="center">Khung giờ này chưa có lỗi.</TableCell>
+                                                                    <TableCell colSpan={2} align="center">Khung giờ này chưa có lỗi.</TableCell>
                                                                 </TableRow>
                                                             ) : (slot.Entries || []).map((entry) => (
                                                                 <TableRow key={entry.Id}>
-                                                                    <TableCell>{entry.CongDoan}</TableCell>
+                                                                    <TableCell>
+                                                                        <Stack spacing={0.5}>
+                                                                            <Typography variant="body2" fontWeight={700}>{entry.CongDoan}</Typography>
+                                                                            <Typography variant="caption" color="text.secondary">
+                                                                                Người ghi nhận: {entry.TenNguoiGhiNhan || "—"}
+                                                                            </Typography>
+                                                                        </Stack>
+                                                                    </TableCell>
                                                                     <TableCell>
                                                                         <Stack spacing={0.5}>
                                                                             {(entry.Defects || []).map((defect) => (
@@ -233,7 +239,6 @@ export default function TrenChuyenDetail() {
                                                                             ))}
                                                                         </Stack>
                                                                     </TableCell>
-                                                                    <TableCell>{entry.GhiChu || "—"}</TableCell>
                                                                 </TableRow>
                                                             ))}
                                                         </TableBody>

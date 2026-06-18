@@ -64,6 +64,7 @@ const normalizeTrenChuyenSlots = (slots = []) => slots.map((slot, slotIndex) => 
     entries: Array.isArray(slot?.entries)
         ? slot.entries.map((entry, entryIndex) => ({
             congDoan: String(entry?.congDoan || '').trim(),
+            nguoiGhiNhanId: Number(entry?.nguoiGhiNhanId || 0) || null,
             ghiChu: entry?.ghiChu ? String(entry.ghiChu).trim() : '',
             sortOrder: Number(entry?.sortOrder || entryIndex + 1),
             defects: Array.isArray(entry?.defects)
@@ -71,6 +72,9 @@ const normalizeTrenChuyenSlots = (slots = []) => slots.map((slot, slotIndex) => 
                     defectId: Number(defect?.defectId || 0),
                     soLuong: Number(defect?.soLuong || 0),
                     ghiChu: defect?.ghiChu ? String(defect.ghiChu).trim() : '',
+                    imageUrls: Array.isArray(defect?.imageUrls)
+                        ? defect.imageUrls.filter((url) => typeof url === 'string' && url.trim() !== '')
+                        : [],
                     sortOrder: Number(defect?.sortOrder || defectIndex + 1)
                 })).filter((defect) => defect.defectId > 0 && defect.soLuong > 0)
                 : []
@@ -537,6 +541,8 @@ router.get(
                             Id: record.EntryId,
                             SlotId: record.SlotId,
                             CongDoan: record.CongDoan,
+                            NguoiGhiNhanId: record.NguoiGhiNhanId || null,
+                            TenNguoiGhiNhan: record.TenNguoiGhiNhan || '',
                             GhiChu: record.EntryGhiChu || '',
                             SortOrder: record.EntrySortOrder || 0,
                             CreatedAt: record.EntryCreatedAt || null,
@@ -546,7 +552,17 @@ router.get(
                     }
 
                     if (record.DefectId) {
-                        const imageUrls = record.ImageUrl ? [record.ImageUrl] : [];
+                        let defectImageUrls = [];
+                        if (record.DefectImageUrls) {
+                            try {
+                                defectImageUrls = JSON.parse(record.DefectImageUrls);
+                            } catch (e) {
+                                defectImageUrls = [];
+                            }
+                        }
+                        if (!Array.isArray(defectImageUrls)) {
+                            defectImageUrls = [];
+                        }
 
                         entriesBySlotId[record.SlotId][record.EntryId].Defects.push({
                             Id: record.DefectRowId,
@@ -560,7 +576,7 @@ router.get(
                             DefectType: record.DefectType,
                             PhuongAnXuLy: record.PhuongAnXuLy,
                             ImageUrl: record.ImageUrl || null,
-                            ImageUrls: imageUrls
+                            ImageUrls: defectImageUrls
                         });
                     }
                 });
@@ -773,6 +789,7 @@ router.post(
     authorize('THUC_HIEN_KIEM'),
     async (req, res) => {
         const { phieuKiemId, slots } = req.body;
+        const userId = req.user?.id || req.user?.userId;
 
         if (!phieuKiemId || !Array.isArray(slots)) {
             return res.status(400).json({ message: 'Thiếu dữ liệu lưu phiếu trên chuyền' });
@@ -784,6 +801,7 @@ router.post(
             const pool = await poolPromise;
             await pool.request()
                 .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('UserId', sql.Int, userId)
                 .input('SlotsJson', sql.NVarChar(sql.MAX), JSON.stringify(normalizedSlots))
                 .execute('sp_PhieuKiem_TrenChuyen_SaveEntries');
 
@@ -800,6 +818,80 @@ router.post(
             console.error('TrenChuyen save error:', err);
             res.status(500).json({
                 message: err?.originalError?.info?.message || err.message || 'Lưu phiếu kiểm trên chuyền thất bại'
+            });
+        }
+    }
+);
+
+router.delete(
+    '/tren-chuyen/entry/:entryId',
+    authenticateToken,
+    authorize(['THUC_HIEN_KIEM', 'PHAN_BO_KIEM', 'KET_LUAN']),
+    async (req, res) => {
+        const entryId = Number(req.params.entryId);
+        const userId = req.user?.id || req.user?.userId;
+        const userPermissions = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+        const canManageAll = userPermissions.includes('PHAN_BO_KIEM') || userPermissions.includes('KET_LUAN');
+
+        if (!Number.isInteger(entryId) || entryId <= 0) {
+            return res.status(400).json({ message: 'EntryId không hợp lệ' });
+        }
+
+        try {
+            const pool = await poolPromise;
+
+            const entryInfo = await pool.request()
+                .input('EntryId', sql.Int, entryId)
+                .query(`
+                    SELECT
+                        e.Id,
+                        e.NguoiGhiNhanId,
+                        e.SlotId,
+                        s.PhieuKiemId,
+                        pk.TrangThai
+                    FROM dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY e
+                    INNER JOIN dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT s ON s.Id = e.SlotId
+                    INNER JOIN dbo.PHIEU_KIEM pk ON pk.Id = s.PhieuKiemId
+                    WHERE e.Id = @EntryId
+                `);
+
+            const entry = entryInfo.recordset?.[0];
+            if (!entry) {
+                return res.status(404).json({ message: 'Không tìm thấy công đoạn cần xóa' });
+            }
+
+            if (['HOAN_TAT', 'CHO_KIEM_NGHIEM', 'CHO_XUONG_XAC_NHAN'].includes(entry.TrangThai)) {
+                return res.status(409).json({ message: 'Phiếu đã khóa, không thể xóa công đoạn' });
+            }
+
+            if (!canManageAll && Number(entry.NguoiGhiNhanId) !== Number(userId)) {
+                return res.status(403).json({ message: 'Bạn chỉ có thể xóa công đoạn do chính mình ghi nhận' });
+            }
+
+            await pool.request()
+                .input('EntryId', sql.Int, entryId)
+                .input('SlotId', sql.Int, entry.SlotId)
+                .query(`
+                    DELETE FROM dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY_DEFECT
+                    WHERE EntryId = @EntryId;
+
+                    DELETE FROM dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY
+                    WHERE Id = @EntryId;
+
+                    DELETE FROM dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT
+                    WHERE Id = @SlotId
+                      AND NOT EXISTS (
+                        SELECT 1
+                        FROM dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY
+                        WHERE SlotId = @SlotId
+                      );
+                `);
+
+            res.json({ success: true });
+        } catch (err) {
+            console.error('TrenChuyen delete entry error:', err);
+            res.status(500).json({
+                message: err?.originalError?.info?.message || err.message || 'Xóa công đoạn thất bại'
             });
         }
     }
