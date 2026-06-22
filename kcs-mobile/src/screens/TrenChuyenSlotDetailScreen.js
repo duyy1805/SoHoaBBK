@@ -26,13 +26,18 @@ import {
   getAssetUrl
 } from "../api/phieuKiem.api";
 import { getUser } from "../utils/auth";
+import {
+  getAssetUri,
+  getExtensionFromMime,
+  getMimeFromName,
+  normalizeImageAssetForUpload
+} from "../utils/imageUpload";
 
 const HOUR_OPTIONS = ["07:30", "08:30", "09:30", "10:30", "11:30", "12:30", "13:30", "14:30", "15:30", "16:30"];
 const IMAGE_PICKER_OPTIONS = { mediaTypes: ["images"], quality: 0.7, allowsEditing: false };
 
 const canEditStatus = (status) => !["HOAN_TAT", "CHO_TBP_DUYET", "CHO_KIEM_NGHIEM", "CHO_XUONG_XAC_NHAN"].includes(status);
 const isPermissionGranted = (status) => status === "granted" || status === "limited";
-const getAssetUri = (asset) => typeof asset === "string" ? asset : asset?.uri;
 const getStatusMeta = (status) => {
   switch (status) {
     case "TAO_MOI":
@@ -50,31 +55,6 @@ const getStatusMeta = (status) => {
     default:
       return { label: status || "---", bg: "#e2e8f0", color: "#475569" };
   }
-};
-const getExtensionFromMime = (mimeType) => {
-  if (!mimeType) return "jpg";
-  const subtype = mimeType.split("/")[1]?.split(";")[0]?.toLowerCase();
-  if (!subtype) return "jpg";
-  if (subtype === "jpeg" || subtype === "jpg") return "jpg";
-  if (subtype === "png") return "png";
-  if (subtype === "heic" || subtype === "heif") return "heic";
-  return subtype.replace(/[^a-z0-9]/g, "") || "jpg";
-};
-const getMimeFromName = (fileName) => {
-  const ext = String(fileName || "").split(".").pop()?.toLowerCase();
-  if (ext === "png") return "image/png";
-  if (ext === "heic") return "image/heic";
-  if (ext === "heif") return "image/heif";
-  return "image/jpeg";
-};
-const normalizeImageAsset = (asset) => {
-  const uri = asset?.uri;
-  if (!uri) return null;
-  const mimeType = asset.mimeType || getMimeFromName(asset.fileName || uri);
-  const extension = getExtensionFromMime(mimeType);
-  const uriName = uri.split("/").pop()?.split("?")[0];
-  const fileName = asset.fileName || uriName || `tren-chuyen-${Date.now()}.${extension}`;
-  return { uri, fileName: fileName.includes(".") ? fileName : `${fileName}.${extension}`, mimeType };
 };
 const createUploadFile = (asset, entryIndex, defectIndex, imageIndex, uriOverride = null) => {
   const uri = uriOverride || getAssetUri(asset);
@@ -341,7 +321,7 @@ export default function TrenChuyenSlotDetailScreen({ route, navigation }) {
             }
             const result = await ImagePicker.launchCameraAsync(IMAGE_PICKER_OPTIONS);
             if (!result.canceled) {
-              const imageAsset = normalizeImageAsset(result.assets?.[0]);
+              const imageAsset = await normalizeImageAssetForUpload(result.assets?.[0], { prefix: "tren-chuyen" });
               if (!imageAsset) return;
               updateDefect(entryIndex, defectIndex, (prev) => ({
                 ...prev,
@@ -365,7 +345,7 @@ export default function TrenChuyenSlotDetailScreen({ route, navigation }) {
             }
             const result = await ImagePicker.launchImageLibraryAsync(IMAGE_PICKER_OPTIONS);
             if (!result.canceled) {
-              const imageAsset = normalizeImageAsset(result.assets?.[0]);
+              const imageAsset = await normalizeImageAssetForUpload(result.assets?.[0], { prefix: "tren-chuyen" });
               if (!imageAsset) return;
               updateDefect(entryIndex, defectIndex, (prev) => ({
                 ...prev,

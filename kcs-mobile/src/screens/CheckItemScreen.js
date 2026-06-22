@@ -22,6 +22,12 @@ import {
     uploadImagesWithXhr
 } from "../api/phieuKiem.api";
 import * as FileSystem from 'expo-file-system/legacy';
+import {
+    getAssetUri,
+    getExtensionFromMime,
+    getMimeFromName,
+    normalizeImageAssetForUpload
+} from "../utils/imageUpload";
 
 const IMAGE_PICKER_OPTIONS = {
     mediaTypes: ['images'],
@@ -30,44 +36,6 @@ const IMAGE_PICKER_OPTIONS = {
 };
 
 const isPermissionGranted = (status) => status === 'granted' || status === 'limited';
-
-const getAssetUri = (asset) => typeof asset === "string" ? asset : asset?.uri;
-
-const getExtensionFromMime = (mimeType) => {
-    if (!mimeType) return "jpg";
-    const subtype = mimeType.split("/")[1]?.split(";")[0]?.toLowerCase();
-    if (!subtype) return "jpg";
-    if (subtype === "jpeg" || subtype === "jpg") return "jpg";
-    if (subtype === "png") return "png";
-    if (subtype === "heic" || subtype === "heif") return "heic";
-    return subtype.replace(/[^a-z0-9]/g, "") || "jpg";
-};
-
-const getMimeFromName = (fileName) => {
-    const ext = String(fileName || "").split(".").pop()?.toLowerCase();
-    if (ext === "png") return "image/png";
-    if (ext === "heic") return "image/heic";
-    if (ext === "heif") return "image/heif";
-    return "image/jpeg";
-};
-
-const normalizeImageAsset = (asset) => {
-    const uri = asset?.uri;
-    if (!uri) return null;
-
-    const mimeType = asset.mimeType || getMimeFromName(asset.fileName || uri);
-    const extension = getExtensionFromMime(mimeType);
-    const uriName = uri.split("/").pop()?.split("?")[0];
-    const fileName = asset.fileName || uriName || `check-item-${Date.now()}.${extension}`;
-
-    return {
-        uri,
-        fileName: fileName.includes(".") ? fileName : `${fileName}.${extension}`,
-        mimeType,
-        width: asset.width,
-        height: asset.height
-    };
-};
 
 const createUploadFile = (asset, defectIndex, imageIndex, uriOverride = null) => {
     const uri = uriOverride || getAssetUri(asset);
@@ -164,7 +132,7 @@ export default function CheckItemScreen({ route, navigation }) {
                             const result = await ImagePicker.launchCameraAsync(IMAGE_PICKER_OPTIONS);
 
                             if (!result.canceled) {
-                                const imageAsset = normalizeImageAsset(result.assets?.[0]);
+                                const imageAsset = await normalizeImageAssetForUpload(result.assets?.[0], { prefix: "check-item" });
                                 if (!imageAsset) {
                                     Alert.alert("Lỗi", "Không đọc được ảnh đã chụp.");
                                     return;
@@ -194,7 +162,7 @@ export default function CheckItemScreen({ route, navigation }) {
                             const result = await ImagePicker.launchImageLibraryAsync(IMAGE_PICKER_OPTIONS);
 
                             if (!result.canceled) {
-                                const imageAsset = normalizeImageAsset(result.assets?.[0]);
+                                const imageAsset = await normalizeImageAssetForUpload(result.assets?.[0], { prefix: "check-item" });
                                 if (!imageAsset) {
                                     Alert.alert("Lỗi", "Không đọc được ảnh đã chọn.");
                                     return;
@@ -433,12 +401,20 @@ export default function CheckItemScreen({ route, navigation }) {
                 {/* info */}
                 <View style={styles.infoCard}>
                     <View style={styles.infoRow}>
-                        <Text style={styles.label}>Tham chiếu</Text>
-                        <Text style={styles.value}>{item.ThamChieu || "--"}</Text>
+                        <View style={styles.infoLabelCol}>
+                            <Text style={styles.label}>Tham chiếu</Text>
+                        </View>
+                        <View style={styles.infoValueCol}>
+                            <Text style={styles.value}>{item.ThamChieu || "--"}</Text>
+                        </View>
                     </View>
                     <View style={styles.infoRow}>
-                        <Text style={styles.label}>Phương pháp</Text>
-                        <Text style={styles.value}>{item.PhuongPhapKiem || "--"}</Text>
+                        <View style={styles.infoLabelCol}>
+                            <Text style={styles.label}>Phương pháp</Text>
+                        </View>
+                        <View style={styles.infoValueCol}>
+                            <Text style={styles.value}>{item.PhuongPhapKiem || "--"}</Text>
+                        </View>
                     </View>
                 </View>
 
@@ -479,8 +455,8 @@ export default function CheckItemScreen({ route, navigation }) {
 
                         {selectedDefects.map((d, index) => (
                             <View key={index} style={{ backgroundColor: "#fff", padding: 12, borderRadius: 12, marginBottom: 8 }}>
-                                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
-                                    <View style={{ flex: 1 }}>
+                                <View style={styles.selectedDefectTopRow}>
+                                    <View style={styles.selectedDefectContent}>
                                         <Text style={styles.defectCode}>{d.MaLoi}</Text>
                                         <Text style={styles.defectName}>{d.TenLoi}</Text>
                                         {d.MoTa && (
@@ -494,20 +470,22 @@ export default function CheckItemScreen({ route, navigation }) {
                                         )}
                                     </View>
 
-                                    <TextInput
-                                        style={styles.qtyInput}
-                                        keyboardType="numeric"
-                                        value={String(d.soLuong)}
-                                        onChangeText={(val) => updateQty(index, val)}
-                                    />
+                                    <View style={styles.selectedDefectActions}>
+                                        <TextInput
+                                            style={styles.qtyInput}
+                                            keyboardType="numeric"
+                                            value={String(d.soLuong)}
+                                            onChangeText={(val) => updateQty(index, val)}
+                                        />
 
-                                    <TouchableOpacity onPress={() => handlePickImage(index)} style={{ marginHorizontal: 15 }}>
-                                        <Ionicons name="image-outline" size={24} color="#2563eb" />
-                                    </TouchableOpacity>
+                                        <TouchableOpacity onPress={() => handlePickImage(index)} style={styles.defectActionIcon}>
+                                            <Ionicons name="image-outline" size={24} color="#2563eb" />
+                                        </TouchableOpacity>
 
-                                    <TouchableOpacity onPress={() => removeDefect(d.defectId)}>
-                                        <Text style={{ color: "#ef4444", fontWeight: "bold", fontSize: 18 }}>X</Text>
-                                    </TouchableOpacity>
+                                        <TouchableOpacity onPress={() => removeDefect(d.defectId)} style={styles.defectActionIcon}>
+                                            <Text style={{ color: "#ef4444", fontWeight: "bold", fontSize: 18 }}>X</Text>
+                                        </TouchableOpacity>
+                                    </View>
                                 </View>
 
                                 {/* CONTAINER CHỨA ẢNH: Hiển thị nhiều ảnh trên 1 dòng */}
@@ -627,9 +605,9 @@ export default function CheckItemScreen({ route, navigation }) {
                                             style={styles.defectItem}
                                             onPress={() => handleAddDefect(d)}
                                         >
-                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                <View style={{ flex: 1 }}>
-                                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                                            <View style={styles.modalDefectHeader}>
+                                                <View style={styles.modalDefectHeaderContent}>
+                                                    <View style={styles.modalDefectCodeRow}>
                                                         <View style={[styles.typeBadge, { backgroundColor: typeColor }]}>
                                                             <Text style={styles.typeBadgeText}>{d.DefectType}</Text>
                                                         </View>
@@ -637,7 +615,7 @@ export default function CheckItemScreen({ route, navigation }) {
                                                     </View>
                                                     <Text style={styles.defectName}>{d.TenLoi}</Text>
                                                 </View>
-                                                <Ionicons name="add-circle-outline" size={24} color="#2563eb" />
+                                                <Ionicons name="add-circle-outline" size={24} color="#2563eb" style={styles.modalAddIcon} />
                                             </View>
 
                                             {d.MoTa && (
@@ -723,8 +701,19 @@ const styles = StyleSheet.create({
 
     infoRow: {
         flexDirection: "row",
-        justifyContent: "space-between",
-        marginBottom: 6
+        alignItems: "flex-start",
+        marginBottom: 10,
+        gap: 10
+    },
+
+    infoLabelCol: {
+        width: 92,
+        paddingTop: 1
+    },
+
+    infoValueCol: {
+        flex: 1,
+        minWidth: 0
     },
 
     label: {
@@ -734,7 +723,9 @@ const styles = StyleSheet.create({
 
     value: {
         fontWeight: "600",
-        color: "#0f172a"
+        color: "#0f172a",
+        flexWrap: "wrap",
+        lineHeight: 20
     },
 
     standardCard: {
@@ -876,25 +867,52 @@ const styles = StyleSheet.create({
         elevation: 2
     },
 
+    selectedDefectTopRow: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        marginBottom: 10,
+        gap: 12
+    },
+
+    selectedDefectContent: {
+        flex: 1,
+        minWidth: 0
+    },
+
+    selectedDefectActions: {
+        alignItems: "center",
+        justifyContent: "flex-start",
+        gap: 10,
+        paddingTop: 2
+    },
+
+    defectActionIcon: {
+        alignItems: "center",
+        justifyContent: "center"
+    },
+
     defectCode: {
         fontWeight: "bold",
         fontSize: 14,
         color: "#64748b",
-        marginLeft: 8
+        marginLeft: 8,
+        flexShrink: 1
     },
 
     defectName: {
         fontSize: 16,
         fontWeight: "600",
         color: "#0f172a",
-        marginTop: 2
+        marginTop: 2,
+        flexWrap: "wrap"
     },
 
     defectDesc: {
         fontSize: 13,
         color: "#64748b",
         marginTop: 6,
-        lineHeight: 18
+        lineHeight: 18,
+        flexWrap: "wrap"
     },
 
     typeBadge: {
@@ -907,6 +925,29 @@ const styles = StyleSheet.create({
         color: "#fff",
         fontSize: 10,
         fontWeight: "bold"
+    },
+
+    modalDefectHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        gap: 8
+    },
+
+    modalDefectHeaderContent: {
+        flex: 1,
+        minWidth: 0
+    },
+
+    modalDefectCodeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 4,
+        flexWrap: 'wrap'
+    },
+
+    modalAddIcon: {
+        marginTop: 2
     },
 
     noteBox: {
