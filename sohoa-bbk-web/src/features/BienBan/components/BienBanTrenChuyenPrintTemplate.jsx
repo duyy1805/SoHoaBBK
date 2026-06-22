@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { Box } from '@mui/material';
 
-export const BienBanPrintTemplate = React.forwardRef(({
+export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
     info = {},
     defects = [],
     xuLy = [],
     chiPhi = [],
     hanhDong = [],
     xacNhan = [],
+    phieuKiemXacNhan = [],
     assigns = [],
     dynamicFields = []
 }, ref) => {
@@ -216,6 +217,9 @@ export const BienBanPrintTemplate = React.forwardRef(({
             return map;
         }, new Map()).values()
     );
+    const tbpPhieuKiemApproval = (phieuKiemXacNhan || []).find(
+        (item) => String(item?.VaiTro || '').toUpperCase() === 'TBP'
+    );
 
     return (
         <div ref={ref} style={styles.previewBackground} className="preview-background">
@@ -413,8 +417,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                             <tr>
                                                 <th style={{ ...styles.th, width: '40px' }}>TT</th>
                                                 <th style={styles.th}>VT/BTP/TP</th>
-                                                <th style={{ ...styles.th, width: '100px' }}>Số lượng kiểm</th>
-                                                <th style={{ ...styles.th, width: '90px' }}>Tỷ lệ lỗi, %</th>
+                                                <th style={{ ...styles.th, width: '110px' }}>Số lượng lỗi</th>
                                                 <th style={{ ...styles.th, width: '120px' }}>Dạng lỗi</th>
                                                 <th style={styles.th}>Ghi chú</th>
                                             </tr>
@@ -424,19 +427,13 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                                 <tr key={index}>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{index + 1}</td>
                                                     <td style={styles.td}>{d.TenLoi}</td>
-                                                    <td style={{ ...styles.td, textAlign: 'center' }}>{d.SoLuongKiem || 0}</td>
-                                                    <td style={{ ...styles.td, textAlign: 'center' }}>
-                                                        {(d.SoLuong && d.SoLuongKiem)
-                                                            ? ((d.SoLuong / d.SoLuongKiem) * 100).toFixed(0) + '%'
-                                                            : (d.SoLuong > 0 && !d.SoLuongKiem) ? '100%' : '0%'}
-                                                    </td>
+                                                    <td style={{ ...styles.td, textAlign: 'center' }}>{d.SoLuong || 0}</td>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{d.DefectType}</td>
                                                     <td style={styles.td}></td>
                                                 </tr>
                                             )) : (
                                                 <tr>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>1</td>
-                                                    <td style={styles.td}>&nbsp;</td>
                                                     <td style={styles.td}>&nbsp;</td>
                                                     <td style={styles.td}>&nbsp;</td>
                                                     <td style={styles.td}>&nbsp;</td>
@@ -455,9 +452,10 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                         <Box height="60px"></Box>
                                     </Box>
                                     <Box style={styles.signatureCol}>
-                                        <div style={styles.text}>Ngày..................</div>
+                                        <div style={styles.text}>{formatSignatureDate(tbpPhieuKiemApproval?.ThoiGian)}</div>
                                         <div style={styles.boldText}>PHÒNG/BAN/BPSX</div>
                                         <Box height="60px"></Box>
+                                        <div style={styles.text}>{tbpPhieuKiemApproval?.TenNguoiXacNhan || '(Ký, họ tên)'}</div>
                                     </Box>
                                     <Box style={styles.signatureCol}>
                                         <div style={styles.text}>Ngày..................</div>
@@ -628,3 +626,5 @@ export const BienBanPrintTemplate = React.forwardRef(({
         </div>
     );
 });
+
+export default BienBanTrenChuyenPrintTemplate;

@@ -68,6 +68,9 @@ export default function PhieuListScreen({ navigation }) {
             case "DANG_KIEM":
                 return { backgroundColor: "#fef9c3", color: "#a16207", text: "Đang kiểm" };
 
+            case "CHO_TBP_DUYET":
+                return { backgroundColor: "#ede9fe", color: "#6d28d9", text: "Chờ TBP duyệt" };
+
             case "DA_TAO_SECTION":
                 return { backgroundColor: "#e0f2fe", color: "#0369a1", text: "Đang kiểm" };
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+    Alert,
     Box,
     Button,
     Card,
@@ -14,13 +15,8 @@ import {
     Fade,
     Grid,
     Paper,
+    Divider,
     Stack,
-    Table,
-    TableBody,
-    TableCell,
-    TableContainer,
-    TableHead,
-    TableRow,
     Typography
 } from "@mui/material";
 import { useNavigate, useParams } from "react-router-dom";
@@ -29,16 +25,100 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PrintIcon from "@mui/icons-material/Print";
 import AssignmentIcon from "@mui/icons-material/Assignment";
 import AddTaskIcon from "@mui/icons-material/AddTask";
-import { createTrenChuyenBienBan, getPhieuKiemDetail } from "../../../api/phieuKiem.api";
+import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
+import ScheduleOutlinedIcon from "@mui/icons-material/ScheduleOutlined";
+import StairsOutlinedIcon from "@mui/icons-material/StairsOutlined";
+import ReportProblemOutlinedIcon from "@mui/icons-material/ReportProblemOutlined";
+import ErrorOutlineOutlinedIcon from "@mui/icons-material/ErrorOutlineOutlined";
+import CheckCircleOutlineOutlinedIcon from "@mui/icons-material/CheckCircleOutlineOutlined";
+import { approveTrenChuyen, createTrenChuyenBienBan, getPhieuKiemDetail } from "../../../api/phieuKiem.api";
+import { updateSanPhamImage, uploadSanPhamImage } from "../../../api/lookup.api";
+import { getCurrentUser } from "../../../utils/auth";
 import TrenChuyenPrintTemplate from "../components/TrenChuyenPrintTemplate";
 
 const getFieldValue = (dynamicFields = [], name) =>
     dynamicFields.find((field) => field?.FieldName === name)?.FieldValue ?? "";
+const APPROVE_BOPHAN_FIELD = "TrenChuyen_ApproveBoPhanId";
+
+const formatDate = (value) => {
+    if (!value) return "---";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "---";
+    return date.toLocaleDateString("vi-VN");
+};
+
+const statusMeta = (trangThai, ketLuan) => {
+    if (trangThai === "HOAN_TAT") {
+        return {
+            label: ketLuan === "KHONG_DAT" ? "Hoàn tất - Không đạt" : "Hoàn tất",
+            color: ketLuan === "KHONG_DAT" ? "error" : "success"
+        };
+    }
+    if (trangThai === "CHO_KIEM_NGHIEM") return { label: "Chờ kiểm nghiệm", color: "warning" };
+    if (trangThai === "CHO_TBP_DUYET") return { label: "Chờ TBP duyệt", color: "secondary" };
+    if (trangThai === "DANG_KIEM") return { label: "Đang kiểm", color: "info" };
+    if (trangThai === "TAO_MOI") return { label: "Mới tạo", color: "default" };
+    return { label: trangThai || "---", color: ketLuan === "KHONG_DAT" ? "error" : "default" };
+};
+
+function InfoLine({ label, value }) {
+    return (
+        <Box>
+            <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 700, textTransform: "uppercase" }}>
+                {label}
+            </Typography>
+            <Typography variant="body1" sx={{ mt: 0.4, color: "#0f172a", fontWeight: 600 }}>
+                {value || "---"}
+            </Typography>
+        </Box>
+    );
+}
+
+function StatCard({ icon, label, value, accent = "#2563eb" }) {
+    return (
+        <Paper
+            variant="outlined"
+            sx={{
+                p: 2,
+                height: "100%",
+                borderColor: "#dbe4f0",
+                borderRadius: 2.5,
+                bgcolor: "#fff"
+            }}
+        >
+            <Stack direction="row" spacing={1.5} alignItems="center">
+                <Box
+                    sx={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 2,
+                        bgcolor: `${accent}14`,
+                        color: accent,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center"
+                    }}
+                >
+                    {icon}
+                </Box>
+                <Box>
+                    <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 700, textTransform: "uppercase" }}>
+                        {label}
+                    </Typography>
+                    <Typography variant="h5" sx={{ color: "#0f172a", fontWeight: 800, lineHeight: 1.1 }}>
+                        {value ?? 0}
+                    </Typography>
+                </Box>
+            </Stack>
+        </Paper>
+    );
+}
 
 export default function TrenChuyenDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
     const printRef = useRef();
+    const productImageInputRef = useRef(null);
 
     const [loading, setLoading] = useState(true);
     const [creatingBienBan, setCreatingBienBan] = useState(false);
@@ -46,7 +126,10 @@ export default function TrenChuyenDetail() {
     const [slots, setSlots] = useState([]);
     const [summary, setSummary] = useState(null);
     const [dynamicFields, setDynamicFields] = useState([]);
+    const [xacNhans, setXacNhans] = useState([]);
     const [openPrint, setOpenPrint] = useState(false);
+    const [approving, setApproving] = useState(false);
+    const [currentUser] = useState(() => getCurrentUser());
 
     const handlePrint = useReactToPrint({
         contentRef: printRef,
@@ -70,10 +153,39 @@ export default function TrenChuyenDetail() {
             setSlots(data.slots || []);
             setSummary(data.summary || null);
             setDynamicFields(data.dynamicFields || []);
+            setXacNhans(data.xacNhans || []);
         } catch (error) {
             console.error(error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleTriggerProductImageUpload = () => {
+        if (!phieu?.SanPhamId) {
+            window.alert("Phiếu chưa có sản phẩm để gắn ảnh.");
+            return;
+        }
+        productImageInputRef.current?.click();
+    };
+
+    const handleProductImageSelected = async (event) => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        if (!file || !phieu?.SanPhamId) return;
+
+        try {
+            const uploadRes = await uploadSanPhamImage(file, {
+                maSanPham: phieu?.MaSanPham || getFieldValue(dynamicFields, "TrenChuyen_MaSanPham"),
+                tenSanPham: phieu?.TenSanPham || getFieldValue(dynamicFields, "TrenChuyen_TenSanPham")
+            });
+            const imageUrl = uploadRes?.data?.imageUrl;
+            if (!imageUrl) throw new Error("UPLOAD_FAILED");
+            await updateSanPhamImage(phieu.SanPhamId, imageUrl);
+            await loadData();
+        } catch (error) {
+            console.error(error);
+            window.alert(error?.response?.data?.message || "Không thể cập nhật ảnh sản phẩm.");
         }
     };
 
@@ -91,6 +203,53 @@ export default function TrenChuyenDetail() {
             window.alert(error?.response?.data?.message || "Không thể sinh biên bản.");
         } finally {
             setCreatingBienBan(false);
+        }
+    };
+
+    const status = statusMeta(phieu?.TrangThai, phieu?.KetLuan);
+    const approveBoPhanId = Number(getFieldValue(dynamicFields, APPROVE_BOPHAN_FIELD) || 0) || null;
+    const canApprove = Boolean(
+        phieu?.TrangThai === "CHO_TBP_DUYET" && (
+            currentUser?.permissions?.includes("QUAN_TRI_DM") || (
+                currentUser?.permissions?.includes("PHAN_CONG_NGUOI_XU_LY") &&
+                approveBoPhanId &&
+                Number(currentUser?.boPhanId) === approveBoPhanId
+            )
+        )
+    );
+    const productName = getFieldValue(dynamicFields, "TrenChuyen_TenSanPham") || phieu?.TenSanPham || "---";
+    const itemCode = getFieldValue(dynamicFields, "TrenChuyen_MaSanPham") || phieu?.MaSanPham || "---";
+    const donVi = getFieldValue(dynamicFields, "TrenChuyen_TenDonVi") || phieu?.DoiTuong || "---";
+    const chuyen = getFieldValue(dynamicFields, "TrenChuyen_TenBoPhan") || "---";
+    const ngayKeHoach = formatDate(getFieldValue(dynamicFields, "TrenChuyen_NgayKeHoach"));
+    const soLuongKeHoach = getFieldValue(dynamicFields, "TrenChuyen_SoLuongKeHoach") || "---";
+    const nangSuatDuKien = getFieldValue(dynamicFields, "TrenChuyen_NangSuatDuKien") || "---";
+    const daSanXuat = getFieldValue(dynamicFields, "TrenChuyen_DaSanXuat") || "---";
+
+    const severitySummary = slots.reduce((acc, slot) => {
+        (slot.Entries || []).forEach((entry) => {
+            (entry.Defects || []).forEach((defect) => {
+                const qty = Number(defect.SoLuong || 0);
+                const type = String(defect.DefectType || "").toUpperCase();
+                if (type.includes("CRITICAL")) acc.critical += qty;
+                else if (type.includes("MINOR")) acc.minor += qty;
+                else acc.major += qty;
+            });
+        });
+        return acc;
+    }, { minor: 0, major: 0, critical: 0 });
+    const latestTbpApproval = (xacNhans || []).find((item) => String(item?.VaiTro || "").toUpperCase() === "TBP");
+
+    const handleApprove = async () => {
+        try {
+            setApproving(true);
+            await approveTrenChuyen(id);
+            await loadData();
+        } catch (error) {
+            console.error(error);
+            window.alert(error?.response?.data?.message || "Không thể duyệt phiếu.");
+        } finally {
+            setApproving(false);
         }
     };
 
@@ -112,6 +271,17 @@ export default function TrenChuyenDetail() {
                                 Danh sách phiếu kiểm
                             </Button>
                             <Stack direction="row" spacing={2}>
+                                {canApprove ? (
+                                    <Button
+                                        variant="contained"
+                                        color="success"
+                                        startIcon={<CheckCircleOutlineOutlinedIcon />}
+                                        onClick={handleApprove}
+                                        disabled={approving}
+                                    >
+                                        Duyệt phiếu
+                                    </Button>
+                                ) : null}
                                 {phieu?.BienBanId ? (
                                     <Button
                                         variant="outlined"
@@ -140,110 +310,314 @@ export default function TrenChuyenDetail() {
 
                 <Container maxWidth="xl">
                     <Stack spacing={3}>
-                        <Card>
+                        <Card sx={{ borderRadius: 3, border: "1px solid #e2e8f0", boxShadow: "0 14px 40px rgba(15, 23, 42, 0.06)" }}>
                             <CardContent>
-                                <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={3}>
-                                    <Box>
-                                        <Typography variant="h4" fontWeight={700}>{phieu?.SoPhieu || "---"}</Typography>
-                                        <Typography sx={{ mt: 1, color: "text.secondary" }}>
-                                            {getFieldValue(dynamicFields, "TrenChuyen_TenSanPham") || phieu?.TenSanPham || "---"}
-                                        </Typography>
-                                        <Typography sx={{ color: "text.secondary" }}>
-                                            Item code: {getFieldValue(dynamicFields, "TrenChuyen_MaSanPham") || phieu?.MaSanPham || "---"}
-                                        </Typography>
-                                    </Box>
-                                    <Stack spacing={1} alignItems={{ xs: "flex-start", lg: "flex-end" }}>
-                                        <Chip label={phieu?.TrangThai || "---"} color={phieu?.KetLuan === "KHONG_DAT" ? "error" : "default"} />
-                                        <Typography variant="body2">Đơn vị: {getFieldValue(dynamicFields, "TrenChuyen_TenDonVi") || phieu?.DoiTuong || "---"}</Typography>
-                                        <Typography variant="body2">Chuyền/Bộ phận: {getFieldValue(dynamicFields, "TrenChuyen_TenBoPhan") || "---"}</Typography>
-                                        <Typography variant="body2">Ngày kế hoạch: {getFieldValue(dynamicFields, "TrenChuyen_NgayKeHoach") ? new Date(getFieldValue(dynamicFields, "TrenChuyen_NgayKeHoach")).toLocaleDateString("vi-VN") : "---"}</Typography>
+                                <Stack spacing={3}>
+                                    <Stack direction={{ xs: "column", xl: "row" }} justifyContent="space-between" spacing={3}>
+                                        <Box sx={{ maxWidth: 860 }}>
+                                            <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap" useFlexGap>
+                                                <Typography variant="h4" fontWeight={800} color="#0f172a">
+                                                    {phieu?.SoPhieu || "---"}
+                                                </Typography>
+                                                <Chip size="small" color={status.color} label={status.label} />
+                                                {phieu?.BienBanId ? (
+                                                    <Chip size="small" color="warning" variant="outlined" label={`Biên bản #${phieu.BienBanId}`} />
+                                                ) : null}
+                                            </Stack>
+                                            <Typography sx={{ mt: 1.5, color: "#0f172a", fontSize: 34, fontWeight: 800, lineHeight: 1.15 }}>
+                                                {productName}
+                                            </Typography>
+                                            <Typography sx={{ mt: 1, color: "text.secondary", fontSize: 18 }}>
+                                                Item code: {itemCode}
+                                            </Typography>
+                                        </Box>
+                                        <Box sx={{ minWidth: { xs: "100%", xl: 340 } }}>
+                                            <Alert
+                                                icon={<Inventory2OutlinedIcon fontSize="inherit" />}
+                                                severity={phieu?.KetLuan === "KHONG_DAT" ? "error" : "info"}
+                                                sx={{
+                                                    borderRadius: 2.5,
+                                                    alignItems: "flex-start",
+                                                    "& .MuiAlert-message": { width: "100%" }
+                                                }}
+                                            >
+                                                <Typography fontWeight={700} sx={{ mb: 0.5 }}>
+                                                    Tình trạng phiếu
+                                                </Typography>
+                                                <Typography variant="body2">
+                                                    {phieu?.KetLuan === "KHONG_DAT"
+                                                        ? "Phiếu có lỗi ghi nhận. Kiểm tra lại biên bản KPH và các khung giờ phát sinh."
+                                                        : "Phiếu đang theo dõi lỗi theo khung giờ và công đoạn trên chuyền."}
+                                                </Typography>
+                                            </Alert>
+                                        </Box>
                                     </Stack>
+
+                                    <Divider />
+
+                                    <Grid container spacing={2.5}>
+                                        <Grid item xs={12} md={6} lg={3}>
+                                            <InfoLine label="Đơn vị" value={donVi} />
+                                        </Grid>
+                                        <Grid item xs={12} md={6} lg={3}>
+                                            <InfoLine label="Chuyền / Bộ phận" value={chuyen} />
+                                        </Grid>
+                                        <Grid item xs={12} md={6} lg={2}>
+                                            <InfoLine label="Ngày kế hoạch" value={ngayKeHoach} />
+                                        </Grid>
+                                        <Grid item xs={12} md={6} lg={2}>
+                                            <InfoLine label="Kế hoạch" value={soLuongKeHoach} />
+                                        </Grid>
+                                        <Grid item xs={12} md={6} lg={2}>
+                                            <InfoLine label="NS dự kiến / Đã SX" value={`${nangSuatDuKien} / ${daSanXuat}`} />
+                                        </Grid>
+                                    </Grid>
+
+                                    {latestTbpApproval ? (
+                                        <Alert severity="success" variant="outlined" sx={{ borderRadius: 2.5 }}>
+                                            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                                TBP đã xác nhận: {latestTbpApproval.TenNguoiXacNhan || "Không rõ người xác nhận"}
+                                            </Typography>
+                                            {latestTbpApproval.ThoiGian ? (
+                                                <Typography variant="body2" sx={{ mt: 0.5 }}>
+                                                    {new Date(latestTbpApproval.ThoiGian).toLocaleString("vi-VN")}
+                                                </Typography>
+                                            ) : null}
+                                        </Alert>
+                                    ) : null}
                                 </Stack>
                             </CardContent>
                         </Card>
 
-                        <Grid container spacing={3}>
-                            <Grid item xs={12} md={3}>
-                                <Paper variant="outlined" sx={{ p: 2 }}>
-                                    <Typography variant="subtitle2" color="text.secondary">Tổng khung giờ</Typography>
-                                    <Typography variant="h5" fontWeight={700}>{summary?.TotalSlots || 0}</Typography>
-                                </Paper>
-                            </Grid>
-                            <Grid item xs={12} md={3}>
-                                <Paper variant="outlined" sx={{ p: 2 }}>
-                                    <Typography variant="subtitle2" color="text.secondary">Tổng công đoạn</Typography>
-                                    <Typography variant="h5" fontWeight={700}>{summary?.TotalEntries || 0}</Typography>
-                                </Paper>
-                            </Grid>
-                            <Grid item xs={12} md={3}>
-                                <Paper variant="outlined" sx={{ p: 2 }}>
-                                    <Typography variant="subtitle2" color="text.secondary">Dòng lỗi</Typography>
-                                    <Typography variant="h5" fontWeight={700}>{summary?.TotalDefectRows || 0}</Typography>
-                                </Paper>
-                            </Grid>
-                            <Grid item xs={12} md={3}>
-                                <Paper variant="outlined" sx={{ p: 2 }}>
-                                    <Typography variant="subtitle2" color="text.secondary">Tổng số lỗi</Typography>
-                                    <Typography variant="h5" fontWeight={700}>{summary?.TotalDefectQuantity || 0}</Typography>
-                                </Paper>
-                            </Grid>
-                        </Grid>
-
-                        <Card>
+                        <Card sx={{ borderRadius: 3, border: "1px solid #e2e8f0", boxShadow: "0 12px 30px rgba(15, 23, 42, 0.04)" }}>
                             <CardContent>
-                                <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>
-                                    Ghi nhận theo khung giờ
-                                </Typography>
-                                <Stack spacing={2}>
+                                <Stack spacing={2.5}>
+                                    <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", md: "center" }} spacing={2}>
+                                        <Box>
+                                            <Typography variant="h6" fontWeight={800} color="#0f172a">
+                                                Tổng hợp theo phiếu
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                Gói lại số liệu chính để dễ quét trước khi xem từng khung giờ.
+                                            </Typography>
+                                        </Box>
+                                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                            <Chip size="small" label={`Nhẹ: ${severitySummary.minor}`} color="info" variant="outlined" />
+                                            <Chip size="small" label={`Nặng: ${severitySummary.major}`} color="warning" variant="outlined" />
+                                            <Chip size="small" label={`Nghiêm trọng: ${severitySummary.critical}`} color="error" variant="outlined" />
+                                        </Stack>
+                                    </Stack>
+
+                                    <Grid container spacing={2}>
+                                        <Grid item xs={12} sm={6} lg={3}>
+                                            <StatCard icon={<ScheduleOutlinedIcon fontSize="small" />} label="Khung giờ" value={summary?.TotalSlots || 0} accent="#2563eb" />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6} lg={3}>
+                                            <StatCard icon={<StairsOutlinedIcon fontSize="small" />} label="Công đoạn" value={summary?.TotalEntries || 0} accent="#0f766e" />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6} lg={3}>
+                                            <StatCard icon={<ReportProblemOutlinedIcon fontSize="small" />} label="Dòng lỗi" value={summary?.TotalDefectRows || 0} accent="#d97706" />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6} lg={3}>
+                                            <StatCard icon={<ErrorOutlineOutlinedIcon fontSize="small" />} label="Tổng số lỗi" value={summary?.TotalDefectQuantity || 0} accent="#dc2626" />
+                                        </Grid>
+                                    </Grid>
+                                </Stack>
+                            </CardContent>
+                        </Card>
+
+                        <Card sx={{ borderRadius: 3, border: "1px solid #e2e8f0", boxShadow: "0 12px 30px rgba(15, 23, 42, 0.04)" }}>
+                            <CardContent>
+                                <Stack spacing={2.5}>
+                                    <Box>
+                                        <Typography variant="h6" fontWeight={800} color="#0f172a">
+                                            Ghi nhận theo khung giờ
+                                        </Typography>
+                                        <Typography variant="body2" color="text.secondary">
+                                            Mỗi khung giờ gom các công đoạn được ghi nhận và các lỗi phát sinh tương ứng.
+                                        </Typography>
+                                    </Box>
+
                                     {slots.length === 0 ? (
-                                        <Typography color="text.secondary">Chưa có dữ liệu khung giờ.</Typography>
+                                        <Paper
+                                            variant="outlined"
+                                            sx={{
+                                                p: 4,
+                                                borderRadius: 2.5,
+                                                borderStyle: "dashed",
+                                                borderColor: "#cbd5e1",
+                                                bgcolor: "#f8fafc",
+                                                textAlign: "center"
+                                            }}
+                                        >
+                                            <CheckCircleOutlineOutlinedIcon sx={{ fontSize: 32, color: "#94a3b8", mb: 1 }} />
+                                            <Typography fontWeight={700} color="#334155">
+                                                Chưa có dữ liệu khung giờ
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                Phiếu này chưa ghi nhận công đoạn hoặc lỗi theo giờ.
+                                            </Typography>
+                                        </Paper>
                                     ) : slots.map((slot) => (
-                                        <Paper key={slot.Id} variant="outlined" sx={{ p: 2 }}>
-                                            <Stack spacing={1.5}>
-                                                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                                    <Typography variant="subtitle1" fontWeight={700}>
-                                                        Khung giờ {slot.GioKiem}
-                                                    </Typography>
-                                                    <Chip size="small" label={`${slot.Entries?.length || 0} công đoạn`} />
+                                        <Paper
+                                            key={slot.Id}
+                                            variant="outlined"
+                                            sx={{
+                                                p: 2.5,
+                                                borderRadius: 2.5,
+                                                borderColor: "#dbe4f0",
+                                                bgcolor: "#fff"
+                                            }}
+                                        >
+                                            <Stack spacing={2}>
+                                                <Stack
+                                                    direction={{ xs: "column", lg: "row" }}
+                                                    justifyContent="space-between"
+                                                    alignItems={{ xs: "flex-start", lg: "center" }}
+                                                    spacing={1.5}
+                                                >
+                                                    <Stack spacing={0.4}>
+                                                        <Typography variant="h6" fontWeight={800} color="#0f172a">
+                                                            Khung giờ {slot.GioKiem}
+                                                        </Typography>
+                                                        <Typography variant="body2" color="text.secondary">
+                                                            {(slot.Entries || []).length} công đoạn được ghi nhận
+                                                        </Typography>
+                                                    </Stack>
+                                                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                                        <Chip size="small" color="default" label={`${slot.Entries?.length || 0} công đoạn`} />
+                                                        <Chip
+                                                            size="small"
+                                                            color="info"
+                                                            variant="outlined"
+                                                            label={`Nhẹ: ${
+                                                                (slot.Entries || []).reduce((acc, entry) => acc + (entry.Defects || []).reduce((sum, defect) => {
+                                                                    const type = String(defect.DefectType || "").toUpperCase();
+                                                                    return sum + (type.includes("MINOR") ? Number(defect.SoLuong || 0) : 0);
+                                                                }, 0), 0)
+                                                            }`}
+                                                        />
+                                                        <Chip
+                                                            size="small"
+                                                            color="warning"
+                                                            variant="outlined"
+                                                            label={`Nặng: ${
+                                                                (slot.Entries || []).reduce((acc, entry) => acc + (entry.Defects || []).reduce((sum, defect) => {
+                                                                    const type = String(defect.DefectType || "").toUpperCase();
+                                                                    return sum + (!type.includes("MINOR") && !type.includes("CRITICAL") ? Number(defect.SoLuong || 0) : 0);
+                                                                }, 0), 0)
+                                                            }`}
+                                                        />
+                                                        <Chip
+                                                            size="small"
+                                                            color="error"
+                                                            variant="outlined"
+                                                            label={`Nghiêm trọng: ${
+                                                                (slot.Entries || []).reduce((acc, entry) => acc + (entry.Defects || []).reduce((sum, defect) => {
+                                                                    const type = String(defect.DefectType || "").toUpperCase();
+                                                                    return sum + (type.includes("CRITICAL") ? Number(defect.SoLuong || 0) : 0);
+                                                                }, 0), 0)
+                                                            }`}
+                                                        />
+                                                    </Stack>
                                                 </Stack>
-                                                <TableContainer component={Paper} variant="outlined">
-                                                    <Table size="small">
-                                                        <TableHead>
-                                                            <TableRow>
-                                                                <TableCell sx={{ width: 220 }}>Công đoạn</TableCell>
-                                                                <TableCell>Lỗi ghi nhận</TableCell>
-                                                            </TableRow>
-                                                        </TableHead>
-                                                        <TableBody>
-                                                            {(slot.Entries || []).length === 0 ? (
-                                                                <TableRow>
-                                                                    <TableCell colSpan={2} align="center">Khung giờ này chưa có lỗi.</TableCell>
-                                                                </TableRow>
-                                                            ) : (slot.Entries || []).map((entry) => (
-                                                                <TableRow key={entry.Id}>
-                                                                    <TableCell>
-                                                                        <Stack spacing={0.5}>
-                                                                            <Typography variant="body2" fontWeight={700}>{entry.CongDoan}</Typography>
-                                                                            <Typography variant="caption" color="text.secondary">
-                                                                                Người ghi nhận: {entry.TenNguoiGhiNhan || "—"}
-                                                                            </Typography>
-                                                                        </Stack>
-                                                                    </TableCell>
-                                                                    <TableCell>
-                                                                        <Stack spacing={0.5}>
-                                                                            {(entry.Defects || []).map((defect) => (
-                                                                                <Typography key={defect.Id || `${entry.Id}-${defect.DefectId}`} variant="body2">
-                                                                                    {defect.MaLoi || "---"} - {defect.TenLoi || "---"}: {defect.SoLuong}
-                                                                                    {defect.GhiChu ? ` (${defect.GhiChu})` : ""}
-                                                                                </Typography>
-                                                                            ))}
-                                                                        </Stack>
-                                                                    </TableCell>
-                                                                </TableRow>
-                                                            ))}
-                                                        </TableBody>
-                                                    </Table>
-                                                </TableContainer>
+
+                                                <Stack spacing={1.5}>
+                                                    {(slot.Entries || []).length === 0 ? (
+                                                        <Typography color="text.secondary">Khung giờ này chưa có lỗi.</Typography>
+                                                    ) : (slot.Entries || []).map((entry) => (
+                                                        <Paper
+                                                            key={entry.Id}
+                                                            variant="outlined"
+                                                            sx={{
+                                                                p: 2,
+                                                                borderRadius: 2,
+                                                                borderColor: "#e2e8f0",
+                                                                bgcolor: "#fcfdff"
+                                                            }}
+                                                        >
+                                                            <Stack spacing={1.5}>
+                                                                <Stack
+                                                                    direction={{ xs: "column", md: "row" }}
+                                                                    justifyContent="space-between"
+                                                                    spacing={1}
+                                                                >
+                                                                    <Box>
+                                                                        <Typography variant="subtitle1" fontWeight={800} color="#0f172a">
+                                                                            Công đoạn {entry.CongDoan}
+                                                                        </Typography>
+                                                                        <Typography variant="body2" color="text.secondary">
+                                                                            Người ghi nhận: {entry.TenNguoiGhiNhan || "—"}
+                                                                        </Typography>
+                                                                    </Box>
+                                                                    <Chip
+                                                                        size="small"
+                                                                        icon={<ReportProblemOutlinedIcon />}
+                                                                        label={`${(entry.Defects || []).reduce((sum, defect) => sum + Number(defect.SoLuong || 0), 0)} lỗi`}
+                                                                        color="default"
+                                                                        sx={{ alignSelf: { xs: "flex-start", md: "center" } }}
+                                                                    />
+                                                                </Stack>
+
+                                                                <Stack spacing={1}>
+                                                                    {(entry.Defects || []).map((defect) => (
+                                                                        <Box
+                                                                            key={defect.Id || `${entry.Id}-${defect.DefectId}`}
+                                                                            sx={{
+                                                                                border: "1px solid #e5edf7",
+                                                                                borderRadius: 2,
+                                                                                p: 1.5,
+                                                                                bgcolor: "#fff"
+                                                                            }}
+                                                                        >
+                                                                            <Stack
+                                                                                direction={{ xs: "column", lg: "row" }}
+                                                                                justifyContent="space-between"
+                                                                                spacing={1}
+                                                                            >
+                                                                                <Box sx={{ minWidth: 0 }}>
+                                                                                    <Typography variant="body2" fontWeight={800} color="#0f172a">
+                                                                                        {defect.MaLoi || "---"} - {defect.TenLoi || "---"}
+                                                                                    </Typography>
+                                                                                    {defect.MoTa ? (
+                                                                                        <Typography
+                                                                                            variant="body2"
+                                                                                            color="text.secondary"
+                                                                                            sx={{
+                                                                                                mt: 0.4,
+                                                                                                display: "-webkit-box",
+                                                                                                WebkitLineClamp: 2,
+                                                                                                WebkitBoxOrient: "vertical",
+                                                                                                overflow: "hidden"
+                                                                                            }}
+                                                                                        >
+                                                                                            {defect.MoTa}
+                                                                                        </Typography>
+                                                                                    ) : null}
+                                                                                </Box>
+                                                                                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flexShrink: 0 }}>
+                                                                                    <Chip size="small" label={`SL: ${defect.SoLuong || 0}`} color="primary" variant="outlined" />
+                                                                                    <Chip
+                                                                                        size="small"
+                                                                                        label={defect.DefectType || "MAJOR"}
+                                                                                        color={
+                                                                                            String(defect.DefectType || "").toUpperCase().includes("CRITICAL")
+                                                                                                ? "error"
+                                                                                                : String(defect.DefectType || "").toUpperCase().includes("MINOR")
+                                                                                                    ? "info"
+                                                                                                    : "warning"
+                                                                                        }
+                                                                                        variant="outlined"
+                                                                                    />
+                                                                                </Stack>
+                                                                            </Stack>
+                                                                        </Box>
+                                                                    ))}
+                                                                </Stack>
+                                                            </Stack>
+                                                        </Paper>
+                                                    ))}
+                                                </Stack>
                                             </Stack>
                                         </Paper>
                                     ))}
@@ -256,12 +630,21 @@ export default function TrenChuyenDetail() {
                 <Dialog open={openPrint} onClose={() => setOpenPrint(false)} maxWidth="lg" fullWidth>
                     <DialogTitle>Xem in phiếu kiểm trên chuyền</DialogTitle>
                     <DialogContent dividers sx={{ bgcolor: "#e5e7eb", p: 2 }}>
+                        <input
+                            ref={productImageInputRef}
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            onChange={handleProductImageSelected}
+                        />
                         <TrenChuyenPrintTemplate
                             ref={printRef}
                             phieu={phieu}
                             dynamicFields={dynamicFields}
                             slots={slots}
                             summary={summary}
+                            xacNhans={xacNhans}
+                            onRequestProductImageUpload={handleTriggerProductImageUpload}
                         />
                     </DialogContent>
                     <DialogActions>

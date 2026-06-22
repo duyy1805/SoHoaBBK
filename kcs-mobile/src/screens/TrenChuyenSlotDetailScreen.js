@@ -30,7 +30,7 @@ import { getUser } from "../utils/auth";
 const HOUR_OPTIONS = ["07:30", "08:30", "09:30", "10:30", "11:30", "12:30", "13:30", "14:30", "15:30", "16:30"];
 const IMAGE_PICKER_OPTIONS = { mediaTypes: ["images"], quality: 0.7, allowsEditing: false };
 
-const canEditStatus = (status) => !["HOAN_TAT", "CHO_KIEM_NGHIEM", "CHO_XUONG_XAC_NHAN"].includes(status);
+const canEditStatus = (status) => !["HOAN_TAT", "CHO_TBP_DUYET", "CHO_KIEM_NGHIEM", "CHO_XUONG_XAC_NHAN"].includes(status);
 const isPermissionGranted = (status) => status === "granted" || status === "limited";
 const getAssetUri = (asset) => typeof asset === "string" ? asset : asset?.uri;
 const getStatusMeta = (status) => {
@@ -39,6 +39,8 @@ const getStatusMeta = (status) => {
       return { label: "Chưa kiểm", bg: "#e0f2fe", color: "#0369a1" };
     case "DANG_KIEM":
       return { label: "Đang kiểm", bg: "#dbeafe", color: "#1d4ed8" };
+    case "CHO_TBP_DUYET":
+      return { label: "Chờ TBP duyệt", bg: "#ede9fe", color: "#6d28d9" };
     case "HOAN_TAT":
       return { label: "Hoàn tất", bg: "#dcfce7", color: "#15803d" };
     case "CHO_KIEM_NGHIEM":
@@ -754,11 +756,45 @@ export default function TrenChuyenSlotDetailScreen({ route, navigation }) {
             {filteredDefects.map((defect) => (
               <TouchableOpacity key={defect.Id} style={styles.modalDefectItem} onPress={() => addDefectToEntry(defect)}>
                 <View style={styles.modalDefectTopRow}>
-                  <Text style={styles.modalDefectCode}>{defect.MaLoi || "---"}</Text>
-                  <Text style={styles.modalDefectMeta}>{defect.DefectType || "---"}</Text>
+                  <View style={styles.modalDefectTitleRow}>
+                    <View
+                      style={[
+                        styles.modalTypeBadge,
+                        defect.DefectType === "CRITICAL"
+                          ? styles.modalTypeBadgeCritical
+                          : defect.DefectType === "MAJOR"
+                            ? styles.modalTypeBadgeMajor
+                            : styles.modalTypeBadgeMinor
+                      ]}
+                    >
+                      <Text style={styles.modalTypeBadgeText}>{defect.DefectType || "---"}</Text>
+                    </View>
+                    <Text style={styles.modalDefectCode}>{defect.MaLoi || "---"}</Text>
+                  </View>
+                  <TouchableOpacity style={styles.modalAddButton} onPress={() => addDefectToEntry(defect)}>
+                    <Ionicons name="add-circle-outline" size={24} color="#2563eb" />
+                  </TouchableOpacity>
                 </View>
                 <Text style={styles.modalDefectName}>{defect.TenLoi || "---"}</Text>
                 {defect.MoTa ? <Text style={styles.modalDefectDesc}>{defect.MoTa}</Text> : null}
+                {(defect.TenSanPham || defect.ChungLoai) ? (
+                  <Text style={styles.modalDefectDesc}>
+                    {[defect.TenSanPham, defect.ChungLoai].filter(Boolean).join(" - ")}
+                  </Text>
+                ) : null}
+                {defect.ImageUrl ? (
+                  <Image
+                    source={{ uri: getAssetUrl(defect.ImageUrl) }}
+                    style={styles.modalDefectImage}
+                    resizeMode="cover"
+                  />
+                ) : null}
+                {(defect.PhamViApDung || defect.GhiChu) ? (
+                  <View style={styles.modalNoteBox}>
+                    <Ionicons name="alert-circle-outline" size={14} color="#2563eb" />
+                    <Text style={styles.modalNoteText}>{defect.PhamViApDung || defect.GhiChu}</Text>
+                  </View>
+                ) : null}
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -968,10 +1004,29 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: "700", color: "#0f172a" },
   modalDefectItem: { borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 14, padding: 14, marginBottom: 10, backgroundColor: "#fff" },
   modalDefectTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  modalDefectTitleRow: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
+  modalTypeBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  modalTypeBadgeMinor: { backgroundColor: "#3b82f6" },
+  modalTypeBadgeMajor: { backgroundColor: "#f59e0b" },
+  modalTypeBadgeCritical: { backgroundColor: "#ef4444" },
+  modalTypeBadgeText: { color: "#fff", fontSize: 11, fontWeight: "800" },
   modalDefectCode: { fontSize: 12, color: "#1d4ed8", fontWeight: "800" },
   modalDefectName: { fontSize: 15, color: "#0f172a", fontWeight: "700", marginTop: 6 },
   modalDefectMeta: { fontSize: 12, color: "#64748b", fontWeight: "600" },
   modalDefectDesc: { fontSize: 13, color: "#475569", marginTop: 4, lineHeight: 18 },
+  modalAddButton: { marginLeft: 8, alignSelf: "flex-start" },
+  modalDefectImage: { width: "100%", height: 180, borderRadius: 16, marginTop: 12, backgroundColor: "#e2e8f0" },
+  modalNoteBox: {
+    marginTop: 12,
+    borderRadius: 14,
+    backgroundColor: "#dbeafe",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  modalNoteText: { color: "#1d4ed8", fontSize: 13, fontWeight: "600", flex: 1 },
   previewOverlay: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.9)", justifyContent: "center", alignItems: "center" },
   previewCloseArea: { flex: 1, width: "100%", justifyContent: "center", alignItems: "center" },
   previewFullImage: { width: "92%", height: "80%" },

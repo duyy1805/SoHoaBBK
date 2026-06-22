@@ -1,4 +1,5 @@
 import React from 'react';
+import { getAssetUrl } from "../../../api/lookup.api";
 
 // ============================================================
 // SxbtPrintTemplate — Phiếu kiểm tra sản xuất bổ trợ (A4 đứng)
@@ -24,6 +25,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
     defects = [],
     dynamicFields = [],
     confirmSteps = [],
+    onRequestProductImageUpload = null
 }, ref) => {
     if (!phieu) return null;
 
@@ -78,6 +80,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
     );
 
     const confirmedSteps = (confirmSteps || []).filter((step) => step?.TrangThai === "DA_XAC_NHAN");
+    const productImageUrl = phieu?.ImageUrl ? getAssetUrl(phieu.ImageUrl) : "";
 
     const signatureLabels = {
         SXBT: "BỘ PHẬN SXBT",
@@ -182,6 +185,8 @@ export const SxbtPrintTemplate = React.forwardRef(({
                     .avoid-break { page-break-inside: avoid !important; break-inside: avoid !important; }
                     thead { display: table-header-group; }
                     tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+                    .screen-only-upload-trigger,
+                    .screen-only-upload-action { display: none !important; }
                 }
             `}</style>
 
@@ -234,6 +239,63 @@ export const SxbtPrintTemplate = React.forwardRef(({
                                 Ngày nhập:&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '80px' }}>
                                     {phieu.NgayNhap ? new Date(phieu.NgayNhap).toLocaleDateString('vi-VN') : ''}
                                 </span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <table style={{ ...s.table, marginBottom: '8px' }}>
+                    <tbody>
+                        <tr>
+                            <td style={{ ...s.td, width: '35%', fontWeight: 600 }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                                    <span>Hình ảnh minh họa sản phẩm</span>
+                                    {productImageUrl && typeof onRequestProductImageUpload === "function" ? (
+                                        <span
+                                            className="screen-only-upload-action"
+                                            onClick={onRequestProductImageUpload}
+                                            style={{
+                                                fontSize: "9pt",
+                                                color: "#2563eb",
+                                                cursor: "pointer",
+                                                textDecoration: "underline",
+                                                fontWeight: 400
+                                            }}
+                                        >
+                                            Đổi ảnh
+                                        </span>
+                                    ) : null}
+                                </div>
+                            </td>
+                            <td style={{ ...s.td, textAlign: 'center', padding: '6px', height: '142px' }}>
+                                {productImageUrl ? (
+                                    <img
+                                        src={productImageUrl}
+                                        alt={phieu.TenSanPham || "Ảnh sản phẩm"}
+                                        style={{ width: '100%', maxHeight: '130px', objectFit: 'contain' }}
+                                    />
+                                ) : typeof onRequestProductImageUpload === "function" ? (
+                                    <div
+                                        className="screen-only-upload-trigger"
+                                        onClick={onRequestProductImageUpload}
+                                        style={{
+                                            width: '100%',
+                                            minHeight: '124px',
+                                            border: '1px dashed #94a3b8',
+                                            borderRadius: '6px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            textAlign: 'center',
+                                            color: '#475569',
+                                            fontSize: '10pt',
+                                            cursor: 'pointer',
+                                            padding: '0 12px'
+                                        }}
+                                    >
+                                        Nhấn để thêm ảnh cho item code này
+                                    </div>
+                                ) : null}
                             </td>
                         </tr>
                     </tbody>

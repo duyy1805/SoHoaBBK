@@ -44,8 +44,29 @@ sharp.cache(false);
 const { Expo } = require('expo-server-sdk');
 let expo = new Expo();
 const TREN_CHUYEN_LOAI_KIEM_ID = 6;
+const TREN_CHUYEN_APPROVE_BOPHAN_FIELD = 'TrenChuyen_ApproveBoPhanId';
+const TREN_CHUYEN_COMPLETED_BY_FIELD = 'TrenChuyen_CompletedByUserId';
+const TREN_CHUYEN_COMPLETED_BY_NAME_FIELD = 'TrenChuyen_CompletedByName';
 
 const isTrenChuyenLoaiKiem = (loaiKiemId) => Number(loaiKiemId) === TREN_CHUYEN_LOAI_KIEM_ID;
+const isAdminUser = (user = {}) =>
+    Array.isArray(user?.permissions) && user.permissions.includes('QUAN_TRI_DM')
+    || (Array.isArray(user?.roles) && user.roles.some((role) => String(role || '').toUpperCase().includes('ADMIN')));
+const canManageTrenChuyenAll = (permissions = []) =>
+    Array.isArray(permissions) && (permissions.includes('PHAN_BO_KIEM') || permissions.includes('KET_LUAN') || permissions.includes('QUAN_TRI_DM'));
+
+const attachProductImageToPhieu = async (pool, phieu = null) => {
+    if (!phieu || phieu.ImageUrl || !phieu.SanPhamId) {
+        return phieu;
+    }
+
+    const result = await pool.request()
+        .input("SanPhamId", sql.Int, phieu.SanPhamId)
+        .query("SELECT ImageUrl FROM dbo.DM_SAN_PHAM WHERE Id = @SanPhamId");
+
+    phieu.ImageUrl = result.recordset?.[0]?.ImageUrl || null;
+    return phieu;
+};
 
 const upsertPhieuKiemCustomFields = async (pool, phieuKiemId, fields) => {
     if (!phieuKiemId || !fields || typeof fields !== 'object' || Array.isArray(fields)) {
@@ -490,6 +511,7 @@ router.get(
                     .execute('sp_PhieuKiem_GetDetail_SXBT');
 
                 const phieu = result.recordsets[0][0] || null;
+                await attachProductImageToPhieu(pool, phieu);
                 let dynamicFields = [];
                 if (phieu && phieu.DynamicFieldsJSON) {
                     try {
@@ -515,6 +537,7 @@ router.get(
                     .execute('sp_PhieuKiem_GetDetail_TrenChuyen');
 
                 const phieu = result.recordsets?.[0]?.[0] || null;
+                await attachProductImageToPhieu(pool, phieu);
                 let dynamicFields = [];
                 if (phieu && phieu.DynamicFieldsJSON) {
                     try {
@@ -528,6 +551,7 @@ router.get(
                 const slotRecords = result.recordsets?.[1] || [];
                 const entryDefectRecords = result.recordsets?.[2] || [];
                 const summary = result.recordsets?.[3]?.[0] || null;
+                const xacNhans = result.recordsets?.[4] || [];
 
                 const entriesBySlotId = {};
 
@@ -600,7 +624,8 @@ router.get(
                     phieu,
                     slots,
                     summary,
-                    dynamicFields
+                    dynamicFields,
+                    xacNhans
                 });
             }
 
@@ -610,6 +635,7 @@ router.get(
                 .execute('sp_PhieuKiem_GetDetail');
 
             const phieu = result.recordsets[0][0] || null;
+            await attachProductImageToPhieu(pool, phieu);
             let dynamicFields = [];
             if (phieu && phieu.DynamicFieldsJSON) {
                 try {
@@ -831,7 +857,7 @@ router.delete(
         const entryId = Number(req.params.entryId);
         const userId = req.user?.id || req.user?.userId;
         const userPermissions = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
-        const canManageAll = userPermissions.includes('PHAN_BO_KIEM') || userPermissions.includes('KET_LUAN');
+        const canManageAll = canManageTrenChuyenAll(userPermissions);
 
         if (!Number.isInteger(entryId) || entryId <= 0) {
             return res.status(400).json({ message: 'EntryId không hợp lệ' });
@@ -860,7 +886,7 @@ router.delete(
                 return res.status(404).json({ message: 'Không tìm thấy công đoạn cần xóa' });
             }
 
-            if (['HOAN_TAT', 'CHO_KIEM_NGHIEM', 'CHO_XUONG_XAC_NHAN'].includes(entry.TrangThai)) {
+            if (['HOAN_TAT', 'CHO_TBP_DUYET', 'CHO_KIEM_NGHIEM', 'CHO_XUONG_XAC_NHAN'].includes(entry.TrangThai)) {
                 return res.status(409).json({ message: 'Phiếu đã khóa, không thể xóa công đoạn' });
             }
 
@@ -902,16 +928,31 @@ router.post(
     authenticateToken,
     authorize('THUC_HIEN_KIEM'),
     async (req, res) => {
-        const { phieuKiemId } = req.body;
+        const { phieuKiemId, ketLuan } = req.body;
+        const userId = req.user?.id || req.user?.userId;
+        const boPhanId = req.user?.boPhanId;
+        const completedByName = req.user?.fullName || req.user?.username || '';
 
-        if (!phieuKiemId) {
-            return res.status(400).json({ message: 'Missing phieuKiemId' });
+        if (!phieuKiemId || !['DAT', 'KHONG_DAT'].includes(String(ketLuan || '').toUpperCase())) {
+            return res.status(400).json({ message: 'Thiếu dữ liệu hoàn tất hoặc kết luận không hợp lệ' });
+        }
+
+        if (!boPhanId) {
+            return res.status(400).json({ message: 'Không xác định được bộ phận duyệt của người hoàn tất phiếu' });
         }
 
         try {
             const pool = await poolPromise;
+            await upsertPhieuKiemCustomFields(pool, phieuKiemId, {
+                [TREN_CHUYEN_APPROVE_BOPHAN_FIELD]: String(boPhanId),
+                [TREN_CHUYEN_COMPLETED_BY_FIELD]: String(userId || ''),
+                [TREN_CHUYEN_COMPLETED_BY_NAME_FIELD]: completedByName
+            });
+
             const result = await pool.request()
                 .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('KetLuan', sql.NVarChar(20), String(ketLuan).toUpperCase())
+                .input('UserId', sql.Int, userId)
                 .execute('sp_PhieuKiem_TrenChuyen_Complete');
 
             res.json({
@@ -922,6 +963,66 @@ router.post(
             console.error('TrenChuyen complete error:', err);
             res.status(500).json({
                 message: err?.originalError?.info?.message || err.message || 'Hoàn tất phiếu kiểm trên chuyền thất bại'
+            });
+        }
+    }
+);
+
+router.post(
+    '/tren-chuyen/approve',
+    authenticateToken,
+    authorize('PHAN_CONG_NGUOI_XU_LY'),
+    async (req, res) => {
+        const { phieuKiemId } = req.body;
+        const userId = req.user?.id || req.user?.userId;
+        const boPhanId = req.user?.boPhanId;
+        const isAdmin = isAdminUser(req.user);
+
+        if (!phieuKiemId) {
+            return res.status(400).json({ message: 'Missing phieuKiemId' });
+        }
+
+        if (!boPhanId && !isAdmin) {
+            return res.status(400).json({ message: 'Không xác định được bộ phận của người duyệt' });
+        }
+
+        try {
+            const pool = await poolPromise;
+            let effectiveBoPhanId = boPhanId;
+
+            if (isAdmin) {
+                const fieldResult = await pool.request()
+                    .input('PhieuKiemId', sql.Int, phieuKiemId)
+                    .input('FieldName', sql.NVarChar(100), TREN_CHUYEN_APPROVE_BOPHAN_FIELD)
+                    .query(`
+                        SELECT TOP 1 TRY_CAST(FieldValue AS INT) AS ApproveBoPhanId
+                        FROM dbo.PhieuKiem_CustomFields
+                        WHERE PhieuKiemId = @PhieuKiemId
+                          AND FieldName = @FieldName
+                    `);
+
+                effectiveBoPhanId = fieldResult.recordset?.[0]?.ApproveBoPhanId || null;
+            }
+
+            if (!effectiveBoPhanId) {
+                return res.status(400).json({ message: 'Không xác định được bộ phận duyệt của phiếu' });
+            }
+
+            const result = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('UserId', sql.Int, userId)
+                .input('BoPhanId', sql.Int, effectiveBoPhanId)
+                .input('IsAdmin', sql.Bit, isAdmin ? 1 : 0)
+                .execute('sp_PhieuKiem_TrenChuyen_Approve');
+
+            res.json({
+                success: true,
+                result: result.recordset?.[0] || null
+            });
+        } catch (err) {
+            console.error('TrenChuyen approve error:', err);
+            res.status(500).json({
+                message: err?.originalError?.info?.message || err.message || 'Duyệt phiếu kiểm trên chuyền thất bại'
             });
         }
     }
@@ -942,7 +1043,7 @@ router.post(
             const pool = await poolPromise;
             const result = await pool.request()
                 .input('PhieuKiemId', sql.Int, phieuKiemId)
-                .input('UserId', sql.Int, req.user.userId)
+                .input('UserId', sql.Int, req.user?.id || req.user?.userId)
                 .execute('sp_PhieuKiem_TrenChuyen_CreateBienBan');
 
             res.json({

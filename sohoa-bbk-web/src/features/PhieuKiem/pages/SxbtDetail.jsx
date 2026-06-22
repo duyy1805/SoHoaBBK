@@ -29,6 +29,7 @@ import {
     getPhieuKiemDetail
 } from "../../../api/phieuKiem.api";
 import { getBienBanSxbtDetail } from "../../../api/bienBan.api";
+import { updateSanPhamImage, uploadSanPhamImage } from "../../../api/lookup.api";
 import { hasPermission } from "../../../utils/auth";
 
 // ============================================================
@@ -129,6 +130,7 @@ export default function SxbtDetail() {
     const [actionNotice, setActionNotice] = useState(null);
     const [loadingAction, setLoadingAction] = useState(false);
     const [openPrint, setOpenPrint] = useState(false);
+    const productImageInputRef = useRef(null);
 
     const triggerPrint = useReactToPrint({
         contentRef: printRef,
@@ -169,6 +171,34 @@ export default function SxbtDetail() {
             setError("Không thể tải dữ liệu phiếu kiểm.");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleTriggerProductImageUpload = () => {
+        if (!phieu?.SanPhamId) {
+            window.alert("Phiếu chưa có sản phẩm để gắn ảnh.");
+            return;
+        }
+        productImageInputRef.current?.click();
+    };
+
+    const handleProductImageSelected = async (event) => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        if (!file || !phieu?.SanPhamId) return;
+
+        try {
+            const uploadRes = await uploadSanPhamImage(file, {
+                maSanPham: phieu?.MaSanPham,
+                tenSanPham: phieu?.TenSanPham
+            });
+            const imageUrl = uploadRes?.data?.imageUrl;
+            if (!imageUrl) throw new Error("UPLOAD_FAILED");
+            await updateSanPhamImage(phieu.SanPhamId, imageUrl);
+            await loadData();
+        } catch (error) {
+            console.error(error);
+            window.alert(error?.response?.data?.message || "Không thể cập nhật ảnh sản phẩm.");
         }
     };
 
@@ -610,6 +640,13 @@ export default function SxbtDetail() {
                 <Dialog open={openPrint} onClose={() => setOpenPrint(false)} maxWidth="md" fullWidth>
                     <DialogTitle>Xem trước phiếu kiểm SXBT</DialogTitle>
                     <DialogContent dividers sx={{ bgcolor: '#e5e7eb', p: 2 }}>
+                        <input
+                            ref={productImageInputRef}
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            onChange={handleProductImageSelected}
+                        />
                         <SxbtPrintTemplate
                             ref={printRef}
                             phieu={phieu}
@@ -618,6 +655,7 @@ export default function SxbtDetail() {
                             defects={defects}
                             dynamicFields={dynamicFields}
                             confirmSteps={confirmSteps}
+                            onRequestProductImageUpload={handleTriggerProductImageUpload}
                         />
                     </DialogContent>
                     <DialogActions>

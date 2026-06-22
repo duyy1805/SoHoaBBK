@@ -1,4 +1,5 @@
 import React, { forwardRef, useMemo } from "react";
+import { getAssetUrl } from "../../../api/lookup.api";
 
 const FORM_META = {
     companyName: "CÔNG TY TNHH MTV 76",
@@ -111,14 +112,44 @@ const styles = {
         display: "grid",
         gridTemplateColumns: "1fr 1fr",
         gap: "40px",
-        marginTop: "12px",
+        marginTop: "16px",
         fontSize: "12px"
     },
     signatureBox: {
-        textAlign: "center"
+        textAlign: "center",
+        minHeight: "118px"
     },
-    signatureSpace: {
-        height: "54px"
+    signatureTitle: {
+        fontWeight: 700,
+        fontSize: "13px",
+        letterSpacing: "0.3px"
+    },
+    signatureSignedText: {
+        height: "72px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        position: "relative"
+    },
+    signatureName: {
+        minHeight: "20px",
+        marginTop: "4px",
+        fontWeight: 700,
+        fontSize: "12px"
+    },
+    signatureStamp: {
+        display: "inline-block",
+        padding: "8px 16px 7px",
+        border: "2px solid #f05a5a",
+        color: "#f05a5a",
+        fontWeight: 700,
+        fontSize: "17px",
+        lineHeight: 1,
+        textTransform: "uppercase",
+        borderRadius: "4px",
+        transform: "rotate(-9deg) translateY(4px)",
+        letterSpacing: "0.8px",
+        backgroundColor: "rgba(255,255,255,0.92)"
     }
 };
 
@@ -269,8 +300,10 @@ const formatDate = (value) => {
     return date.toLocaleDateString("vi-VN");
 };
 
+const TREN_CHUYEN_COMPLETED_BY_NAME_FIELD = "TrenChuyen_CompletedByName";
+
 const TrenChuyenPrintTemplate = forwardRef(function TrenChuyenPrintTemplate(
-    { phieu, dynamicFields = [], slots = [], summary = null },
+    { phieu, dynamicFields = [], slots = [], summary = null, xacNhans = [], onRequestProductImageUpload = null },
     ref
 ) {
     const flatColumns = useMemo(() => buildDefectPrintColumns(slots), [slots]);
@@ -279,7 +312,14 @@ const TrenChuyenPrintTemplate = forwardRef(function TrenChuyenPrintTemplate(
 
     const productName = getFieldValue(dynamicFields, "TrenChuyen_TenSanPham") || phieu?.TenSanPham || "";
     const itemCode = getFieldValue(dynamicFields, "TrenChuyen_MaSanPham") || phieu?.MaSanPham || "";
+    const productImageUrl = phieu?.ImageUrl ? getAssetUrl(phieu.ImageUrl) : "";
     const printDate = formatDate(getFieldValue(dynamicFields, "TrenChuyen_NgayKeHoach"));
+    const qcSignerName =
+        getFieldValue(dynamicFields, TREN_CHUYEN_COMPLETED_BY_NAME_FIELD) ||
+        phieu?.TenNguoiKiem ||
+        "";
+    const tbpApproval = (xacNhans || []).find((item) => String(item?.VaiTro || "").toUpperCase() === "TBP");
+    const ttsxSignerName = tbpApproval?.TenNguoiXacNhan || "";
 
     return (
         <div ref={ref} style={styles.page}>
@@ -297,6 +337,8 @@ const TrenChuyenPrintTemplate = forwardRef(function TrenChuyenPrintTemplate(
                     }
                     thead { display: table-header-group; }
                     tr { page-break-inside: avoid; break-inside: avoid; }
+                    .screen-only-upload-trigger,
+                    .screen-only-upload-action { display: none !important; }
                 }
                 `}
             </style>
@@ -320,18 +362,86 @@ const TrenChuyenPrintTemplate = forwardRef(function TrenChuyenPrintTemplate(
                 </tbody>
             </table>
 
-            <div style={styles.infoRow}>
-                <div style={styles.infoField}>
-                    <span style={styles.infoLabel}>Sản phẩm:</span>
-                    <span style={styles.infoValue}>{productName}</span>
+            <div
+                style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 180px",
+                    gap: "12px",
+                    alignItems: "stretch",
+                    marginBottom: "6px"
+                }}
+            >
+                <div style={styles.infoRow}>
+                    <div style={styles.infoField}>
+                        <span style={styles.infoLabel}>Sản phẩm:</span>
+                        <span style={styles.infoValue}>{productName}</span>
+                    </div>
+                    <div style={styles.infoField}>
+                        <span style={styles.infoLabel}>Item code:</span>
+                        <span style={styles.infoValue}>{itemCode}</span>
+                    </div>
+                    <div style={styles.infoField}>
+                        <span style={styles.infoLabel}>Ngày:</span>
+                        <span style={styles.infoValue}>{printDate}</span>
+                    </div>
                 </div>
-                <div style={styles.infoField}>
-                    <span style={styles.infoLabel}>Item code:</span>
-                    <span style={styles.infoValue}>{itemCode}</span>
-                </div>
-                <div style={styles.infoField}>
-                    <span style={styles.infoLabel}>Ngày:</span>
-                    <span style={styles.infoValue}>{printDate}</span>
+
+                <div
+                    style={{
+                        border: "1px solid #000",
+                        padding: "6px",
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        minHeight: "118px"
+                    }}
+                >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "4px" }}>
+                        <div style={{ fontSize: "10px" }}>* Hình ảnh minh hoạ sản phẩm</div>
+                        {productImageUrl && typeof onRequestProductImageUpload === "function" ? (
+                            <div
+                                className="screen-only-upload-action"
+                                onClick={onRequestProductImageUpload}
+                                style={{
+                                    fontSize: "10px",
+                                    color: "#2563eb",
+                                    cursor: "pointer",
+                                    textDecoration: "underline"
+                                }}
+                            >
+                                Đổi ảnh
+                            </div>
+                        ) : null}
+                    </div>
+                    {productImageUrl ? (
+                        <img
+                            src={productImageUrl}
+                            alt={productName || "Ảnh sản phẩm"}
+                            style={{ width: "100%", height: "96px", objectFit: "contain" }}
+                        />
+                    ) : typeof onRequestProductImageUpload === "function" ? (
+                        <div
+                            className="screen-only-upload-trigger"
+                            onClick={onRequestProductImageUpload}
+                            style={{
+                                width: "100%",
+                                height: "96px",
+                                border: "1px dashed #94a3b8",
+                                borderRadius: "6px",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                textAlign: "center",
+                                color: "#475569",
+                                fontSize: "10px",
+                                cursor: "pointer",
+                                padding: "0 8px",
+                                boxSizing: "border-box"
+                            }}
+                        >
+                            Nhấn để thêm ảnh cho item code này
+                        </div>
+                    ) : null}
                 </div>
             </div>
 
@@ -421,12 +531,18 @@ const TrenChuyenPrintTemplate = forwardRef(function TrenChuyenPrintTemplate(
 
             <div style={styles.signatures}>
                 <div style={styles.signatureBox}>
-                    <div style={{ fontWeight: 700 }}>QC</div>
-                    <div style={styles.signatureSpace} />
+                    <div style={styles.signatureTitle}>QC</div>
+                    <div style={styles.signatureSignedText}>
+                        {qcSignerName ? <span style={styles.signatureStamp}>Đã ký</span> : null}
+                    </div>
+                    <div style={styles.signatureName}>{qcSignerName}</div>
                 </div>
                 <div style={styles.signatureBox}>
-                    <div style={{ fontWeight: 700 }}>TTSX</div>
-                    <div style={styles.signatureSpace} />
+                    <div style={styles.signatureTitle}>TTSX</div>
+                    <div style={styles.signatureSignedText}>
+                        {ttsxSignerName ? <span style={styles.signatureStamp}>Đã ký</span> : null}
+                    </div>
+                    <div style={styles.signatureName}>{ttsxSignerName}</div>
                 </div>
             </div>
         </div>

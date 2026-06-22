@@ -45,7 +45,7 @@ import {
     deletePhieuKiem
 } from "../../../api/phieuKiem.api";
 
-import { getSanPhamNhomKiem, getInspectionLevels } from "../../../api/lookup.api"
+import { getSanPhamNhomKiem, getInspectionLevels, updateSanPhamImage, uploadSanPhamImage } from "../../../api/lookup.api"
 
 import { hasPermission } from "../../../utils/auth";
 
@@ -71,6 +71,7 @@ export default function PhieuKiemDetail() {
     const [loadingAction, setLoadingAction] = useState(false);
     const [actionNotice, setActionNotice] = useState(null);
     const componentRef = useRef();
+    const productImageInputRef = useRef(null);
     const [openPrintModal, setOpenPrintModal] = useState(false);
 
     // Đổi tên hàm của thư viện thành triggerPrint
@@ -155,6 +156,34 @@ export default function PhieuKiemDetail() {
             console.error(err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleTriggerProductImageUpload = () => {
+        if (!phieu?.SanPhamId) {
+            window.alert("Phiếu chưa có sản phẩm để gắn ảnh.");
+            return;
+        }
+        productImageInputRef.current?.click();
+    };
+
+    const handleProductImageSelected = async (event) => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        if (!file || !phieu?.SanPhamId) return;
+
+        try {
+            const uploadRes = await uploadSanPhamImage(file, {
+                maSanPham: phieu?.MaSanPham,
+                tenSanPham: phieu?.TenSanPham
+            });
+            const imageUrl = uploadRes?.data?.imageUrl;
+            if (!imageUrl) throw new Error("UPLOAD_FAILED");
+            await updateSanPhamImage(phieu.SanPhamId, imageUrl);
+            await loadData();
+        } catch (error) {
+            console.error(error);
+            window.alert(error?.response?.data?.message || "Không thể cập nhật ảnh sản phẩm.");
         }
     };
 
@@ -665,6 +694,13 @@ export default function PhieuKiemDetail() {
                 <Dialog open={openPrintModal} onClose={() => setOpenPrintModal(false)} maxWidth="lg" fullWidth>
                     <DialogTitle>Xem trước bản in</DialogTitle>
                     <DialogContent dividers sx={{ bgcolor: '#f0f0f0', p: 3 }}>
+                        <input
+                            ref={productImageInputRef}
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            onChange={handleProductImageSelected}
+                        />
                         <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                             {phieu.LoaiKiemId === 1 ? (
                                 <PhieuGiamDinhPrintTemplate
@@ -685,6 +721,7 @@ export default function PhieuKiemDetail() {
                                     dynamicFields={dynamicFields}
                                     thongSoList={thongSoList}
                                     thongSoKqList={thongSoKqList}
+                                    onRequestProductImageUpload={handleTriggerProductImageUpload}
                                 />
                             )}
                         </Box>

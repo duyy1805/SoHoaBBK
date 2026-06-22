@@ -73,6 +73,7 @@ import {
 import { decodeToken } from "../../utils/auth";
 import ConfirmDialog from "../../components/common/ConfirmDialog";
 import { BienBanPrintTemplate } from "./components/BienBanPrintTemplate";
+import { BienBanTrenChuyenPrintTemplate } from "./components/BienBanTrenChuyenPrintTemplate";
 import { useToast } from "../../components/common/ToastContext";
 
 export default function BienBanDetail() {
@@ -90,6 +91,7 @@ export default function BienBanDetail() {
     const [xuLy, setXuLy] = useState([]);
     const [chiPhi, setChiPhi] = useState([]);
     const [xacNhan, setXacNhan] = useState([]);
+    const [phieuKiemXacNhan, setPhieuKiemXacNhan] = useState([]);
     const [hanhDong, setHanhDong] = useState([]);
 
     const [loading, setLoading] = useState(true);
@@ -156,6 +158,7 @@ export default function BienBanDetail() {
             setXuLy(res.data.xuLy || []);
             setChiPhi(res.data.chiPhi || []);
             setXacNhan(res.data.xacNhan || []);
+            setPhieuKiemXacNhan(res.data.phieuKiemXacNhan || []);
             setHanhDong(res.data.hanhDong || []);
             setDynamicFields(res.data.dynamicFields || []);
             const moTa = res.data.info?.MoTaChung || "";
@@ -295,6 +298,7 @@ export default function BienBanDetail() {
     const isManagerOrQA = currentUserPermissions.includes("XAC_NHAN_NGUOI_XU_LY") ||
         currentUserPermissions.includes("KET_LUAN") ||
         currentUserPermissions.includes("QUAN_TRI_DM");
+    const isTrenChuyenBienBan = Number(info?.LoaiKiemId) === 6;
 
     const isAssigned = assigns.some(a => a.BoPhanId === currentUserBoPhanId);
     const hasXuLy = xuLy.some(x => x.BoPhanId === currentUserBoPhanId);
@@ -749,17 +753,32 @@ export default function BienBanDetail() {
                 <DialogContent dividers sx={{ bgcolor: '#525659', p: 3 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                         <Paper sx={{ width: '210mm', minHeight: '297mm', p: 0, boxShadow: 3 }}>
-                            <BienBanPrintTemplate
-                                ref={componentRef}
-                                info={{ ...info, MoTaChung: moTaChung }}
-                                defects={defects}
-                                xuLy={xuLy}
-                                chiPhi={chiPhi}
-                                hanhDong={hanhDong}
-                                xacNhan={xacNhan}
-                                assigns={assigns}
-                                dynamicFields={dynamicFields}
-                            />
+                            {isTrenChuyenBienBan ? (
+                                <BienBanTrenChuyenPrintTemplate
+                                    ref={componentRef}
+                                    info={{ ...info, MoTaChung: moTaChung }}
+                                    defects={defects}
+                                    xuLy={xuLy}
+                                    chiPhi={chiPhi}
+                                    hanhDong={hanhDong}
+                                    xacNhan={xacNhan}
+                                    phieuKiemXacNhan={phieuKiemXacNhan}
+                                    assigns={assigns}
+                                    dynamicFields={dynamicFields}
+                                />
+                            ) : (
+                                <BienBanPrintTemplate
+                                    ref={componentRef}
+                                    info={{ ...info, MoTaChung: moTaChung }}
+                                    defects={defects}
+                                    xuLy={xuLy}
+                                    chiPhi={chiPhi}
+                                    hanhDong={hanhDong}
+                                    xacNhan={xacNhan}
+                                    assigns={assigns}
+                                    dynamicFields={dynamicFields}
+                                />
+                            )}
                         </Paper>
                     </Box>
                 </DialogContent>

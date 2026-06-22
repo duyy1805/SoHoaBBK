@@ -210,9 +210,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
             if (phieuInfo.KetLuan) setKetLuan(phieuInfo.KetLuan);
 
             // 4. Mục IV: Lỗi
-            const masterDefects = (defectRes.data || []).filter(
-                item => String(item?.PhanHe || "").trim().toUpperCase() === "SXBT"
-            );
+            const masterDefects = (defectRes.data || []);
             setMasterDefectList(masterDefects);
 
             const savedDefects = data.defects || [];

@@ -46,10 +46,23 @@ const defectImageUpload = multer({
   }
 });
 
+const productImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!/^image\//i.test(file.mimetype)) {
+      return cb(new Error("Chỉ hỗ trợ file ảnh"));
+    }
+    cb(null, true);
+  }
+});
+
 const defectUploadDir = path.join(__dirname, "..", "uploads", "defects");
 const publicDefectUploadDir = "/uploads/defects";
 const defectImportUploadDir = path.join(defectUploadDir, "import");
 const publicDefectImportUploadDir = `${publicDefectUploadDir}/import`;
+const productUploadDir = path.join(__dirname, "..", "uploads", "products");
+const publicProductUploadDir = "/uploads/products";
 const defectImportHeaders = [
   "MaLoi",
   "TenLoi",
@@ -1156,33 +1169,91 @@ router.get(
 );
 
 router.post(
+  "/san-pham-image",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  productImageUpload.single("image"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "Vui lòng chọn ảnh sản phẩm" });
+      }
+
+      fs.mkdirSync(productUploadDir, { recursive: true });
+
+      const baseName = slugifyFilePart(req.body.maSanPham || req.body.tenSanPham || "san-pham");
+      const fileName = `${baseName}-${Date.now()}-${Math.round(Math.random() * 1e9)}.jpg`;
+      const outputPath = path.join(productUploadDir, fileName);
+
+      await sharp(req.file.buffer)
+        .rotate()
+        .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 84 })
+        .toFile(outputPath);
+
+      res.json({
+        success: true,
+        imageUrl: `${publicProductUploadDir}/${fileName}`
+      });
+    } catch (err) {
+      console.error("Upload product image error:", err);
+      res.status(500).json({ message: "Không thể tải ảnh sản phẩm lên server" });
+    }
+  }
+);
+
+router.post(
   "/san-pham",
   authenticateToken,
   authorize("QUAN_TRI_DM"),
   async (req, res) => {
 
-    const { MaSanPham, TenSanPham, MoTa } = req.body;
+    const { MaSanPham, TenSanPham, MoTa, ImageUrl } = req.body;
 
     try {
 
       const pool = await poolPromise;
-
-      await pool.request()
+      const duplicate = await pool.request()
         .input("MaSanPham", sql.NVarChar(50), MaSanPham)
-        .input("TenSanPham", sql.NVarChar(255), TenSanPham)
-        .input("MoTa", sql.NVarChar(sql.MAX), MoTa)
-        .execute("sp_DM_CreateSanPham");
+        .query(`
+          SELECT 1
+          FROM DM_SAN_PHAM
+          WHERE MaSanPham = @MaSanPham
+            AND TrangThai = 1
+        `);
 
-      res.json({ success: true });
-
-    } catch (err) {
-
-      if (err.message.includes("tồn tại")) {
-        return res.status(409).json({
-          message: err.message
-        });
+      if (duplicate.recordset.length > 0) {
+        return res.status(409).json({ message: "Mã sản phẩm đã tồn tại" });
       }
 
+      const result = await pool.request()
+        .input("MaSanPham", sql.NVarChar(50), MaSanPham)
+        .input("TenSanPham", sql.NVarChar(255), TenSanPham)
+        .input("MoTa", sql.NVarChar(sql.MAX), MoTa || null)
+        .input("ImageUrl", sql.NVarChar(500), ImageUrl || null)
+        .query(`
+          INSERT INTO DM_SAN_PHAM (
+            MaSanPham,
+            TenSanPham,
+            MoTa,
+            ImageUrl,
+            TrangThai,
+            CreatedAt
+          )
+          OUTPUT inserted.Id
+          VALUES (
+            @MaSanPham,
+            @TenSanPham,
+            @MoTa,
+            @ImageUrl,
+            1,
+            SYSDATETIME()
+          )
+        `);
+
+      res.json({ success: true, id: result.recordset?.[0]?.Id || null });
+
+    } catch (err) {
       console.error("Create san pham error:", err);
 
       res.status(500).json({
@@ -1199,34 +1270,84 @@ router.put(
   async (req, res) => {
 
     const { id } = req.params;
-    const { MaSanPham, TenSanPham, MoTa } = req.body;
+    const { MaSanPham, TenSanPham, MoTa, ImageUrl } = req.body;
 
     try {
 
       const pool = await poolPromise;
 
+      const duplicate = await pool.request()
+        .input("Id", sql.Int, id)
+        .input("MaSanPham", sql.NVarChar(50), MaSanPham)
+        .query(`
+          SELECT 1
+          FROM DM_SAN_PHAM
+          WHERE MaSanPham = @MaSanPham
+            AND Id <> @Id
+            AND TrangThai = 1
+        `);
+
+      if (duplicate.recordset.length > 0) {
+        return res.status(409).json({ message: "Mã sản phẩm đã tồn tại" });
+      }
+
       await pool.request()
         .input("Id", sql.Int, id)
         .input("MaSanPham", sql.NVarChar(50), MaSanPham)
         .input("TenSanPham", sql.NVarChar(255), TenSanPham)
-        .input("MoTa", sql.NVarChar(sql.MAX), MoTa)
-        .execute("sp_DM_UpdateSanPham");
+        .input("MoTa", sql.NVarChar(sql.MAX), MoTa || null)
+        .input("ImageUrl", sql.NVarChar(500), ImageUrl || null)
+        .query(`
+          UPDATE DM_SAN_PHAM
+          SET
+            MaSanPham = @MaSanPham,
+            TenSanPham = @TenSanPham,
+            MoTa = @MoTa,
+            ImageUrl = @ImageUrl
+          WHERE Id = @Id
+        `);
 
       res.json({ success: true });
 
     } catch (err) {
-
-      if (err.message.includes("tồn tại")) {
-        return res.status(409).json({
-          message: err.message
-        });
-      }
-
       console.error(err);
 
       res.status(500).json({
         message: "Không thể cập nhật"
       });
+    }
+  }
+);
+
+router.patch(
+  "/san-pham/:id/image",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  async (req, res) => {
+    const { id } = req.params;
+    const imageUrl = req.body?.imageUrl;
+
+    try {
+      const pool = await poolPromise;
+
+      const result = await pool.request()
+        .input("Id", sql.Int, id)
+        .input("ImageUrl", sql.NVarChar(500), imageUrl || null)
+        .query(`
+          UPDATE DM_SAN_PHAM
+          SET ImageUrl = @ImageUrl
+          OUTPUT inserted.Id
+          WHERE Id = @Id
+        `);
+
+      if (result.recordset.length === 0) {
+        return res.status(404).json({ message: "Không tìm thấy sản phẩm" });
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Update san pham image error:", err);
+      res.status(500).json({ message: "Không thể cập nhật ảnh sản phẩm" });
     }
   }
 );

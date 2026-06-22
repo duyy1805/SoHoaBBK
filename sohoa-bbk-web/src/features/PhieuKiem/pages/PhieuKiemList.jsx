@@ -82,6 +82,8 @@ export default function PhieuKiemList() {
                 return <Chip label="Chưa kiểm" size="small" />;
             case "DANG_KIEM":
                 return <Chip label="Đang kiểm" color="warning" size="small" />;
+            case "CHO_TBP_DUYET":
+                return <Chip label="Chờ TBP duyệt" color="secondary" size="small" />;
             case "CHO_XUONG_XAC_NHAN":
                 return <Chip label="Chờ PX xác nhận" color="info" size="small" />;
             case "CHO_KIEM_NGHIEM":
@@ -207,6 +209,7 @@ export default function PhieuKiemList() {
                         <MenuItem value="">Tất cả</MenuItem>
                         <MenuItem value="DA_TAO_SECTION">Chưa kiểm</MenuItem>
                         <MenuItem value="DANG_KIEM">Đang kiểm</MenuItem>
+                        <MenuItem value="CHO_TBP_DUYET">Chờ TBP duyệt</MenuItem>
                         <MenuItem value="CHO_XUONG_XAC_NHAN">Chờ PX xác nhận</MenuItem>
                         <MenuItem value="CHO_KIEM_NGHIEM">Chờ kiểm nghiệm</MenuItem>
                         <MenuItem value="HOAN_TAT">Hoàn tất</MenuItem>
@@ -265,7 +268,7 @@ export default function PhieuKiemList() {
                                             </TableCell>
                                             <TableCell>{item.TenNguoiKiem || "—"}</TableCell>
                                             <TableCell align="center">
-                                                {item.TrangThai === "HOAN_TAT" ? renderKetLuanChip(item.KetLuan) : "—"}
+                                                {item.KetLuan ? renderKetLuanChip(item.KetLuan) : "—"}
                                             </TableCell>
                                             <TableCell align="center">
                                                 {renderTrangThaiChip(item.TrangThai)}

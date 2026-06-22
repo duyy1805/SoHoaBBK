@@ -48,6 +48,17 @@ const getBienBanAssignRows = async (pool, bienBanId) => {
     return result.recordset;
 };
 
+const parseJsonArray = (value) => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value.filter(Boolean);
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+    } catch {
+        return typeof value === "string" && value.trim() ? [value] : [];
+    }
+};
+
 /* =========================================================
    GET /bien-ban
    Permission : XEM_BIEN_BAN
@@ -161,16 +172,41 @@ router.get(
             const rs = result.recordsets;
             const assignRows = await getBienBanAssignRows(pool, id);
 
-            // Xử lý DynamicFieldsJSON tương tự PhieuKiem
+            // Gộp custom fields của biên bản và phiếu kiểm.
+            // Ưu tiên field trên biên bản nếu trùng tên.
             let dynamicFields = [];
             const info = rs[0]?.[0] || null;
-            if (info && info.DynamicFieldsJSON) {
-                try {
-                    dynamicFields = JSON.parse(info.DynamicFieldsJSON);
-                } catch (e) {
-                    console.error("Lỗi parse DynamicFieldsJSON:", e);
+            if (info) {
+                let bienBanDynamicFields = [];
+                let phieuKiemDynamicFields = [];
+
+                if (info.DynamicFieldsJSON) {
+                    try {
+                        bienBanDynamicFields = JSON.parse(info.DynamicFieldsJSON);
+                    } catch (e) {
+                        console.error("Lỗi parse DynamicFieldsJSON:", e);
+                    }
                 }
-                delete info.DynamicFieldsJSON; // Xóa chuỗi thô đi cho nhẹ
+
+                if (info.PhieuKiemDynamicFieldsJSON) {
+                    try {
+                        phieuKiemDynamicFields = JSON.parse(info.PhieuKiemDynamicFieldsJSON);
+                    } catch (e) {
+                        console.error("Lỗi parse PhieuKiemDynamicFieldsJSON:", e);
+                    }
+                }
+
+                const mergedFieldMap = new Map();
+                phieuKiemDynamicFields.forEach((field) => {
+                    if (field?.FieldName) mergedFieldMap.set(field.FieldName, field);
+                });
+                bienBanDynamicFields.forEach((field) => {
+                    if (field?.FieldName) mergedFieldMap.set(field.FieldName, field);
+                });
+                dynamicFields = Array.from(mergedFieldMap.values());
+
+                delete info.DynamicFieldsJSON;
+                delete info.PhieuKiemDynamicFieldsJSON;
             }
 
             const mergedAssigns = (assignRows.length > 0 ? assignRows : (rs[2] || [])).map((assign) => {
@@ -181,16 +217,42 @@ router.get(
                 };
             });
 
+            const defects = (rs[1] || []).map(d => ({
+                ...d,
+                ImageUrls: parseJsonArray(d.ImageUrls)
+            }));
+
+            let phieuKiemXacNhan = [];
+            if (Number(info?.LoaiKiemId) === 6 && Number(info?.PhieuKiemId) > 0) {
+                const xacNhanResult = await pool.request()
+                    .input("PhieuKiemId", sql.Int, Number(info.PhieuKiemId))
+                    .query(`
+                        SELECT
+                            xn.Id,
+                            xn.PhieuKiemId,
+                            xn.NguoiXacNhanId,
+                            xn.VaiTro,
+                            xn.TrangThai,
+                            xn.NoiDung,
+                            xn.ThoiGian,
+                            u.FullName AS TenNguoiXacNhan,
+                            u.BoPhanId
+                        FROM dbo.PHIEU_KIEM_XAC_NHAN xn
+                        LEFT JOIN dbo.USERS u ON u.Id = xn.NguoiXacNhanId
+                        WHERE xn.PhieuKiemId = @PhieuKiemId
+                        ORDER BY xn.ThoiGian DESC, xn.Id DESC
+                    `);
+                phieuKiemXacNhan = xacNhanResult.recordset || [];
+            }
+
             res.json({
                 info: rs[0]?.[0] || null,
-                defects: (rs[1] || []).map(d => ({
-                    ...d,
-                    ImageUrls: d.ImageUrls ? JSON.parse(d.ImageUrls) : []
-                })),
+                defects,
                 assigns: mergedAssigns,
                 xuLy: rs[3] || [],
                 chiPhi: rs[4] || [],
                 xacNhan: rs[5] || [],
+                phieuKiemXacNhan,
                 hanhDong: rs[6] || [],
                 dynamicFields: dynamicFields // Thêm dòng này
             });

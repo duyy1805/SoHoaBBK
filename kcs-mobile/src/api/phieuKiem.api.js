@@ -147,8 +147,8 @@ export const saveTrenChuyenData = (data) => {
   return axiosClient.post("/phieu-kiem/tren-chuyen/save", data);
 };
 
-export const completeTrenChuyen = (phieuKiemId) => {
-  return axiosClient.post("/phieu-kiem/tren-chuyen/complete", { phieuKiemId });
+export const completeTrenChuyen = (phieuKiemId, ketLuan) => {
+  return axiosClient.post("/phieu-kiem/tren-chuyen/complete", { phieuKiemId, ketLuan });
 };
 
 export const createTrenChuyenBienBan = (phieuKiemId) => {
@@ -157,4 +157,8 @@ export const createTrenChuyenBienBan = (phieuKiemId) => {
 
 export const deleteTrenChuyenEntry = (entryId) => {
   return axiosClient.delete(`/phieu-kiem/tren-chuyen/entry/${entryId}`);
+};
+
+export const approveTrenChuyen = (phieuKiemId) => {
+  return axiosClient.post("/phieu-kiem/tren-chuyen/approve", { phieuKiemId });
 };

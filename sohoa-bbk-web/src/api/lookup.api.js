@@ -139,8 +139,21 @@ export const createSanPham = (data) =>
 export const updateSanPham = (id, data) =>
     axiosClient.put(`/lookup/san-pham/${id}`, data);
 
+export const updateSanPhamImage = (id, imageUrl) =>
+    axiosClient.patch(`/lookup/san-pham/${id}/image`, { imageUrl });
+
 export const deleteSanPham = (id) =>
     axiosClient.delete(`/lookup/san-pham/${id}`);
+
+export const uploadSanPhamImage = (file, meta = {}) => {
+    const formData = new FormData();
+    formData.append("image", file);
+    if (meta.maSanPham) formData.append("maSanPham", meta.maSanPham);
+    if (meta.tenSanPham) formData.append("tenSanPham", meta.tenSanPham);
+    return axiosClient.post("/lookup/san-pham-image", formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+    });
+};
 
 export const exportSanPhamDanhMucKiem = (sanPhamId) =>
     axiosClient.get(`/lookup/san-pham/${sanPhamId}/danh-muc-kiem/export`, {

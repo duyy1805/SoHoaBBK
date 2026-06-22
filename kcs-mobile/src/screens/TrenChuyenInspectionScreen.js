@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import {
+  approveTrenChuyen,
   completeTrenChuyen,
   createTrenChuyenBienBan,
   getPhieuKiemDetail
@@ -24,13 +25,16 @@ const HOUR_OPTIONS = ["07:30", "08:30", "09:30", "10:30", "11:30", "12:30", "13:
 const getFieldValue = (fields = [], name) =>
   fields.find((field) => field?.FieldName === name)?.FieldValue ?? "";
 
-const canEditStatus = (status) => !["HOAN_TAT", "CHO_KIEM_NGHIEM", "CHO_XUONG_XAC_NHAN"].includes(status);
+const APPROVE_BOPHAN_FIELD = "TrenChuyen_ApproveBoPhanId";
+const canEditStatus = (status) => !["HOAN_TAT", "CHO_TBP_DUYET", "CHO_KIEM_NGHIEM", "CHO_XUONG_XAC_NHAN"].includes(status);
 const getStatusMeta = (status) => {
   switch (status) {
     case "TAO_MOI":
       return { label: "Chưa kiểm", bg: "#e0f2fe", color: "#0369a1" };
     case "DANG_KIEM":
       return { label: "Đang kiểm", bg: "#dbeafe", color: "#1d4ed8" };
+    case "CHO_TBP_DUYET":
+      return { label: "Chờ TBP duyệt", bg: "#ede9fe", color: "#6d28d9" };
     case "HOAN_TAT":
       return { label: "Hoàn tất", bg: "#dcfce7", color: "#15803d" };
     case "CHO_KIEM_NGHIEM":
@@ -58,11 +62,22 @@ export default function TrenChuyenInspectionScreen({ route, navigation }) {
   const [slots, setSlots] = useState([]);
   const [dynamicFields, setDynamicFields] = useState([]);
   const [summary, setSummary] = useState(null);
+  const [xacNhans, setXacNhans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hourModalVisible, setHourModalVisible] = useState(false);
 
   const canEdit = user?.permissions?.includes("THUC_HIEN_KIEM") && canEditStatus(phieu?.TrangThai);
+  const approveBoPhanId = Number(getFieldValue(dynamicFields, APPROVE_BOPHAN_FIELD) || 0) || null;
+  const canApprove = Boolean(
+    phieu?.TrangThai === "CHO_TBP_DUYET" && (
+      user?.permissions?.includes("QUAN_TRI_DM") || (
+        user?.permissions?.includes("PHAN_CONG_NGUOI_XU_LY") &&
+        approveBoPhanId &&
+        Number(user?.boPhanId) === approveBoPhanId
+      )
+    )
+  );
   const statusMeta = getStatusMeta(phieu?.TrangThai);
 
   useFocusEffect(
@@ -83,6 +98,7 @@ export default function TrenChuyenInspectionScreen({ route, navigation }) {
       setPhieu(data.phieu || null);
       setDynamicFields(data.dynamicFields || []);
       setSummary(data.summary || null);
+      setXacNhans(Array.isArray(data.xacNhans) ? data.xacNhans : []);
       setUser(userInfo);
       setSlots(Array.isArray(data.slots) ? data.slots : []);
     } catch (error) {
@@ -128,6 +144,18 @@ export default function TrenChuyenInspectionScreen({ route, navigation }) {
     return getSeverityCounts(allDefects);
   }, [slots]);
 
+  const latestTbpApproval = useMemo(
+    () => (xacNhans || []).find((item) => String(item?.VaiTro || "").toUpperCase() === "TBP"),
+    [xacNhans]
+  );
+
+  const formatDateTime = (value) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleString("vi-VN");
+  };
+
   const handleCreateBienBan = async () => {
     try {
       setSaving(true);
@@ -149,20 +177,63 @@ export default function TrenChuyenInspectionScreen({ route, navigation }) {
   const handleComplete = async () => {
     Alert.alert(
       "Hoàn tất phiếu",
-      "Chốt phiếu kiểm trên chuyền? Dữ liệu sẽ được khóa nhưng không tự sinh biên bản.",
+      "Chọn kết luận thực tế trước khi chuyển phiếu sang bước duyệt của TBP.",
       [
         { text: "Hủy", style: "cancel" },
         {
-          text: "Hoàn tất",
+          text: "Đạt",
           onPress: async () => {
             try {
               setSaving(true);
-              await completeTrenChuyen(id);
-              Alert.alert("Thành công", "Đã hoàn tất phiếu kiểm trên chuyền.");
+              await completeTrenChuyen(id, "DAT");
+              Alert.alert("Thành công", "Đã chuyển phiếu sang bước duyệt TBP.");
               await loadData();
             } catch (error) {
               console.error("TrenChuyen complete error:", error);
               Alert.alert("Lỗi", error?.response?.data?.message || "Không thể hoàn tất phiếu.");
+            } finally {
+              setSaving(false);
+            }
+          }
+        },
+        {
+          text: "Không đạt",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setSaving(true);
+              await completeTrenChuyen(id, "KHONG_DAT");
+              Alert.alert("Thành công", "Đã chuyển phiếu sang bước duyệt TBP.");
+              await loadData();
+            } catch (error) {
+              console.error("TrenChuyen complete error:", error);
+              Alert.alert("Lỗi", error?.response?.data?.message || "Không thể hoàn tất phiếu.");
+            } finally {
+              setSaving(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleApprove = async () => {
+    Alert.alert(
+      "Duyệt phiếu",
+      "Xác nhận hoàn tất duyệt phiếu kiểm trên chuyền?",
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Duyệt",
+          onPress: async () => {
+            try {
+              setSaving(true);
+              await approveTrenChuyen(id);
+              Alert.alert("Thành công", "Phiếu đã được TBP duyệt.");
+              await loadData();
+            } catch (error) {
+              console.error("TrenChuyen approve error:", error);
+              Alert.alert("Lỗi", error?.response?.data?.message || "Không thể duyệt phiếu.");
             } finally {
               setSaving(false);
             }
@@ -200,6 +271,21 @@ export default function TrenChuyenInspectionScreen({ route, navigation }) {
           <Text style={styles.metaText}>Ngày kế hoạch: {getFieldValue(dynamicFields, "TrenChuyen_NgayKeHoach") ? new Date(getFieldValue(dynamicFields, "TrenChuyen_NgayKeHoach")).toLocaleDateString("vi-VN") : "---"}</Text>
           <Text style={styles.metaText}>KH: {getFieldValue(dynamicFields, "TrenChuyen_SoLuongKeHoach") || "---"} | NS dự kiến: {getFieldValue(dynamicFields, "TrenChuyen_NangSuatDuKien") || "---"} | Đã SX: {getFieldValue(dynamicFields, "TrenChuyen_DaSanXuat") || "---"}</Text>
         </View>
+
+        {latestTbpApproval ? (
+          <View style={styles.approvalCard}>
+            <View style={styles.approvalIconWrap}>
+              <Ionicons name="checkmark-done-circle-outline" size={18} color="#15803d" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.approvalTitle}>TBP đã xác nhận</Text>
+              <Text style={styles.approvalText}>{latestTbpApproval.TenNguoiXacNhan || "Không rõ người xác nhận"}</Text>
+              {latestTbpApproval.ThoiGian ? (
+                <Text style={styles.approvalSubtext}>{formatDateTime(latestTbpApproval.ThoiGian)}</Text>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
 
         <View style={styles.actionRow}>
           {phieu?.BienBanId ? (
@@ -322,10 +408,16 @@ export default function TrenChuyenInspectionScreen({ route, navigation }) {
 
       </ScrollView>
 
-      {canEdit ? (
+      {canEdit || canApprove ? (
         <View style={styles.bottomActionBar}>
-          <TouchableOpacity style={styles.primaryButton} onPress={handleComplete} disabled={saving}>
-            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Hoàn tất phiếu</Text>}
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={canApprove ? handleApprove : handleComplete}
+            disabled={saving}
+          >
+            {saving ? <ActivityIndicator color="#fff" /> : (
+              <Text style={styles.primaryButtonText}>{canApprove ? "Duyệt phiếu" : "Hoàn tất phiếu"}</Text>
+            )}
           </TouchableOpacity>
         </View>
       ) : null}
@@ -380,6 +472,27 @@ const styles = StyleSheet.create({
   statusBadgeText: { fontWeight: "700", fontSize: 12 },
   productText: { fontSize: 18, fontWeight: "700", color: "#111827" },
   metaText: { fontSize: 14, color: "#475569", marginTop: 6, lineHeight: 21 },
+  approvalCard: {
+    backgroundColor: "#ecfdf5",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    padding: 14,
+    flexDirection: "row",
+    gap: 12,
+    alignItems: "flex-start"
+  },
+  approvalIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#dcfce7",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  approvalTitle: { fontSize: 12, fontWeight: "700", color: "#15803d", textTransform: "uppercase" },
+  approvalText: { fontSize: 15, fontWeight: "700", color: "#14532d", marginTop: 3 },
+  approvalSubtext: { fontSize: 13, color: "#166534", marginTop: 2 },
   actionRow: { flexDirection: "row", gap: 12 },
   primaryActionButton: {
     flex: 1,

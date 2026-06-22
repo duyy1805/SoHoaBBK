@@ -17,11 +17,19 @@ const authorize = (permissionCode) => {
         }
 
         const userPermissions = req.user.permissions;
+        const userRoles = Array.isArray(req.user.roles) ? req.user.roles : [];
 
         if (!Array.isArray(userPermissions)) {
             return res.status(403).json({
                 message: 'No permissions found'
             });
+        }
+
+        const isAdmin = userPermissions.includes('QUAN_TRI_DM')
+            || userRoles.some((role) => String(role || '').toUpperCase().includes('ADMIN'));
+
+        if (isAdmin) {
+            return next();
         }
 
         // Cho phép truyền 1 permission hoặc nhiều permission (OR)

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Grid } from '@mui/material';
+import { getAssetUrl } from "../../../api/lookup.api";
 
 // Hàm hỗ trợ chuyển số thứ tự thành số La Mã (I, II, III, IV...)
 const toRoman = (num) => {
@@ -14,7 +15,8 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
     defects = [],
     dynamicFields = [],
     thongSoList = [],
-    thongSoKqList = []
+    thongSoKqList = [],
+    onRequestProductImageUpload = null
 }, ref) => {
     if (!phieu) return null;
 
@@ -51,6 +53,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
     // Lấy số lượng từ các nhóm kiểm (sections) tương ứng
     const khayQty = getSectionQuantity(name => name.includes("KHAY"));
     const palletQty = getSectionQuantity(name => name.includes("PALLET"));
+    const productImageUrl = phieu?.ImageUrl ? getAssetUrl(phieu.ImageUrl) : "";
 
     const styles = {
         previewBackground: {
@@ -132,6 +135,8 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                     thead { display: table-header-group; }
                     .avoid-break { page-break-inside: avoid !important; break-inside: avoid !important; }
                     tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+                    .screen-only-upload-trigger,
+                    .screen-only-upload-action { display: none !important; }
                 }
                 `}
             </style>
@@ -198,9 +203,74 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                             </Box>
                         </Box>
 
-                        {/* Cột phải: Hình ảnh minh họa */}
-                        <Box sx={{ width: '35%', border: '1px solid #000', p: 1, display: 'flex', flexDirection: 'column' }}>
-                            <div style={{ ...styles.text, fontSize: '10pt' }}>*Hình ảnh minh họa sản phẩm</div>
+                        <Box sx={{ width: '35%', border: '1px solid #000', p: 1, display: 'flex', flexDirection: 'column', minHeight: '182px' }}>
+                            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+                                <div style={{ ...styles.text, fontSize: '10pt', marginBottom: 0 }}>*Hình ảnh minh họa sản phẩm</div>
+                                {productImageUrl && typeof onRequestProductImageUpload === "function" ? (
+                                    <Box
+                                        className="screen-only-upload-action"
+                                        onClick={onRequestProductImageUpload}
+                                        sx={{
+                                            fontSize: "9pt",
+                                            color: "#2563eb",
+                                            cursor: "pointer",
+                                            textDecoration: "underline"
+                                        }}
+                                    >
+                                        Đổi ảnh
+                                    </Box>
+                                ) : null}
+                            </Box>
+                            {productImageUrl ? (
+                                <Box
+                                    component="img"
+                                    src={productImageUrl}
+                                    alt={phieu.TenSanPham || "Ảnh sản phẩm"}
+                                    sx={{
+                                        width: '100%',
+                                        height: 150,
+                                        objectFit: 'contain',
+                                        mt: 0.5
+                                    }}
+                                />
+                            ) : (
+                                <Box
+                                    sx={{
+                                        flex: 1,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center"
+                                    }}
+                                >
+                                    {typeof onRequestProductImageUpload === "function" ? (
+                                        <Box
+                                            className="screen-only-upload-trigger"
+                                            onClick={onRequestProductImageUpload}
+                                            sx={{
+                                                width: "100%",
+                                                minHeight: 140,
+                                                border: "1px dashed #94a3b8",
+                                                borderRadius: 1,
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                textAlign: "center",
+                                                color: "#475569",
+                                                fontSize: "10pt",
+                                                cursor: "pointer",
+                                                px: 2,
+                                                "&:hover": {
+                                                    borderColor: "#2563eb",
+                                                    color: "#1d4ed8",
+                                                    backgroundColor: "#eff6ff"
+                                                }
+                                            }}
+                                        >
+                                            Nhấn để thêm ảnh cho item code này
+                                        </Box>
+                                    ) : null}
+                                </Box>
+                            )}
                         </Box>
                     </Box>
 

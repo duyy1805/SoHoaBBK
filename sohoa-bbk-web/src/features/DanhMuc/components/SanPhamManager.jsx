@@ -42,6 +42,7 @@ import {
     createSanPham,
     updateSanPham,
     deleteSanPham,
+    getAssetUrl,
     exportSanPhamDanhMucKiem,
     exportSanPhamThongSo,
     importThongSoKiemExcel,
@@ -49,7 +50,8 @@ import {
     getSanPhamNhomKiem,
     createSanPhamNhomKiem,
     deleteSanPhamNhomKiem,
-    getNhomKiemList
+    getNhomKiemList,
+    uploadSanPhamImage
 } from "../../../api/lookup.api";
 
 export default function SanPhamManager() {
@@ -86,6 +88,8 @@ export default function SanPhamManager() {
         type: 'info',
         onConfirm: null
     });
+    const [imageFile, setImageFile] = useState(null);
+    const [imagePreview, setImagePreview] = useState("");
 
     const loadData = async (reset = false, keyword = searchQuery) => {
         const currentPage = reset ? 0 : page;
@@ -114,6 +118,14 @@ export default function SanPhamManager() {
 
         return () => clearTimeout(timer);
     }, [searchQuery]);
+
+    useEffect(() => {
+        return () => {
+            if (imagePreview?.startsWith?.("blob:")) {
+                URL.revokeObjectURL(imagePreview);
+            }
+        };
+    }, [imagePreview]);
 
     // Logic tìm kiếm đa trường: Tìm theo Mã, Tên và Mô tả
     // const filteredData = useMemo(() => {
@@ -161,11 +173,40 @@ export default function SanPhamManager() {
     const handleSave = async () => {
         if (!form.MaSanPham || !form.TenSanPham) return;
 
-        if (form.Id) await updateSanPham(form.Id, form);
-        else await createSanPham(form);
+        let imageUrl = form.ImageUrl || "";
+        if (imageFile) {
+            const uploadRes = await uploadSanPhamImage(imageFile, {
+                maSanPham: form.MaSanPham,
+                tenSanPham: form.TenSanPham
+            });
+            imageUrl = uploadRes?.data?.imageUrl || imageUrl;
+        }
+
+        const payload = {
+            ...form,
+            ImageUrl: imageUrl || null
+        };
+
+        if (form.Id) await updateSanPham(form.Id, payload);
+        else await createSanPham(payload);
 
         setOpen(false);
+        setImageFile(null);
+        setImagePreview("");
         loadData();
+    };
+
+    const handleImageChange = (event) => {
+        const file = event.target.files?.[0] || null;
+        setImageFile(file);
+        setImagePreview(file ? URL.createObjectURL(file) : "");
+        event.target.value = "";
+    };
+
+    const handleRemoveImage = () => {
+        setImageFile(null);
+        setImagePreview("");
+        setForm((prev) => ({ ...prev, ImageUrl: "" }));
     };
 
     const handleDelete = async (id) => {
@@ -336,6 +377,8 @@ export default function SanPhamManager() {
                         startIcon={<AddIcon />}
                         onClick={() => {
                             setForm({});
+                            setImageFile(null);
+                            setImagePreview("");
                             setOpen(true);
                         }}
                         sx={{ whiteSpace: "nowrap" }}
@@ -360,6 +403,7 @@ export default function SanPhamManager() {
                         <TableHead>
                             <TableRow sx={{ backgroundColor: "#f8fafc" }}>
                                 <TableCell sx={{ fontWeight: 600 }}>Mã/ItemCode</TableCell>
+                                <TableCell sx={{ fontWeight: 600 }}>Ảnh</TableCell>
                                 <TableCell sx={{ fontWeight: 600 }}>Quy cách</TableCell>
                                 <TableCell sx={{ fontWeight: 600 }}>Mô tả</TableCell>
                                 <TableCell align="center" sx={{ fontWeight: 600 }}>Cấu hình</TableCell>
@@ -369,7 +413,7 @@ export default function SanPhamManager() {
                         <TableBody>
                             {data.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
+                                    <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
                                         <Typography color="text.secondary">Chưa có dữ liệu</Typography>
                                     </TableCell>
                                 </TableRow>
@@ -377,6 +421,26 @@ export default function SanPhamManager() {
                                 data.map((row) => (
                                     <TableRow key={row.Id} hover>
                                         <TableCell><Chip label={row.MaSanPham} size="small" color="default" /></TableCell>
+                                        <TableCell>
+                                            {row.ImageUrl ? (
+                                                <Box
+                                                    component="img"
+                                                    src={getAssetUrl(row.ImageUrl)}
+                                                    alt={row.TenSanPham}
+                                                    sx={{
+                                                        width: 56,
+                                                        height: 56,
+                                                        objectFit: "contain",
+                                                        border: "1px solid #e5e7eb",
+                                                        borderRadius: 1,
+                                                        bgcolor: "#fff",
+                                                        p: 0.5
+                                                    }}
+                                                />
+                                            ) : (
+                                                <Typography variant="body2" color="text.secondary">--</Typography>
+                                            )}
+                                        </TableCell>
                                         <TableCell sx={{ fontWeight: 500 }}>{row.TenSanPham}</TableCell>
                                         <TableCell sx={{ color: "text.secondary" }}>{row.MoTa || "--"}</TableCell>
                                         <TableCell align="center">
@@ -427,7 +491,7 @@ export default function SanPhamManager() {
                                         </TableCell>
                                         <TableCell align="right">
                                             <Tooltip title="Chỉnh sửa">
-                                                <IconButton onClick={() => { setForm({ ...row }); setOpen(true); }} color="primary">
+                                                <IconButton onClick={() => { setForm({ ...row }); setImageFile(null); setImagePreview(""); setOpen(true); }} color="primary">
                                                     <EditIcon fontSize="small" />
                                                 </IconButton>
                                             </Tooltip>
@@ -480,6 +544,35 @@ export default function SanPhamManager() {
                             value={form.MoTa || ""}
                             onChange={(e) => setForm({ ...form, MoTa: e.target.value })}
                         />
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "stretch", sm: "flex-start" }}>
+                            <Button component="label" variant="outlined" startIcon={<UploadFileIcon />}>
+                                Tải ảnh lên
+                                <input hidden accept="image/*" type="file" onChange={handleImageChange} />
+                            </Button>
+                            {(imagePreview || form.ImageUrl) ? (
+                                <Button color="error" onClick={handleRemoveImage}>
+                                    Xóa ảnh
+                                </Button>
+                            ) : null}
+                        </Stack>
+                        {(imagePreview || form.ImageUrl) ? (
+                            <Box
+                                component="img"
+                                src={imagePreview || getAssetUrl(form.ImageUrl)}
+                                alt={form.TenSanPham || "Ảnh sản phẩm"}
+                                sx={{
+                                    width: "100%",
+                                    maxHeight: 220,
+                                    objectFit: "contain",
+                                    border: "1px solid #e5e7eb",
+                                    borderRadius: 2,
+                                    bgcolor: "#fff",
+                                    p: 1
+                                }}
+                            />
+                        ) : (
+                            <Alert severity="info">Chưa có ảnh sản phẩm. Tải ảnh lên để dùng cho phiếu kiểm và xem in.</Alert>
+                        )}
                     </Stack>
                 </DialogContent>
                 <DialogActions sx={{ px: 3, py: 2 }}>
