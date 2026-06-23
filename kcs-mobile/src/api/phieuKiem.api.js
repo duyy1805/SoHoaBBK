@@ -48,6 +48,10 @@ export const saveCheckItem = (data) => {
   return axiosClient.post("/phieu-kiem/check-item", data);
 };
 
+export const saveCustomFields = (data) => {
+  return axiosClient.post("/phieu-kiem/custom-fields", data);
+};
+
 export const calculateAQL = (sectionId) => {
   return axiosClient.post("phieu-kiem/calculate-aql", { sectionId });
 };

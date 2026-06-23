@@ -115,6 +115,52 @@ const parseOptionalOrder = (value) => {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };
+const parseProductCodesFromFileName = (fileName) => {
+  const parsed = path.parse(fileName || "");
+  const baseName = String(parsed.name || "").trim();
+  if (!baseName) return [];
+
+  return Array.from(new Set(
+    baseName
+      .split(/[,\;\+\|&]+/)
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+  ));
+};
+const isManagedProductImageUrl = (imageUrl) =>
+  typeof imageUrl === "string" && imageUrl.startsWith(`${publicProductUploadDir}/`);
+const getProductImageFilePath = (imageUrl) => {
+  if (!isManagedProductImageUrl(imageUrl)) return null;
+  const relativePath = imageUrl.slice(publicProductUploadDir.length + 1);
+  if (!relativePath) return null;
+  return path.join(productUploadDir, relativePath);
+};
+const cleanupUnusedProductImage = async (pool, imageUrl) => {
+  if (!isManagedProductImageUrl(imageUrl)) return;
+
+  const usageRes = await pool.request()
+    .input("ImageUrl", sql.NVarChar(500), imageUrl)
+    .query(`
+      SELECT COUNT(*) AS UsageCount
+      FROM DM_SAN_PHAM
+      WHERE ImageUrl = @ImageUrl
+        AND TrangThai = 1
+    `);
+
+  const usageCount = Number(usageRes.recordset?.[0]?.UsageCount || 0);
+  if (usageCount > 0) return;
+
+  const filePath = getProductImageFilePath(imageUrl);
+  if (!filePath) return;
+
+  try {
+    fs.unlinkSync(filePath);
+  } catch (err) {
+    if (err?.code !== "ENOENT") {
+      console.warn("Cleanup unused product image failed:", imageUrl, err.message);
+    }
+  }
+};
 const decodeXml = (value = "") => value
   .replace(/&lt;/g, "<")
   .replace(/&gt;/g, ">")
@@ -1203,12 +1249,147 @@ router.post(
 );
 
 router.post(
+  "/san-pham-images/import",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  productImageUpload.array("images", 500),
+  async (req, res) => {
+    const khachHang = String(req.body?.KhachHang || "").trim() || null;
+
+    try {
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ message: "Vui lòng chọn ít nhất một ảnh sản phẩm" });
+      }
+
+      fs.mkdirSync(productUploadDir, { recursive: true });
+
+      const pool = await poolPromise;
+      const summary = {
+        totalFiles: req.files.length,
+        matched: 0,
+        updated: 0,
+        skipped: 0,
+        errors: []
+      };
+
+      for (const file of req.files) {
+        const maSanPhams = parseProductCodesFromFileName(file.originalname);
+
+        if (maSanPhams.length === 0) {
+          summary.skipped += 1;
+          summary.errors.push({ fileName: file.originalname, message: "Không đọc được item code từ tên file" });
+          continue;
+        }
+
+        const sanPhamRes = await pool.request()
+          .input("MaSanPhams", sql.NVarChar(sql.MAX), maSanPhams.join(","))
+          .query(`
+            SELECT Id, MaSanPham, ImageUrl
+            FROM DM_SAN_PHAM
+            WHERE MaSanPham IN (
+              SELECT LTRIM(RTRIM(value))
+              FROM STRING_SPLIT(@MaSanPhams, ',')
+            )
+              AND TrangThai = 1
+          `);
+
+        const sanPhams = sanPhamRes.recordset || [];
+        if (sanPhams.length === 0) {
+          summary.skipped += 1;
+          summary.errors.push({
+            fileName: file.originalname,
+            maSanPham: maSanPhams.join(", "),
+            message: "Không tìm thấy sản phẩm theo item code"
+          });
+          continue;
+        }
+
+        const foundCodes = new Set(sanPhams.map((item) => String(item.MaSanPham).trim()));
+        const missingCodes = maSanPhams.filter((code) => !foundCodes.has(code));
+        if (missingCodes.length > 0) {
+          summary.errors.push({
+            fileName: file.originalname,
+            maSanPham: missingCodes.join(", "),
+            message: "Không tìm thấy một số item code trong tên file"
+          });
+        }
+
+        summary.matched += sanPhams.length;
+
+        try {
+          const primaryCode = sanPhams[0]?.MaSanPham || maSanPhams[0];
+          const fileName = `${slugifyFilePart(primaryCode)}-${Date.now()}-${Math.round(Math.random() * 1e9)}.jpg`;
+          const outputPath = path.join(productUploadDir, fileName);
+          const imageUrl = `${publicProductUploadDir}/${fileName}`;
+          const oldImageUrls = Array.from(new Set(
+            sanPhams
+              .map((item) => item.ImageUrl)
+              .filter((item) => item && item !== imageUrl)
+          ));
+
+          await sharp(file.buffer)
+            .rotate()
+            .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
+            .jpeg({ quality: 84 })
+            .toFile(outputPath);
+
+          for (const sanPham of sanPhams) {
+            await pool.request()
+              .input("Id", sql.Int, sanPham.Id)
+              .input("ImageUrl", sql.NVarChar(500), imageUrl)
+              .input("KhachHang", sql.NVarChar(255), khachHang)
+              .query(`
+                UPDATE DM_SAN_PHAM
+                SET
+                  ImageUrl = @ImageUrl,
+                  KhachHang = NULLIF(LTRIM(RTRIM(@KhachHang)), '')
+                WHERE Id = @Id
+              `);
+          }
+
+          for (const oldImageUrl of oldImageUrls) {
+            await cleanupUnusedProductImage(pool, oldImageUrl);
+          }
+
+          summary.updated += sanPhams.length;
+        } catch (error) {
+          summary.errors.push({
+            fileName: file.originalname,
+            maSanPham: maSanPhams.join(", "),
+            message: error.message || "Không thể xử lý ảnh"
+          });
+        }
+      }
+
+      const hasErrors = summary.errors.length > 0;
+      const hasUpdates = summary.updated > 0;
+      const level = hasErrors ? (hasUpdates ? "warning" : "error") : "success";
+      const message = hasErrors
+        ? (hasUpdates
+          ? "Import ảnh hoàn tất, nhưng có item code không tồn tại hoặc file không xử lý được"
+          : "Import ảnh thất bại, không có sản phẩm nào được cập nhật")
+        : "Import ảnh sản phẩm thành công";
+
+      res.json({
+        success: hasUpdates,
+        level,
+        message,
+        summary
+      });
+    } catch (err) {
+      console.error("Import product images error:", err);
+      res.status(500).json({ message: "Không thể import ảnh sản phẩm" });
+    }
+  }
+);
+
+router.post(
   "/san-pham",
   authenticateToken,
   authorize("QUAN_TRI_DM"),
   async (req, res) => {
 
-    const { MaSanPham, TenSanPham, MoTa, ImageUrl } = req.body;
+    const { MaSanPham, TenSanPham, MoTa, ImageUrl, KhachHang } = req.body;
 
     try {
 
@@ -1231,12 +1412,14 @@ router.post(
         .input("TenSanPham", sql.NVarChar(255), TenSanPham)
         .input("MoTa", sql.NVarChar(sql.MAX), MoTa || null)
         .input("ImageUrl", sql.NVarChar(500), ImageUrl || null)
+        .input("KhachHang", sql.NVarChar(255), KhachHang || null)
         .query(`
           INSERT INTO DM_SAN_PHAM (
             MaSanPham,
             TenSanPham,
             MoTa,
             ImageUrl,
+            KhachHang,
             TrangThai,
             CreatedAt
           )
@@ -1246,6 +1429,7 @@ router.post(
             @TenSanPham,
             @MoTa,
             @ImageUrl,
+            @KhachHang,
             1,
             SYSDATETIME()
           )
@@ -1270,7 +1454,7 @@ router.put(
   async (req, res) => {
 
     const { id } = req.params;
-    const { MaSanPham, TenSanPham, MoTa, ImageUrl } = req.body;
+    const { MaSanPham, TenSanPham, MoTa, ImageUrl, KhachHang } = req.body;
 
     try {
 
@@ -1291,21 +1475,37 @@ router.put(
         return res.status(409).json({ message: "Mã sản phẩm đã tồn tại" });
       }
 
+      const currentRes = await pool.request()
+        .input("Id", sql.Int, id)
+        .query(`
+          SELECT ImageUrl
+          FROM DM_SAN_PHAM
+          WHERE Id = @Id
+        `);
+
+      const oldImageUrl = currentRes.recordset?.[0]?.ImageUrl || null;
+
       await pool.request()
         .input("Id", sql.Int, id)
         .input("MaSanPham", sql.NVarChar(50), MaSanPham)
         .input("TenSanPham", sql.NVarChar(255), TenSanPham)
         .input("MoTa", sql.NVarChar(sql.MAX), MoTa || null)
         .input("ImageUrl", sql.NVarChar(500), ImageUrl || null)
+        .input("KhachHang", sql.NVarChar(255), KhachHang || null)
         .query(`
           UPDATE DM_SAN_PHAM
           SET
             MaSanPham = @MaSanPham,
             TenSanPham = @TenSanPham,
             MoTa = @MoTa,
-            ImageUrl = @ImageUrl
+            ImageUrl = @ImageUrl,
+            KhachHang = @KhachHang
           WHERE Id = @Id
         `);
+
+      if (oldImageUrl && oldImageUrl !== (ImageUrl || null)) {
+        await cleanupUnusedProductImage(pool, oldImageUrl);
+      }
 
       res.json({ success: true });
 
@@ -1329,6 +1529,15 @@ router.patch(
 
     try {
       const pool = await poolPromise;
+      const currentRes = await pool.request()
+        .input("Id", sql.Int, id)
+        .query(`
+          SELECT ImageUrl
+          FROM DM_SAN_PHAM
+          WHERE Id = @Id
+        `);
+
+      const oldImageUrl = currentRes.recordset?.[0]?.ImageUrl || null;
 
       const result = await pool.request()
         .input("Id", sql.Int, id)
@@ -1342,6 +1551,10 @@ router.patch(
 
       if (result.recordset.length === 0) {
         return res.status(404).json({ message: "Không tìm thấy sản phẩm" });
+      }
+
+      if (oldImageUrl && oldImageUrl !== (imageUrl || null)) {
+        await cleanupUnusedProductImage(pool, oldImageUrl);
       }
 
       res.json({ success: true });

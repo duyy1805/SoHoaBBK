@@ -25,6 +25,20 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
         if (field?.FieldName) acc[field.FieldName] = field.FieldValue;
         return acc;
     }, {});
+    const normalizeDateInputValue = (value) => {
+        if (!value) return "";
+        const raw = String(value).trim();
+        if (!raw) return "";
+        if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+        const ddmmyyyy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (ddmmyyyy) {
+            const [, dd, mm, yyyy] = ddmmyyyy;
+            return `${yyyy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+        }
+        const parsed = new Date(raw);
+        if (Number.isNaN(parsed.getTime())) return "";
+        return parsed.toISOString().slice(0, 10);
+    };
 
     // Tính toán kích thước sản phẩm từ thongSoList (Cấp độ đặc biệt)
     const specDimensions = (() => {
@@ -192,10 +206,13 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                     Sản phẩm: <b>{phieu.TenSanPham || '...........................................................................'}</b>
                                 </div>
                                 <div style={{ ...styles.text, fontSize: '10pt' }}>
+                                    Item code: <b>{customData.ItemCode || phieu.MaSanPham || '...........................................................................'}</b>
+                                </div>
+                                <div style={{ ...styles.text, fontSize: '10pt' }}>
                                     Phiên bản: <b>{phieu.PhienBan || '...........................................................................'}</b>
                                 </div>
                                 <div style={{ ...styles.text, fontSize: '10pt' }}>
-                                    Tham chiếu tiêu chuẩn: <b>{phieu.MaSanPham || '...........................................................................'}</b>
+                                    Tham chiếu tiêu chuẩn: <b>{customData.ThamChieuTieuChuan || phieu.ThamChieuTieuChuan || '...........................................................................'}</b>
                                 </div>
                             </Box>
                             <Box sx={{ borderTop: '1px solid #000', p: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', minHeight: '80px' }}>
@@ -374,6 +391,24 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
                                     <input name="TongSL" className="custom-field" type="text" defaultValue={customData.TongSL || phieu.TongSL || ''} style={styles.inputField} />
                                 </td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}></td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}></td>
+                            </tr>
+                            <tr>
+                                <td style={{ padding: '4px 4px 4px 0', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}></td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt', height: '26px' }}></td>
+                                <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}>Hiệu lực test</td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}>
+                                    <input
+                                        name="HieuLucTest"
+                                        className="custom-field"
+                                        type="date"
+                                        defaultValue={normalizeDateInputValue(customData.HieuLucTest)}
+                                        style={styles.inputField}
+                                    />
+                                </td>
+                                <td style={{ padding: '4px 8px', border: 'none', fontSize: '11pt', verticalAlign: 'middle' }}></td>
+                                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}></td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}></td>
                                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '11pt' }}></td>
                             </tr>

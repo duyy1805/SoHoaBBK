@@ -10,7 +10,9 @@ import {
     StyleSheet,
     ActivityIndicator,
     Alert,
-    TextInput
+    TextInput,
+    Modal,
+    Platform
 } from "react-native";
 
 import {
@@ -21,8 +23,10 @@ import {
     confirmKN,
     updateLot,
     getThongSoKq,
-    deletePhieuKiem
+    deletePhieuKiem,
+    saveCustomFields
 } from "../api/phieuKiem.api";
+import DateTimePicker from "@react-native-community/datetimepicker";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import SectionConfigModal from "../components/SectionConfigModal";
@@ -36,6 +40,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
     const [lotConfirmed, setLotConfirmed] = useState(false);
     const [sections, setSections] = useState([]);
     const [checkItems, setCheckItems] = useState([]);
+    const [dynamicFields, setDynamicFields] = useState([]);
     const [permissions, setPermissions] = useState([]);
 
     const [loadingAQL, setLoadingAQL] = useState(null);
@@ -46,6 +51,24 @@ export default function PhieuDetailScreen({ route, navigation }) {
     const [hasThongSo, setHasThongSo] = useState(false);
     const [thongSoList, setThongSoList] = useState([]);
     const [thongSoKqList, setThongSoKqList] = useState([]);
+    const [hieuLucTest, setHieuLucTest] = useState(new Date());
+    const [hieuLucTestDraft, setHieuLucTestDraft] = useState(new Date());
+    const [showHieuLucTestPicker, setShowHieuLucTestPicker] = useState(false);
+
+    const parseStoredDate = (value) => {
+        if (!value) return new Date();
+        const raw = String(value).trim();
+        if (!raw) return new Date();
+
+        const ddmmyyyy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (ddmmyyyy) {
+            const [, dd, mm, yyyy] = ddmmyyyy;
+            return new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+        }
+
+        const parsed = new Date(raw);
+        return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+    };
 
     useFocusEffect(
         useCallback(() => {
@@ -69,7 +92,11 @@ export default function PhieuDetailScreen({ route, navigation }) {
         setPhieu(phieuData);
         setSections(res.data.sections);
         setCheckItems(res.data.checkItems);
+        setDynamicFields(res.data.dynamicFields || []);
         setTrangThai(phieuData?.TrangThai);
+        const parsedHieuLucTest = parseStoredDate((res.data.dynamicFields || []).find((field) => field?.FieldName === "HieuLucTest")?.FieldValue);
+        setHieuLucTest(parsedHieuLucTest);
+        setHieuLucTestDraft(parsedHieuLucTest);
         const lot = phieuData?.Lot;
         setLot(lot);
         setLotConfirmed(!!lot);
@@ -285,6 +312,32 @@ export default function PhieuDetailScreen({ route, navigation }) {
         );
     };
 
+    const saveHieuLucTest = async (selectedDate) => {
+        const yyyy = selectedDate.getFullYear();
+        const mm = String(selectedDate.getMonth() + 1).padStart(2, "0");
+        const dd = String(selectedDate.getDate()).padStart(2, "0");
+        const normalizedValue = `${yyyy}-${mm}-${dd}`;
+
+        try {
+            setLoadingAction(true);
+            await saveCustomFields({
+                phieuKiemId: Number(id),
+                fields: { HieuLucTest: normalizedValue }
+            });
+            setDynamicFields((prev) => {
+                const next = Array.isArray(prev) ? [...prev] : [];
+                const idx = next.findIndex((field) => field?.FieldName === "HieuLucTest");
+                if (idx >= 0) next[idx] = { ...next[idx], FieldValue: normalizedValue };
+                else next.push({ FieldName: "HieuLucTest", FieldValue: normalizedValue });
+                return next;
+            });
+        } catch (err) {
+            Alert.alert("Lỗi", err?.response?.data?.message || "Không thể lưu hiệu lực test");
+        } finally {
+            setLoadingAction(false);
+        }
+    };
+
     return (
 
         <View style={{ flex: 1 }}>
@@ -363,6 +416,79 @@ export default function PhieuDetailScreen({ route, navigation }) {
                             </View>
                         }
                     </View>
+
+                    <View style={styles.infoRow}>
+                        <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Hiệu lực test</Text>
+                            <TouchableOpacity
+                                style={styles.dateBox}
+                                onPress={() => {
+                                    setHieuLucTestDraft(hieuLucTest);
+                                    setShowHieuLucTestPicker(true);
+                                }}
+                                disabled={loadingAction}
+                            >
+                                <Text style={styles.infoValue}>{hieuLucTest.toLocaleDateString("vi-VN")}</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    {showHieuLucTestPicker && Platform.OS !== "ios" && (
+                        <DateTimePicker
+                            value={hieuLucTest}
+                            mode="date"
+                            display="default"
+                            onChange={async (event, selectedDate) => {
+                                setShowHieuLucTestPicker(false);
+                                if (!selectedDate) return;
+                                setHieuLucTest(selectedDate);
+                                await saveHieuLucTest(selectedDate);
+                            }}
+                        />
+                    )}
+
+                    {Platform.OS === "ios" && (
+                        <Modal
+                            visible={showHieuLucTestPicker}
+                            transparent
+                            animationType="slide"
+                            onRequestClose={() => setShowHieuLucTestPicker(false)}
+                        >
+                            <View style={styles.dateModalOverlay}>
+                                <TouchableOpacity
+                                    style={styles.dateModalBackdrop}
+                                    activeOpacity={1}
+                                    onPress={() => setShowHieuLucTestPicker(false)}
+                                />
+                                <View style={styles.dateModalSheet}>
+                                    <View style={styles.dateModalHeader}>
+                                        <TouchableOpacity onPress={() => setShowHieuLucTestPicker(false)}>
+                                            <Text style={styles.dateModalAction}>Hủy</Text>
+                                        </TouchableOpacity>
+                                        <Text style={styles.dateModalTitle}>Hiệu lực test</Text>
+                                        <TouchableOpacity
+                                            onPress={async () => {
+                                                setShowHieuLucTestPicker(false);
+                                                setHieuLucTest(hieuLucTestDraft);
+                                                await saveHieuLucTest(hieuLucTestDraft);
+                                            }}
+                                        >
+                                            <Text style={styles.dateModalAction}>Xong</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                    <DateTimePicker
+                                        value={hieuLucTestDraft}
+                                        mode="date"
+                                        display="spinner"
+                                        onChange={(event, selectedDate) => {
+                                            if (selectedDate) setHieuLucTestDraft(selectedDate);
+                                        }}
+                                        style={styles.iosDatePicker}
+                                    />
+                                </View>
+                            </View>
+                        </Modal>
+                    )}
 
                     {phieu?.BienBanId && (
                         <TouchableOpacity
@@ -485,9 +611,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
                                         (!(isKCS || isLeader) || section.KetLuan) && styles.itemDisabled
                                     ]}
                                     disabled={!(isKCS || isLeader) || !!section.KetLuan}
-                                    onPress={() =>
-                                        navigation.navigate("CheckItem", { item })
-                                    }
+                                    onPress={() => navigation.navigate("CheckItem", { item })}
                                 >
 
                                     <Text style={styles.itemName}>
@@ -693,6 +817,49 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: "600",
         color: "#0f172a"
+    },
+    dateBox: {
+        backgroundColor: "#f8fafc",
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: "#e2e8f0",
+        paddingVertical: 10,
+        paddingHorizontal: 12
+    },
+    dateModalOverlay: {
+        flex: 1,
+        justifyContent: "flex-end",
+        backgroundColor: "rgba(15, 23, 42, 0.22)"
+    },
+    dateModalBackdrop: {
+        ...StyleSheet.absoluteFillObject
+    },
+    dateModalSheet: {
+        backgroundColor: "#fff",
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        paddingTop: 10,
+        paddingBottom: 24
+    },
+    dateModalHeader: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingHorizontal: 16,
+        paddingBottom: 8
+    },
+    dateModalTitle: {
+        fontSize: 15,
+        fontWeight: "700",
+        color: "#0f172a"
+    },
+    dateModalAction: {
+        fontSize: 16,
+        fontWeight: "600",
+        color: "#2563eb"
+    },
+    iosDatePicker: {
+        alignSelf: "center"
     },
     sectionLot: {
         fontWeight: "700",

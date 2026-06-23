@@ -51,7 +51,8 @@ import {
     createSanPhamNhomKiem,
     deleteSanPhamNhomKiem,
     getNhomKiemList,
-    uploadSanPhamImage
+    uploadSanPhamImage,
+    importSanPhamImages
 } from "../../../api/lookup.api";
 
 export default function SanPhamManager() {
@@ -80,6 +81,11 @@ export default function SanPhamManager() {
     const [importFile, setImportFile] = useState(null);
     const [importing, setImporting] = useState(false);
     const [importResult, setImportResult] = useState(null);
+    const [imageImportOpen, setImageImportOpen] = useState(false);
+    const [imageImportFiles, setImageImportFiles] = useState([]);
+    const [imageImportCustomer, setImageImportCustomer] = useState("");
+    const [imageImporting, setImageImporting] = useState(false);
+    const [imageImportResult, setImageImportResult] = useState(null);
 
     const [confirmDialog, setConfirmDialog] = useState({
         open: false,
@@ -342,6 +348,32 @@ export default function SanPhamManager() {
         }
     };
 
+    const handleImportProductImages = async () => {
+        if (!imageImportFiles.length) return;
+
+        try {
+            setImageImporting(true);
+            setImageImportResult(null);
+            const res = await importSanPhamImages(imageImportFiles, imageImportCustomer);
+            const resultType = res.data?.level || ((res.data?.summary?.errors?.length || 0) > 0 ? "warning" : "success");
+            setImageImportResult({
+                type: resultType,
+                message: res.data?.message || "Import ảnh sản phẩm thành công",
+                summary: res.data?.summary,
+                errors: res.data?.summary?.errors || []
+            });
+            loadData(true);
+        } catch (err) {
+            setImageImportResult({
+                type: "error",
+                message: err.response?.data?.message || "Import ảnh sản phẩm thất bại",
+                errors: err.response?.data?.errors || []
+            });
+        } finally {
+            setImageImporting(false);
+        }
+    };
+
     return (
         <Box sx={{ p: { xs: 2, md: 3 } }}>
             {/* Header */}
@@ -360,7 +392,7 @@ export default function SanPhamManager() {
                 <Stack direction="row" spacing={2} alignItems="center">
                     <TextField
                         size="small"
-                        placeholder="Tìm mã, tên, quy cách..."
+                        placeholder="Tìm mã, tên, quy cách, khách hàng..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         InputProps={{
@@ -393,6 +425,14 @@ export default function SanPhamManager() {
                     >
                         Import thông số
                     </Button>
+                    <Button
+                        variant="outlined"
+                        startIcon={<UploadFileIcon />}
+                        onClick={() => setImageImportOpen(true)}
+                        sx={{ whiteSpace: "nowrap" }}
+                    >
+                        Import ảnh
+                    </Button>
                 </Stack>
             </Stack>
 
@@ -405,6 +445,7 @@ export default function SanPhamManager() {
                                 <TableCell sx={{ fontWeight: 600 }}>Mã/ItemCode</TableCell>
                                 <TableCell sx={{ fontWeight: 600 }}>Ảnh</TableCell>
                                 <TableCell sx={{ fontWeight: 600 }}>Quy cách</TableCell>
+                                <TableCell sx={{ fontWeight: 600 }}>Khách hàng</TableCell>
                                 <TableCell sx={{ fontWeight: 600 }}>Mô tả</TableCell>
                                 <TableCell align="center" sx={{ fontWeight: 600 }}>Cấu hình</TableCell>
                                 <TableCell align="right" sx={{ fontWeight: 600 }}>Thao tác</TableCell>
@@ -413,7 +454,7 @@ export default function SanPhamManager() {
                         <TableBody>
                             {data.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
+                                    <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
                                         <Typography color="text.secondary">Chưa có dữ liệu</Typography>
                                     </TableCell>
                                 </TableRow>
@@ -442,6 +483,7 @@ export default function SanPhamManager() {
                                             )}
                                         </TableCell>
                                         <TableCell sx={{ fontWeight: 500 }}>{row.TenSanPham}</TableCell>
+                                        <TableCell sx={{ color: "text.secondary" }}>{row.KhachHang || "--"}</TableCell>
                                         <TableCell sx={{ color: "text.secondary" }}>{row.MoTa || "--"}</TableCell>
                                         <TableCell align="center">
                                             <Button
@@ -543,6 +585,13 @@ export default function SanPhamManager() {
                             fullWidth
                             value={form.MoTa || ""}
                             onChange={(e) => setForm({ ...form, MoTa: e.target.value })}
+                        />
+                        <TextField
+                            label="Khách hàng áp dụng"
+                            fullWidth
+                            placeholder="Ví dụ: IKEA, DEK"
+                            value={form.KhachHang || ""}
+                            onChange={(e) => setForm({ ...form, KhachHang: e.target.value })}
                         />
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "stretch", sm: "flex-start" }}>
                             <Button component="label" variant="outlined" startIcon={<UploadFileIcon />}>
@@ -813,6 +862,105 @@ export default function SanPhamManager() {
                     </Button>
                     <Button variant="contained" onClick={handleImportThongSoExcel} disabled={!importFile || importing}>
                         {importing ? "Đang import..." : "Import"}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog
+                open={imageImportOpen}
+                onClose={() => !imageImporting && setImageImportOpen(false)}
+                maxWidth="md"
+                fullWidth
+            >
+                <DialogTitle sx={{ fontWeight: "bold", pb: 1 }}>
+                    Import ảnh sản phẩm theo item code
+                </DialogTitle>
+                <DialogContent dividers>
+                    <Stack spacing={2.5}>
+                        <Alert severity="info">
+                            Chọn nhiều ảnh hoặc cả folder ảnh. Tên file phải là <strong>item code</strong>, ví dụ <strong>21312.jpg</strong>. Nếu nhiều sản phẩm dùng chung một ảnh, có thể đặt tên file như <strong>21312,23123.jpg</strong>. Có thể nhập khách hàng chung để gán cho toàn bộ ảnh khớp trong lần import này.
+                        </Alert>
+                        <TextField
+                            label="Khách hàng áp dụng"
+                            placeholder="Ví dụ: IKEA, DEK"
+                            value={imageImportCustomer}
+                            onChange={(e) => setImageImportCustomer(e.target.value)}
+                            fullWidth
+                        />
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                            <Button
+                                variant="contained"
+                                component="label"
+                                startIcon={<UploadFileIcon />}
+                                disabled={imageImporting}
+                            >
+                                Chọn nhiều ảnh / folder
+                                <input
+                                    hidden
+                                    type="file"
+                                    accept="image/*"
+                                    multiple
+                                    webkitdirectory=""
+                                    directory=""
+                                    onChange={(e) => {
+                                        setImageImportFiles(Array.from(e.target.files || []));
+                                        setImageImportResult(null);
+                                        e.target.value = "";
+                                    }}
+                                />
+                            </Button>
+                        </Stack>
+                        {imageImportFiles.length > 0 ? (
+                            <Paper variant="outlined" sx={{ p: 2 }}>
+                                <Typography fontWeight={600}>
+                                    Đã chọn {imageImportFiles.length} file ảnh
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    Ví dụ: {imageImportFiles.slice(0, 5).map((file) => file.name).join(", ")}
+                                    {imageImportFiles.length > 5 ? " ..." : ""}
+                                </Typography>
+                            </Paper>
+                        ) : null}
+                        {imageImportResult && (
+                            <Alert severity={imageImportResult.type}>
+                                <Typography fontWeight={600}>{imageImportResult.message}</Typography>
+                                {imageImportResult.summary && (
+                                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                                        Tổng file: {imageImportResult.summary.totalFiles}, khớp sản phẩm: {imageImportResult.summary.matched}, cập nhật: {imageImportResult.summary.updated}, bỏ qua: {imageImportResult.summary.skipped}
+                                    </Typography>
+                                )}
+                            </Alert>
+                        )}
+                        {imageImportResult?.errors?.length > 0 && (
+                            <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 320 }}>
+                                <Table size="small" stickyHeader>
+                                    <TableHead>
+                                        <TableRow>
+                                            <TableCell sx={{ fontWeight: 600 }}>File</TableCell>
+                                            <TableCell sx={{ fontWeight: 600 }}>Mã SP</TableCell>
+                                            <TableCell sx={{ fontWeight: 600 }}>Lỗi</TableCell>
+                                        </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {imageImportResult.errors.map((item, index) => (
+                                            <TableRow key={`${item.fileName}-${index}`}>
+                                                <TableCell>{item.fileName}</TableCell>
+                                                <TableCell>{item.maSanPham || "--"}</TableCell>
+                                                <TableCell>{item.message}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </TableContainer>
+                        )}
+                    </Stack>
+                </DialogContent>
+                <DialogActions sx={{ px: 3, py: 2, bgcolor: "#f8fafc" }}>
+                    <Button onClick={() => setImageImportOpen(false)} color="inherit" disabled={imageImporting}>
+                        Đóng
+                    </Button>
+                    <Button variant="contained" onClick={handleImportProductImages} disabled={!imageImportFiles.length || imageImporting}>
+                        {imageImporting ? "Đang import..." : "Import ảnh"}
                     </Button>
                 </DialogActions>
             </Dialog>

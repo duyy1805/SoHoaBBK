@@ -155,6 +155,16 @@ export const uploadSanPhamImage = (file, meta = {}) => {
     });
 };
 
+export const importSanPhamImages = (files = [], khachHang = "") => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append("images", file));
+    if (khachHang) formData.append("KhachHang", khachHang);
+    return axiosClient.post("/lookup/san-pham-images/import", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 120000
+    });
+};
+
 export const exportSanPhamDanhMucKiem = (sanPhamId) =>
     axiosClient.get(`/lookup/san-pham/${sanPhamId}/danh-muc-kiem/export`, {
         responseType: "blob",
