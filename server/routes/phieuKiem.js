@@ -56,15 +56,20 @@ const canManageTrenChuyenAll = (permissions = []) =>
     Array.isArray(permissions) && (permissions.includes('PHAN_BO_KIEM') || permissions.includes('KET_LUAN') || permissions.includes('QUAN_TRI_DM'));
 
 const attachProductImageToPhieu = async (pool, phieu = null) => {
-    if (!phieu || phieu.ImageUrl || !phieu.SanPhamId) {
+    if (!phieu || !phieu.SanPhamId) {
         return phieu;
     }
 
     const result = await pool.request()
         .input("SanPhamId", sql.Int, phieu.SanPhamId)
-        .query("SELECT ImageUrl FROM dbo.DM_SAN_PHAM WHERE Id = @SanPhamId");
+        .query("SELECT ImageUrl, KhachHang FROM dbo.DM_SAN_PHAM WHERE Id = @SanPhamId");
 
-    phieu.ImageUrl = result.recordset?.[0]?.ImageUrl || null;
+    if (!phieu.ImageUrl) {
+        phieu.ImageUrl = result.recordset?.[0]?.ImageUrl || null;
+    }
+    if (!phieu.KhachHang) {
+        phieu.KhachHang = result.recordset?.[0]?.KhachHang || null;
+    }
     return phieu;
 };
 

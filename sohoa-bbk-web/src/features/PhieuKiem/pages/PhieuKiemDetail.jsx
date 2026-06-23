@@ -287,6 +287,9 @@ export default function PhieuKiemDetail() {
         return num < min || num > max;
     });
     const finalResult = (hasReject || hasSpecialReject) ? "KHONG_DAT" : "DAT";
+    const getDynamicFieldValue = (fieldName) =>
+        (dynamicFields || []).find((field) => field?.FieldName === fieldName)?.FieldValue || "";
+    const soDonHang = getDynamicFieldValue("SoDonHang");
 
     const handleComplete = async () => {
         try {
@@ -443,6 +446,11 @@ export default function PhieuKiemDetail() {
                             <Grid size={{ xs: 3 }}>
                                 <Typography variant="subtitle2">LOT</Typography>
                                 <Typography fontWeight={600}>{phieu?.Lot}</Typography>
+                            </Grid>
+
+                            <Grid size={{ xs: 3 }}>
+                                <Typography variant="subtitle2">Số đơn hàng</Typography>
+                                <Typography fontWeight={600}>{soDonHang || "---"}</Typography>
                             </Grid>
 
                             <Grid size={{ xs: 3 }}>

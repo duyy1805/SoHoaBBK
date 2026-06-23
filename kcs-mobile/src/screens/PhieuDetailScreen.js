@@ -54,6 +54,9 @@ export default function PhieuDetailScreen({ route, navigation }) {
     const [hieuLucTest, setHieuLucTest] = useState(new Date());
     const [hieuLucTestDraft, setHieuLucTestDraft] = useState(new Date());
     const [showHieuLucTestPicker, setShowHieuLucTestPicker] = useState(false);
+    const [soDonHang, setSoDonHang] = useState("");
+    const [phienBan, setPhienBan] = useState("");
+    const [thamChieuTieuChuan, setThamChieuTieuChuan] = useState("");
 
     const parseStoredDate = (value) => {
         if (!value) return new Date();
@@ -97,6 +100,9 @@ export default function PhieuDetailScreen({ route, navigation }) {
         const parsedHieuLucTest = parseStoredDate((res.data.dynamicFields || []).find((field) => field?.FieldName === "HieuLucTest")?.FieldValue);
         setHieuLucTest(parsedHieuLucTest);
         setHieuLucTestDraft(parsedHieuLucTest);
+        setSoDonHang((res.data.dynamicFields || []).find((field) => field?.FieldName === "SoDonHang")?.FieldValue || "");
+        setPhienBan((res.data.dynamicFields || []).find((field) => field?.FieldName === "PhienBan")?.FieldValue || phieuData?.PhienBan || "");
+        setThamChieuTieuChuan((res.data.dynamicFields || []).find((field) => field?.FieldName === "ThamChieuTieuChuan")?.FieldValue || phieuData?.ThamChieuTieuChuan || "");
         const lot = phieuData?.Lot;
         setLot(lot);
         setLotConfirmed(!!lot);
@@ -338,6 +344,48 @@ export default function PhieuDetailScreen({ route, navigation }) {
         }
     };
 
+    const saveSoDonHang = async (value) => {
+        try {
+            setLoadingAction(true);
+            await saveCustomFields({
+                phieuKiemId: Number(id),
+                fields: { SoDonHang: value || "" }
+            });
+            setDynamicFields((prev) => {
+                const next = Array.isArray(prev) ? [...prev] : [];
+                const idx = next.findIndex((field) => field?.FieldName === "SoDonHang");
+                if (idx >= 0) next[idx] = { ...next[idx], FieldValue: value || "" };
+                else next.push({ FieldName: "SoDonHang", FieldValue: value || "" });
+                return next;
+            });
+        } catch (err) {
+            Alert.alert("Lỗi", err?.response?.data?.message || "Không thể lưu số đơn hàng");
+        } finally {
+            setLoadingAction(false);
+        }
+    };
+
+    const saveSingleCustomField = async (fieldName, value, errorMessage) => {
+        try {
+            setLoadingAction(true);
+            await saveCustomFields({
+                phieuKiemId: Number(id),
+                fields: { [fieldName]: value || "" }
+            });
+            setDynamicFields((prev) => {
+                const next = Array.isArray(prev) ? [...prev] : [];
+                const idx = next.findIndex((field) => field?.FieldName === fieldName);
+                if (idx >= 0) next[idx] = { ...next[idx], FieldValue: value || "" };
+                else next.push({ FieldName: fieldName, FieldValue: value || "" });
+                return next;
+            });
+        } catch (err) {
+            Alert.alert("Lỗi", err?.response?.data?.message || errorMessage);
+        } finally {
+            setLoadingAction(false);
+        }
+    };
+
     return (
 
         <View style={{ flex: 1 }}>
@@ -415,6 +463,52 @@ export default function PhieuDetailScreen({ route, navigation }) {
                                 <Text style={styles.infoValue}>{phieu?.DoiTuong || "---"}</Text>
                             </View>
                         }
+                    </View>
+
+                    <View style={styles.infoRow}>
+                        <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Khách hàng</Text>
+                            <Text style={styles.infoValue}>{phieu?.KhachHang || "---"}</Text>
+                        </View>
+                        <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Số đơn hàng</Text>
+                            <TextInput
+                                style={styles.inlineInput}
+                                placeholder="Nhập số đơn hàng"
+                                value={soDonHang}
+                                onChangeText={setSoDonHang}
+                                onEndEditing={() => saveSoDonHang(soDonHang.trim())}
+                                editable={!loadingAction}
+                            />
+                        </View>
+                    </View>
+
+                    <View style={styles.infoRow}>
+                        <View style={styles.infoItemFull}>
+                            <Text style={styles.infoLabel}>Phiên bản</Text>
+                            <TextInput
+                                style={styles.inlineInput}
+                                placeholder="Nhập phiên bản"
+                                value={phienBan}
+                                onChangeText={setPhienBan}
+                                onEndEditing={() => saveSingleCustomField("PhienBan", phienBan.trim(), "Không thể lưu phiên bản")}
+                                editable={!loadingAction}
+                            />
+                        </View>
+                    </View>
+
+                    <View style={styles.infoRow}>
+                        <View style={styles.infoItemFull}>
+                            <Text style={styles.infoLabel}>Tham chiếu tiêu chuẩn</Text>
+                            <TextInput
+                                style={styles.inlineInput}
+                                placeholder="Nhập tham chiếu tiêu chuẩn"
+                                value={thamChieuTieuChuan}
+                                onChangeText={setThamChieuTieuChuan}
+                                onEndEditing={() => saveSingleCustomField("ThamChieuTieuChuan", thamChieuTieuChuan.trim(), "Không thể lưu tham chiếu tiêu chuẩn")}
+                                editable={!loadingAction}
+                            />
+                        </View>
                     </View>
 
                     <View style={styles.infoRow}>
@@ -808,12 +902,26 @@ const styles = StyleSheet.create({
     infoItem: {
         flex: 1
     },
+    infoItemFull: {
+        width: "100%"
+    },
     infoLabel: {
         fontSize: 12,
         color: "#64748b",
         marginBottom: 2
     },
     infoValue: {
+        fontSize: 14,
+        fontWeight: "600",
+        color: "#0f172a"
+    },
+    inlineInput: {
+        backgroundColor: "#f8fafc",
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: "#e2e8f0",
+        paddingVertical: 10,
+        paddingHorizontal: 12,
         fontSize: 14,
         fontWeight: "600",
         color: "#0f172a"

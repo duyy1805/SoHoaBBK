@@ -25,20 +25,6 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
         if (field?.FieldName) acc[field.FieldName] = field.FieldValue;
         return acc;
     }, {});
-    const normalizeDateInputValue = (value) => {
-        if (!value) return "";
-        const raw = String(value).trim();
-        if (!raw) return "";
-        if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-        const ddmmyyyy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-        if (ddmmyyyy) {
-            const [, dd, mm, yyyy] = ddmmyyyy;
-            return `${yyyy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
-        }
-        const parsed = new Date(raw);
-        if (Number.isNaN(parsed.getTime())) return "";
-        return parsed.toISOString().slice(0, 10);
-    };
 
     // Tính toán kích thước sản phẩm từ thongSoList (Cấp độ đặc biệt)
     const specDimensions = (() => {
@@ -115,6 +101,36 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
             {checked ? 'x' : ''}
         </span>
     );
+
+    const renderMeasurementGrid = (val) => {
+        if (!val) return <div style={{ height: '20px' }}></div>;
+
+        const values = String(val).split(/[\s,\n]+/).filter(v => v.trim() !== '');
+        if (values.length === 0) return <div style={{ height: '20px' }}></div>;
+
+        const cols = 5;
+        const rows = [];
+        for (let i = 0; i < values.length; i += cols) {
+            rows.push(values.slice(i, i + cols));
+        }
+
+        return (
+            <table style={{ width: '100%', borderCollapse: 'collapse', border: 'none', fontSize: '8pt' }}>
+                <tbody>
+                    {rows.map((row, ridx) => (
+                        <tr key={ridx}>
+                            {row.map((v, cidx) => (
+                                <td key={cidx} style={{ border: '0.5px solid #000', textAlign: 'center', padding: '1px', width: `${100 / cols}%`, height: '20px' }}>{v}</td>
+                            ))}
+                            {row.length < cols && Array.from({ length: cols - row.length }).map((_, idx) => (
+                                <td key={`empty-${idx}`} style={{ border: '0.5px solid #000', width: `${100 / cols}%` }}></td>
+                            ))}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        );
+    };
 
     return (
         <div ref={ref} style={styles.previewBackground} className="preview-background">
@@ -209,10 +225,24 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                     Item code: <b>{customData.ItemCode || phieu.MaSanPham || '...........................................................................'}</b>
                                 </div>
                                 <div style={{ ...styles.text, fontSize: '10pt' }}>
-                                    Phiên bản: <b>{phieu.PhienBan || '...........................................................................'}</b>
+                                    <span>Phiên bản: </span>
+                                    <input
+                                        name="PhienBan"
+                                        className="custom-field"
+                                        type="text"
+                                        defaultValue={customData.PhienBan || phieu.PhienBan || ""}
+                                        style={{ ...styles.inputField, display: 'inline-block', width: '70%' }}
+                                    />
                                 </div>
                                 <div style={{ ...styles.text, fontSize: '10pt' }}>
-                                    Tham chiếu tiêu chuẩn: <b>{customData.ThamChieuTieuChuan || phieu.ThamChieuTieuChuan || '...........................................................................'}</b>
+                                    <span>Tham chiếu tiêu chuẩn: </span>
+                                    <input
+                                        name="ThamChieuTieuChuan"
+                                        className="custom-field"
+                                        type="text"
+                                        defaultValue={customData.ThamChieuTieuChuan || phieu.ThamChieuTieuChuan || ""}
+                                        style={{ ...styles.inputField, display: 'inline-block', width: '55%' }}
+                                    />
                                 </div>
                             </Box>
                             <Box sx={{ borderTop: '1px solid #000', p: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', minHeight: '80px' }}>
@@ -402,8 +432,8 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                     <input
                                         name="HieuLucTest"
                                         className="custom-field"
-                                        type="date"
-                                        defaultValue={normalizeDateInputValue(customData.HieuLucTest)}
+                                        type="text"
+                                        defaultValue={customData.HieuLucTest || ""}
                                         style={styles.inputField}
                                     />
                                 </td>
@@ -421,11 +451,12 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                     <thead>
                         <tr>
                             <th rowSpan={2} style={{ ...styles.th, width: '4%' }}>TT<br />No</th>
-                            <th rowSpan={2} style={{ ...styles.th, width: '25%' }}>MỤC KIỂM TRA<br />Checklist</th>
-                            <th rowSpan={2} style={{ ...styles.th, width: '15%' }}>Phương pháp KT</th>
-                            <th rowSpan={2} style={{ ...styles.th, width: '20%' }}>TIÊU CHUẨN KỸ THUẬT<br />Standard</th>
-                            <th colSpan={2} style={{ ...styles.th, width: '12%' }}>KẾT QUẢ<br />Finding</th>
-                            <th colSpan={3} style={{ ...styles.th, width: '24%' }}>DẠNG LỖI</th>
+                            <th rowSpan={2} style={{ ...styles.th, width: '22%' }}>MỤC KIỂM TRA<br />Checklist</th>
+                            <th rowSpan={2} style={{ ...styles.th, width: '13%' }}>Phương pháp KT</th>
+                            <th rowSpan={2} style={{ ...styles.th, width: '15%' }}>TIÊU CHUẨN KỸ THUẬT<br />Standard</th>
+                            <th rowSpan={2} style={{ ...styles.th, width: '18%' }}>KẾT QUẢ<br />Result</th>
+                            <th colSpan={2} style={{ ...styles.th, width: '12%' }}>KẾT LUẬN<br />Conclusion</th>
+                            <th colSpan={3} style={{ ...styles.th, width: '16%' }}>DẠNG LỖI</th>
                         </tr>
                         <tr>
                             <th style={{ ...styles.th, width: '6%' }}>OK</th>
@@ -473,6 +504,9 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                                 <td style={styles.td}>{item.TenMucKiem}</td>
                                                 <td style={styles.td}>{item.PhuongPhapKiem}</td>
                                                 <td style={styles.td}>{item.TieuChuan}</td>
+                                                <td style={{ ...styles.td, padding: 0 }}>
+                                                    {renderMeasurementGrid(item.GiaTriDo)}
+                                                </td>
 
                                                 <td style={styles.tdCenter}>{renderCheckbox(item.KetQua === 'DAT')}</td>
                                                 <td style={styles.tdCenter}>{renderCheckbox(item.KetQua === 'KHONG_DAT')}</td>
