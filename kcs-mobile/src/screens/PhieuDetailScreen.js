@@ -149,6 +149,9 @@ export default function PhieuDetailScreen({ route, navigation }) {
     });
 
     const finalResult = (hasReject || hasSpecialReject) ? "KHONG_DAT" : "DAT";
+    const hasSavedSpecialResults = thongSoKqList.some(
+        (kq) => kq?.GiaTriDo !== null && kq?.GiaTriDo !== undefined && String(kq.GiaTriDo).trim() !== ""
+    );
 
     const isCompleted = trangThai === "HOAN_TAT";
 
@@ -218,6 +221,13 @@ export default function PhieuDetailScreen({ route, navigation }) {
     };
 
     const handleComplete = async () => {
+        if (hasThongSo && !hasSavedSpecialResults) {
+            Alert.alert(
+                "Chưa lưu kiểm đặc biệt",
+                "Phiếu có kiểm tra cấp độ đặc biệt nhưng chưa lưu kết quả. Vui lòng lưu kết quả kiểm đặc biệt trước khi hoàn tất phiếu."
+            );
+            return;
+        }
 
         try {
 
