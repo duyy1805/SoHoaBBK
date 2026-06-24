@@ -471,7 +471,13 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                     </thead>
                     <tbody>
                         {sections.map((section, sIndex) => {
-                            const sectionItems = checkItems.filter(item => item.SectionId === section.Id);
+                            const sectionItems = checkItems.filter(
+                                item => item.SectionId === section.Id && item.KetQua !== 'NA'
+                            );
+
+                            if (sectionItems.length === 0) {
+                                return null;
+                            }
 
                             return (
                                 <React.Fragment key={section.Id}>

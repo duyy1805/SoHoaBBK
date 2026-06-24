@@ -248,6 +248,9 @@ export default function PhieuKiemDetail() {
         if (value === "KHONG_DAT")
             return <Chip label="Không đạt" color="error" size="small" />;
 
+        if (value === "NA")
+            return <Chip label="N/A" color="default" size="small" />;
+
         return <Chip label="Chưa kết luận" size="small" />;
 
     };
@@ -636,6 +639,9 @@ export default function PhieuKiemDetail() {
 
                                                     {item.KetQua === "KHONG_DAT" &&
                                                         <Chip label="Có lỗi" color="error" size="small" />}
+
+                                                    {item.KetQua === "NA" &&
+                                                        <Chip label="N/A" color="default" size="small" />}
 
                                                 </Grid>
 

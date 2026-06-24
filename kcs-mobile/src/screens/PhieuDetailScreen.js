@@ -170,6 +170,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
     const renderResult = (result) => {
         if (result === "DAT") return "Đạt";
         if (result === "KHONG_DAT") return "Không đạt";
+        if (result === "NA") return "N/A";
         return "Chưa kết luận";
     };
 
@@ -726,10 +727,11 @@ export default function PhieuDetailScreen({ route, navigation }) {
                                         style={[
                                             styles.result,
                                             item.KetQua === "DAT" && styles.success,
-                                            item.KetQua === "KHONG_DAT" && styles.error
+                                            item.KetQua === "KHONG_DAT" && styles.error,
+                                            item.KetQua === "NA" && styles.neutralResult
                                         ]}
                                     >
-                                        {item.KetQua || "Chưa kiểm"}
+                                        {item.KetQua ? renderResult(item.KetQua) : "Chưa kiểm"}
                                     </Text>
 
                                 </TouchableOpacity>
@@ -1069,6 +1071,11 @@ const styles = StyleSheet.create({
     error: {
         color: "#dc2626"
     },
+
+    neutralResult: {
+        color: "#64748b"
+    },
+
     aqlInfoBox: {
         backgroundColor: "#ffffff",
         padding: 12,

@@ -341,10 +341,12 @@ export default function CheckItemScreen({ route, navigation }) {
             setLoading(true);
 
             // Tạo bản sao sâu để tránh mutation state
-            let finalDefects = selectedDefects.map(d => ({
-                ...d,
-                imageUrls: d.savedImages ? [...d.savedImages] : []
-            }));
+            let finalDefects = ketQua === "KHONG_DAT"
+                ? selectedDefects.map(d => ({
+                    ...d,
+                    imageUrls: d.savedImages ? [...d.savedImages] : []
+                }))
+                : [];
 
             if (ketQua === "KHONG_DAT") {
                 for (let i = 0; i < finalDefects.length; i++) {
@@ -440,6 +442,16 @@ export default function CheckItemScreen({ route, navigation }) {
                         onPress={() => setKetQua("KHONG_DAT")}
                     >
                         <Text style={styles.optionText}>Không đạt</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[styles.option, ketQua === "NA" && styles.neutral]}
+                        onPress={() => {
+                            setKetQua("NA");
+                            setSelectedDefects([]);
+                        }}
+                    >
+                        <Text style={styles.optionText}>N/A</Text>
                     </TouchableOpacity>
                 </View>
 
@@ -769,6 +781,10 @@ const styles = StyleSheet.create({
 
     error: {
         backgroundColor: "#ef4444"
+    },
+
+    neutral: {
+        backgroundColor: "#94a3b8"
     },
 
     selectBox: {
