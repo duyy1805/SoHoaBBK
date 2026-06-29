@@ -51,13 +51,13 @@ import BuildCircleIcon from '@mui/icons-material/BuildCircle';
 import VerifiedIcon from '@mui/icons-material/Verified';
 import AddIcon from '@mui/icons-material/Add';
 import SaveIcon from '@mui/icons-material/Save';
+import EditIcon from '@mui/icons-material/Edit';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import CheckIcon from '@mui/icons-material/Check';
 
 // --- API & Utils ---
 import {
-    getBienBanDetail,
     getStandaloneBienBanDetail,
     updateMoTaChung,
     completeBienBan,
@@ -84,7 +84,35 @@ import { BienBanTrenChuyenPrintTemplate } from "./components/BienBanTrenChuyenPr
 import { PhieuXuLyKhongPhuHopPrintTemplate } from "./components/PhieuXuLyKhongPhuHopPrintTemplate";
 import { useToast } from "../../components/common/ToastContext";
 
-export default function BienBanDetail({ standalone = false }) {
+const PHAT_HIEN_TU_OPTIONS = [
+    { value: "KIEM_TRA_DAU_VAO", label: "a) Kiểm tra đầu vào" },
+    { value: "TRONG_SAN_XUAT", label: "b) Trong sản xuất" },
+    { value: "KIEM_DONG_CONT", label: "c) Kiểm cuối" },
+    { value: "TAI_NCC", label: "d) Kiểm tra tại NCC" },
+    { value: "KHACH_HANG", label: "e) Khách hàng" },
+    { value: "TRONG_KHO", label: "f) Trong kho" }
+];
+
+const MUC_DO_KPH_OPTIONS = [
+    { value: "LoiLanDau", label: "a) Lỗi lần đầu" },
+    { value: "LoiLapLai", label: "b) Lỗi lặp lại" },
+    { value: "LoiDonLe", label: "c) Lỗi đơn lẻ" },
+    { value: "LoiHangLoat", label: "d) Lỗi hàng loạt" }
+];
+
+const HEADER_FIELD_CONFIG = [
+    ["Đơn vị sản xuất", "TenBoPhan"],
+    ["Mã ĐVSX", "MaBoPhan"],
+    ["Tên VT/BTP/TP", "TenSanPham"],
+    ["Mã Item", "MaItem"],
+    ["Mã truy nguyên", "MaTruyNguyen"],
+    ["Đơn hàng", "DonHang"],
+    ["Lô SX", "Lot"],
+    ["Số lượng", "SoLuongKPH"],
+    ["Dấu tuần", "DauTuan"]
+];
+
+export default function PhieuXuLyKhongPhuHopDetail() {
     const { id: bienBanId } = useParams();
     const navigate = useNavigate();
     const componentRef = useRef();
@@ -117,6 +145,10 @@ export default function BienBanDetail({ standalone = false }) {
     const [openChiPhiModal, setOpenChiPhiModal] = useState(false);
     const [openHanhDongModal, setOpenHanhDongModal] = useState(false);
     const [openPrintModal, setOpenPrintModal] = useState(false);
+    const [openDefectModal, setOpenDefectModal] = useState(false);
+    const [editingDefectIndex, setEditingDefectIndex] = useState(null);
+    const [defectDraft, setDefectDraft] = useState(null);
+    const [isEditingStandaloneHeader, setIsEditingStandaloneHeader] = useState(true);
     const [previewImage, setPreviewImage] = useState(null);
 
     const [dynamicFields, setDynamicFields] = useState([]);
@@ -156,8 +188,6 @@ export default function BienBanDetail({ standalone = false }) {
     }, [bienBanId]);
 
     useEffect(() => {
-        if (!standalone) return;
-
         const loadDefects = async () => {
             try {
                 const res = await getDefectList();
@@ -168,14 +198,12 @@ export default function BienBanDetail({ standalone = false }) {
         };
 
         loadDefects();
-    }, [standalone]);
+    }, []);
 
     const loadData = async () => {
         try {
             setLoading(true);
-            const res = standalone
-                ? await getStandaloneBienBanDetail(bienBanId)
-                : await getBienBanDetail(bienBanId);
+            const res = await getStandaloneBienBanDetail(bienBanId);
 
             setInfo(res.data.info);
             const parsedDefects = (res.data.defects || []).map(d => {
@@ -186,7 +214,7 @@ export default function BienBanDetail({ standalone = false }) {
                         images = typeof d.ImageUrls === 'string' ? JSON.parse(d.ImageUrls) : d.ImageUrls;
                         // Đảm bảo kết quả là mảng
                         if (!Array.isArray(images)) images = [images];
-                    } catch (e) {
+                    } catch {
                         // Nếu parse lỗi thì coi như là 1 chuỗi đơn
                         images = [d.ImageUrls];
                     }
@@ -201,7 +229,7 @@ export default function BienBanDetail({ standalone = false }) {
             setPhieuKiemXacNhan(res.data.phieuKiemXacNhan || []);
             setHanhDong(res.data.hanhDong || []);
             setDynamicFields(res.data.dynamicFields || []);
-            setIsEditingStandaloneDefects((res.data.defects || []).length === 0);
+            setIsEditingStandaloneDefects((res.data.defects || []).length === 0 && (res.data.assigns || []).length === 0);
             const fieldsMap = (res.data.dynamicFields || []).reduce((acc, field) => {
                 if (field?.FieldName) {
                     acc[field.FieldName] = field.FieldValue || "";
@@ -224,6 +252,8 @@ export default function BienBanDetail({ standalone = false }) {
             const moTa = res.data.info?.MoTaChung || "";
             setMoTaChung(moTa);
             setMoTaConfirmed(!!moTa);
+            const hasHeaderData = !!moTa.trim() || Object.values(fieldsMap).some((value) => String(value || "").trim());
+            setIsEditingStandaloneHeader(!hasHeaderData && (res.data.assigns || []).length === 0);
 
         } catch (err) {
             console.error("Lỗi tải biên bản:", err);
@@ -248,10 +278,6 @@ export default function BienBanDetail({ standalone = false }) {
 
     // --- Actions ---
     const handleConfirmMoTa = async () => {
-        if (standalone) {
-            await handleSaveStandaloneHeader();
-            return;
-        }
         if (!moTaChung.trim()) {
             showToast("Vui lòng nhập mô tả chung!", "warning");
             return;
@@ -267,6 +293,11 @@ export default function BienBanDetail({ standalone = false }) {
     };
 
     const handleSaveStandaloneHeader = async () => {
+        if (assigns.length > 0) {
+            showToast("Phiếu đã phân bộ phận xử lý, không thể chỉnh sửa thông tin chung", "warning");
+            return;
+        }
+
         if (!moTaChung.trim()) {
             showToast("Vui lòng nhập mô tả chung!", "warning");
             return;
@@ -278,6 +309,7 @@ export default function BienBanDetail({ standalone = false }) {
                 fields: headerFields
             });
             setMoTaConfirmed(true);
+            setIsEditingStandaloneHeader(false);
             showToast("Đã lưu thông tin phiếu", "success");
             loadData();
         } catch (err) {
@@ -285,50 +317,75 @@ export default function BienBanDetail({ standalone = false }) {
         }
     };
 
-    const addCatalogDefectRow = () => {
-        setDefects((prev) => [
-            ...prev,
-            {
-                DefectId: "",
-                MaLoi: "",
-                TenLoi: "",
-                DefectType: "MINOR",
-                MoTa: "",
-                SoLuong: 1,
-                GhiChu: "",
-                SortOrder: prev.length + 1,
-                sourceType: "catalog"
-            }
-        ]);
+    const createEmptyDefectDraft = (sourceType = "catalog") => ({
+        DefectId: sourceType === "catalog" ? "" : null,
+        MaLoi: "",
+        TenLoi: "",
+        TenLoiTuNhap: "",
+        DefectType: "MINOR",
+        MoTa: "",
+        SoLuong: 1,
+        GhiChu: "",
+        sourceType
+    });
+
+    const openStandaloneDefectModal = (sourceType = "catalog", index = null) => {
+        if (assigns.length > 0) {
+            showToast("Phiếu đã phân bộ phận xử lý, không thể chỉnh sửa nội dung lỗi", "warning");
+            return;
+        }
+
+        setEditingDefectIndex(index);
+        setDefectDraft(index === null
+            ? createEmptyDefectDraft(sourceType)
+            : {
+                ...createEmptyDefectDraft(sourceType),
+                ...defects[index],
+                sourceType: defects[index]?.sourceType || (!defects[index]?.DefectId && defects[index]?.TenLoiTuNhap ? "manual" : "catalog")
+            });
+        setOpenDefectModal(true);
     };
 
-    const addManualDefectRow = () => {
-        setDefects((prev) => [
-            ...prev,
-            {
+    const closeStandaloneDefectModal = () => {
+        setOpenDefectModal(false);
+        setEditingDefectIndex(null);
+        setDefectDraft(null);
+    };
+
+    const addCatalogDefectRow = () => openStandaloneDefectModal("catalog");
+
+    const addManualDefectRow = () => openStandaloneDefectModal("manual");
+
+    const updateDefectDraft = (patch) => {
+        setDefectDraft((prev) => ({ ...(prev || createEmptyDefectDraft()), ...patch }));
+    };
+
+    const handleDefectDraftTypeChange = (nextType) => {
+        const current = defectDraft || createEmptyDefectDraft(nextType);
+        updateDefectDraft(nextType === "manual"
+            ? {
+                sourceType: "manual",
                 DefectId: null,
                 MaLoi: "",
                 TenLoi: "",
-                TenLoiTuNhap: "",
-                DefectType: "MINOR",
-                MoTa: "",
-                SoLuong: 1,
-                GhiChu: "",
-                SortOrder: prev.length + 1,
-                sourceType: "manual"
+                TenLoiTuNhap: current.TenLoiTuNhap || "",
+                MoTa: current.sourceType === "manual" ? current.MoTa || "" : "",
+                DefectType: current.DefectType || "MINOR"
             }
-        ]);
+            : {
+                sourceType: "catalog",
+                DefectId: "",
+                MaLoi: "",
+                TenLoi: "",
+                TenLoiTuNhap: "",
+                MoTa: "",
+                DefectType: "MINOR"
+            });
     };
 
-    const updateStandaloneDefect = (index, patch) => {
-        setDefects((prev) => prev.map((item, idx) => (
-            idx === index ? { ...item, ...patch } : item
-        )));
-    };
-
-    const handleCatalogDefectSelected = (index, defectId) => {
+    const handleDefectDraftCatalogSelected = (defectId) => {
         const selected = defectOptions.find((item) => Number(item.Id) === Number(defectId));
-        updateStandaloneDefect(index, {
+        updateDefectDraft({
             sourceType: "catalog",
             DefectId: selected?.Id || null,
             MaLoi: selected?.MaLoi || "",
@@ -339,7 +396,50 @@ export default function BienBanDetail({ standalone = false }) {
         });
     };
 
+    const saveDefectDraft = () => {
+        if (assigns.length > 0) {
+            showToast("Phiếu đã phân bộ phận xử lý, không thể chỉnh sửa nội dung lỗi", "warning");
+            return;
+        }
+
+        const draft = defectDraft || createEmptyDefectDraft();
+        const isManual = draft.sourceType === "manual" || (!draft.DefectId && draft.TenLoiTuNhap);
+        const normalized = {
+            ...draft,
+            DefectId: isManual ? null : draft.DefectId,
+            MaLoi: isManual ? "" : draft.MaLoi || "",
+            TenLoi: isManual ? "" : draft.TenLoi || "",
+            TenLoiTuNhap: isManual ? draft.TenLoiTuNhap || "" : "",
+            DefectType: draft.DefectType || "MINOR",
+            MoTa: draft.MoTa || "",
+            SoLuong: Number(draft.SoLuong) || 1,
+            GhiChu: draft.GhiChu || "",
+            sourceType: isManual ? "manual" : "catalog"
+        };
+
+        if (!normalized.DefectId && !normalized.TenLoiTuNhap.trim()) {
+            showToast("Vui lòng chọn lỗi hoặc nhập tên lỗi", "warning");
+            return;
+        }
+
+        setDefects((prev) => {
+            if (editingDefectIndex === null) {
+                return [...prev, { ...normalized, SortOrder: prev.length + 1 }];
+            }
+
+            return prev.map((item, idx) => (
+                idx === editingDefectIndex ? { ...item, ...normalized, SortOrder: idx + 1 } : item
+            ));
+        });
+        closeStandaloneDefectModal();
+    };
+
     const removeStandaloneDefect = (index) => {
+        if (assigns.length > 0) {
+            showToast("Phiếu đã phân bộ phận xử lý, không thể chỉnh sửa nội dung lỗi", "warning");
+            return;
+        }
+
         setDefects((prev) => prev.filter((_, idx) => idx !== index).map((item, idx) => ({
             ...item,
             SortOrder: idx + 1
@@ -347,6 +447,11 @@ export default function BienBanDetail({ standalone = false }) {
     };
 
     const handleSaveStandaloneDefects = async () => {
+        if (assigns.length > 0) {
+            showToast("Phiếu đã phân bộ phận xử lý, không thể chỉnh sửa nội dung lỗi", "warning");
+            return;
+        }
+
         const payload = defects
             .map((item, index) => ({
                 DefectId: item.DefectId ? Number(item.DefectId) : null,
@@ -491,7 +596,7 @@ export default function BienBanDetail({ standalone = false }) {
     const isManagerOrQA = currentUserPermissions.includes("XAC_NHAN_NGUOI_XU_LY") ||
         currentUserPermissions.includes("KET_LUAN") ||
         currentUserPermissions.includes("QUAN_TRI_DM");
-    const isStandaloneBienBan = standalone || info?.LoaiBienBan === "STANDALONE";
+    const isStandaloneBienBan = true;
     const isTrenChuyenBienBan = Number(info?.LoaiKiemId) === 6;
 
     const isAssigned = assigns.some(a => a.BoPhanId === currentUserBoPhanId);
@@ -500,6 +605,25 @@ export default function BienBanDetail({ standalone = false }) {
     const allConfirmed = assigns.length > 0 && assigns.every(a => xacNhan.some(x => x.BoPhanId === a.BoPhanId));
     const defectCount = defects.length;
     const totalDefectQty = defects.reduce((sum, item) => sum + (Number(item.SoLuong) || 0), 0);
+    const canEditCommonAndDefects = assigns.length === 0;
+    const fieldsMapForView = dynamicFields.reduce((acc, field) => {
+        if (field?.FieldName) acc[field.FieldName] = field.FieldValue || "";
+        return acc;
+    }, {});
+    const bpsxSignatureBoPhanId = fieldsMapForView.BpsxSignatureBoPhanId || assigns.find(a => a.IsBpsxSignature)?.BoPhanId || "";
+    const bpsxSignatureDepartmentName = info?.BpsxSignatureTenBoPhan ||
+        assigns.find(a => Number(a.BoPhanId) === Number(bpsxSignatureBoPhanId))?.TenBoPhan ||
+        (bpsxSignatureBoPhanId ? `#${bpsxSignatureBoPhanId}` : "");
+    const isBpsxSignatureDepartment = Boolean(bpsxSignatureBoPhanId) &&
+        Number(bpsxSignatureBoPhanId) === Number(currentUserBoPhanId);
+    const isBpsxSignatureConfirmed = xacNhan.some(x => x.VaiTro === "KPH_BPSX");
+    const assignConfirmed = Boolean(info?.AssignConfirmed);
+    const canConfirmProcessing = assignConfirmed && isAssigned && !isConfirmed && hasXuLy;
+    const canConfirmBpsxSignature = assignConfirmed && isBpsxSignatureDepartment && !isBpsxSignatureConfirmed;
+    const phatHienTuLabel = PHAT_HIEN_TU_OPTIONS.find((item) => item.value === headerFields.PhatHienTu)?.label || "---";
+    const mucDoKphLabel = MUC_DO_KPH_OPTIONS.find((item) => item.value === headerFields.MucDo)?.label || "---";
+    const defectDraftIsManual = defectDraft?.sourceType === "manual" || (!defectDraft?.DefectId && defectDraft?.TenLoiTuNhap);
+    const selectedDefectOption = defectOptions.find((option) => Number(option.Id) === Number(defectDraft?.DefectId)) || null;
 
     if (loading) {
         return (
@@ -591,16 +715,19 @@ export default function BienBanDetail({ standalone = false }) {
                                                 </Grid>
                                                 <Grid size={{ xs: 12, sm: 4 }}>
                                                     <Typography variant="caption" color="text.secondary">Mức độ không phù hợp</Typography>
-                                                    <Typography variant="body2">{info.MucDoKhongPhuHop || "---"}</Typography>
+                                                    <Typography variant="body2">{mucDoKphLabel}</Typography>
                                                 </Grid>
                                             </Grid>
                                             <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                                                 <Chip size="small" variant="outlined" label={`Số dòng lỗi: ${defectCount}`} />
                                                 <Chip size="small" variant="outlined" label={`Tổng SL lỗi: ${totalDefectQty}`} />
                                                 <Chip size="small" variant="outlined" label={`Bộ phận xử lý: ${assigns.length}`} />
+                                                <Chip size="small" variant="outlined" label={`Phát hiện từ: ${phatHienTuLabel}`} />
                                             </Stack>
                                             <Typography variant="body2" color="text.secondary">
-                                                Nhập thông tin từ trên xuống, lưu phần đầu phiếu trước, sau đó bổ sung các dòng lỗi và tiếp tục các bước xử lý phía dưới.
+                                                {canEditCommonAndDefects
+                                                    ? "Nhập thông tin từ trên xuống, lưu phần đầu phiếu trước, sau đó bổ sung các dòng lỗi và tiếp tục các bước xử lý phía dưới."
+                                                    : "Phiếu đã phân bộ phận xử lý nên thông tin chung và nội dung lỗi đã được khóa."}
                                             </Typography>
                                         </Stack>
                                     ) : (
@@ -633,66 +760,165 @@ export default function BienBanDetail({ standalone = false }) {
                             {isStandaloneBienBan ? (
                                 <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
                                     <CardContent>
-                                        <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                                            <DescriptionIcon color="action" /> Thông tin phiếu
-                                        </Typography>
+                                        <Stack
+                                            direction={{ xs: "column", sm: "row" }}
+                                            justifyContent="space-between"
+                                            alignItems={{ xs: "flex-start", sm: "center" }}
+                                            spacing={1.5}
+                                            sx={{ mb: 2 }}
+                                        >
+                                            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                <DescriptionIcon color="action" /> Thông tin phiếu
+                                            </Typography>
+                                            {canEditCommonAndDefects && !isEditingStandaloneHeader && (
+                                                <Button
+                                                    size="small"
+                                                    variant="outlined"
+                                                    startIcon={<EditIcon />}
+                                                    onClick={() => setIsEditingStandaloneHeader(true)}
+                                                >
+                                                    Chỉnh sửa
+                                                </Button>
+                                            )}
+                                        </Stack>
                                         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                                             Phần đầu phiếu này độc lập với phiếu kiểm. Toàn bộ thông tin được nhập tay và dùng lại cho bản in.
                                         </Typography>
                                         <Typography variant="subtitle2" sx={{ mb: 1.5, color: 'text.secondary' }}>
                                             Thông tin nhận diện
                                         </Typography>
-                                        <Grid container spacing={2}>
-                                            {[
-                                                ["Đơn vị sản xuất", "TenBoPhan"],
-                                                ["Mã ĐVSX", "MaBoPhan"],
-                                                ["Tên VT/BTP/TP", "TenSanPham"],
-                                                ["Mã Item", "MaItem"],
-                                                ["Mã truy nguyên", "MaTruyNguyen"],
-                                                ["Đơn hàng", "DonHang"],
-                                                ["Lô SX", "Lot"],
-                                                ["Số lượng", "SoLuongKPH"],
-                                                ["Dấu tuần", "DauTuan"]
-                                            ].map(([label, field]) => (
-                                                <Grid size={{ xs: 12, sm: 6, lg: 4 }} key={field}>
+                                        {isEditingStandaloneHeader && canEditCommonAndDefects ? (
+                                            <Grid container spacing={2}>
+                                                {HEADER_FIELD_CONFIG.map(([label, field]) => (
+                                                    <Grid size={{ xs: 12, sm: 6, lg: 4 }} key={field}>
+                                                        <TextField
+                                                            fullWidth
+                                                            size="small"
+                                                            label={label}
+                                                            value={headerFields[field] || ""}
+                                                            onChange={(e) => handleHeaderFieldChange(field, e.target.value)}
+                                                        />
+                                                    </Grid>
+                                                ))}
+                                                <Grid size={{ xs: 12, sm: 6 }}>
                                                     <TextField
                                                         fullWidth
+                                                        select
                                                         size="small"
-                                                        label={label}
-                                                        value={headerFields[field] || ""}
-                                                        onChange={(e) => handleHeaderFieldChange(field, e.target.value)}
+                                                        label="2. Sự không phù hợp được phát hiện từ"
+                                                        value={headerFields.PhatHienTu || ""}
+                                                        onChange={(e) => handleHeaderFieldChange("PhatHienTu", e.target.value)}
+                                                    >
+                                                        <MenuItem value="">Chưa chọn</MenuItem>
+                                                        {PHAT_HIEN_TU_OPTIONS.map((option) => (
+                                                            <MenuItem key={option.value} value={option.value}>
+                                                                {option.label}
+                                                            </MenuItem>
+                                                        ))}
+                                                    </TextField>
+                                                </Grid>
+                                                <Grid size={{ xs: 12, sm: 6 }}>
+                                                    <TextField
+                                                        fullWidth
+                                                        select
+                                                        size="small"
+                                                        label="3. Mức độ không phù hợp"
+                                                        value={headerFields.MucDo || ""}
+                                                        onChange={(e) => handleHeaderFieldChange("MucDo", e.target.value)}
+                                                    >
+                                                        <MenuItem value="">Chưa chọn</MenuItem>
+                                                        {MUC_DO_KPH_OPTIONS.map((option) => (
+                                                            <MenuItem key={option.value} value={option.value}>
+                                                                {option.label}
+                                                            </MenuItem>
+                                                        ))}
+                                                    </TextField>
+                                                </Grid>
+                                                <Grid size={{ xs: 12 }}>
+                                                    <Divider sx={{ my: 0.5 }} />
+                                                </Grid>
+                                                <Grid size={{ xs: 12 }}>
+                                                    <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
+                                                        Mô tả sự không phù hợp
+                                                    </Typography>
+                                                </Grid>
+                                                <Grid size={{ xs: 12 }}>
+                                                    <TextField
+                                                        fullWidth
+                                                        multiline
+                                                        minRows={4}
+                                                        label="Mô tả chung"
+                                                        placeholder="Nhập mô tả chi tiết về tình trạng không phù hợp..."
+                                                        value={moTaChung}
+                                                        onChange={(e) => setMoTaChung(e.target.value)}
+                                                        sx={{
+                                                            bgcolor: '#fff',
+                                                            '& .MuiInputBase-root': { borderRadius: 1.5 }
+                                                        }}
                                                     />
                                                 </Grid>
-                                            ))}
-                                            <Grid size={{ xs: 12 }}>
-                                                <Divider sx={{ my: 0.5 }} />
                                             </Grid>
-                                            <Grid size={{ xs: 12 }}>
-                                                <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
-                                                    Mô tả sự không phù hợp
-                                                </Typography>
-                                            </Grid>
-                                            <Grid size={{ xs: 12 }}>
-                                                <TextField
-                                                    fullWidth
-                                                    multiline
-                                                    minRows={4}
-                                                    label="Mô tả chung"
-                                                    placeholder="Nhập mô tả chi tiết về tình trạng không phù hợp..."
-                                                    value={moTaChung}
-                                                    onChange={(e) => setMoTaChung(e.target.value)}
-                                                    sx={{
-                                                        bgcolor: '#fff',
-                                                        '& .MuiInputBase-root': { borderRadius: 1.5 }
-                                                    }}
-                                                />
-                                            </Grid>
-                                        </Grid>
-                                        <Box sx={{ mt: 2, textAlign: 'right' }}>
-                                            <Button variant="contained" startIcon={<SaveIcon />} onClick={handleSaveStandaloneHeader}>
-                                                Lưu thông tin phiếu
-                                            </Button>
-                                        </Box>
+                                        ) : (
+                                            <Stack spacing={2}>
+                                                <Grid container spacing={1.5}>
+                                                    {HEADER_FIELD_CONFIG.map(([label, field]) => (
+                                                        <Grid size={{ xs: 12, sm: 6, lg: 4 }} key={field}>
+                                                            <Box sx={{ bgcolor: "#f8fafc", border: "1px solid #eef2f7", borderRadius: 1.5, p: 1.5, minHeight: 72 }}>
+                                                                <Typography variant="caption" color="text.secondary">
+                                                                    {label}
+                                                                </Typography>
+                                                                <Typography variant="body2" fontWeight={600} sx={{ mt: 0.5, wordBreak: "break-word" }}>
+                                                                    {headerFields[field] || "---"}
+                                                                </Typography>
+                                                            </Box>
+                                                        </Grid>
+                                                    ))}
+                                                    <Grid size={{ xs: 12, sm: 6 }}>
+                                                        <Box sx={{ bgcolor: "#f8fafc", border: "1px solid #eef2f7", borderRadius: 1.5, p: 1.5, minHeight: 72 }}>
+                                                            <Typography variant="caption" color="text.secondary">
+                                                                2. Sự không phù hợp được phát hiện từ
+                                                            </Typography>
+                                                            <Typography variant="body2" fontWeight={600} sx={{ mt: 0.5 }}>
+                                                                {phatHienTuLabel}
+                                                            </Typography>
+                                                        </Box>
+                                                    </Grid>
+                                                    <Grid size={{ xs: 12, sm: 6 }}>
+                                                        <Box sx={{ bgcolor: "#f8fafc", border: "1px solid #eef2f7", borderRadius: 1.5, p: 1.5, minHeight: 72 }}>
+                                                            <Typography variant="caption" color="text.secondary">
+                                                                3. Mức độ không phù hợp
+                                                            </Typography>
+                                                            <Typography variant="body2" fontWeight={600} sx={{ mt: 0.5 }}>
+                                                                {mucDoKphLabel}
+                                                            </Typography>
+                                                        </Box>
+                                                    </Grid>
+                                                </Grid>
+                                                <Divider />
+                                                <Box>
+                                                    <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
+                                                        Mô tả sự không phù hợp
+                                                    </Typography>
+                                                    <Box sx={{ bgcolor: "#f8fafc", border: "1px solid #eef2f7", borderRadius: 1.5, p: 1.5, minHeight: 96 }}>
+                                                        <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", lineHeight: 1.7 }}>
+                                                            {moTaChung || "---"}
+                                                        </Typography>
+                                                    </Box>
+                                                </Box>
+                                            </Stack>
+                                        )}
+                                        {canEditCommonAndDefects && isEditingStandaloneHeader && (
+                                            <Box sx={{ mt: 2, textAlign: 'right' }}>
+                                                {moTaConfirmed && (
+                                                    <Button color="inherit" sx={{ mr: 1 }} onClick={loadData}>
+                                                        Hủy
+                                                    </Button>
+                                                )}
+                                                <Button variant="contained" startIcon={<SaveIcon />} onClick={handleSaveStandaloneHeader}>
+                                                    Lưu thông tin phiếu
+                                                </Button>
+                                            </Box>
+                                        )}
                                     </CardContent>
                                 </Card>
                             ) : (
@@ -752,7 +978,7 @@ export default function BienBanDetail({ standalone = false }) {
                                                     Có thể chọn lỗi từ danh mục chuẩn hoặc nhập tay một nội dung không phù hợp phát sinh thực tế.
                                                 </Typography>
                                             </Box>
-                                            {isEditingStandaloneDefects ? (
+                                            {!canEditCommonAndDefects ? null : isEditingStandaloneDefects ? (
                                                 <Stack direction="row" spacing={1}>
                                                     <Button size="small" variant="contained" onClick={addCatalogDefectRow}>
                                                         Thêm từ danh mục
@@ -769,214 +995,86 @@ export default function BienBanDetail({ standalone = false }) {
                                                 </Stack>
                                             )}
                                         </Stack>
-                                        {!isEditingStandaloneDefects ? (
-                                            defects.length === 0 ? (
-                                                <Box sx={{ py: 5, textAlign: "center", color: "text.secondary", border: "1px dashed #d0d7de", borderRadius: 2 }}>
-                                                    Chưa có dòng lỗi. Bấm chỉnh sửa để thêm từ danh mục hoặc nhập tay.
-                                                </Box>
-                                            ) : (
-                                                <Stack spacing={1.5}>
-                                                    {defects.map((d, i) => {
-                                                        const title = d.TenLoi || d.TenLoiTuNhap || d.MoTa || `Dòng lỗi ${i + 1}`;
-                                                        return (
-                                                            <Paper
-                                                                key={`${d.Id || "saved"}-${i}`}
-                                                                variant="outlined"
-                                                                sx={{ p: 1.75, borderRadius: 2, bgcolor: "#fff" }}
-                                                            >
-                                                                <Stack
-                                                                    direction={{ xs: "column", md: "row" }}
-                                                                    justifyContent="space-between"
-                                                                    spacing={1.5}
-                                                                    alignItems={{ xs: "flex-start", md: "center" }}
-                                                                >
-                                                                    <Box sx={{ minWidth: 0, flex: 1 }}>
-                                                                        <Typography variant="body2" fontWeight={700}>
-                                                                            {title}
-                                                                        </Typography>
-                                                                        {d.MoTa && (
-                                                                            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5, whiteSpace: "pre-wrap" }}>
-                                                                                {d.MoTa}
-                                                                            </Typography>
-                                                                        )}
-                                                                        {d.GhiChu && (
-                                                                            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
-                                                                                Ghi chú: {d.GhiChu}
-                                                                            </Typography>
-                                                                        )}
-                                                                    </Box>
-                                                                    <Stack direction="row" spacing={1} flexWrap="wrap">
-                                                                        <Chip size="small" variant="outlined" label={d.DefectType || "MINOR"} />
-                                                                        <Chip size="small" variant="outlined" label={`SL ${d.SoLuong || 1}`} />
-                                                                        {d.MaLoi && <Chip size="small" variant="outlined" label={d.MaLoi} />}
-                                                                    </Stack>
-                                                                </Stack>
-                                                            </Paper>
-                                                        );
-                                                    })}
-                                                </Stack>
-                                            )
-                                        ) : defects.length === 0 ? (
+                                        {defects.length === 0 ? (
                                             <Box sx={{ py: 5, textAlign: "center", color: "text.secondary", border: "1px dashed #d0d7de", borderRadius: 2 }}>
-                                                Chưa có dòng lỗi. Chọn từ danh mục hoặc thêm một dòng nhập tay để bắt đầu.
+                                                {isEditingStandaloneDefects
+                                                    ? "Chưa có dòng lỗi. Chọn từ danh mục hoặc thêm một dòng nhập tay để bắt đầu."
+                                                    : "Chưa có dòng lỗi. Bấm chỉnh sửa để thêm từ danh mục hoặc nhập tay."}
                                             </Box>
                                         ) : (
-                                            <Stack spacing={2}>
+                                            <Stack spacing={1.25}>
                                                 {defects.map((d, i) => {
                                                     const isManual = d.sourceType === "manual" || (!d.DefectId && d.TenLoiTuNhap);
-                                                    const selectedOption = defectOptions.find((option) => Number(option.Id) === Number(d.DefectId)) || null;
+                                                    const title = d.TenLoi || d.TenLoiTuNhap || d.MoTa || `Dòng lỗi ${i + 1}`;
 
                                                     return (
                                                         <Paper
-                                                            key={`${d.Id || "new"}-${i}`}
+                                                            key={`${d.Id || "defect"}-${i}`}
                                                             variant="outlined"
-                                                            sx={{ p: 2.5, borderRadius: 2, bgcolor: "#fcfcfd" }}
+                                                            sx={{ p: 1.75, borderRadius: 2, bgcolor: "#fff" }}
                                                         >
-                                                            <Grid container spacing={2}>
-                                                                <Grid size={{ xs: 12, md: 2 }}>
-                                                                    <TextField
-                                                                        fullWidth
-                                                                        select
-                                                                        size="small"
-                                                                        label="Loại dòng"
-                                                                        value={isManual ? "manual" : "catalog"}
-                                                                        onChange={(e) => {
-                                                                            const nextType = e.target.value;
-                                                                            updateStandaloneDefect(i, nextType === "manual"
-                                                                                ? {
-                                                                                    sourceType: "manual",
-                                                                                    DefectId: null,
-                                                                                    MaLoi: "",
-                                                                                    TenLoi: "",
-                                                                                    TenLoiTuNhap: d.TenLoiTuNhap || "",
-                                                                                    MoTa: ""
-                                                                                }
-                                                                                : {
-                                                                                    sourceType: "catalog",
-                                                                                    DefectId: "",
-                                                                                    MaLoi: "",
-                                                                                    TenLoi: "",
-                                                                                    TenLoiTuNhap: "",
-                                                                                    MoTa: ""
-                                                                                });
-                                                                        }}
-                                                                    >
-                                                                        <MenuItem value="catalog">Danh mục</MenuItem>
-                                                                        <MenuItem value="manual">Nhập tay</MenuItem>
-                                                                    </TextField>
-                                                                </Grid>
-
-                                                                <Grid size={{ xs: 12, md: 7 }}>
-                                                                    {isManual ? (
-                                                                        <Stack spacing={1.5}>
-                                                                            <TextField
-                                                                                fullWidth
-                                                                                size="small"
-                                                                                label="Tên lỗi / nội dung không phù hợp"
-                                                                                value={d.TenLoiTuNhap || ""}
-                                                                                onChange={(e) => updateStandaloneDefect(i, { TenLoiTuNhap: e.target.value })}
-                                                                            />
-                                                                            <TextField
-                                                                                fullWidth
-                                                                                size="small"
-                                                                                multiline
-                                                                                minRows={2}
-                                                                                label="Mô tả chi tiết"
-                                                                                value={d.MoTa || ""}
-                                                                                onChange={(e) => updateStandaloneDefect(i, { MoTa: e.target.value })}
-                                                                            />
-                                                                        </Stack>
-                                                                    ) : (
-                                                                        <Stack spacing={1.5}>
-                                                                            <Autocomplete
-                                                                                options={defectOptions}
-                                                                                value={selectedOption}
-                                                                                onChange={(_, value) => handleCatalogDefectSelected(i, value?.Id || "")}
-                                                                                getOptionLabel={(option) => option ? `${option.MaLoi ? `${option.MaLoi} - ` : ""}${option.TenLoi || ""}` : ""}
-                                                                                isOptionEqualToValue={(option, value) => Number(option.Id) === Number(value.Id)}
-                                                                                renderInput={(params) => (
-                                                                                    <TextField
-                                                                                        {...params}
-                                                                                        size="small"
-                                                                                        label="Chọn lỗi từ danh mục"
-                                                                                        placeholder="Tìm theo mã lỗi hoặc tên lỗi"
-                                                                                    />
-                                                                                )}
-                                                                                renderOption={(props, option) => (
-                                                                                    <Box component="li" {...props} sx={{ py: 1.25, alignItems: "flex-start" }}>
-                                                                                        <Box>
-                                                                                            <Typography variant="body2" fontWeight={600}>
-                                                                                                {option.MaLoi ? `${option.MaLoi} - ` : ""}{option.TenLoi}
-                                                                                            </Typography>
-                                                                                            {option.MoTa && (
-                                                                                                <Typography variant="caption" color="text.secondary" sx={{ display: "block", whiteSpace: "normal" }}>
-                                                                                                    {option.MoTa}
-                                                                                                </Typography>
-                                                                                            )}
-                                                                                            <Stack direction="row" spacing={1} sx={{ mt: 0.75 }}>
-                                                                                                {option.DefectType && <Chip size="small" label={option.DefectType} variant="outlined" />}
-                                                                                            </Stack>
-                                                                                        </Box>
-                                                                                    </Box>
-                                                                                )}
-                                                                            />
-                                                                            <Paper variant="outlined" sx={{ p: 1.5, bgcolor: "#fff" }}>
-                                                                                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
-                                                                                    Mô tả hiện tại
-                                                                                </Typography>
-                                                                                <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
-                                                                                    {d.MoTa || "Chưa có mô tả cho lỗi này"}
-                                                                                </Typography>
-                                                                            </Paper>
-                                                                        </Stack>
-                                                                    )}
-                                                                </Grid>
-
-                                                                <Grid size={{ xs: 12, md: 3 }}>
-                                                                    <Stack spacing={1.5}>
-                                                                        <TextField
-                                                                            fullWidth
-                                                                            select
-                                                                            size="small"
-                                                                            label="Mức độ"
-                                                                            value={d.DefectType || "MINOR"}
-                                                                            onChange={(e) => updateStandaloneDefect(i, { DefectType: e.target.value })}
-                                                                            disabled={!isManual}
-                                                                        >
-                                                                            <MenuItem value="MINOR">MINOR</MenuItem>
-                                                                            <MenuItem value="MAJOR">MAJOR</MenuItem>
-                                                                            <MenuItem value="CRITICAL">CRITICAL</MenuItem>
-                                                                        </TextField>
-                                                                        <TextField
-                                                                            fullWidth
-                                                                            size="small"
-                                                                            type="number"
-                                                                            label="Số lượng"
-                                                                            value={d.SoLuong ?? 1}
-                                                                            onChange={(e) => updateStandaloneDefect(i, { SoLuong: e.target.value })}
-                                                                            inputProps={{ min: 1 }}
-                                                                        />
-                                                                        <TextField
-                                                                            fullWidth
-                                                                            size="small"
-                                                                            multiline
-                                                                            minRows={2}
-                                                                            label="Ghi chú"
-                                                                            value={d.GhiChu || ""}
-                                                                            onChange={(e) => updateStandaloneDefect(i, { GhiChu: e.target.value })}
-                                                                        />
-                                                                        <Button color="error" variant="text" onClick={() => removeStandaloneDefect(i)}>
-                                                                            Xóa dòng lỗi
-                                                                        </Button>
+                                                            <Stack
+                                                                direction={{ xs: "column", md: "row" }}
+                                                                justifyContent="space-between"
+                                                                spacing={1.5}
+                                                                alignItems={{ xs: "flex-start", md: "center" }}
+                                                            >
+                                                                <Box sx={{ minWidth: 0, flex: 1 }}>
+                                                                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mb: 0.5 }}>
+                                                                        <Typography variant="body2" fontWeight={700}>
+                                                                            {title}
+                                                                        </Typography>
+                                                                        <Chip size="small" variant="outlined" label={isManual ? "Nhập tay" : "Danh mục"} />
                                                                     </Stack>
-                                                                </Grid>
-                                                            </Grid>
+                                                                    {d.MoTa && (
+                                                                        <Typography
+                                                                            variant="caption"
+                                                                            color="text.secondary"
+                                                                            sx={{
+                                                                                display: "-webkit-box",
+                                                                                WebkitBoxOrient: "vertical",
+                                                                                WebkitLineClamp: 2,
+                                                                                overflow: "hidden",
+                                                                                whiteSpace: "pre-wrap"
+                                                                            }}
+                                                                        >
+                                                                            {d.MoTa}
+                                                                        </Typography>
+                                                                    )}
+                                                                    {d.GhiChu && (
+                                                                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
+                                                                            Ghi chú: {d.GhiChu}
+                                                                        </Typography>
+                                                                    )}
+                                                                </Box>
+                                                                <Stack
+                                                                    direction="row"
+                                                                    spacing={1}
+                                                                    flexWrap="wrap"
+                                                                    justifyContent={{ xs: "flex-start", md: "flex-end" }}
+                                                                    sx={{ rowGap: 1 }}
+                                                                >
+                                                                    <Chip size="small" variant="outlined" label={d.DefectType || "MINOR"} />
+                                                                    <Chip size="small" variant="outlined" label={`SL ${d.SoLuong || 1}`} />
+                                                                    {d.MaLoi && <Chip size="small" variant="outlined" label={d.MaLoi} />}
+                                                                    {isEditingStandaloneDefects && canEditCommonAndDefects && (
+                                                                        <>
+                                                                            <Button size="small" variant="outlined" onClick={() => openStandaloneDefectModal(isManual ? "manual" : "catalog", i)}>
+                                                                                Sửa
+                                                                            </Button>
+                                                                            <Button size="small" color="error" variant="text" onClick={() => removeStandaloneDefect(i)}>
+                                                                                Xóa
+                                                                            </Button>
+                                                                        </>
+                                                                    )}
+                                                                </Stack>
+                                                            </Stack>
                                                         </Paper>
                                                     );
                                                 })}
                                             </Stack>
                                         )}
-                                        {isEditingStandaloneDefects && (
+                                        {isEditingStandaloneDefects && canEditCommonAndDefects && (
                                             <Box sx={{ mt: 2, display: "flex", justifyContent: "flex-end", gap: 1 }}>
                                                 <Button variant="text" color="inherit" onClick={() => loadData()}>
                                                     Hủy
@@ -1080,11 +1178,23 @@ export default function BienBanDetail({ standalone = false }) {
                                         </Stack>
                                         <Divider sx={{ mb: 2 }} />
 
+                                        {bpsxSignatureBoPhanId && (
+                                            <Box sx={{ mb: 2 }}>
+                                                <Chip
+                                                    size="small"
+                                                    color="info"
+                                                    variant="outlined"
+                                                    label={`Bộ phận sản xuất: ${bpsxSignatureDepartmentName}`}
+                                                />
+                                            </Box>
+                                        )}
+
                                         {assigns.length === 0 ? (
                                             <Typography color="text.secondary" fontStyle="italic">Chưa có bộ phận được phân công.</Typography>
                                         ) : (
                                             <Grid container spacing={2}>
                                                 {assigns.map((a, i) => {
+                                                    const isProductionDepartment = Number(a.BoPhanId) === Number(bpsxSignatureBoPhanId);
                                                     const canAssign = info.AssignConfirmed && 
                                                                     a.BoPhanId === currentUserBoPhanId && 
                                                                     (currentUserPermissions.includes("XAC_NHAN_NGUOI_XU_LY") || 
@@ -1099,7 +1209,12 @@ export default function BienBanDetail({ standalone = false }) {
                                                                         <Typography variant="body2" fontWeight="bold">{a.TenBoPhan}</Typography>
                                                                         <Typography variant="caption" color="text.secondary">Mã: {a.MaBoPhan}</Typography>
                                                                     </Box>
-                                                                    <Chip size="small" label={getStatusText(a.BoPhanId)} color={getStatusColor(a.BoPhanId)} />
+                                                                    <Stack direction="row" spacing={0.75} flexWrap="wrap" justifyContent="flex-end">
+                                                                        {isProductionDepartment && (
+                                                                            <Chip size="small" label="Bộ phận sản xuất" color="info" variant="outlined" />
+                                                                        )}
+                                                                        <Chip size="small" label={getStatusText(a.BoPhanId)} color={getStatusColor(a.BoPhanId)} />
+                                                                    </Stack>
                                                                 </Stack>
                                                                 <Box sx={{ borderTop: '1px solid #eee', pt: 1, mt: 1 }}>
                                                                     <Typography variant="caption" color="primary" sx={{ display: 'block', mb: 0.5 }}>
@@ -1274,13 +1389,18 @@ export default function BienBanDetail({ standalone = false }) {
                 </Grid>
 
                 {/* Floating Bottom Action Bar */}
-                {((info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy) || allConfirmed) && (
+                {(canConfirmProcessing || canConfirmBpsxSignature || allConfirmed) && (
                     <Paper elevation={4} sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, p: 2, bgcolor: 'white', zIndex: 100, borderTop: '1px solid #e0e0e0' }}>
                         <Container maxWidth="xl">
                             <Stack direction="row" justifyContent="flex-end" spacing={2}>
-                                {info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy && (
+                                {canConfirmProcessing && (
                                     <Button variant="contained" color="warning" size="large" onClick={handleConfirmUser} startIcon={<VerifiedIcon />}>
                                         Xác nhận tiến độ xử lý của bộ phận
+                                    </Button>
+                                )}
+                                {canConfirmBpsxSignature && !canConfirmProcessing && (
+                                    <Button variant="contained" color="warning" size="large" onClick={handleConfirmUser} startIcon={<VerifiedIcon />}>
+                                        Xác nhận bộ phận sản xuất
                                     </Button>
                                 )}
                                 {allConfirmed && (
@@ -1351,12 +1471,144 @@ export default function BienBanDetail({ standalone = false }) {
                 </DialogActions>
             </Dialog>
 
+            <Dialog open={openDefectModal} onClose={closeStandaloneDefectModal} fullWidth maxWidth="md">
+                <DialogTitle fontWeight="bold">
+                    {editingDefectIndex === null ? "Thêm dòng lỗi" : "Cập nhật dòng lỗi"}
+                </DialogTitle>
+                <DialogContent dividers>
+                    <Stack spacing={2.5} sx={{ mt: 1 }}>
+                        <TextField
+                            fullWidth
+                            select
+                            size="small"
+                            label="Loại dòng"
+                            value={defectDraftIsManual ? "manual" : "catalog"}
+                            onChange={(e) => handleDefectDraftTypeChange(e.target.value)}
+                        >
+                            <MenuItem value="catalog">Danh mục</MenuItem>
+                            <MenuItem value="manual">Nhập tay</MenuItem>
+                        </TextField>
+
+                        {defectDraftIsManual ? (
+                            <Stack spacing={2}>
+                                <TextField
+                                    fullWidth
+                                    size="small"
+                                    label="Tên lỗi / nội dung không phù hợp"
+                                    value={defectDraft?.TenLoiTuNhap || ""}
+                                    onChange={(e) => updateDefectDraft({ TenLoiTuNhap: e.target.value })}
+                                />
+                                <TextField
+                                    fullWidth
+                                    size="small"
+                                    multiline
+                                    minRows={3}
+                                    label="Mô tả chi tiết"
+                                    value={defectDraft?.MoTa || ""}
+                                    onChange={(e) => updateDefectDraft({ MoTa: e.target.value })}
+                                />
+                            </Stack>
+                        ) : (
+                            <Stack spacing={2}>
+                                <Autocomplete
+                                    options={defectOptions}
+                                    value={selectedDefectOption}
+                                    onChange={(_, value) => handleDefectDraftCatalogSelected(value?.Id || "")}
+                                    getOptionLabel={(option) => option ? `${option.MaLoi ? `${option.MaLoi} - ` : ""}${option.TenLoi || ""}` : ""}
+                                    isOptionEqualToValue={(option, value) => Number(option.Id) === Number(value.Id)}
+                                    renderInput={(params) => (
+                                        <TextField
+                                            {...params}
+                                            size="small"
+                                            label="Chọn lỗi từ danh mục"
+                                            placeholder="Tìm theo mã lỗi hoặc tên lỗi"
+                                        />
+                                    )}
+                                    renderOption={(props, option) => (
+                                        <Box component="li" {...props} sx={{ py: 1.25, alignItems: "flex-start" }}>
+                                            <Box>
+                                                <Typography variant="body2" fontWeight={600}>
+                                                    {option.MaLoi ? `${option.MaLoi} - ` : ""}{option.TenLoi}
+                                                </Typography>
+                                                {option.MoTa && (
+                                                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", whiteSpace: "normal" }}>
+                                                        {option.MoTa}
+                                                    </Typography>
+                                                )}
+                                                {option.DefectType && (
+                                                    <Chip size="small" label={option.DefectType} variant="outlined" sx={{ mt: 0.75 }} />
+                                                )}
+                                            </Box>
+                                        </Box>
+                                    )}
+                                />
+                                <Paper variant="outlined" sx={{ p: 1.5, bgcolor: "#fff" }}>
+                                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
+                                        Mô tả hiện tại
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+                                        {defectDraft?.MoTa || "Chưa có mô tả cho lỗi này"}
+                                    </Typography>
+                                </Paper>
+                            </Stack>
+                        )}
+
+                        <Grid container spacing={2}>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                                <TextField
+                                    fullWidth
+                                    select
+                                    size="small"
+                                    label="Mức độ"
+                                    value={defectDraft?.DefectType || "MINOR"}
+                                    onChange={(e) => updateDefectDraft({ DefectType: e.target.value })}
+                                    disabled={!defectDraftIsManual}
+                                >
+                                    <MenuItem value="MINOR">MINOR</MenuItem>
+                                    <MenuItem value="MAJOR">MAJOR</MenuItem>
+                                    <MenuItem value="CRITICAL">CRITICAL</MenuItem>
+                                </TextField>
+                            </Grid>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                                <TextField
+                                    fullWidth
+                                    size="small"
+                                    type="number"
+                                    label="Số lượng"
+                                    value={defectDraft?.SoLuong ?? 1}
+                                    onChange={(e) => updateDefectDraft({ SoLuong: e.target.value })}
+                                    inputProps={{ min: 1 }}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12 }}>
+                                <TextField
+                                    fullWidth
+                                    size="small"
+                                    multiline
+                                    minRows={2}
+                                    label="Ghi chú"
+                                    value={defectDraft?.GhiChu || ""}
+                                    onChange={(e) => updateDefectDraft({ GhiChu: e.target.value })}
+                                />
+                            </Grid>
+                        </Grid>
+                    </Stack>
+                </DialogContent>
+                <DialogActions sx={{ p: 2 }}>
+                    <Button onClick={closeStandaloneDefectModal} color="inherit">Hủy</Button>
+                    <Button onClick={saveDefectDraft} variant="contained" startIcon={<SaveIcon />}>
+                        Lưu dòng lỗi
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
             <AssignDepartmentDialog
                 open={openAssignModal}
                 onClose={() => setOpenAssignModal(false)}
                 bienBanId={bienBanId}
                 reload={loadData}
                 assignedIds={assigns.map(a => a.BoPhanId)}
+                bpsxSignatureBoPhanId={bpsxSignatureBoPhanId}
             />
             <XuLyDialog open={openXuLyModal} onClose={() => setOpenXuLyModal(false)} bienBanId={bienBanId} currentUserId={currentUserId} reload={loadData} />
             <ChiPhiDialog open={openChiPhiModal} onClose={() => setOpenChiPhiModal(false)} bienBanId={bienBanId} reload={loadData} />
@@ -1407,18 +1659,25 @@ export default function BienBanDetail({ standalone = false }) {
 
 // --- Sub-components (Dialogs) ---
 
-function AssignDepartmentDialog({ open, onClose, bienBanId, reload, assignedIds }) {
+function AssignDepartmentDialog({ open, onClose, bienBanId, reload, assignedIds, bpsxSignatureBoPhanId }) {
     const [departments, setDepartments] = useState([]);
     // 1. Khởi tạo state với giá trị từ prop
     const [selected, setSelected] = useState(assignedIds || []);
+    const [selectedBpsxSignatureBoPhanId, setSelectedBpsxSignatureBoPhanId] = useState(bpsxSignatureBoPhanId || "");
 
     // 2. Lưu lại prop cũ để so sánh
     const [prevAssignedIds, setPrevAssignedIds] = useState(assignedIds);
+    const [prevBpsxSignatureBoPhanId, setPrevBpsxSignatureBoPhanId] = useState(bpsxSignatureBoPhanId);
 
     // 3. Cập nhật state ngay trong lúc render nếu prop thay đổi
     if (assignedIds !== prevAssignedIds) {
         setPrevAssignedIds(assignedIds);
         setSelected(assignedIds);
+    }
+
+    if (bpsxSignatureBoPhanId !== prevBpsxSignatureBoPhanId) {
+        setPrevBpsxSignatureBoPhanId(bpsxSignatureBoPhanId);
+        setSelectedBpsxSignatureBoPhanId(bpsxSignatureBoPhanId || "");
     }
 
     // 4. useEffect giờ ĐƠN THUẦN chỉ dùng để gọi API (tác vụ bất đồng bộ)
@@ -1430,7 +1689,7 @@ function AssignDepartmentDialog({ open, onClose, bienBanId, reload, assignedIds 
 
     const handleSubmit = async () => {
         try {
-            await assignDepartments(bienBanId, selected);
+            await assignDepartments(bienBanId, selected, selectedBpsxSignatureBoPhanId);
             reload();
             onClose();
         } catch (err) {
@@ -1440,7 +1699,8 @@ function AssignDepartmentDialog({ open, onClose, bienBanId, reload, assignedIds 
 
     const handleChange = (event) => {
         const { target: { value } } = event;
-        setSelected(typeof value === 'string' ? value.split(',') : value);
+        const nextSelected = typeof value === 'string' ? value.split(',') : value;
+        setSelected(nextSelected);
     };
 
     return (
@@ -1448,17 +1708,34 @@ function AssignDepartmentDialog({ open, onClose, bienBanId, reload, assignedIds 
             <DialogTitle fontWeight="bold">Chọn bộ phận xử lý</DialogTitle>
             <DialogContent dividers>
                 <FormControl fullWidth sx={{ mt: 1 }}>
-                    <InputLabel>Danh sách bộ phận</InputLabel>
+                    <InputLabel>Bộ phận xử lý</InputLabel>
                     <Select
                         multiple
                         value={selected}
                         onChange={handleChange}
-                        label="Danh sách bộ phận"
+                        label="Bộ phận xử lý"
                         renderValue={(selected) => selected.map(id => departments.find(d => d.Id === id)?.TenBoPhan).join(', ')}
                     >
                         {departments.map((dep) => (
                             <MenuItem key={dep.Id} value={dep.Id}>
                                 <Checkbox checked={selected.indexOf(dep.Id) > -1} />
+                                <ListItemText primary={dep.TenBoPhan} secondary={dep.MaBoPhan} />
+                            </MenuItem>
+                        ))}
+                    </Select>
+                </FormControl>
+                <FormControl fullWidth sx={{ mt: 3 }}>
+                    <InputLabel>Bộ phận sản xuất</InputLabel>
+                    <Select
+                        value={selectedBpsxSignatureBoPhanId}
+                        onChange={(event) => setSelectedBpsxSignatureBoPhanId(event.target.value)}
+                        label="Bộ phận sản xuất"
+                    >
+                        <MenuItem value="">
+                            <ListItemText primary="Không chọn" secondary="Không cần ký vị trí PHÒNG/BAN/BPSX" />
+                        </MenuItem>
+                        {departments.map((dep) => (
+                            <MenuItem key={dep.Id} value={dep.Id}>
                                 <ListItemText primary={dep.TenBoPhan} secondary={dep.MaBoPhan} />
                             </MenuItem>
                         ))}

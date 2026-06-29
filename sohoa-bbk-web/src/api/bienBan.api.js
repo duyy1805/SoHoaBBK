@@ -10,12 +10,24 @@ export const getMyBienBan = () => {
     return axiosClient.get("/bien-ban");
 };
 
+export const getStandaloneBienBanList = () => {
+    return axiosClient.get("/phieu-xu-ly-khong-phu-hop");
+};
+
+export const createStandaloneBienBan = () => {
+    return axiosClient.post("/phieu-xu-ly-khong-phu-hop");
+};
+
 /* ================================
    Chi tiết biên bản
 ================================ */
 
 export const getBienBanDetail = (id) => {
     return axiosClient.get(`/bien-ban/${id}`);
+};
+
+export const getStandaloneBienBanDetail = (id) => {
+    return axiosClient.get(`/phieu-xu-ly-khong-phu-hop/${id}`);
 };
 
 /* ================================
@@ -52,9 +64,10 @@ export const getAssignableUsers = (bienBanId, boPhanId) => {
    Phân công xử lý
 ================================ */
 
-export const assignDepartments = (bienBanId, boPhanIds) => {
+export const assignDepartments = (bienBanId, boPhanIds, bpsxSignatureBoPhanId = null) => {
     return axiosClient.post(`/bien-ban/${bienBanId}/assign`, {
-        boPhanIds
+        boPhanIds,
+        bpsxSignatureBoPhanId
     });
 };
 
@@ -106,6 +119,18 @@ export const getBoPhan = () => {
 
 export const saveBienBanCustomFields = (data) => {
     return axiosClient.post("/bien-ban/custom-fields", data);
+};
+
+export const saveStandaloneBienBanHeader = (bienBanId, data) => {
+    return axiosClient.post(`/phieu-xu-ly-khong-phu-hop/${bienBanId}/header`, data);
+};
+
+export const saveStandaloneBienBanDefects = (bienBanId, defects) => {
+    return axiosClient.post(`/phieu-xu-ly-khong-phu-hop/${bienBanId}/defects`, { defects });
+};
+
+export const deleteStandaloneBienBan = (bienBanId) => {
+    return axiosClient.delete(`/phieu-xu-ly-khong-phu-hop/${bienBanId}`);
 };
 
 /* ================================

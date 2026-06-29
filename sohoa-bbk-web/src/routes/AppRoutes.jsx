@@ -12,6 +12,8 @@ import DanhMucManager from '../features/DanhMuc/DanhMucManager'
 import BienBanDetail from '../features/BienBan/BienBanDetail';
 import BienBanList from '../features/BienBan/BienBanList';
 import BienBanSxbtDetail from '../features/BienBan/BienBanSxbtDetail';
+import PhieuXuLyKhongPhuHopList from '../features/BienBan/PhieuXuLyKhongPhuHopList';
+import PhieuXuLyKhongPhuHopDetail from '../features/BienBan/PhieuXuLyKhongPhuHopDetail';
 
 export default function AppRoutes() {
     return (
@@ -32,6 +34,8 @@ export default function AppRoutes() {
                     <Route path="/bien-ban" element={<BienBanList />} />
                     <Route path="/bien-ban/sxbt/:id" element={<BienBanSxbtDetail />} />
                     <Route path="/bien-ban/:id" element={<BienBanDetail />} />
+                    <Route path="/phieu-xu-ly-khong-phu-hop" element={<PhieuXuLyKhongPhuHopList />} />
+                    <Route path="/phieu-xu-ly-khong-phu-hop/:id" element={<PhieuXuLyKhongPhuHopDetail />} />
                 </Route>
             </Route>
 

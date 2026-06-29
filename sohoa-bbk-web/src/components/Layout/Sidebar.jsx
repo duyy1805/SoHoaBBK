@@ -13,6 +13,7 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import DescriptionIcon from '@mui/icons-material/Description';
 import FactoryIcon from '@mui/icons-material/Factory';
+import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 export default function Sidebar({
@@ -29,6 +30,7 @@ export default function Sidebar({
         { label: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
         { label: 'Phiếu kiểm', icon: <AssignmentIcon />, path: '/phieu-kiem' },
         { label: 'Biên bản', icon: <DescriptionIcon />, path: '/bien-ban' },
+        { label: 'Phiếu xử lý không phù hợp', icon: <ReportProblemIcon />, path: '/phieu-xu-ly-khong-phu-hop' },
         { label: 'Danh mục', icon: <FactoryIcon />, path: '/danh-muc' }
     ];
 

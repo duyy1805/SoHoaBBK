@@ -137,6 +137,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
         headerTd: { border: '1px solid #000', padding: '6px', textAlign: 'center', verticalAlign: 'middle' },
         signatureBlock: { display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', rowGap: '20px', marginTop: '15px', textAlign: 'center', width: '100%' },
         signatureCol: { flex: 1, minWidth: '30%', padding: '0 10px' },
+        signatureDepartment: { fontSize: '11pt', fontWeight: 'bold', whiteSpace: 'nowrap' },
         layoutTable: { width: '100%', borderCollapse: 'collapse', border: 'none' },
         layoutTd: { border: 'none', padding: '4px 0', verticalAlign: 'middle' },
         flexBetween: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
@@ -206,11 +207,15 @@ export const BienBanPrintTemplate = React.forwardRef(({
             assignedDepartment?.TenBoPhan ||
             item.MaBoPhan ||
             assignedDepartment?.MaBoPhan ||
-            'BỘ PHẬN XÁC NHẬN';
+            'PHÒNG KIỂM NGHIỆM';
     };
 
+    const isStandaloneBienBan = info.LoaiBienBan === 'STANDALONE';
+    const kphKnSignature = (xacNhan || []).find(item => item.VaiTro === 'KPH_KN');
+    const kphBpsxSignature = (xacNhan || []).find(item => item.VaiTro === 'KPH_BPSX');
+
     const signatureRows = Array.from(
-        (xacNhan || []).reduce((map, item) => {
+        (xacNhan || []).filter(item => !['KPH_KN', 'KPH_BPSX'].includes(item.VaiTro)).reduce((map, item) => {
             const key = item.BoPhanId || item.NguoiXacNhanId || item.Id;
             if (key) map.set(String(key), item);
             return map;
@@ -450,14 +455,24 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                 {/* Chữ ký 1 */}
                                 <Box className="avoid-break" style={styles.signatureBlock}>
                                     <Box style={styles.signatureCol}>
-                                        <div style={styles.text}>Ngày..................</div>
+                                        <div style={styles.text}>
+                                            {isStandaloneBienBan ? formatSignatureDate(kphKnSignature?.ThoiGian) : 'Ngày..................'}
+                                        </div>
                                         <div style={styles.boldText}>PHÒNG KN</div>
                                         <Box height="60px"></Box>
+                                        {isStandaloneBienBan && (
+                                            <div style={styles.text}>{kphKnSignature?.FullName || '(Ký, họ tên)'}</div>
+                                        )}
                                     </Box>
                                     <Box style={styles.signatureCol}>
-                                        <div style={styles.text}>Ngày..................</div>
+                                        <div style={styles.text}>
+                                            {isStandaloneBienBan ? formatSignatureDate(kphBpsxSignature?.ThoiGian) : 'Ngày..................'}
+                                        </div>
                                         <div style={styles.boldText}>PHÒNG/BAN/BPSX</div>
                                         <Box height="60px"></Box>
+                                        {isStandaloneBienBan && (
+                                            <div style={styles.text}>{kphBpsxSignature?.FullName || '(Ký, họ tên)'}</div>
+                                        )}
                                     </Box>
                                     <Box style={styles.signatureCol}>
                                         <div style={styles.text}>Ngày..................</div>
@@ -582,11 +597,11 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                 {signatureRows.length > 0 && (
                                     <Box className="avoid-break" style={{ ...styles.signatureBlock, justifyContent: 'flex-start', direction: 'rtl' }}>
                                         {signatureRows.map((item) => (
-                                            <Box style={{ ...styles.signatureCol, direction: 'ltr', flex: '0 0 30%', maxWidth: '33.33%' }} key={item.Id || item.BoPhanId || item.NguoiXacNhanId}>
+                                            <Box style={{ ...styles.signatureCol, direction: 'ltr', flex: '0 0 42%', maxWidth: '42%' }} key={item.Id || item.BoPhanId || item.NguoiXacNhanId}>
                                                 <div style={{ ...styles.text, fontStyle: 'italic', whiteSpace: 'nowrap' }}>
                                                     {formatSignatureDate(item.ThoiGian)}
                                                 </div>
-                                                <div style={styles.boldText}>{getSignatureDepartmentName(item).toUpperCase()}</div>
+                                                <div style={styles.signatureDepartment}>{getSignatureDepartmentName(item).toUpperCase()}</div>
                                                 <Box height="90px"></Box>
                                                 <div style={styles.text}>{item.FullName || '(Ký, họ tên)'}</div>
                                             </Box>

@@ -138,6 +138,7 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
         headerTd: { border: '1px solid #000', padding: '6px', textAlign: 'center', verticalAlign: 'middle' },
         signatureBlock: { display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', rowGap: '20px', marginTop: '15px', textAlign: 'center', width: '100%' },
         signatureCol: { flex: 1, minWidth: '30%', padding: '0 10px' },
+        signatureDepartment: { fontSize: '11pt', fontWeight: 'bold', whiteSpace: 'nowrap' },
         layoutTable: { width: '100%', borderCollapse: 'collapse', border: 'none' },
         layoutTd: { border: 'none', padding: '4px 0', verticalAlign: 'middle' },
         flexBetween: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
@@ -207,7 +208,7 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
             assignedDepartment?.TenBoPhan ||
             item.MaBoPhan ||
             assignedDepartment?.MaBoPhan ||
-            'BỘ PHẬN XÁC NHẬN';
+            'PHÒNG KIỂM NGHIỆM';
     };
 
     const signatureRows = Array.from(
@@ -580,11 +581,11 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                 {signatureRows.length > 0 && (
                                     <Box className="avoid-break" style={{ ...styles.signatureBlock, justifyContent: 'flex-start', direction: 'rtl' }}>
                                         {signatureRows.map((item) => (
-                                            <Box style={{ ...styles.signatureCol, direction: 'ltr', flex: '0 0 30%', maxWidth: '33.33%' }} key={item.Id || item.BoPhanId || item.NguoiXacNhanId}>
+                                            <Box style={{ ...styles.signatureCol, direction: 'ltr', flex: '0 0 42%', maxWidth: '42%' }} key={item.Id || item.BoPhanId || item.NguoiXacNhanId}>
                                                 <div style={{ ...styles.text, fontStyle: 'italic', whiteSpace: 'nowrap' }}>
                                                     {formatSignatureDate(item.ThoiGian)}
                                                 </div>
-                                                <div style={styles.boldText}>{getSignatureDepartmentName(item).toUpperCase()}</div>
+                                                <div style={styles.signatureDepartment}>{getSignatureDepartmentName(item).toUpperCase()}</div>
                                                 <Box height="90px"></Box>
                                                 <div style={styles.text}>{item.FullName || '(Ký, họ tên)'}</div>
                                             </Box>

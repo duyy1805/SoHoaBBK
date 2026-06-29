@@ -37,7 +37,8 @@ const getBienBanAssignRows = async (pool, bienBanId) => {
                 bp.TenBoPhan,
                 a.NguoiXuLyId,
                 u.FullName AS NguoiXuLy,
-                a.AssignedToUserAt
+                a.AssignedToUserAt,
+                CAST(ISNULL(a.IsBpsxSignature, 0) AS BIT) AS IsBpsxSignature
             FROM BIEN_BAN_ASSIGN a
             LEFT JOIN DM_BO_PHAN bp ON bp.Id = a.BoPhanId
             LEFT JOIN USERS u ON u.Id = a.NguoiXuLyId
@@ -360,6 +361,7 @@ router.post(
 
             await pool.request()
                 .input("BienBanId", sql.Int, bienBanId)
+                .input("NguoiXacNhanId", sql.Int, req.user.userId)
                 .execute("sp_BienBan_Complete");
 
             res.json({ success: true });
@@ -386,13 +388,32 @@ router.post(
         try {
 
             const bienBanId = parseInt(req.params.id, 10);
-            const { boPhanIds } = req.body;
+            const { boPhanIds, bpsxSignatureBoPhanId = null } = req.body;
+            const normalizedBoPhanIds = (Array.isArray(boPhanIds) ? boPhanIds : [])
+                .map((id) => Number(id))
+                .filter((id) => Number.isInteger(id) && id > 0);
+            const parsedBpsxSignatureBoPhanId = bpsxSignatureBoPhanId ? Number(bpsxSignatureBoPhanId) : null;
+            const normalizedBpsxSignatureBoPhanId = Number.isInteger(parsedBpsxSignatureBoPhanId) && parsedBpsxSignatureBoPhanId > 0
+                ? parsedBpsxSignatureBoPhanId
+                : null;
+
+            if (normalizedBoPhanIds.length === 0) {
+                return res.status(400).json({
+                    message: "Vui lòng chọn ít nhất một bộ phận xử lý"
+                });
+            }
+
+            if (bpsxSignatureBoPhanId && normalizedBpsxSignatureBoPhanId === null) {
+                return res.status(400).json({
+                    message: "Bộ phận sản xuất không hợp lệ"
+                });
+            }
 
             const pool = await poolPromise;
-
             await pool.request()
                 .input("BienBanId", sql.Int, bienBanId)
-                .input("BoPhanIds", sql.NVarChar, boPhanIds.join(","))
+                .input("BoPhanIds", sql.NVarChar, normalizedBoPhanIds.join(","))
+                .input("BpsxSignatureBoPhanId", sql.Int, normalizedBpsxSignatureBoPhanId)
                 .input("AssignedBy", sql.Int, req.user.userId)
                 .execute("sp_BienBan_AssignBoPhan");
 
@@ -628,6 +649,7 @@ router.post(
             await pool.request()
                 .input("BienBanId", sql.Int, bienBanId)
                 .input("NguoiXacNhanId", sql.Int, userId)
+                .input("BoPhanId", sql.Int, req.user.boPhanId || null)
                 .execute("sp_BienBan_XacNhan1")
 
             res.json({

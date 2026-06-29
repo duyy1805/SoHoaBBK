@@ -224,6 +224,35 @@ Biên bản SXBT có luồng riêng tại `/api/bien-ban-sxbt`.
 - Hoàn tất biên bản SXBT qua `POST /bien-ban-sxbt/:id/complete`, yêu cầu quyền `KET_LUAN`.
 - Trạng thái UI thường gặp: `BB_SXBT_MOI`, `BB_SXBT_TP_B8_DRAFT`, `BB_SXBT_CHO_XAC_NHAN`, `BB_SXBT_HOAN_TAT`.
 
+## 10.1 Luồng Phiếu Xử Lý Không Phù Hợp Độc Lập
+
+- Web có thêm menu riêng: `Phiếu xử lý không phù hợp`.
+- Đây là luồng độc lập với phiếu kiểm, không cần `PhieuKiemId` hay kế hoạch sản xuất.
+- Route web:
+  - list: `/phieu-xu-ly-khong-phu-hop`
+  - detail: `/phieu-xu-ly-khong-phu-hop/:id`
+- API backend:
+  - `GET /api/phieu-xu-ly-khong-phu-hop`
+  - `POST /api/phieu-xu-ly-khong-phu-hop`
+  - `GET /api/phieu-xu-ly-khong-phu-hop/:id`
+  - `POST /api/phieu-xu-ly-khong-phu-hop/:id/header`
+  - `POST /api/phieu-xu-ly-khong-phu-hop/:id/defects`
+- Phân biệt luồng này bằng `BIEN_BAN_KIEM.LoaiBienBan = 'STANDALONE'`.
+- `BIEN_BAN_KIEM.PhieuKiemId` phải cho phép `NULL` để lưu biên bản độc lập.
+- Phần đầu phiếu lưu bằng `BienBan_CustomFields`, không thêm nhiều cột cứng vào `BIEN_BAN_KIEM`.
+- Danh sách dòng lỗi lưu ở bảng riêng `BIEN_BAN_DEFECT`.
+  - hỗ trợ cả dòng chọn từ `DM_DEFECT`
+  - và dòng nhập tay tự do
+- Số biên bản dùng chung series với biên bản hiện tại.
+- Từ phần phân bổ xử lý trở xuống tái dùng hạ tầng đang có:
+  - `BIEN_BAN_ASSIGN`
+  - `BIEN_BAN_XU_LY`
+  - `BIEN_BAN_CHI_PHI`
+  - `BIEN_BAN_HANH_DONG`
+  - `BIEN_BAN_XAC_NHAN`
+  - `sp_BienBan_Complete`
+- Xem in dùng template riêng `PhieuXuLyKhongPhuHopPrintTemplate`, nhưng vẫn lưu các field in qua `BienBan_CustomFields`.
+
 ## 11. Luồng Danh Mục
 
 Web route `/danh-muc`, component `DanhMucManager`, gồm các nhóm:
