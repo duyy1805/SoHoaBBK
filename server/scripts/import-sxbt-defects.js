@@ -199,6 +199,7 @@ function saveImage(row) {
 
 async function upsertDefect(pool, row) {
     const imageUrl = saveImage(row);
+    const imageUrls = imageUrl ? JSON.stringify([imageUrl]) : null;
     const ghiChu = row.phamVi || null;
 
     const existing = await pool.request()
@@ -222,6 +223,7 @@ async function upsertDefect(pool, row) {
             .input("PhamViApDung", sql.NVarChar(500), row.phamVi || null)
             .input("ThiTruong", sql.NVarChar(255), row.thiTruong || null)
             .input("ImageUrl", sql.NVarChar(500), imageUrl)
+            .input("ImageUrls", sql.NVarChar(sql.MAX), imageUrls)
             .input("ThuTu", sql.Int, row.thuTu)
             .execute("sp_DM_UpdateDefect");
         return "updated";
@@ -241,6 +243,7 @@ async function upsertDefect(pool, row) {
         .input("PhamViApDung", sql.NVarChar(500), row.phamVi || null)
         .input("ThiTruong", sql.NVarChar(255), row.thiTruong || null)
         .input("ImageUrl", sql.NVarChar(500), imageUrl)
+        .input("ImageUrls", sql.NVarChar(sql.MAX), imageUrls)
         .input("ThuTu", sql.Int, row.thuTu)
         .execute("sp_DM_CreateDefect");
     return "inserted";

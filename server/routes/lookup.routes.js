@@ -105,6 +105,32 @@ const normalizeDefectType = (loaiLoiSXBT, defectType) => {
 
 const trimValue = (value) => String(value ?? "").trim();
 const normalizeKey = (value) => trimValue(value).toLowerCase();
+const parseJsonArray = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value !== "string") return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [parsed].filter(Boolean);
+  } catch {
+    return [value].filter(Boolean);
+  }
+};
+const normalizeImageUrls = (imageUrls, imageUrl) => {
+  const urls = [
+    ...parseJsonArray(imageUrls),
+    ...parseJsonArray(imageUrl)
+  ]
+    .map((url) => trimValue(url))
+    .filter(Boolean);
+
+  return Array.from(new Set(urls));
+};
+const stringifyImageUrls = (urls) => {
+  const normalized = normalizeImageUrls(urls);
+  return normalized.length ? JSON.stringify(normalized) : null;
+};
 const buildNhomImportKey = (tenNhom, moTaNhom) => `${normalizeKey(tenNhom)}|${normalizeKey(moTaNhom)}`;
 const parseOrder = (value, fallback) => {
   const parsed = Number.parseInt(value, 10);
@@ -479,7 +505,33 @@ router.get(
         )
         .execute("sp_DM_GetDefectList");
 
-      res.json(result.recordset);
+      const rows = result.recordset || [];
+      const ids = rows
+        .map((row) => Number(row.Id))
+        .filter((id) => Number.isInteger(id) && id > 0);
+
+      if (ids.length) {
+        try {
+          const imageResult = await pool.request().query(`
+            SELECT Id, ImageUrls
+            FROM dbo.DM_DEFECT
+            WHERE Id IN (${ids.join(",")})
+          `);
+          const imageUrlsById = new Map(
+            (imageResult.recordset || []).map((row) => [row.Id, row.ImageUrls])
+          );
+
+          rows.forEach((row) => {
+            if (imageUrlsById.has(row.Id)) {
+              row.ImageUrls = imageUrlsById.get(row.Id);
+            }
+          });
+        } catch (imageErr) {
+          console.warn("Cannot attach defect ImageUrls:", imageErr.message);
+        }
+      }
+
+      res.json(rows);
     } catch (err) {
       console.error("Get defect list error:", err);
       res.status(500).json({
@@ -518,6 +570,60 @@ router.post(
       });
     } catch (err) {
       console.error("Upload defect image error:", err);
+      res.status(500).json({ message: "Không thể tải ảnh lỗi lên server" });
+    }
+  }
+);
+
+router.post(
+  "/defect-images",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  defectImageUpload.array("images", 10),
+  async (req, res) => {
+    try {
+      const files = req.files || [];
+      if (!files.length) {
+        return res.status(400).json({ message: "Vui lòng chọn ảnh lỗi" });
+      }
+
+      fs.mkdirSync(defectUploadDir, { recursive: true });
+
+      const imageUrls = [];
+      const savedFiles = [];
+      const baseName = slugifyFilePart(req.body.maLoi || req.body.tenLoi || "defect");
+
+      try {
+        for (const file of files) {
+          const fileName = `${baseName}-${Date.now()}-${Math.round(Math.random() * 1E9)}.jpg`;
+          const outputPath = path.join(defectUploadDir, fileName);
+
+          await sharp(file.buffer)
+            .rotate()
+            .resize({ width: 1280, height: 1280, fit: "inside", withoutEnlargement: true })
+            .jpeg({ quality: 82 })
+            .toFile(outputPath);
+
+          savedFiles.push(outputPath);
+          imageUrls.push(`${publicDefectUploadDir}/${fileName}`);
+        }
+      } catch (err) {
+        savedFiles.forEach((filePath) => {
+          try {
+            fs.unlinkSync(filePath);
+          } catch (unlinkErr) {
+            console.warn("Cannot cleanup uploaded defect image:", unlinkErr.message);
+          }
+        });
+        throw err;
+      }
+
+      res.json({
+        success: true,
+        imageUrls
+      });
+    } catch (err) {
+      console.error("Upload defect images error:", err);
       res.status(500).json({ message: "Không thể tải ảnh lỗi lên server" });
     }
   }
@@ -717,10 +823,11 @@ router.post(
         for (const row of rows) {
           const existingResult = await requestWithTransaction(transaction)
             .input("MaLoi", sql.NVarChar(50), row.MaLoi)
-            .query("SELECT Id, ImageUrl, TrangThai FROM dbo.DM_DEFECT WHERE MaLoi = @MaLoi");
+            .query("SELECT Id, ImageUrl, ImageUrls, TrangThai FROM dbo.DM_DEFECT WHERE MaLoi = @MaLoi");
           const existing = existingResult.recordset?.[0] || null;
 
           let imageUrl = existing?.ImageUrl || null;
+          let imageUrls = normalizeImageUrls(existing?.ImageUrls, existing?.ImageUrl);
           const imageBuffer = imageResult.prepared.get(row.line);
           if (imageBuffer) {
             const fileName = `${slugifyFilePart(row.MaLoi)}-${Date.now()}-${Math.round(Math.random() * 1E9)}.jpg`;
@@ -728,6 +835,7 @@ router.post(
             fs.writeFileSync(outputPath, imageBuffer);
             savedFiles.push(outputPath);
             imageUrl = `${publicDefectImportUploadDir}/${fileName}`;
+            imageUrls = [imageUrl];
           }
 
           const statusFallback = existing
@@ -755,6 +863,7 @@ router.post(
               .input("PhamViApDung", sql.NVarChar(500), row.PhamViApDung || null)
               .input("ThiTruong", sql.NVarChar(255), row.ThiTruong || null)
               .input("ImageUrl", sql.NVarChar(500), imageUrl)
+              .input("ImageUrls", sql.NVarChar(sql.MAX), stringifyImageUrls(imageUrls))
               .input("ThuTu", sql.Int, thuTu)
               .execute("sp_DM_UpdateDefect");
             summary.updated += 1;
@@ -774,6 +883,7 @@ router.post(
               .input("PhamViApDung", sql.NVarChar(500), row.PhamViApDung || null)
               .input("ThiTruong", sql.NVarChar(255), row.ThiTruong || null)
               .input("ImageUrl", sql.NVarChar(500), imageUrl)
+              .input("ImageUrls", sql.NVarChar(sql.MAX), stringifyImageUrls(imageUrls))
               .input("ThuTu", sql.Int, thuTu)
               .execute("sp_DM_CreateDefect");
 
@@ -801,6 +911,7 @@ router.post(
                   .input("PhamViApDung", sql.NVarChar(500), row.PhamViApDung || null)
                   .input("ThiTruong", sql.NVarChar(255), row.ThiTruong || null)
                   .input("ImageUrl", sql.NVarChar(500), imageUrl)
+                  .input("ImageUrls", sql.NVarChar(sql.MAX), stringifyImageUrls(imageUrls))
                   .input("ThuTu", sql.Int, thuTu)
                   .execute("sp_DM_UpdateDefect");
               }
@@ -870,12 +981,15 @@ router.post(
       PhamViApDung,
       ThiTruong,
       ImageUrl,
+      ImageUrls,
       ThuTu
     } = req.body;
 
     try {
       const pool = await poolPromise;
       const normalizedDefectType = normalizeDefectType(LoaiLoiSXBT, DefectType);
+      const normalizedImageUrls = normalizeImageUrls(ImageUrls, ImageUrl).slice(0, 10);
+      const primaryImageUrl = normalizedImageUrls[0] || null;
 
       await pool.request()
         .input("TenLoi", sql.NVarChar(255), TenLoi)
@@ -891,7 +1005,8 @@ router.post(
         .input("ChungLoai", sql.NVarChar(255), ChungLoai || null)
         .input("PhamViApDung", sql.NVarChar(500), PhamViApDung || null)
         .input("ThiTruong", sql.NVarChar(255), ThiTruong || null)
-        .input("ImageUrl", sql.NVarChar(500), ImageUrl || null)
+        .input("ImageUrl", sql.NVarChar(500), primaryImageUrl)
+        .input("ImageUrls", sql.NVarChar(sql.MAX), stringifyImageUrls(normalizedImageUrls))
         .input("ThuTu", sql.Int, ThuTu ?? null)
         .execute("sp_DM_CreateDefect");
 
@@ -926,12 +1041,15 @@ router.put(
       PhamViApDung,
       ThiTruong,
       ImageUrl,
+      ImageUrls,
       ThuTu
     } = req.body;
 
     try {
       const pool = await poolPromise;
       const normalizedDefectType = normalizeDefectType(LoaiLoiSXBT, DefectType);
+      const normalizedImageUrls = normalizeImageUrls(ImageUrls, ImageUrl).slice(0, 10);
+      const primaryImageUrl = normalizedImageUrls[0] || null;
 
       await pool.request()
         .input("Id", sql.Int, id)
@@ -949,7 +1067,8 @@ router.put(
         .input("ChungLoai", sql.NVarChar(255), ChungLoai || null)
         .input("PhamViApDung", sql.NVarChar(500), PhamViApDung || null)
         .input("ThiTruong", sql.NVarChar(255), ThiTruong || null)
-        .input("ImageUrl", sql.NVarChar(500), ImageUrl || null)
+        .input("ImageUrl", sql.NVarChar(500), primaryImageUrl)
+        .input("ImageUrls", sql.NVarChar(sql.MAX), stringifyImageUrls(normalizedImageUrls))
         .input("ThuTu", sql.Int, ThuTu ?? null)
         .execute("sp_DM_UpdateDefect");
 

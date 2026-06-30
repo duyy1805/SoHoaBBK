@@ -449,6 +449,7 @@
             overflow: hidden;
             background: var(--surface-soft);
             cursor: pointer;
+            position: relative;
         }
 
         .image-thumb img {
@@ -456,6 +457,21 @@
             height: 100%;
             display: block;
             object-fit: cover;
+        }
+
+        .image-count-badge {
+            position: absolute;
+            right: 2px;
+            bottom: 2px;
+            min-width: 20px;
+            height: 18px;
+            padding: 0 4px;
+            border-radius: 4px;
+            background: rgba(15, 23, 42, 0.84);
+            color: white;
+            font-size: 11px;
+            font-weight: 800;
+            line-height: 18px;
         }
 
         .empty-state {
@@ -593,18 +609,78 @@
         }
 
         .image-preview {
-            width: 112px;
-            height: 84px;
+            min-height: 92px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+            gap: 8px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 8px;
+            background: white;
+            color: var(--muted);
+            grid-column: 1 / -1;
+        }
+
+        .image-preview-empty {
+            min-height: 74px;
             display: grid;
             place-items: center;
+            border: 1px dashed var(--border);
+            border-radius: 6px;
+            grid-column: 1 / -1;
+        }
+
+        .image-preview-item {
+            position: relative;
+            aspect-ratio: 1 / 1;
             border: 1px solid var(--border);
             border-radius: 6px;
             overflow: hidden;
             background: white;
-            color: var(--muted);
         }
 
-        .image-preview img,
+        .image-preview-item.is-new {
+            border-style: dashed;
+            border-color: var(--primary);
+        }
+
+        .image-preview-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .image-preview-label {
+            position: absolute;
+            left: 4px;
+            bottom: 4px;
+            padding: 2px 5px;
+            border-radius: 4px;
+            background: var(--primary);
+            color: white;
+            font-size: 10px;
+            font-weight: 800;
+        }
+
+        .image-preview-label.is-new {
+            background: var(--success);
+        }
+
+        .image-preview-remove {
+            position: absolute;
+            top: 3px;
+            right: 3px;
+            width: 22px;
+            height: 22px;
+            border: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.92);
+            color: var(--danger);
+            font-weight: 800;
+            cursor: pointer;
+        }
+
         .preview-large img {
             width: 100%;
             height: 100%;
@@ -621,6 +697,38 @@
             border: 1px solid var(--border);
             border-radius: 8px;
             overflow: hidden;
+        }
+
+        .preview-gallery {
+            display: grid;
+            grid-template-columns: 44px minmax(0, 1fr) 44px;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .preview-nav {
+            width: 44px;
+            height: 44px;
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            background: white;
+            color: var(--primary);
+            font-size: 32px;
+            line-height: 1;
+            cursor: pointer;
+            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+        }
+
+        .preview-nav:disabled {
+            opacity: 0.35;
+            cursor: default;
+        }
+
+        .preview-counter {
+            margin-top: 10px;
+            text-align: center;
+            color: var(--muted);
+            font-weight: 700;
         }
 
         .import-file {
@@ -888,8 +996,8 @@
                         </div>
                         <div class="actions">
                             <label class="btn btn-ghost" for="ImageFile">Chọn ảnh</label>
-                            <input id="ImageFile" name="ImageFile" type="file" accept="image/*" class="hidden">
-                            <button id="removeImageButton" class="btn btn-ghost" type="button">Xóa ảnh</button>
+                            <input id="ImageFile" name="ImageFile" type="file" accept="image/*" multiple class="hidden">
+                            <button id="removeImageButton" class="btn btn-ghost" type="button">Xóa tất cả</button>
                         </div>
                     </div>
                 </div>
@@ -936,7 +1044,12 @@
                 <button class="btn btn-icon" type="button" data-close-preview aria-label="Đóng">×</button>
             </div>
             <div class="modal-body">
-                <div id="previewImageBox" class="preview-large"></div>
+                <div class="preview-gallery">
+                    <button id="previewPrevButton" class="preview-nav" type="button" aria-label="Ảnh trước">‹</button>
+                    <div id="previewImageBox" class="preview-large"></div>
+                    <button id="previewNextButton" class="preview-nav" type="button" aria-label="Ảnh sau">›</button>
+                </div>
+                <div id="previewCounter" class="preview-counter"></div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-ghost" type="button" data-close-preview>Đóng</button>
@@ -949,6 +1062,7 @@
     <script>
         const API_BASE = "https://z76api.z76.vn/api";
         const ASSET_BASE = API_BASE.replace(/\/api\/?$/, "");
+        const MAX_DEFECT_IMAGES = 10;
 
         const emptyForm = {
             Id: null,
@@ -965,6 +1079,7 @@
             PhamViApDung: "",
             ThiTruong: "",
             ImageUrl: "",
+            ImageUrls: [],
             ThuTu: "",
             TrangThai: true
         };
@@ -986,8 +1101,10 @@
                 TrangThai: ""
             },
             form: { ...emptyForm },
-            imageFile: null,
-            imagePreviewUrl: "",
+            imageFiles: [],
+            imagePreviewUrls: [],
+            previewUrls: [],
+            previewIndex: 0,
             loading: false,
             importFile: null,
             importing: false,
@@ -1033,7 +1150,10 @@
             startImportButton: document.getElementById("startImportButton"),
             downloadTemplateInModalButton: document.getElementById("downloadTemplateInModalButton"),
             previewModal: document.getElementById("previewModal"),
-            previewImageBox: document.getElementById("previewImageBox")
+            previewImageBox: document.getElementById("previewImageBox"),
+            previewPrevButton: document.getElementById("previewPrevButton"),
+            previewNextButton: document.getElementById("previewNextButton"),
+            previewCounter: document.getElementById("previewCounter")
         };
 
         function getToken() {
@@ -1116,6 +1236,35 @@
             return `${ASSET_BASE}${url.startsWith("/") ? url : `/${url}`}`;
         }
 
+        function parseImageUrls(value) {
+            if (!value) return [];
+            if (Array.isArray(value)) return value.filter(Boolean);
+            if (typeof value !== "string") return [];
+
+            try {
+                const parsed = JSON.parse(value);
+                return Array.isArray(parsed) ? parsed.filter(Boolean) : [parsed].filter(Boolean);
+            } catch {
+                return [value].filter(Boolean);
+            }
+        }
+
+        function getDefectImageUrls(row) {
+            const urls = [
+                ...parseImageUrls(row?.ImageUrls),
+                ...parseImageUrls(row?.ImageUrl)
+            ].filter(Boolean);
+            return [...new Set(urls)];
+        }
+
+        function parsePreviewList(value) {
+            try {
+                return parseImageUrls(JSON.parse(value || "[]"));
+            } catch {
+                return [];
+            }
+        }
+
         function escapeHtml(value) {
             return String(value ?? "")
                 .replaceAll("&", "&amp;")
@@ -1123,6 +1272,10 @@
                 .replaceAll(">", "&gt;")
                 .replaceAll('"', "&quot;")
                 .replaceAll("'", "&#039;");
+        }
+
+        function escapeAttr(value) {
+            return escapeHtml(value);
         }
 
         function splitPhamViApDung(value) {
@@ -1467,7 +1620,9 @@
             }
 
             els.defectTableBody.innerHTML = state.filtered.map((row, index) => {
-                const imageUrl = getAssetUrl(row.ImageUrl);
+                const imageUrls = getDefectImageUrls(row);
+                const primaryImageUrl = imageUrls[0] || "";
+                const imageUrl = getAssetUrl(primaryImageUrl);
                 const type = row.DefectType || "MAJOR";
                 return `
                     <tr>
@@ -1489,8 +1644,15 @@
                         <td><span class="${row.ThiTruong ? "" : "muted"}">${escapeHtml(row.ThiTruong || "--")}</span></td>
                         <td class="center">
                             ${imageUrl ? `
-                                <button class="image-thumb" type="button" data-preview="${escapeHtml(imageUrl)}" title="Xem ảnh lỗi">
+                                <button
+                                    class="image-thumb"
+                                    type="button"
+                                    data-preview-list="${escapeAttr(JSON.stringify(imageUrls))}"
+                                    data-preview-index="0"
+                                    title="Xem ảnh lỗi"
+                                >
                                     <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(row.TenLoi || "Ảnh lỗi")}">
+                                    ${imageUrls.length > 1 ? `<span class="image-count-badge">+${imageUrls.length - 1}</span>` : ""}
                                 </button>
                             ` : `<span class="muted">Không có</span>`}
                         </td>
@@ -1507,9 +1669,12 @@
         }
 
         function setFormValues(row) {
+            const imageUrls = getDefectImageUrls(row);
             state.form = {
                 ...emptyForm,
                 ...row,
+                ImageUrl: imageUrls[0] || "",
+                ImageUrls: imageUrls,
                 TrangThai: row.TrangThai !== false && row.TrangThai !== 0,
                 ThuTu: row.ThuTu ?? "",
                 TenSanPham: row.TenSanPham || "",
@@ -1566,36 +1731,78 @@
         }
 
         function clearImageSelection() {
-            if (state.imagePreviewUrl) {
-                URL.revokeObjectURL(state.imagePreviewUrl);
-            }
-            state.imageFile = null;
-            state.imagePreviewUrl = "";
+            state.imagePreviewUrls.forEach((url) => URL.revokeObjectURL(url));
+            state.imageFiles = [];
+            state.imagePreviewUrls = [];
             els.imageFile.value = "";
         }
 
         function updateImagePreview() {
-            const previewUrl = state.imagePreviewUrl || getAssetUrl(state.form.ImageUrl);
-            if (previewUrl) {
-                els.imagePreviewBox.innerHTML = `<img src="${escapeHtml(previewUrl)}" alt="Ảnh lỗi">`;
+            const savedImageUrls = getDefectImageUrls(state.form);
+            const totalImages = savedImageUrls.length + state.imagePreviewUrls.length;
+
+            if (totalImages) {
+                els.imagePreviewBox.innerHTML = `
+                    ${savedImageUrls.map((url, index) => `
+                        <div class="image-preview-item">
+                            <img src="${escapeHtml(getAssetUrl(url))}" alt="Ảnh lỗi ${index + 1}">
+                            ${index === 0 ? `<span class="image-preview-label">Đại diện</span>` : ""}
+                            <button class="image-preview-remove" type="button" data-remove-saved-image="${escapeHtml(url)}" aria-label="Xóa ảnh">×</button>
+                        </div>
+                    `).join("")}
+                    ${state.imagePreviewUrls.map((url, index) => `
+                        <div class="image-preview-item is-new">
+                            <img src="${escapeHtml(url)}" alt="Ảnh mới ${index + 1}">
+                            <span class="image-preview-label is-new">Mới</span>
+                            <button class="image-preview-remove" type="button" data-remove-new-image="${index}" aria-label="Xóa ảnh mới">×</button>
+                        </div>
+                    `).join("")}
+                `;
             } else {
-                els.imagePreviewBox.textContent = "Ảnh lỗi";
+                els.imagePreviewBox.innerHTML = `<div class="image-preview-empty">Ảnh lỗi</div>`;
             }
 
-            if (state.imageFile) {
-                els.imageHelp.textContent = `Ảnh mới: ${state.imageFile.name}`;
-            } else if (state.form.ImageUrl) {
-                els.imageHelp.textContent = `Ảnh hiện tại: ${state.form.ImageUrl}`;
+            if (totalImages) {
+                els.imageHelp.textContent = `Đang chọn ${totalImages}/${MAX_DEFECT_IMAGES} ảnh. Ảnh đầu tiên là ảnh đại diện.`;
             } else {
-                els.imageHelp.textContent = "Chọn ảnh từ máy. Hệ thống sẽ nén ảnh và lưu đường dẫn vào dữ liệu lỗi.";
+                els.imageHelp.textContent = `Chọn tối đa ${MAX_DEFECT_IMAGES} ảnh. Hệ thống sẽ nén ảnh và lưu đường dẫn vào dữ liệu lỗi.`;
             }
+        }
+
+        function removeSavedImage(url) {
+            const imageUrls = getDefectImageUrls(state.form).filter((item) => item !== url);
+            state.form.ImageUrls = imageUrls;
+            state.form.ImageUrl = imageUrls[0] || "";
+            updateImagePreview();
+        }
+
+        function removeNewImage(index) {
+            const previewUrl = state.imagePreviewUrls[index];
+            if (previewUrl) URL.revokeObjectURL(previewUrl);
+            state.imageFiles = state.imageFiles.filter((_, itemIndex) => itemIndex !== index);
+            state.imagePreviewUrls = state.imagePreviewUrls.filter((_, itemIndex) => itemIndex !== index);
+            updateImagePreview();
+        }
+
+        function clearAllImages() {
+            clearImageSelection();
+            state.form.ImageUrl = "";
+            state.form.ImageUrls = [];
+            updateImagePreview();
         }
 
         function collectPayload() {
             const formData = new FormData(els.defectForm);
+            const imageUrls = getDefectImageUrls(state.form);
+            const maLoi = formData.has("MaLoi")
+                ? String(formData.get("MaLoi") || "").trim()
+                : String(state.form.MaLoi || "").trim();
+            const thuTu = formData.has("ThuTu")
+                ? formData.get("ThuTu")
+                : state.form.ThuTu;
             return {
                 ...state.form,
-                MaLoi: state.form.MaLoi || null,
+                MaLoi: maLoi || null,
                 TenLoi: String(formData.get("TenLoi") || "").trim(),
                 DefectType: normalizeDefectType(formData.get("LoaiLoiSXBT"), formData.get("DefectType")),
                 MoTa: formData.get("MoTa") || String(formData.get("TenLoi") || "").trim() || null,
@@ -1607,26 +1814,31 @@
                 ChungLoai: formData.get("ChungLoai") || null,
                 PhamViApDung: joinPhamViApDung(formData.get("PhamViApDung")) || null,
                 ThiTruong: formData.get("ThiTruong") || null,
-                ImageUrl: state.form.ImageUrl || null,
-                ThuTu: state.form.ThuTu || null,
+                ImageUrl: imageUrls[0] || null,
+                ImageUrls: imageUrls,
+                ThuTu: thuTu || null,
                 TrangThai: formData.get("TrangThai") === "1"
             };
         }
 
-        async function uploadImageIfNeeded(payload) {
-            if (!state.imageFile) return payload.ImageUrl || null;
+        async function uploadImagesIfNeeded(payload) {
+            const currentImageUrls = getDefectImageUrls(payload);
+            if (!state.imageFiles.length) return currentImageUrls;
 
             const body = new FormData();
-            body.append("image", state.imageFile);
+            state.imageFiles.forEach((file) => body.append("images", file));
             if (payload.MaLoi) body.append("maLoi", payload.MaLoi);
             if (payload.TenLoi) body.append("tenLoi", payload.TenLoi);
 
-            const result = await apiFetch("/lookup/defect-image", {
+            const result = await apiFetch("/lookup/defect-images", {
                 method: "POST",
                 body
             });
 
-            return result?.imageUrl || payload.ImageUrl || null;
+            return [
+                ...currentImageUrls,
+                ...(result?.imageUrls || [])
+            ].slice(0, MAX_DEFECT_IMAGES);
         }
 
         async function saveDefect(event) {
@@ -1646,7 +1858,9 @@
 
             els.saveButton.disabled = true;
             try {
-                payload.ImageUrl = await uploadImageIfNeeded(payload);
+                const imageUrls = await uploadImagesIfNeeded(payload);
+                payload.ImageUrls = imageUrls;
+                payload.ImageUrl = imageUrls[0] || null;
 
                 if (state.form.Id) {
                     await apiFetch(`/lookup/defect/${state.form.Id}`, {
@@ -1688,14 +1902,38 @@
             }
         }
 
-        function openPreview(url) {
-            els.previewImageBox.innerHTML = `<img src="${escapeHtml(url)}" alt="Ảnh lỗi">`;
+        function renderPreviewImage() {
+            const url = state.previewUrls[state.previewIndex] || "";
+            els.previewImageBox.innerHTML = url
+                ? `<img src="${escapeHtml(getAssetUrl(url))}" alt="Ảnh lỗi ${state.previewIndex + 1}">`
+                : "";
+            const hasMany = state.previewUrls.length > 1;
+            els.previewPrevButton.disabled = !hasMany;
+            els.previewNextButton.disabled = !hasMany;
+            els.previewCounter.textContent = state.previewUrls.length
+                ? `${state.previewIndex + 1}/${state.previewUrls.length}`
+                : "";
+        }
+
+        function openPreview(urls, index = 0) {
+            state.previewUrls = parseImageUrls(urls);
+            state.previewIndex = Math.min(Math.max(Number(index) || 0, 0), Math.max(state.previewUrls.length - 1, 0));
+            renderPreviewImage();
             els.previewModal.classList.remove("hidden");
         }
 
         function closePreview() {
             els.previewModal.classList.add("hidden");
             els.previewImageBox.innerHTML = "";
+            els.previewCounter.textContent = "";
+            state.previewUrls = [];
+            state.previewIndex = 0;
+        }
+
+        function movePreview(delta) {
+            if (state.previewUrls.length <= 1) return;
+            state.previewIndex = (state.previewIndex + delta + state.previewUrls.length) % state.previewUrls.length;
+            renderPreviewImage();
         }
 
         async function downloadDefectTemplate() {
@@ -1910,35 +2148,59 @@
         document.querySelectorAll("[data-close-preview]").forEach((button) => {
             button.addEventListener("click", closePreview);
         });
+        els.previewPrevButton.addEventListener("click", () => movePreview(-1));
+        els.previewNextButton.addEventListener("click", () => movePreview(1));
 
         document.querySelectorAll("[data-close-import]").forEach((button) => {
             button.addEventListener("click", closeImportModal);
         });
 
         els.imageFile.addEventListener("change", (event) => {
-            const file = event.target.files?.[0] || null;
-            if (state.imagePreviewUrl) {
-                URL.revokeObjectURL(state.imagePreviewUrl);
+            const selectedFiles = Array.from(event.target.files || []);
+            if (!selectedFiles.length) return;
+
+            const currentCount = getDefectImageUrls(state.form).length + state.imageFiles.length;
+            const availableSlots = MAX_DEFECT_IMAGES - currentCount;
+            if (availableSlots <= 0) {
+                showAlert(`Mỗi mã lỗi chỉ được tối đa ${MAX_DEFECT_IMAGES} ảnh.`);
+                event.target.value = "";
+                return;
             }
-            state.imageFile = file;
-            state.imagePreviewUrl = file ? URL.createObjectURL(file) : "";
+
+            const filesToAdd = selectedFiles.slice(0, availableSlots);
+            state.imageFiles.push(...filesToAdd);
+            state.imagePreviewUrls.push(...filesToAdd.map((file) => URL.createObjectURL(file)));
+            if (filesToAdd.length < selectedFiles.length) {
+                showAlert(`Chỉ thêm được tối đa ${MAX_DEFECT_IMAGES} ảnh cho một mã lỗi.`);
+            }
+
+            event.target.value = "";
             updateImagePreview();
         });
 
-        els.removeImageButton.addEventListener("click", () => {
-            clearImageSelection();
-            state.form.ImageUrl = "";
-            updateImagePreview();
+        els.imagePreviewBox.addEventListener("click", (event) => {
+            const removeSavedButton = event.target.closest("[data-remove-saved-image]");
+            const removeNewButton = event.target.closest("[data-remove-new-image]");
+
+            if (removeSavedButton) removeSavedImage(removeSavedButton.dataset.removeSavedImage);
+            if (removeNewButton) removeNewImage(Number(removeNewButton.dataset.removeNewImage));
         });
+
+        els.removeImageButton.addEventListener("click", clearAllImages);
 
         els.defectTableBody.addEventListener("click", (event) => {
             const editButton = event.target.closest("[data-edit]");
             const deleteButton = event.target.closest("[data-delete]");
-            const previewButton = event.target.closest("[data-preview]");
+            const previewButton = event.target.closest("[data-preview-list]");
 
             if (editButton) openEditModal(editButton.dataset.edit);
             if (deleteButton) deleteDefect(deleteButton.dataset.delete);
-            if (previewButton) openPreview(previewButton.dataset.preview);
+            if (previewButton) {
+                openPreview(
+                    parsePreviewList(previewButton.dataset.previewList),
+                    Number(previewButton.dataset.previewIndex || 0)
+                );
+            }
         });
 
         [els.defectModal, els.previewModal, els.importModal].forEach((modal) => {
@@ -1956,6 +2218,12 @@
             if (!els.previewModal.classList.contains("hidden")) closePreview();
             if (!els.importModal.classList.contains("hidden")) closeImportModal();
             if (!els.defectModal.classList.contains("hidden")) closeDefectModal();
+        });
+
+        document.addEventListener("keydown", (event) => {
+            if (els.previewModal.classList.contains("hidden")) return;
+            if (event.key === "ArrowLeft") movePreview(-1);
+            if (event.key === "ArrowRight") movePreview(1);
         });
 
         (async function init() {

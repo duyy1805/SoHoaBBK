@@ -483,7 +483,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 <React.Fragment key={section.Id}>
                                     {/* Tên Section */}
                                     <tr className="avoid-break" style={{ backgroundColor: '#f0f0f0' }}>
-                                        <td colSpan={6} style={{ ...styles.td, padding: '8px' }}>
+                                        <td colSpan={10} style={{ ...styles.td, padding: '8px' }}>
                                             <Box style={styles.flexBetween}>
                                                 <div style={styles.boldText}>
                                                     {toRoman(sIndex + 1)}. {section.TenNhom.toUpperCase()} {section.InspectionLevel ? <span style={{ fontWeight: 'normal', fontSize: '10pt', marginLeft: '5px' }}> - AQL: {section.InspectionLevel}</span> : ''}
@@ -529,13 +529,13 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
 
                                     {/* Footer của Section (Tổng lỗi & AQL) */}
                                     <tr className="avoid-break">
-                                        <td colSpan={6} style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>Tổng lỗi thực tế:</td>
+                                        <td colSpan={7} style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>Tổng lỗi thực tế:</td>
                                         <td style={{ ...styles.tdCenter, fontWeight: 'bold' }}>{section.TotalMinor}</td>
                                         <td style={{ ...styles.tdCenter, fontWeight: 'bold' }}>{section.TotalMajor}</td>
                                         <td style={{ ...styles.tdCenter, fontWeight: 'bold' }}>{section.TotalCritical}</td>
                                     </tr>
                                     <tr className="avoid-break">
-                                        <td colSpan={6} style={{ ...styles.td, textAlign: 'right', fontStyle: 'italic' }}>Lỗi tối đa có thể chấp nhận (Ac):</td>
+                                        <td colSpan={7} style={{ ...styles.td, textAlign: 'right', fontStyle: 'italic' }}>Lỗi tối đa có thể chấp nhận (Ac):</td>
                                         <td style={styles.tdCenter}>{section.Ac_Minor}</td>
                                         <td style={styles.tdCenter}>{section.Ac_Major}</td>
                                         <td style={styles.tdCenter}>{section.Ac_Critical}</td>

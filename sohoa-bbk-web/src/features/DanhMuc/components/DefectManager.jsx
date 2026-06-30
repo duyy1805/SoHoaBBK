@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     Alert,
     Box,
@@ -33,6 +33,8 @@ import BugReportIcon from "@mui/icons-material/BugReport";
 import ImageIcon from "@mui/icons-material/Image";
 import DownloadIcon from "@mui/icons-material/Download";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
+import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 
 import {
     getDefectList,
@@ -40,10 +42,12 @@ import {
     updateDefect,
     deleteDefect,
     getAssetUrl,
-    uploadDefectImage,
+    uploadDefectImages,
     importDefectExcel,
     downloadDefectTemplate
 } from "../../../api/lookup.api";
+
+const MAX_DEFECT_IMAGES = 10;
 
 const emptyForm = {
     TenLoi: "",
@@ -59,6 +63,7 @@ const emptyForm = {
     PhamViApDung: "",
     ThiTruong: "",
     ImageUrl: "",
+    ImageUrls: [],
     ThuTu: "",
     TrangThai: true
 };
@@ -78,6 +83,27 @@ const splitPhamViApDung = (value) => {
 };
 
 const joinPhamViApDung = (value) => splitPhamViApDung(value).join(", ");
+
+const parseImageUrls = (value) => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value.filter(Boolean);
+    if (typeof value !== "string") return [];
+
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed.filter(Boolean) : [parsed].filter(Boolean);
+    } catch {
+        return [value].filter(Boolean);
+    }
+};
+
+const getDefectImageUrls = (row) => {
+    const urls = [
+        ...parseImageUrls(row?.ImageUrls),
+        ...parseImageUrls(row?.ImageUrl)
+    ];
+    return Array.from(new Set(urls));
+};
 
 const cellSx = {
     py: 1,
@@ -172,9 +198,11 @@ export default function DefectManager() {
     const [loading, setLoading] = useState(false);
     const [keyword, setKeyword] = useState("");
     const [filters, setFilters] = useState(emptyFilters);
-    const [previewImage, setPreviewImage] = useState("");
-    const [imageFile, setImageFile] = useState(null);
-    const [imagePreview, setImagePreview] = useState("");
+    const [previewImages, setPreviewImages] = useState([]);
+    const [previewIndex, setPreviewIndex] = useState(0);
+    const [imageFiles, setImageFiles] = useState([]);
+    const [imagePreviews, setImagePreviews] = useState([]);
+    const imagePreviewsRef = useRef([]);
     const [importOpen, setImportOpen] = useState(false);
     const [importFile, setImportFile] = useState(null);
     const [importing, setImporting] = useState(false);
@@ -198,10 +226,12 @@ export default function DefectManager() {
     }, [loadData]);
 
     useEffect(() => {
-        return () => {
-            if (imagePreview) URL.revokeObjectURL(imagePreview);
-        };
-    }, [imagePreview]);
+        imagePreviewsRef.current = imagePreviews;
+    }, [imagePreviews]);
+
+    useEffect(() => () => {
+        imagePreviewsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    }, []);
 
     const filterOptions = useMemo(() => ({
         TenSanPham: getUniqueOptions(data, "TenSanPham"),
@@ -256,15 +286,19 @@ export default function DefectManager() {
 
     const handleOpenCreate = useCallback(() => {
         setForm(emptyForm);
-        setImageFile(null);
-        setImagePreview("");
+        imagePreviewsRef.current.forEach((url) => URL.revokeObjectURL(url));
+        setImageFiles([]);
+        setImagePreviews([]);
         setOpen(true);
     }, []);
 
     const handleOpenEdit = useCallback((row) => {
+        const imageUrls = getDefectImageUrls(row);
         setForm({
             ...emptyForm,
             ...row,
+            ImageUrl: imageUrls[0] || "",
+            ImageUrls: imageUrls,
             PhamViApDung: row.PhamViApDung || "",
             PhuongAnXuLy: row.PhuongAnXuLy || "",
             TenSanPham: row.TenSanPham || "",
@@ -273,43 +307,124 @@ export default function DefectManager() {
             TrangThai: row.TrangThai !== false && row.TrangThai !== 0,
             ThuTu: row.ThuTu ?? ""
         });
-        setImageFile(null);
-        setImagePreview("");
+        imagePreviewsRef.current.forEach((url) => URL.revokeObjectURL(url));
+        setImageFiles([]);
+        setImagePreviews([]);
         setOpen(true);
     }, []);
 
-    const buildPayload = () => ({
-        ...form,
-        TenLoi: form.TenLoi?.trim(),
-        MaLoi: form.MaLoi?.trim() || null,
-        DefectType: normalizeDefectType(form.LoaiLoiSXBT, form.DefectType),
-        MoTa: form.MoTa || form.TenLoi || null,
-        GhiChu: form.GhiChu || null,
-        PhuongAnXuLy: form.PhuongAnXuLy || null,
-        PhanHe: form.PhanHe || null,
-        MaNhomLoi: form.MaNhomLoi || null,
-        LoaiLoiSXBT: form.LoaiLoiSXBT || null,
-        TenSanPham: form.TenSanPham || null,
-        ChungLoai: form.ChungLoai || null,
-        PhamViApDung: joinPhamViApDung(form.PhamViApDung) || null,
-        ThiTruong: form.ThiTruong || null,
-        ImageUrl: form.ImageUrl || null,
-        ThuTu: form.ThuTu === "" || form.ThuTu == null ? null : Number(form.ThuTu),
-        TrangThai: form.TrangThai !== false && form.TrangThai !== 0
-    });
+    const buildPayload = (imageUrls = getDefectImageUrls(form)) => {
+        const normalizedImageUrls = Array.from(new Set(imageUrls.filter(Boolean))).slice(0, MAX_DEFECT_IMAGES);
+        return {
+            ...form,
+            TenLoi: form.TenLoi?.trim(),
+            MaLoi: form.MaLoi?.trim() || null,
+            DefectType: normalizeDefectType(form.LoaiLoiSXBT, form.DefectType),
+            MoTa: form.MoTa || form.TenLoi || null,
+            GhiChu: form.GhiChu || null,
+            PhuongAnXuLy: form.PhuongAnXuLy || null,
+            PhanHe: form.PhanHe || null,
+            MaNhomLoi: form.MaNhomLoi || null,
+            LoaiLoiSXBT: form.LoaiLoiSXBT || null,
+            TenSanPham: form.TenSanPham || null,
+            ChungLoai: form.ChungLoai || null,
+            PhamViApDung: joinPhamViApDung(form.PhamViApDung) || null,
+            ThiTruong: form.ThiTruong || null,
+            ImageUrl: normalizedImageUrls[0] || null,
+            ImageUrls: normalizedImageUrls,
+            ThuTu: form.ThuTu === "" || form.ThuTu == null ? null : Number(form.ThuTu),
+            TrangThai: form.TrangThai !== false && form.TrangThai !== 0
+        };
+    };
 
     const handleImageChange = (event) => {
-        const file = event.target.files?.[0] || null;
-        setImageFile(file);
-        setImagePreview(file ? URL.createObjectURL(file) : "");
+        const selectedFiles = Array.from(event.target.files || []);
+        if (!selectedFiles.length) return;
+
+        const currentCount = getDefectImageUrls(form).length + imageFiles.length;
+        const availableSlots = MAX_DEFECT_IMAGES - currentCount;
+        if (availableSlots <= 0) {
+            setError(`Mỗi mã lỗi chỉ được tối đa ${MAX_DEFECT_IMAGES} ảnh`);
+            event.target.value = "";
+            return;
+        }
+
+        const filesToAdd = selectedFiles.slice(0, availableSlots);
+        setImageFiles((prev) => [...prev, ...filesToAdd]);
+        setImagePreviews((prev) => [
+            ...prev,
+            ...filesToAdd.map((file) => URL.createObjectURL(file))
+        ]);
+        if (selectedFiles.length > filesToAdd.length) {
+            setError(`Chỉ thêm được tối đa ${MAX_DEFECT_IMAGES} ảnh cho một mã lỗi`);
+        }
         event.target.value = "";
     };
 
-    const handleRemoveImage = () => {
-        setImageFile(null);
-        setImagePreview("");
-        setForm((prev) => ({ ...prev, ImageUrl: "" }));
+    const handleRemoveSavedImage = (url) => {
+        setForm((prev) => {
+            const imageUrls = getDefectImageUrls(prev).filter((item) => item !== url);
+            return {
+                ...prev,
+                ImageUrl: imageUrls[0] || "",
+                ImageUrls: imageUrls
+            };
+        });
     };
+
+    const handleRemoveNewImage = (index) => {
+        setImagePreviews((prev) => {
+            const previewUrl = prev[index];
+            if (previewUrl) URL.revokeObjectURL(previewUrl);
+            return prev.filter((_, itemIndex) => itemIndex !== index);
+        });
+        setImageFiles((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+    };
+
+    const handleRemoveAllImages = () => {
+        imagePreviewsRef.current.forEach((url) => URL.revokeObjectURL(url));
+        setImageFiles([]);
+        setImagePreviews([]);
+        setForm((prev) => ({ ...prev, ImageUrl: "", ImageUrls: [] }));
+    };
+
+    const handleCloseDialog = () => {
+        imagePreviewsRef.current.forEach((url) => URL.revokeObjectURL(url));
+        setImageFiles([]);
+        setImagePreviews([]);
+        setOpen(false);
+    };
+
+    const handleOpenPreview = useCallback((imageUrls, index = 0) => {
+        const urls = imageUrls.map((url) => getAssetUrl(url)).filter(Boolean);
+        if (!urls.length) return;
+        setPreviewImages(urls);
+        setPreviewIndex(Math.min(Math.max(index, 0), urls.length - 1));
+    }, []);
+
+    const handleClosePreview = () => {
+        setPreviewImages([]);
+        setPreviewIndex(0);
+    };
+
+    const handleMovePreview = useCallback((delta) => {
+        setPreviewIndex((prev) => {
+            if (previewImages.length <= 1) return prev;
+            return (prev + delta + previewImages.length) % previewImages.length;
+        });
+    }, [previewImages.length]);
+
+    useEffect(() => {
+        if (!previewImages.length) return undefined;
+
+        const handlePreviewKeyDown = (event) => {
+            if (event.key === "ArrowLeft") handleMovePreview(-1);
+            if (event.key === "ArrowRight") handleMovePreview(1);
+        };
+
+        window.addEventListener("keydown", handlePreviewKeyDown);
+        return () => window.removeEventListener("keydown", handlePreviewKeyDown);
+    }, [handleMovePreview, previewImages.length]);
 
     const handleLoaiLoiChange = useCallback((value) => {
         setForm((prev) => ({
@@ -320,24 +435,26 @@ export default function DefectManager() {
     }, []);
 
     const defectTypeOptions = getDefectTypeOptions(form.LoaiLoiSXBT);
+    const savedImageUrls = getDefectImageUrls(form);
+    const totalSelectedImages = savedImageUrls.length + imageFiles.length;
 
     const handleSave = async () => {
         if (!form.TenLoi || !form.DefectType) return;
 
         try {
-            let imageUrl = form.ImageUrl || null;
-            if (imageFile) {
-                const uploadRes = await uploadDefectImage(imageFile, {
+            let imageUrls = getDefectImageUrls(form);
+            if (imageFiles.length) {
+                const uploadRes = await uploadDefectImages(imageFiles, {
                     maLoi: form.MaLoi,
                     tenLoi: form.TenLoi
                 });
-                imageUrl = uploadRes?.data?.imageUrl || imageUrl;
+                imageUrls = [
+                    ...imageUrls,
+                    ...(uploadRes?.data?.imageUrls || [])
+                ];
             }
 
-            const payload = {
-                ...buildPayload(),
-                ImageUrl: imageUrl
-            };
+            const payload = buildPayload(imageUrls);
 
             if (form.Id) {
                 await updateDefect(form.Id, payload);
@@ -346,8 +463,9 @@ export default function DefectManager() {
             }
 
             setOpen(false);
-            setImageFile(null);
-            setImagePreview("");
+            imagePreviewsRef.current.forEach((url) => URL.revokeObjectURL(url));
+            setImageFiles([]);
+            setImagePreviews([]);
             await loadData();
         } catch (err) {
             setError(err.response?.data?.message || "Có lỗi xảy ra khi lưu");
@@ -421,7 +539,11 @@ export default function DefectManager() {
             );
         }
 
-        return filteredData.map((row, index) => (
+        return filteredData.map((row, index) => {
+            const rowImageUrls = getDefectImageUrls(row);
+            const primaryImageUrl = rowImageUrls[0] || "";
+
+            return (
             <TableRow key={row.Id} hover>
                 <TableCell sx={cellSx}>
                     <Typography variant="body2" color="text.secondary" fontWeight={700}>
@@ -536,12 +658,12 @@ export default function DefectManager() {
                 </TableCell>
 
                 <TableCell sx={cellSx} align="center">
-                    {row.ImageUrl ? (
+                    {primaryImageUrl ? (
                         <Tooltip title="Xem ảnh lỗi">
                             <Box
                                 component="button"
                                 type="button"
-                                onClick={() => setPreviewImage(getAssetUrl(row.ImageUrl))}
+                                onClick={() => handleOpenPreview(rowImageUrls, 0)}
                                 sx={{
                                     width: 58,
                                     height: 44,
@@ -551,16 +673,38 @@ export default function DefectManager() {
                                     borderRadius: 1,
                                     overflow: "hidden",
                                     cursor: "pointer",
-                                    bgcolor: "#f8fafc"
+                                    bgcolor: "#f8fafc",
+                                    position: "relative"
                                 }}
                             >
                                 <Box
                                     component="img"
-                                    src={getAssetUrl(row.ImageUrl)}
+                                    src={getAssetUrl(primaryImageUrl)}
                                     alt={row.TenLoi || "Ảnh lỗi"}
                                     loading="lazy"
                                     sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                                 />
+                                {rowImageUrls.length > 1 && (
+                                    <Box
+                                        component="span"
+                                        sx={{
+                                            position: "absolute",
+                                            right: 2,
+                                            bottom: 2,
+                                            minWidth: 20,
+                                            height: 18,
+                                            px: 0.5,
+                                            borderRadius: 0.75,
+                                            bgcolor: "rgba(15,23,42,0.82)",
+                                            color: "white",
+                                            fontSize: 11,
+                                            fontWeight: 800,
+                                            lineHeight: "18px"
+                                        }}
+                                    >
+                                        +{rowImageUrls.length - 1}
+                                    </Box>
+                                )}
                             </Box>
                         </Tooltip>
                     ) : (
@@ -594,8 +738,9 @@ export default function DefectManager() {
                     </Stack>
                 </TableCell>
             </TableRow>
-        ));
-    }, [filteredData, handleDelete, handleOpenEdit, loading]);
+            );
+        });
+    }, [filteredData, handleDelete, handleOpenEdit, handleOpenPreview, loading]);
 
     return (
         <Box sx={{ p: { xs: 2, md: 3 }, width: "100%", maxWidth: "100%", overflowX: "hidden" }}>
@@ -804,7 +949,7 @@ export default function DefectManager() {
                 </TableContainer>
             </Card>
 
-            <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>
+            <Dialog open={open} onClose={handleCloseDialog} maxWidth="md" fullWidth>
                 <DialogTitle sx={{ fontWeight: 700 }}>
                     {form.Id ? "Cập nhật thông tin lỗi" : "Thêm mã lỗi mới"}
                 </DialogTitle>
@@ -959,69 +1104,165 @@ export default function DefectManager() {
                         </Stack>
 
                         <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: "#f8fafc" }}>
-                            <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "stretch", sm: "center" }}>
-                                <Box
-                                    sx={{
-                                        width: 112,
-                                        height: 84,
-                                        borderRadius: 1.5,
-                                        border: "1px solid",
-                                        borderColor: "divider",
-                                        overflow: "hidden",
-                                        bgcolor: "white",
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        flexShrink: 0
-                                    }}
-                                >
-                                    {imagePreview || form.ImageUrl ? (
-                                        <Box
-                                            component="img"
-                                            src={imagePreview || getAssetUrl(form.ImageUrl)}
-                                            alt="Ảnh lỗi"
-                                            sx={{ width: "100%", height: "100%", objectFit: "cover" }}
-                                        />
-                                    ) : (
-                                        <ImageIcon sx={{ color: "text.disabled", fontSize: 36 }} />
-                                    )}
-                                </Box>
-
-                                <Box sx={{ flex: 1, minWidth: 0 }}>
-                                    <Typography fontWeight={700}>Ảnh lỗi</Typography>
-                                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                                        Chọn ảnh từ máy. Hệ thống sẽ đổi tên, nén ảnh và lưu đường dẫn vào dữ liệu lỗi.
-                                    </Typography>
-                                    {form.ImageUrl && !imageFile && (
+                            <Stack spacing={1.5}>
+                                <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "stretch", sm: "center" }}>
+                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                        <Typography fontWeight={700}>Ảnh lỗi</Typography>
+                                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                            Chọn tối đa {MAX_DEFECT_IMAGES} ảnh. Ảnh đầu tiên sẽ là ảnh đại diện của mã lỗi.
+                                        </Typography>
                                         <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
-                                            Ảnh hiện tại: {form.ImageUrl}
+                                            Đang chọn {totalSelectedImages}/{MAX_DEFECT_IMAGES} ảnh
                                         </Typography>
-                                    )}
-                                    {imageFile && (
-                                        <Typography variant="caption" color="primary.main" sx={{ display: "block", mt: 0.75 }}>
-                                            Ảnh mới: {imageFile.name}
-                                        </Typography>
-                                    )}
-                                </Box>
+                                    </Box>
 
-                                <Stack direction={{ xs: "row", sm: "column" }} spacing={1}>
-                                    <Button variant="outlined" component="label">
-                                        Chọn ảnh
-                                        <input hidden accept="image/*" type="file" onChange={handleImageChange} />
-                                    </Button>
-                                    {(form.ImageUrl || imageFile) && (
-                                        <Button color="error" onClick={handleRemoveImage}>
-                                            Xóa ảnh
+                                    <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+                                        <Button variant="outlined" component="label" disabled={totalSelectedImages >= MAX_DEFECT_IMAGES}>
+                                            Chọn ảnh
+                                            <input hidden multiple accept="image/*" type="file" onChange={handleImageChange} />
                                         </Button>
-                                    )}
+                                        {totalSelectedImages > 0 && (
+                                            <Button color="error" onClick={handleRemoveAllImages}>
+                                                Xóa tất cả
+                                            </Button>
+                                        )}
+                                    </Stack>
                                 </Stack>
+
+                                {totalSelectedImages > 0 ? (
+                                    <Box
+                                        sx={{
+                                            display: "grid",
+                                            gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))",
+                                            gap: 1,
+                                            maxWidth: "100%"
+                                        }}
+                                    >
+                                        {savedImageUrls.map((url, index) => (
+                                            <Box
+                                                key={url}
+                                                sx={{
+                                                    position: "relative",
+                                                    aspectRatio: "1 / 1",
+                                                    border: "1px solid",
+                                                    borderColor: "divider",
+                                                    borderRadius: 1,
+                                                    overflow: "hidden",
+                                                    bgcolor: "white"
+                                                }}
+                                            >
+                                                <Box
+                                                    component="img"
+                                                    src={getAssetUrl(url)}
+                                                    alt={`Ảnh lỗi ${index + 1}`}
+                                                    sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                                                />
+                                                {index === 0 && (
+                                                    <Chip
+                                                        label="Đại diện"
+                                                        size="small"
+                                                        color="primary"
+                                                        sx={{
+                                                            position: "absolute",
+                                                            left: 4,
+                                                            bottom: 4,
+                                                            height: 20,
+                                                            borderRadius: 0.75,
+                                                            fontSize: 10,
+                                                            fontWeight: 700
+                                                        }}
+                                                    />
+                                                )}
+                                                <IconButton
+                                                    size="small"
+                                                    color="error"
+                                                    onClick={() => handleRemoveSavedImage(url)}
+                                                    sx={{
+                                                        position: "absolute",
+                                                        right: 2,
+                                                        top: 2,
+                                                        bgcolor: "rgba(255,255,255,0.92)",
+                                                        "&:hover": { bgcolor: "white" }
+                                                    }}
+                                                >
+                                                    <DeleteIcon fontSize="inherit" />
+                                                </IconButton>
+                                            </Box>
+                                        ))}
+
+                                        {imagePreviews.map((previewUrl, index) => (
+                                            <Box
+                                                key={previewUrl}
+                                                sx={{
+                                                    position: "relative",
+                                                    aspectRatio: "1 / 1",
+                                                    border: "1px dashed",
+                                                    borderColor: "primary.main",
+                                                    borderRadius: 1,
+                                                    overflow: "hidden",
+                                                    bgcolor: "white"
+                                                }}
+                                            >
+                                                <Box
+                                                    component="img"
+                                                    src={previewUrl}
+                                                    alt={`Ảnh mới ${index + 1}`}
+                                                    sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                                                />
+                                                <Chip
+                                                    label="Mới"
+                                                    size="small"
+                                                    color="success"
+                                                    sx={{
+                                                        position: "absolute",
+                                                        left: 4,
+                                                        bottom: 4,
+                                                        height: 20,
+                                                        borderRadius: 0.75,
+                                                        fontSize: 10,
+                                                        fontWeight: 700
+                                                    }}
+                                                />
+                                                <IconButton
+                                                    size="small"
+                                                    color="error"
+                                                    onClick={() => handleRemoveNewImage(index)}
+                                                    sx={{
+                                                        position: "absolute",
+                                                        right: 2,
+                                                        top: 2,
+                                                        bgcolor: "rgba(255,255,255,0.92)",
+                                                        "&:hover": { bgcolor: "white" }
+                                                    }}
+                                                >
+                                                    <DeleteIcon fontSize="inherit" />
+                                                </IconButton>
+                                            </Box>
+                                        ))}
+                                    </Box>
+                                ) : (
+                                    <Box
+                                        sx={{
+                                            height: 92,
+                                            border: "1px dashed",
+                                            borderColor: "divider",
+                                            borderRadius: 1,
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            bgcolor: "white"
+                                        }}
+                                    >
+                                        <ImageIcon sx={{ color: "text.disabled", fontSize: 36 }} />
+                                    </Box>
+                                )}
                             </Stack>
                         </Paper>
                     </Stack>
                 </DialogContent>
 
                 <DialogActions sx={{ px: 3, py: 2, bgcolor: "#f8fafc" }}>
-                    <Button onClick={() => setOpen(false)} color="inherit">
+                    <Button onClick={handleCloseDialog} color="inherit">
                         Hủy bỏ
                     </Button>
 
@@ -1133,18 +1374,61 @@ export default function DefectManager() {
                 </DialogActions>
             </Dialog>
 
-            <Dialog open={Boolean(previewImage)} onClose={() => setPreviewImage("")} maxWidth="sm" fullWidth>
+            <Dialog open={previewImages.length > 0} onClose={handleClosePreview} maxWidth="sm" fullWidth>
                 <DialogTitle sx={{ fontWeight: 700 }}>Ảnh lỗi</DialogTitle>
                 <DialogContent dividers>
-                    <Box
-                        component="img"
-                        src={previewImage}
-                        alt="Ảnh lỗi"
-                        sx={{ display: "block", width: "100%", maxHeight: 520, objectFit: "contain" }}
-                    />
+                    <Stack direction="row" spacing={1.5} alignItems="center">
+                        <IconButton
+                            onClick={() => handleMovePreview(-1)}
+                            disabled={previewImages.length <= 1}
+                            aria-label="Ảnh trước"
+                            sx={{ border: "1px solid", borderColor: "divider", flexShrink: 0 }}
+                        >
+                            <ChevronLeftIcon />
+                        </IconButton>
+
+                        <Box
+                            sx={{
+                                flex: 1,
+                                minWidth: 0,
+                                minHeight: 320,
+                                display: "grid",
+                                placeItems: "center",
+                                bgcolor: "#f8fafc",
+                                border: "1px solid",
+                                borderColor: "divider",
+                                borderRadius: 1,
+                                overflow: "hidden"
+                            }}
+                        >
+                            {previewImages[previewIndex] && (
+                                <Box
+                                    component="img"
+                                    src={previewImages[previewIndex]}
+                                    alt={`Ảnh lỗi ${previewIndex + 1}`}
+                                    sx={{ display: "block", width: "100%", maxHeight: 520, objectFit: "contain" }}
+                                />
+                            )}
+                        </Box>
+
+                        <IconButton
+                            onClick={() => handleMovePreview(1)}
+                            disabled={previewImages.length <= 1}
+                            aria-label="Ảnh sau"
+                            sx={{ border: "1px solid", borderColor: "divider", flexShrink: 0 }}
+                        >
+                            <ChevronRightIcon />
+                        </IconButton>
+                    </Stack>
+
+                    {previewImages.length > 0 && (
+                        <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 1.5, fontWeight: 700 }}>
+                            {previewIndex + 1}/{previewImages.length}
+                        </Typography>
+                    )}
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setPreviewImage("")}>Đóng</Button>
+                    <Button onClick={handleClosePreview}>Đóng</Button>
                 </DialogActions>
             </Dialog>
         </Box>

@@ -41,6 +41,16 @@ export const uploadDefectImage = (file, meta = {}) => {
     });
 };
 
+export const uploadDefectImages = (files = [], meta = {}) => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append("images", file));
+    if (meta.maLoi) formData.append("maLoi", meta.maLoi);
+    if (meta.tenLoi) formData.append("tenLoi", meta.tenLoi);
+    return axiosClient.post("/lookup/defect-images", formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+    });
+};
+
 export const importDefectExcel = (file) => {
     const formData = new FormData();
     formData.append("file", file);
