@@ -71,6 +71,7 @@ const createUploadFile = (asset, entryIndex, defectIndex, imageIndex, uriOverrid
 const createEmptyEntry = (index = 0, userInfo = null) => ({
   localId: `entry-${Date.now()}-${index}`,
   congDoan: "",
+  tenCongNhanGayLoi: "",
   nguoiGhiNhanId: userInfo?.id || userInfo?.userId || null,
   tenNguoiGhiNhan: userInfo?.fullName || userInfo?.FullName || "",
   ghiChu: "",
@@ -125,6 +126,7 @@ export default function TrenChuyenSlotDetailScreen({ route, navigation }) {
           localId: entry.Id || `entry-${item.Id || slotIndex}-${entryIndex}`,
           id: entry.Id,
           congDoan: entry.CongDoan || "",
+          tenCongNhanGayLoi: entry.TenCongNhanGayLoi || "",
           nguoiGhiNhanId: entry.NguoiGhiNhanId || null,
           tenNguoiGhiNhan: entry.TenNguoiGhiNhan || "",
           ghiChu: entry.GhiChu || "",
@@ -138,6 +140,8 @@ export default function TrenChuyenSlotDetailScreen({ route, navigation }) {
             MoTa: defect.MoTa,
             DefectType: defect.DefectType,
             soLuong: defect.SoLuong != null ? String(defect.SoLuong) : "",
+            soLuongDatSauSua: defect.SoLuongDatSauSua != null ? String(defect.SoLuongDatSauSua) : "",
+            soLuongKhongDatSauSua: defect.SoLuongKhongDatSauSua != null ? String(defect.SoLuongKhongDatSauSua) : "",
             ghiChu: defect.GhiChu || "",
             savedImages: Array.isArray(defect.ImageUrls) ? defect.ImageUrls : [],
             localImages: []
@@ -251,6 +255,8 @@ export default function TrenChuyenSlotDetailScreen({ route, navigation }) {
             MoTa: defect.MoTa,
             DefectType: defect.DefectType,
             soLuong: "1",
+            soLuongDatSauSua: "",
+            soLuongKhongDatSauSua: "",
             ghiChu: "",
             savedImages: [],
             localImages: []
@@ -406,6 +412,7 @@ export default function TrenChuyenSlotDetailScreen({ route, navigation }) {
     sortOrder: item.sortOrder || slotIndex + 1,
     entries: (item.entries || []).map((entry, entryIndex) => ({
       congDoan: String(entry.congDoan || "").trim(),
+      tenCongNhanGayLoi: String(entry.tenCongNhanGayLoi || "").trim(),
       nguoiGhiNhanId: entry.nguoiGhiNhanId || user?.id || user?.userId || null,
       ghiChu: String(entry.ghiChu || "").trim(),
       sortOrder: entry.sortOrder || entryIndex + 1,
@@ -414,6 +421,8 @@ export default function TrenChuyenSlotDetailScreen({ route, navigation }) {
         .map((defect, defectIndex) => ({
           defectId: Number(defect.defectId),
           soLuong: Number(defect.soLuong || 0),
+          soLuongDatSauSua: String(defect.soLuongDatSauSua || "").trim() === "" ? null : Number(defect.soLuongDatSauSua || 0),
+          soLuongKhongDatSauSua: String(defect.soLuongKhongDatSauSua || "").trim() === "" ? null : Number(defect.soLuongKhongDatSauSua || 0),
           ghiChu: String(defect.ghiChu || "").trim(),
           imageUrls: Array.isArray(defect.savedImages) ? defect.savedImages : [],
           sortOrder: defectIndex + 1
@@ -432,6 +441,9 @@ export default function TrenChuyenSlotDetailScreen({ route, navigation }) {
       hasData = true;
       if (!String(entry.congDoan || "").trim()) {
         return `Khung giờ ${currentSlot.gioKiem} có công đoạn chưa nhập.`;
+      }
+      if (!String(entry.tenCongNhanGayLoi || "").trim()) {
+        return `Khung giờ ${currentSlot.gioKiem} có tên công nhân gây lỗi chưa nhập.`;
       }
     }
     if (!hasData) {
@@ -612,6 +624,15 @@ export default function TrenChuyenSlotDetailScreen({ route, navigation }) {
               editable={canEdit}
             />
 
+            <Text style={styles.fieldLabel}>Tên công nhân gây lỗi</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Nhập tên công nhân"
+              value={entry.tenCongNhanGayLoi}
+              onChangeText={(value) => updateEntry(entryIndex, { tenCongNhanGayLoi: value })}
+              editable={canEdit}
+            />
+
             <View style={styles.defectHeader}>
               <Text style={styles.fieldLabel}>Lỗi ghi nhận</Text>
               {canEdit ? (
@@ -658,6 +679,34 @@ export default function TrenChuyenSlotDetailScreen({ route, navigation }) {
                           <Ionicons name="close" size={18} color="#ef4444" />
                         </TouchableOpacity>
                       ) : null}
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.repairReportBox}>
+                  <Text style={styles.repairReportTitle}>Báo cáo sửa lỗi</Text>
+                  <View style={styles.repairReportRow}>
+                    <View style={styles.repairInputGroup}>
+                      <Text style={styles.repairInputLabel}>Đạt</Text>
+                      <TextInput
+                        style={styles.repairInput}
+                        placeholder="0"
+                        keyboardType="numeric"
+                        value={defect.soLuongDatSauSua}
+                        onChangeText={(value) => updateDefect(entryIndex, defectIndex, { soLuongDatSauSua: value })}
+                        editable={canEdit}
+                      />
+                    </View>
+                    <View style={styles.repairInputGroup}>
+                      <Text style={styles.repairInputLabel}>Không đạt</Text>
+                      <TextInput
+                        style={styles.repairInput}
+                        placeholder="0"
+                        keyboardType="numeric"
+                        value={defect.soLuongKhongDatSauSua}
+                        onChangeText={(value) => updateDefect(entryIndex, defectIndex, { soLuongKhongDatSauSua: value })}
+                        editable={canEdit}
+                      />
                     </View>
                   </View>
                 </View>
@@ -919,6 +968,31 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff"
   },
   defectInlineButtons: { flexDirection: "row", alignItems: "center", gap: 8 },
+  repairReportBox: {
+    marginTop: 12,
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0"
+  },
+  repairReportTitle: { fontSize: 13, fontWeight: "800", color: "#334155", marginBottom: 10 },
+  repairReportRow: { flexDirection: "row", gap: 10 },
+  repairInputGroup: { flex: 1 },
+  repairInputLabel: { fontSize: 12, fontWeight: "700", color: "#64748b", marginBottom: 6 },
+  repairInput: {
+    height: 42,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0f172a",
+    backgroundColor: "#fff",
+    textAlign: "center"
+  },
   imageButton: {
     width: 34,
     height: 34,

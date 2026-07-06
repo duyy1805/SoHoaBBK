@@ -90,6 +90,7 @@ const normalizeTrenChuyenSlots = (slots = []) => slots.map((slot, slotIndex) => 
     entries: Array.isArray(slot?.entries)
         ? slot.entries.map((entry, entryIndex) => ({
             congDoan: String(entry?.congDoan || '').trim(),
+            tenCongNhanGayLoi: String(entry?.tenCongNhanGayLoi || '').trim(),
             nguoiGhiNhanId: Number(entry?.nguoiGhiNhanId || 0) || null,
             ghiChu: entry?.ghiChu ? String(entry.ghiChu).trim() : '',
             sortOrder: Number(entry?.sortOrder || entryIndex + 1),
@@ -97,6 +98,12 @@ const normalizeTrenChuyenSlots = (slots = []) => slots.map((slot, slotIndex) => 
                 ? entry.defects.map((defect, defectIndex) => ({
                     defectId: Number(defect?.defectId || 0),
                     soLuong: Number(defect?.soLuong || 0),
+                    soLuongDatSauSua: defect?.soLuongDatSauSua === '' || defect?.soLuongDatSauSua == null
+                        ? null
+                        : Number(defect.soLuongDatSauSua),
+                    soLuongKhongDatSauSua: defect?.soLuongKhongDatSauSua === '' || defect?.soLuongKhongDatSauSua == null
+                        ? null
+                        : Number(defect.soLuongKhongDatSauSua),
                     ghiChu: defect?.ghiChu ? String(defect.ghiChu).trim() : '',
                     imageUrls: Array.isArray(defect?.imageUrls)
                         ? defect.imageUrls.filter((url) => typeof url === 'string' && url.trim() !== '')
@@ -570,6 +577,7 @@ router.get(
                             Id: record.EntryId,
                             SlotId: record.SlotId,
                             CongDoan: record.CongDoan,
+                            TenCongNhanGayLoi: record.TenCongNhanGayLoi || '',
                             NguoiGhiNhanId: record.NguoiGhiNhanId || null,
                             TenNguoiGhiNhan: record.TenNguoiGhiNhan || '',
                             GhiChu: record.EntryGhiChu || '',
@@ -597,6 +605,8 @@ router.get(
                             Id: record.DefectRowId,
                             DefectId: record.DefectId,
                             SoLuong: record.SoLuong,
+                            SoLuongDatSauSua: record.SoLuongDatSauSua,
+                            SoLuongKhongDatSauSua: record.SoLuongKhongDatSauSua,
                             GhiChu: record.DefectGhiChu || '',
                             SortOrder: record.DefectSortOrder || 0,
                             MaLoi: record.MaLoi,

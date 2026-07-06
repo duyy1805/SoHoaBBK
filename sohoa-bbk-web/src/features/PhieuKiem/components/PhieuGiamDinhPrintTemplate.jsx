@@ -88,12 +88,12 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
             boxSizing: 'border-box',
             boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
         },
-        text: { fontSize: '12pt', marginBottom: '4px' },
-        boldText: { fontSize: '11pt', fontWeight: 'bold' },
+        text: { fontSize: '9.5pt', marginBottom: '1px', lineHeight: 1.2 },
+        boldText: { fontSize: '9.5pt', fontWeight: 'bold' },
         table: { border: '1px solid #000', borderCollapse: 'collapse', width: '100%', marginBottom: '15px' },
-        th: { border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', textAlign: 'center', fontSize: '10pt', backgroundColor: '#f9f9f9' },
-        td: { border: '1px solid #000', padding: '2px 6px', fontSize: '10pt', verticalAlign: 'middle' },
-        tdCenter: { border: '1px solid #000', padding: '2px 4px', fontSize: '10pt', textAlign: 'center', verticalAlign: 'middle' },
+        th: { border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', textAlign: 'center', fontSize: '8.5pt', backgroundColor: '#f9f9f9' },
+        td: { border: '1px solid #000', padding: '2px 6px', fontSize: '8.5pt', verticalAlign: 'middle' },
+        tdCenter: { border: '1px solid #000', padding: '2px 4px', fontSize: '8.5pt', textAlign: 'center', verticalAlign: 'middle' },
         headerTable: { width: '100%', borderCollapse: 'collapse', marginBottom: '15px', border: '1px solid #000' },
         headerTd: { border: '1px solid #000', padding: '2px', textAlign: 'center', verticalAlign: 'middle' },
         signatureBlock: { display: 'flex', justifyContent: 'space-between', marginTop: '30px', textAlign: 'center', width: '100%' },
@@ -227,9 +227,9 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                                 <div style={{ fontWeight: 'bold', fontSize: '15pt' }}>PHIẾU GIÁM ĐỊNH CHẤT LƯỢNG VẬT TƯ ĐẦU VÀO</div>
                                             </td>
                                             <td style={{ ...styles.headerTd, width: '25%', textAlign: 'left', paddingLeft: '15px' }}>
-                                                <div style={{ fontSize: '11pt' }}>Mã số: BM.02-QT.01-KN</div>
-                                                <div style={{ fontSize: '11pt' }}>Ngày hiệu lực: 01/9/2024</div>
-                                                <div style={{ fontSize: '11pt' }}>Phiên bản: 06</div>
+                                                <div style={{ fontSize: '10pt' }}>Mã số: BM.02-QT.01-KN</div>
+                                                <div style={{ fontSize: '10pt' }}>Ngày hiệu lực: 01/9/2024</div>
+                                                <div style={{ fontSize: '10pt' }}>Phiên bản: 06</div>
                                             </td>
                                         </tr>
                                     </tbody>
@@ -247,29 +247,29 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
 
                                     {/* Số phiếu */}
                                     <Box style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '4px' }}>
-                                        <div style={{ ...styles.text, fontSize: '13pt', display: 'flex', alignItems: 'center' }}>
+                                        <div style={{ ...styles.text, fontSize: '10pt', display: 'flex', alignItems: 'center' }}>
                                             <span style={{ whiteSpace: 'nowrap' }}>Số: </span>
                                             <input name="SoPhieu" className="custom-field" type="text" defaultValue={customData.SoPhieu || phieu.SoPhieu || ''} placeholder="...................................." style={styles.inputField} />
                                         </div>
                                     </Box>
 
                                     {/* Khối thông tin 2 cột */}
-                                    <Grid container spacing={4} sx={{ mb: 2 }}>
+                                    <Grid container spacing={2} sx={{ mb: 1 }}>
                                         {/* Cột Trái */}
                                         <Grid size={{ xs: 6 }}>
-                                            <Box display="flex" alignItems="flex-end" mb={1.5} style={styles.text}>
+                                            <Box display="flex" alignItems="flex-end" mb={0.75} style={styles.text}>
                                                 <span style={{ whiteSpace: 'nowrap' }}>Ngày kiểm tra:</span>
                                                 <span style={{ ...styles.dottedLine, flex: 1, marginLeft: '8px' }}>
                                                     <div name="NgayKiemTra"> {customData.NgayKiemTra || (phieu.NgayKiem ? new Date(phieu.NgayKiem).toLocaleDateString('vi-VN') : new Date().toLocaleDateString('vi-VN'))}</div>
                                                 </span>
                                             </Box>
-                                            <Box display="flex" alignItems="flex-end" mb={1.5} style={styles.text}>
+                                            <Box display="flex" alignItems="flex-end" mb={0.75} style={styles.text}>
                                                 <span style={{ whiteSpace: 'nowrap' }}>Nhà cung cấp:</span>
                                                 <span style={{ ...styles.dottedLine, flex: 1, marginLeft: '8px' }}>
                                                     <input name="NhaCungCap" className="custom-field" type="text" defaultValue={customData.NhaCungCap || phieu.NhaCungCap || ''} style={styles.inputField} />
                                                 </span>
                                             </Box>
-                                            <Box display="flex" alignItems="flex-start" mb={1.5} style={styles.text}>
+                                            <Box display="flex" alignItems="flex-start" mb={0.75} style={styles.text}>
                                                 <span style={{ whiteSpace: 'nowrap', paddingTop: '2px' }}>Mặt hàng:</span>
                                                 <span style={{ ...styles.dottedLine, flex: 1, marginLeft: '8px' }}>
                                                     <TextareaAutosize
@@ -294,7 +294,7 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                             <Box
                                                 display="flex"
                                                 alignItems="center"
-                                                mt={3}
+                                                mt={1}
                                                 style={{ ...styles.text, cursor: 'pointer' }} // Thêm cursor pointer để người dùng biết có thể click
                                                 onClick={() => setLoaiKiemTra('CD1')} // Khi click thì set state là CD1
                                             >
@@ -305,19 +305,19 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                         <input type="hidden" name="LoaiKiemTra" className="custom-field" value={loaiKiemTra} />
                                         {/* Cột Phải */}
                                         <Grid size={{ xs: 6 }}>
-                                            <Box display="flex" alignItems="flex-end" mb={1.5} style={styles.text}>
+                                            <Box display="flex" alignItems="flex-end" mb={0.75} style={styles.text}>
                                                 <span style={{ whiteSpace: 'nowrap' }}>Kế hoạch/Đơn hàng Z76:</span>
                                                 <span style={{ ...styles.dottedLine, flex: 1, marginLeft: '8px' }}>
                                                     <input name="KeHoachDonHang" className="custom-field" type="text" defaultValue={customData.KeHoachDonHang || phieu.DoiTuong || ''} style={styles.inputField} />
                                                 </span>
                                             </Box>
-                                            <Box display="flex" alignItems="flex-end" mb={1.5} style={styles.text}>
+                                            <Box display="flex" alignItems="flex-end" mb={0.75} style={styles.text}>
                                                 <span style={{ whiteSpace: 'nowrap' }}>Mã số truy nguyên/PO vật tư:</span>
                                                 <span style={{ ...styles.dottedLine, flex: 1, marginLeft: '8px' }}>
                                                     <input name="MaSoTruyNguyen" className="custom-field" type="text" defaultValue={customData.MaSoTruyNguyen || phieu.Lot || ''} style={styles.inputField} />
                                                 </span>
                                             </Box>
-                                            <Box display="flex" alignItems="flex-end" mb={1.5} style={styles.text}>
+                                            <Box display="flex" alignItems="flex-end" mb={0.75} style={styles.text}>
                                                 <span style={{ whiteSpace: 'nowrap' }}>Số lượng:</span>
                                                 <span style={{ ...styles.dottedLine, flex: 1, marginLeft: '8px' }}>
                                                     <input name="SoLuong" className="custom-field" type="text" defaultValue={customData.SoLuong || phieu.SoLuong || ''} style={styles.inputField} />
@@ -327,7 +327,7 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                             <Box
                                                 display="flex"
                                                 alignItems="center"
-                                                mt={3}
+                                                mt={1}
                                                 style={{ ...styles.text, cursor: 'pointer' }}
                                                 onClick={() => setLoaiKiemTra('CD2')} // Khi click thì set state là CD2
                                             >
@@ -454,7 +454,7 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                     </Box>
 
                                     <Box mt={1}>
-                                        <div style={{ fontSize: '11pt' }}>
+                                        <div style={{ fontSize: '8pt' }}>
                                             {/* <b>* Ghi chú:</b> Báo cáo kiểm hàng lần cuối của từng sản phẩm được lập căn cứ theo tiêu chuẩn kỹ thuật của sản phẩm. */}
                                         </div>
                                     </Box>
@@ -469,7 +469,7 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                     return (
                                         <Box mt={4} className="avoid-break">
                                             <Box mb={2} style={{ textAlign: 'center', borderBottom: '2px solid #000', pb: 1 }}>
-                                                <div style={{ ...styles.boldText, fontSize: '14pt' }}>HÌNH ẢNH LỖI</div>
+                                                <div style={{ ...styles.boldText, fontSize: '12pt' }}>HÌNH ẢNH LỖI</div>
                                             </Box>
                                             <Grid container spacing={2}>
                                                 {defectImages.map((img, idx) => (

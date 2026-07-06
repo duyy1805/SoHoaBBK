@@ -54,6 +54,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
     const khayQty = getSectionQuantity(name => name.includes("KHAY"));
     const palletQty = getSectionQuantity(name => name.includes("PALLET"));
     const productImageUrl = phieu?.ImageUrl ? getAssetUrl(phieu.ImageUrl) : "";
+    const selectedInspectionPlanLevel = String(sections?.[0]?.InspectionLevel || "").trim().charAt(0);
 
     const styles = {
         previewBackground: {
@@ -103,6 +104,34 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
         }}>
             {checked ? 'x' : ''}
         </span>
+    );
+
+    const renderInspectionPlanCheckboxes = (selectedLevel) => (
+        <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            width: '100%',
+            minHeight: '22px',
+            gap: '12px',
+            whiteSpace: 'nowrap'
+        }}>
+            {["1", "2", "3", "4"].map((level) => (
+                <span
+                    key={level}
+                    style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontSize: '10pt',
+                        lineHeight: 1
+                    }}
+                >
+                    MĐ {level}
+                    {renderCheckbox(selectedLevel === level)}
+                </span>
+            ))}
+        </div>
     );
 
     const renderMeasurementGrid = (val) => {
@@ -398,7 +427,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                             <tr>
                                 <td style={styles.infoTableLabel}>Kế hoạch kiểm hàng</td>
                                 <td style={{ ...styles.infoTableCell, height: '24px' }}>
-                                    <input name="KeHoachKiemHang" className="custom-field" type="text" defaultValue={customData.KeHoachKiemHang || phieu.KeHoachKiemHang || ''} style={styles.inputField} />
+                                    {renderInspectionPlanCheckboxes(selectedInspectionPlanLevel)}
                                 </td>
                                 <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>Ngày kiểm tra</td>
                                 <td style={styles.infoTableCell}>

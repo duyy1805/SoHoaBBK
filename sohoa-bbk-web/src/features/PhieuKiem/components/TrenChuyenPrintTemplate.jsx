@@ -205,7 +205,7 @@ const buildPrintRows = (slots = [], columns = []) => {
                 key: `slot-${slot?.Id || slot?.GioKiem}`,
                 gioKiem: slot?.GioKiem || "",
                 congDoan: "",
-                nguoiGhiNhan: "",
+                congNhanGayLoi: "",
                 btpLoi: 0,
                 btpKiem: "",
                 tongSoLuong: "",
@@ -225,28 +225,36 @@ const buildPrintRows = (slots = [], columns = []) => {
             let minor = 0;
             let major = 0;
             let critical = 0;
+            let repairedPass = 0;
+            let repairedFail = 0;
 
             (entry.Defects || []).forEach((defect) => {
                 const qty = Number(defect?.SoLuong || 0);
-                if (!qty) return;
-                totalDefectQty += qty;
+                const passQty = Number(defect?.SoLuongDatSauSua || 0);
+                const failQty = Number(defect?.SoLuongKhongDatSauSua || 0);
+                repairedPass += passQty;
+                repairedFail += failQty;
 
-                const defectType = normalizeText(defect?.DefectType);
-                if (defectType.includes("MINOR")) minor += qty;
-                else if (defectType.includes("CRITICAL")) critical += qty;
-                else major += qty;
+                if (qty) {
+                    totalDefectQty += qty;
 
-                const columnId = columns.find(
-                    (column) => !column.isPlaceholder && String(column.id) === String(defect?.DefectId || defect?.MaLoi || defect?.TenLoi || "")
-                )?.id;
-                if (columnId) defectMap[columnId] = (defectMap[columnId] || 0) + qty;
+                    const defectType = normalizeText(defect?.DefectType);
+                    if (defectType.includes("MINOR")) minor += qty;
+                    else if (defectType.includes("CRITICAL")) critical += qty;
+                    else major += qty;
+
+                    const columnId = columns.find(
+                        (column) => !column.isPlaceholder && String(column.id) === String(defect?.DefectId || defect?.MaLoi || defect?.TenLoi || "")
+                    )?.id;
+                    if (columnId) defectMap[columnId] = (defectMap[columnId] || 0) + qty;
+                }
             });
 
             rows.push({
                 key: `${slot?.Id || slot?.GioKiem}-${entry?.Id || entryIndex}`,
                 gioKiem: entryIndex === 0 ? slot?.GioKiem || "" : "",
                 congDoan: entry?.CongDoan || "",
-                nguoiGhiNhan: entry?.TenNguoiGhiNhan || "",
+                congNhanGayLoi: entry?.TenCongNhanGayLoi || "",
                 btpLoi: totalDefectQty,
                 btpKiem: "",
                 tongSoLuong: "",
@@ -254,8 +262,8 @@ const buildPrintRows = (slots = [], columns = []) => {
                 nang: major,
                 nghiemTrong: critical,
                 defectMap,
-                dat: "",
-                khongDat: ""
+                dat: repairedPass,
+                khongDat: repairedFail
             });
         });
     });
@@ -271,8 +279,8 @@ const buildTotals = (rows = [], columns = []) => {
         nang: 0,
         nghiemTrong: 0,
         defectMap: Object.fromEntries(columns.map((column) => [column.id, 0])),
-        dat: "",
-        khongDat: ""
+        dat: 0,
+        khongDat: 0
     };
 
     rows.forEach((row) => {
@@ -280,6 +288,8 @@ const buildTotals = (rows = [], columns = []) => {
         totals.nhe += Number(row.nhe || 0);
         totals.nang += Number(row.nang || 0);
         totals.nghiemTrong += Number(row.nghiemTrong || 0);
+        totals.dat += Number(row.dat || 0);
+        totals.khongDat += Number(row.khongDat || 0);
         columns.forEach((column) => {
             totals.defectMap[column.id] += Number(row.defectMap?.[column.id] || 0);
         });
@@ -303,7 +313,7 @@ const formatDate = (value) => {
 const TREN_CHUYEN_COMPLETED_BY_NAME_FIELD = "TrenChuyen_CompletedByName";
 
 const TrenChuyenPrintTemplate = forwardRef(function TrenChuyenPrintTemplate(
-    { phieu, dynamicFields = [], slots = [], summary = null, xacNhans = [], onRequestProductImageUpload = null },
+    { phieu, dynamicFields = [], slots = [], xacNhans = [], onRequestProductImageUpload = null },
     ref
 ) {
     const flatColumns = useMemo(() => buildDefectPrintColumns(slots), [slots]);
@@ -483,8 +493,8 @@ const TrenChuyenPrintTemplate = forwardRef(function TrenChuyenPrintTemplate(
                             <td style={{ ...styles.td, ...styles.center, ...styles.rowTall }}>{row.gioKiem || ""}</td>
                             <td style={styles.td}>
                                 <div style={{ fontWeight: 700 }}>{row.congDoan || ""}</div>
-                                {row.nguoiGhiNhan ? (
-                                    <div style={styles.small}>{row.nguoiGhiNhan}</div>
+                                {row.congNhanGayLoi ? (
+                                    <div style={styles.small}>{row.congNhanGayLoi}</div>
                                 ) : null}
                             </td>
                             <td style={{ ...styles.td, ...styles.center }}>

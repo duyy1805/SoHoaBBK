@@ -547,6 +547,9 @@ export default function TrenChuyenDetail() {
                                                                             Công đoạn {entry.CongDoan}
                                                                         </Typography>
                                                                         <Typography variant="body2" color="text.secondary">
+                                                                            Công nhân gây lỗi: {entry.TenCongNhanGayLoi || "—"}
+                                                                        </Typography>
+                                                                        <Typography variant="body2" color="text.secondary">
                                                                             Người ghi nhận: {entry.TenNguoiGhiNhan || "—"}
                                                                         </Typography>
                                                                     </Box>
@@ -597,6 +600,12 @@ export default function TrenChuyenDetail() {
                                                                                 </Box>
                                                                                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flexShrink: 0 }}>
                                                                                     <Chip size="small" label={`SL: ${defect.SoLuong || 0}`} color="primary" variant="outlined" />
+                                                                                    <Chip
+                                                                                        size="small"
+                                                                                        label={`Sau sửa: Đạt ${defect.SoLuongDatSauSua ?? "—"} / Không đạt ${defect.SoLuongKhongDatSauSua ?? "—"}`}
+                                                                                        color="success"
+                                                                                        variant="outlined"
+                                                                                    />
                                                                                     <Chip
                                                                                         size="small"
                                                                                         label={defect.DefectType || "MAJOR"}
