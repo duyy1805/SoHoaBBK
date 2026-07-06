@@ -350,8 +350,8 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 <td style={styles.infoTableCell}>
                                     <input name="SoDonHang" className="custom-field" type="text" defaultValue={customData.SoDonHang || phieu.SoDonHang || ''} style={styles.inputField} />
                                 </td>
-                                <td style={styles.infoTableUnitCell}>cái</td>
-                                <td style={styles.infoTableUnitCell}>hộp</td>
+                                <td style={styles.infoTableUnitCell}></td>
+                                {/* <td style={styles.infoTableUnitCell}></td> */}
                             </tr>
                             <tr>
                                 <td style={styles.infoTableLabel}>NV Kiểm hàng</td>
@@ -377,7 +377,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                     <input name="SoLuong" className="custom-field" type="text" defaultValue={customData.SoLuong || phieu.SoLuong || ''} style={styles.inputField} />
                                 </td>
                                 <td style={styles.infoTableUnitCell}>cái</td>
-                                <td style={styles.infoTableUnitCell}>hộp</td>
+                                {/* <td style={styles.infoTableUnitCell}>hộp</td> */}
                             </tr>
                             <tr>
                                 <td style={styles.infoTableLabel}>Mức độ kiểm tra</td>
@@ -393,7 +393,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                     <input name="Khay" className="custom-field" type="text" defaultValue={khayQty || customData.Khay || phieu.Khay || ''} style={styles.inputField} />
                                 </td>
                                 <td style={styles.infoTableUnitCell}>cái</td>
-                                <td style={styles.infoTableUnitCell}>hộp</td>
+                                {/* <td style={styles.infoTableUnitCell}>hộp</td> */}
                             </tr>
                             <tr>
                                 <td style={styles.infoTableLabel}>Kế hoạch kiểm hàng</td>
@@ -409,7 +409,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                     <input name="Pallet" className="custom-field" type="text" defaultValue={palletQty || customData.Pallet || phieu.Pallet || ''} style={styles.inputField} />
                                 </td>
                                 <td style={styles.infoTableUnitCell}>cái</td>
-                                <td style={styles.infoTableUnitCell}>hộp</td>
+                                {/* <td style={styles.infoTableUnitCell}>hộp</td> */}
                             </tr>
                             <tr>
                                 <td style={styles.infoTableLabel}>Số LOT</td>
@@ -425,7 +425,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                     <input name="TongSL" className="custom-field" type="text" defaultValue={customData.TongSL || phieu.TongSL || ''} style={styles.inputField} />
                                 </td>
                                 <td style={styles.infoTableUnitCell}></td>
-                                <td style={styles.infoTableUnitCell}></td>
+                                {/* <td style={styles.infoTableUnitCell}></td> */}
                             </tr>
                             <tr>
                                 <td style={styles.infoTableLabel}></td>
@@ -443,7 +443,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}></td>
                                 <td style={styles.infoTableCell}></td>
                                 <td style={styles.infoTableUnitCell}></td>
-                                <td style={styles.infoTableUnitCell}></td>
+                                {/* <td style={styles.infoTableUnitCell}></td> */}
                             </tr>
                         </tbody>
                     </table>
@@ -653,14 +653,14 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                 <Box className="avoid-break" mt={3} pl={1} pb={2}>
 
                     <Box mb={2} style={{ display: 'flex', alignItems: 'center' }}>
-                        <div style={{ ...styles.boldText, marginRight: '15px' }}>* Kết luận:</div>
+                        <div style={{ ...styles.boldText, marginRight: '15px' }}>* Kết quả:</div>
                         <div style={{ ...styles.boldText, textTransform: 'uppercase' }}>
                             {phieu.KetLuan === 'DAT' ? 'ĐẠT YÊU CẦU' : phieu.KetLuan === 'KHONG_DAT' ? 'KHÔNG ĐẠT YÊU CẦU' : '.........................................................'}
                         </div>
                     </Box>
 
                     <Box mb={2} style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                        <div style={styles.boldText}>* Kết quả xử lý:</div>
+                        <div style={styles.boldText}>* Kết luận:</div>
                         <Box style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             {renderCheckbox(phieu.KetLuan === 'DAT')} <span>Cho xuất hàng</span>
                         </Box>

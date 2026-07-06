@@ -60,6 +60,20 @@ export default function SectionConfigModal({ visible, onClose, phieuId, sanPhamI
     setNhomConfigs(newConfigs);
   };
 
+  const handleSelectInspectionLevel = (index, value) => {
+    if (index === 0) {
+      setNhomConfigs((currentConfigs) =>
+        currentConfigs.map((config) => ({
+          ...config,
+          inspectionLevel: value,
+        }))
+      );
+      return;
+    }
+
+    updateConfig(index, "inspectionLevel", value);
+  };
+
   const handleConfirm = async () => {
     try {
       setSubmitting(true);
@@ -127,7 +141,7 @@ export default function SectionConfigModal({ visible, onClose, phieuId, sanPhamI
                             styles.levelChip,
                             n.inspectionLevel === lv.InspectionLevel && styles.levelChipSelected
                           ]}
-                          onPress={() => updateConfig(index, "inspectionLevel", lv.InspectionLevel)}
+                          onPress={() => handleSelectInspectionLevel(index, lv.InspectionLevel)}
                         >
                           <Text style={[
                             styles.levelText,

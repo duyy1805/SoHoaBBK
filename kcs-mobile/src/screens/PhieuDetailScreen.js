@@ -31,6 +31,9 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import SectionConfigModal from "../components/SectionConfigModal";
 
+const KIEM_DONG_CONT_LOAI_KIEM_ID = 5;
+const KIEM_DONG_CONT_DEFAULT_THAM_CHIEU = "PDOC, TCKT, TCBG";
+
 export default function PhieuDetailScreen({ route, navigation }) {
 
     const { id } = route.params;
@@ -102,7 +105,11 @@ export default function PhieuDetailScreen({ route, navigation }) {
         setHieuLucTestDraft(parsedHieuLucTest);
         setSoDonHang((res.data.dynamicFields || []).find((field) => field?.FieldName === "SoDonHang")?.FieldValue || "");
         setPhienBan((res.data.dynamicFields || []).find((field) => field?.FieldName === "PhienBan")?.FieldValue || phieuData?.PhienBan || "");
-        setThamChieuTieuChuan((res.data.dynamicFields || []).find((field) => field?.FieldName === "ThamChieuTieuChuan")?.FieldValue || phieuData?.ThamChieuTieuChuan || "");
+        const savedThamChieuTieuChuan = (res.data.dynamicFields || []).find((field) => field?.FieldName === "ThamChieuTieuChuan")?.FieldValue;
+        const defaultThamChieuTieuChuan = Number(phieuData?.LoaiKiemId) === KIEM_DONG_CONT_LOAI_KIEM_ID
+            ? KIEM_DONG_CONT_DEFAULT_THAM_CHIEU
+            : "";
+        setThamChieuTieuChuan(savedThamChieuTieuChuan || phieuData?.ThamChieuTieuChuan || defaultThamChieuTieuChuan);
         const lot = phieuData?.Lot;
         setLot(lot);
         setLotConfirmed(!!lot);
