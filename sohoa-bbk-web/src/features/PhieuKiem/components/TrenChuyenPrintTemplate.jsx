@@ -1,5 +1,4 @@
 import React, { forwardRef, useMemo } from "react";
-import { getAssetUrl } from "../../../api/lookup.api";
 
 const FORM_META = {
     companyName: "CÔNG TY TNHH MTV 76",
@@ -313,7 +312,7 @@ const formatDate = (value) => {
 const TREN_CHUYEN_COMPLETED_BY_NAME_FIELD = "TrenChuyen_CompletedByName";
 
 const TrenChuyenPrintTemplate = forwardRef(function TrenChuyenPrintTemplate(
-    { phieu, dynamicFields = [], slots = [], xacNhans = [], onRequestProductImageUpload = null },
+    { phieu, dynamicFields = [], slots = [], xacNhans = [] },
     ref
 ) {
     const flatColumns = useMemo(() => buildDefectPrintColumns(slots), [slots]);
@@ -322,7 +321,6 @@ const TrenChuyenPrintTemplate = forwardRef(function TrenChuyenPrintTemplate(
 
     const productName = getFieldValue(dynamicFields, "TrenChuyen_TenSanPham") || phieu?.TenSanPham || "";
     const itemCode = getFieldValue(dynamicFields, "TrenChuyen_MaSanPham") || phieu?.MaSanPham || "";
-    const productImageUrl = phieu?.ImageUrl ? getAssetUrl(phieu.ImageUrl) : "";
     const printDate = formatDate(getFieldValue(dynamicFields, "TrenChuyen_NgayKeHoach"));
     const qcSignerName =
         getFieldValue(dynamicFields, TREN_CHUYEN_COMPLETED_BY_NAME_FIELD) ||
@@ -347,8 +345,6 @@ const TrenChuyenPrintTemplate = forwardRef(function TrenChuyenPrintTemplate(
                     }
                     thead { display: table-header-group; }
                     tr { page-break-inside: avoid; break-inside: avoid; }
-                    .screen-only-upload-trigger,
-                    .screen-only-upload-action { display: none !important; }
                 }
                 `}
             </style>
@@ -372,86 +368,18 @@ const TrenChuyenPrintTemplate = forwardRef(function TrenChuyenPrintTemplate(
                 </tbody>
             </table>
 
-            <div
-                style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 180px",
-                    gap: "12px",
-                    alignItems: "stretch",
-                    marginBottom: "6px"
-                }}
-            >
-                <div style={styles.infoRow}>
-                    <div style={styles.infoField}>
-                        <span style={styles.infoLabel}>Sản phẩm:</span>
-                        <span style={styles.infoValue}>{productName}</span>
-                    </div>
-                    <div style={styles.infoField}>
-                        <span style={styles.infoLabel}>Item code:</span>
-                        <span style={styles.infoValue}>{itemCode}</span>
-                    </div>
-                    <div style={styles.infoField}>
-                        <span style={styles.infoLabel}>Ngày:</span>
-                        <span style={styles.infoValue}>{printDate}</span>
-                    </div>
+            <div style={styles.infoRow}>
+                <div style={styles.infoField}>
+                    <span style={styles.infoLabel}>Sản phẩm:</span>
+                    <span style={styles.infoValue}>{productName}</span>
                 </div>
-
-                <div
-                    style={{
-                        border: "1px solid #000",
-                        padding: "6px",
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "space-between",
-                        minHeight: "118px"
-                    }}
-                >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "4px" }}>
-                        <div style={{ fontSize: "10px" }}>* Hình ảnh minh hoạ sản phẩm</div>
-                        {productImageUrl && typeof onRequestProductImageUpload === "function" ? (
-                            <div
-                                className="screen-only-upload-action"
-                                onClick={onRequestProductImageUpload}
-                                style={{
-                                    fontSize: "10px",
-                                    color: "#2563eb",
-                                    cursor: "pointer",
-                                    textDecoration: "underline"
-                                }}
-                            >
-                                Đổi ảnh
-                            </div>
-                        ) : null}
-                    </div>
-                    {productImageUrl ? (
-                        <img
-                            src={productImageUrl}
-                            alt={productName || "Ảnh sản phẩm"}
-                            style={{ width: "100%", height: "96px", objectFit: "contain" }}
-                        />
-                    ) : typeof onRequestProductImageUpload === "function" ? (
-                        <div
-                            className="screen-only-upload-trigger"
-                            onClick={onRequestProductImageUpload}
-                            style={{
-                                width: "100%",
-                                height: "96px",
-                                border: "1px dashed #94a3b8",
-                                borderRadius: "6px",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                textAlign: "center",
-                                color: "#475569",
-                                fontSize: "10px",
-                                cursor: "pointer",
-                                padding: "0 8px",
-                                boxSizing: "border-box"
-                            }}
-                        >
-                            Nhấn để thêm ảnh cho item code này
-                        </div>
-                    ) : null}
+                <div style={styles.infoField}>
+                    <span style={styles.infoLabel}>Item code:</span>
+                    <span style={styles.infoValue}>{itemCode}</span>
+                </div>
+                <div style={styles.infoField}>
+                    <span style={styles.infoLabel}>Ngày:</span>
+                    <span style={styles.infoValue}>{printDate}</span>
                 </div>
             </div>
 
