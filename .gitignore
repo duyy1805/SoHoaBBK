@@ -7,8 +7,5 @@ server/uploads
 dist/
 build/
 
-shbbk.sql
-dbo.sql
-
-*.sql
+# *.sql
 *.xlsx
