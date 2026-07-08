@@ -95,9 +95,22 @@ export default function PhieuDetailScreen({ route, navigation }) {
         const res = await getPhieuKiemDetail(id);
         const phieuData = res.data.phieu;
 
+        if (Number(phieuData?.LoaiKiemId) === 3) {
+            navigation.replace("CuoiChuyenInspection", { id });
+            return;
+        }
+        if (Number(phieuData?.LoaiKiemId) === 4) {
+            navigation.replace("SxbtInspection", { id });
+            return;
+        }
+        if (Number(phieuData?.LoaiKiemId) === 6) {
+            navigation.replace("TrenChuyenInspection", { id });
+            return;
+        }
+
         setPhieu(phieuData);
-        setSections(res.data.sections);
-        setCheckItems(res.data.checkItems);
+        setSections(Array.isArray(res.data.sections) ? res.data.sections : []);
+        setCheckItems(Array.isArray(res.data.checkItems) ? res.data.checkItems : []);
         setDynamicFields(res.data.dynamicFields || []);
         setTrangThai(phieuData?.TrangThai);
         const parsedHieuLucTest = parseStoredDate((res.data.dynamicFields || []).find((field) => field?.FieldName === "HieuLucTest")?.FieldValue);

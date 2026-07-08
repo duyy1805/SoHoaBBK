@@ -96,6 +96,27 @@ export default function BienBanDetailScreen({ route, navigation }) {
         }
 
     };
+
+    const navigateToPhieuKiem = () => {
+        if (!info?.PhieuKiemId) return;
+
+        const loaiKiemId = Number(info.LoaiKiemId || 0);
+        if (loaiKiemId === 3) {
+            navigation.navigate("CuoiChuyenInspection", { id: info.PhieuKiemId });
+            return;
+        }
+        if (loaiKiemId === 4) {
+            navigation.navigate("SxbtInspection", { id: info.PhieuKiemId });
+            return;
+        }
+        if (loaiKiemId === 6) {
+            navigation.navigate("TrenChuyenInspection", { id: info.PhieuKiemId });
+            return;
+        }
+
+        navigation.navigate("PhieuDetail", { id: info.PhieuKiemId });
+    };
+
     const getDefectColor = (type) => {
 
         if (!type) return "#95a5a6";
@@ -278,7 +299,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
 
                     {info?.PhieuKiemId && (
                         <TouchableOpacity
-                            onPress={() => navigation.navigate("PhieuDetail", { id: info.PhieuKiemId })}
+                            onPress={navigateToPhieuKiem}
                             style={{
                                 backgroundColor: '#2563eb',
                                 paddingHorizontal: 12,

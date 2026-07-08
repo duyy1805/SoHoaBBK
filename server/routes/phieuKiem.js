@@ -48,6 +48,7 @@ const TREN_CHUYEN_LOAI_KIEM_ID = 6;
 const CUOI_CHUYEN_APPROVE_BOPHAN_FIELD = 'CuoiChuyen_ApproveBoPhanId';
 const CUOI_CHUYEN_COMPLETED_BY_FIELD = 'CuoiChuyen_CompletedByUserId';
 const CUOI_CHUYEN_COMPLETED_BY_NAME_FIELD = 'CuoiChuyen_CompletedByName';
+const CUOI_CHUYEN_APPROVED_BY_NAME_FIELD = 'CuoiChuyen_ApprovedByName';
 const TREN_CHUYEN_APPROVE_BOPHAN_FIELD = 'TrenChuyen_ApproveBoPhanId';
 const TREN_CHUYEN_COMPLETED_BY_FIELD = 'TrenChuyen_CompletedByUserId';
 const TREN_CHUYEN_COMPLETED_BY_NAME_FIELD = 'TrenChuyen_CompletedByName';
@@ -653,29 +654,7 @@ router.get(
                 const planRecords = result.recordsets?.[1] || [];
                 const defectRecords = result.recordsets?.[2] || [];
                 const summary = result.recordsets?.[3]?.[0] || null;
-                let xacNhans = result.recordsets?.[4] || [];
-                if (xacNhans.length === 0) {
-                    const xacNhanResult = await pool.request()
-                        .input('PhieuKiemId', sql.Int, id)
-                        .query(`
-                            SELECT
-                                xn.Id,
-                                xn.PhieuKiemId,
-                                xn.VaiTro,
-                                xn.NguoiXacNhanId,
-                                xn.TrangThai,
-                                xn.NoiDung,
-                                xn.ThoiGian,
-                                u.FullName AS TenNguoiXacNhan,
-                                u.Username AS UsernameNguoiXacNhan,
-                                u.BoPhanId
-                            FROM dbo.PHIEU_KIEM_XAC_NHAN xn
-                            LEFT JOIN dbo.USERS u ON u.Id = xn.NguoiXacNhanId
-                            WHERE xn.PhieuKiemId = @PhieuKiemId
-                            ORDER BY xn.ThoiGian DESC, xn.Id DESC
-                        `);
-                    xacNhans = xacNhanResult.recordset || [];
-                }
+                const xacNhans = result.recordsets?.[4] || [];
 
                 const defectsByPlanId = {};
                 defectRecords.forEach((record) => {
@@ -1281,6 +1260,11 @@ router.post(
                 .input('BoPhanId', sql.Int, effectiveBoPhanId)
                 .input('IsAdmin', sql.Bit, isAdmin ? 1 : 0)
                 .execute('sp_PhieuKiem_CuoiChuyen_Approve');
+
+            const approvedByName = await getUserDisplayName(pool, userId, req.user?.fullName || req.user?.username || '');
+            await upsertPhieuKiemCustomFields(pool, phieuKiemId, {
+                [CUOI_CHUYEN_APPROVED_BY_NAME_FIELD]: approvedByName
+            });
 
             res.json({
                 success: true,

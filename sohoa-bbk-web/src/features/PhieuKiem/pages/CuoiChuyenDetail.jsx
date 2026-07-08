@@ -243,9 +243,25 @@ export default function CuoiChuyenDetail() {
                             Duyệt TBP
                         </Button>
                     ) : null}
-                    <Button startIcon={<AssignmentIcon />} variant="contained" color="error" onClick={handleCreateBienBan} disabled={creatingBienBan || totals.defectQty <= 0}>
-                        Sinh biên bản
-                    </Button>
+                    {phieu?.BienBanId ? (
+                        <Button
+                            startIcon={<AssignmentIcon />}
+                            variant="outlined"
+                            onClick={() => navigate(`/bien-ban/${phieu.BienBanId}`)}
+                        >
+                            Xem biên bản KPH
+                        </Button>
+                    ) : (
+                        <Button
+                            startIcon={<AssignmentIcon />}
+                            variant="contained"
+                            color="error"
+                            onClick={handleCreateBienBan}
+                            disabled={creatingBienBan || totals.defectQty <= 0}
+                        >
+                            Sinh biên bản
+                        </Button>
+                    )}
                 </Stack>
             </Stack>
 

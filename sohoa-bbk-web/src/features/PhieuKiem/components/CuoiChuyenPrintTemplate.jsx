@@ -297,6 +297,7 @@ const buildTotals = (rows = [], columns = []) => {
 };
 
 const CUOI_CHUYEN_COMPLETED_BY_NAME_FIELD = "CuoiChuyen_CompletedByName";
+const CUOI_CHUYEN_APPROVED_BY_NAME_FIELD = "CuoiChuyen_ApprovedByName";
 
 const CuoiChuyenPrintTemplate = forwardRef(function CuoiChuyenPrintTemplate({
     phieu,
@@ -321,6 +322,7 @@ const CuoiChuyenPrintTemplate = forwardRef(function CuoiChuyenPrintTemplate({
         (xacNhans || [])[0] ||
         null;
     const ttsxSignerName = getPersonDisplayName(tbpApproval);
+    const factorySignerName = ttsxSignerName || getFieldValue(dynamicFields, CUOI_CHUYEN_APPROVED_BY_NAME_FIELD);
 
     return (
         <div ref={ref} style={styles.page}>
@@ -472,9 +474,9 @@ const CuoiChuyenPrintTemplate = forwardRef(function CuoiChuyenPrintTemplate({
                 <div style={styles.signatureBox}>
                     <div style={styles.signatureTitle}>PHÂN XƯỞNG</div>
                     <div style={styles.signatureSignedText}>
-                        {ttsxSignerName ? <span style={styles.signatureStamp}>Đã ký</span> : null}
+                        {factorySignerName ? <span style={styles.signatureStamp}>Đã ký</span> : null}
                     </div>
-                    <div style={styles.signatureName}>{ttsxSignerName}</div>
+                    <div style={styles.signatureName}>{factorySignerName}</div>
                 </div>
             </div>
         </div>
