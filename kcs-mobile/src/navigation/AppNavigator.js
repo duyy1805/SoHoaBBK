@@ -17,6 +17,8 @@ import KiemDacBietScreen from "../screens/KiemDacBietScreen";
 import SxbtInspectionScreen from "../screens/SxbtInspectionScreen";
 import TrenChuyenInspectionScreen from "../screens/TrenChuyenInspectionScreen";
 import TrenChuyenSlotDetailScreen from "../screens/TrenChuyenSlotDetailScreen";
+import CuoiChuyenInspectionScreen from "../screens/CuoiChuyenInspectionScreen";
+import CuoiChuyenPlanDetailScreen from "../screens/CuoiChuyenPlanDetailScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -100,6 +102,16 @@ export default function AppNavigator() {
                 name="SxbtInspection"
                 component={SxbtInspectionScreen}
                 options={{ title: "Kiểm tra Sản Xuất Bổ Trợ" }}
+            />
+            <Stack.Screen
+                name="CuoiChuyenInspection"
+                component={CuoiChuyenInspectionScreen}
+                options={{ title: "Kiểm tra cuối chuyền" }}
+            />
+            <Stack.Screen
+                name="CuoiChuyenPlanDetail"
+                component={CuoiChuyenPlanDetailScreen}
+                options={{ title: "Chi tiết kế hoạch" }}
             />
             <Stack.Screen
                 name="TrenChuyenInspection"

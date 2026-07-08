@@ -127,6 +127,22 @@ export const approveTrenChuyen = (phieuKiemId) => {
     return axiosClient.post("/phieu-kiem/tren-chuyen/approve", { phieuKiemId });
 };
 
+export const saveCuoiChuyenData = (data) => {
+    return axiosClient.post("/phieu-kiem/cuoi-chuyen/save", data);
+};
+
+export const completeCuoiChuyen = (phieuKiemId, ketLuan) => {
+    return axiosClient.post("/phieu-kiem/cuoi-chuyen/complete", { phieuKiemId, ketLuan });
+};
+
+export const createCuoiChuyenBienBan = (phieuKiemId) => {
+    return axiosClient.post("/phieu-kiem/cuoi-chuyen/create-bien-ban", { phieuKiemId });
+};
+
+export const approveCuoiChuyen = (phieuKiemId) => {
+    return axiosClient.post("/phieu-kiem/cuoi-chuyen/approve", { phieuKiemId });
+};
+
 /* =========================================================
    KẾT LUẬN (TP_B8 / LANH_DAO)
 ========================================================= */

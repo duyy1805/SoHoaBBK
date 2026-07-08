@@ -45,6 +45,7 @@ export default function PhieuKiemList() {
     const navigate = useNavigate();
 
     const getDetailPath = (item) => {
+        if (item.LoaiKiemId === 3) return `/phieu-kiem/cuoi-chuyen/${item.Id}`;
         if (item.LoaiKiemId === 4) return `/phieu-kiem/sxbt/${item.Id}`;
         if (item.LoaiKiemId === 6) return `/phieu-kiem/tren-chuyen/${item.Id}`;
         return `/phieu-kiem/${item.Id}`;

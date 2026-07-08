@@ -116,6 +116,10 @@ export default function PhieuKiemDetail() {
         try {
             const res = await getPhieuKiemDetail(id);
             const data = res.data;
+            if (data?.phieu?.LoaiKiemId === 3) {
+                navigate(`/phieu-kiem/cuoi-chuyen/${id}`, { replace: true });
+                return;
+            }
             if (data?.phieu?.LoaiKiemId === 6) {
                 navigate(`/phieu-kiem/tren-chuyen/${id}`, { replace: true });
                 return;

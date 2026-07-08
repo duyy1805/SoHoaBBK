@@ -49,6 +49,9 @@ import {
     getSanPhamList
 } from "../../../api/lookup.api";
 
+const isKeHoachSanXuatLoai = (loai) =>
+    loai?.MaLoai === "KIEM_TREN_CHUYEN" || loai?.MaLoai === "CUOI_CHUYEN";
+
 export default function PhieuKiemCreate() {
     const navigate = useNavigate();
     const { showToast } = useToast();
@@ -171,7 +174,7 @@ export default function PhieuKiemCreate() {
                 const res = await getChungTuNhapChuaKiem();
                 setLichList(res.data || []);
             }
-            if (loai?.MaLoai === "KIEM_TREN_CHUYEN") {
+            if (isKeHoachSanXuatLoai(loai)) {
                 const res = await getKeHoachSanXuatChuaKiem();
                 setLichList(res.data || []);
             }
@@ -211,7 +214,7 @@ export default function PhieuKiemCreate() {
                         row.NhaCungCap?.toLowerCase().includes(lower)
                     );
                 }
-                if (selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN") {
+                if (isKeHoachSanXuatLoai(selectedLoai)) {
                     return (
                         row.ID_KeHoachSanXuat?.toString().includes(lower) ||
                         row.MaSanPham?.toLowerCase().includes(lower) ||
@@ -245,31 +248,9 @@ export default function PhieuKiemCreate() {
     const getRowId = (row) => {
         if (selectedLoai?.MaLoai === "KIEM_DONG_CONT") return row.ClosingScheduleDetailGuid;
         if (selectedLoai?.MaLoai === "DAU_VAO") return row.ID_ChungTuNhap_ChiTiet;
-        if (selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN") return row.ID_KeHoachSanXuat;
+        if (isKeHoachSanXuatLoai(selectedLoai)) return row.ID_KeHoachSanXuat;
         if (selectedLoai?.Id === 4) return row.SourceId;
         return row.Id;
-    };
-
-    const handleChange = async (e) => {
-        const { name, value } = e.target;
-
-        if (name === "loaiKiemId") {
-            const loai = loaiKiemList.find(x => x.Id === value);
-            setSelectedLoai(loai);
-
-            setSelectedLichList([]);
-            setSearchTerm("");
-            setDisplaySearchTerm("");
-            setChungLoaiFilter("");
-            setDisplayChungLoaiFilter("");
-            setShowChungLoaiFilter(false);
-            setForm(prev => ({ ...prev, loaiKiemId: value }));
-
-            fetchLichList(loai);
-            return;
-        }
-
-        setForm(prev => ({ ...prev, [name]: value }));
     };
 
     const handleLoaiKiemSelect = (option) => {
@@ -392,6 +373,39 @@ export default function PhieuKiemCreate() {
                 return { ...row, mappedSpId, isDongCont };
             }));
 
+            if (selectedLoai?.MaLoai === "CUOI_CHUYEN") {
+                const firstRow = resolvedRows[0];
+                const cuoiChuyenPlans = resolvedRows.map((row, index) => ({
+                    idKeHoachSanXuat: row.ID_KeHoachSanXuat,
+                    sanPhamId: row.SanPhamId,
+                    maSanPham: row.MaSanPham || "",
+                    tenSanPham: row.TenSanPham || "",
+                    tenDonVi: row.Ten_DonVi || "",
+                    tenBoPhan: row.Ten_BoPhan || "",
+                    ngayKeHoach: row.Ngay || "",
+                    soLuongKeHoach: row.SoLuongKeHoach ?? null,
+                    nangSuatDuKien: row.NangSuat_DuKien ?? null,
+                    daSanXuat: row.DaSanXuat ?? null,
+                    sortOrder: index + 1
+                }));
+
+                await createPhieuKiem({
+                    loaiKiemId: form.loaiKiemId,
+                    nguoiKiemId: form.nguoiKiemId,
+                    lot: "",
+                    sanPhamId: firstRow.SanPhamId,
+                    soLuong: firstRow.NangSuat_DuKien || firstRow.SoLuongKeHoach || 1,
+                    doiTuong: firstRow.Ten_DonVi || firstRow.Ten_BoPhan || firstRow.TenSanPham || "",
+                    sourceId: firstRow.ID_KeHoachSanXuat,
+                    mucDoKiemTra: form.mucDoKiemTra || null,
+                    cuoiChuyenPlans
+                });
+
+                showToast("Đã tạo thành công 1 phiếu kiểm cuối chuyền!", "success");
+                navigate("/phieu-kiem");
+                return;
+            }
+
             // 3. Tạo Payload và Submit
             const promises = resolvedRows.map(row => {
                 const payload = {
@@ -399,8 +413,8 @@ export default function PhieuKiemCreate() {
                     nguoiKiemId: form.nguoiKiemId,
                     lot: "",
                     sanPhamId: row.mappedSpId,
-                    soLuong: row.isDongCont ? row.Quantity : (selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN" ? row.SoLuongKeHoach : row.SoLuong),
-                    doiTuong: row.isDongCont ? `${row.InvoiceNo} - ${row.WarehouseId}` : (selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN" ? row.Ten_DonVi : (row.Ma_DonHang || row.ID_NhaCungCap)),
+                    soLuong: row.isDongCont ? row.Quantity : (isKeHoachSanXuatLoai(selectedLoai) ? row.SoLuongKeHoach : row.SoLuong),
+                    doiTuong: row.isDongCont ? `${row.InvoiceNo} - ${row.WarehouseId}` : (isKeHoachSanXuatLoai(selectedLoai) ? row.Ten_DonVi : (row.Ma_DonHang || row.ID_NhaCungCap)),
                     mucDoKiemTra: form.mucDoKiemTra || null
                 };
 
@@ -540,19 +554,19 @@ export default function PhieuKiemCreate() {
                                                 <TableRow key={getRowId(row)}>
                                                     <TableCell fontWeight={600}>
                                                         {selectedLoai?.MaLoai === "DAU_VAO" ? row.Ma_VatTu :
-                                                            selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN" ? row.MaSanPham :
+                                                            isKeHoachSanXuatLoai(selectedLoai) ? row.MaSanPham :
                                                                 selectedLoai?.Id === 4 ? row.So_PhieuNhapBTP :
                                                                     row.ItemId}
                                                     </TableCell>
                                                     <TableCell>
                                                         {selectedLoai?.MaLoai === "DAU_VAO" ? row.QuyCach :
-                                                            selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN" ? row.TenSanPham :
+                                                            isKeHoachSanXuatLoai(selectedLoai) ? row.TenSanPham :
                                                                 selectedLoai?.Id === 4 ? `${row.Ten_DonVi || ''} ${row.Ten_BoPhan ? `- ${row.Ten_BoPhan}` : ''}` :
                                                                     row.ItemName}
                                                     </TableCell>
                                                     <TableCell>
                                                         <b>{selectedLoai?.MaLoai === "KIEM_DONG_CONT" ? row.Quantity :
-                                                            selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN" ? row.NangSuat_DuKien :
+                                                            isKeHoachSanXuatLoai(selectedLoai) ? row.NangSuat_DuKien :
                                                                 row.SoLuong}</b>
                                                     </TableCell>
                                                     <TableCell>
@@ -560,7 +574,7 @@ export default function PhieuKiemCreate() {
                                                             size="small"
                                                             label={
                                                                 selectedLoai?.MaLoai === "DAU_VAO" ? row.Ma_DonHang :
-                                                                    selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN" ? row.Ten_DonVi :
+                                                                    isKeHoachSanXuatLoai(selectedLoai) ? row.Ten_DonVi :
                                                                         selectedLoai?.Id === 4 ? row.Ma_DonHang :
                                                                             row.Time || row.Type
                                                             }
@@ -593,7 +607,9 @@ export default function PhieuKiemCreate() {
                                     disabled={loading || selectedLichList.length === 0}
                                     startIcon={loading && <CircularProgress size={18} color="inherit" />}
                                 >
-                                    Tạo {selectedLichList.length > 0 ? selectedLichList.length : ''} phiếu kiểm
+                                    {selectedLoai?.MaLoai === "CUOI_CHUYEN"
+                                        ? "Tạo 1 phiếu kiểm"
+                                        : `Tạo ${selectedLichList.length > 0 ? selectedLichList.length : ''} phiếu kiểm`}
                                 </Button>
                             </Stack>
                         </Grid>
@@ -686,7 +702,7 @@ export default function PhieuKiemCreate() {
                                                     <TableCell>Nhà cung cấp</TableCell>
                                                 </>
                                             )}
-                                            {selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN" && (
+                                            {isKeHoachSanXuatLoai(selectedLoai) && (
                                                 <>
                                                     <TableCell>Phân xưởng</TableCell>
                                                     <TableCell>Mã SP</TableCell>
@@ -705,7 +721,7 @@ export default function PhieuKiemCreate() {
                                                     <TableCell sx={{ minWidth: 150 }}>Kho nhập</TableCell>
                                                 </>
                                             )}
-                                            {selectedLoai?.MaLoai !== "KIEM_TREN_CHUYEN" && (
+                                            {!isKeHoachSanXuatLoai(selectedLoai) && (
                                                 <TableCell sx={{ minWidth: 80 }}>SL</TableCell>
                                             )}
                                             <TableCell sx={{ minWidth: 120 }}>Ngày</TableCell>
@@ -762,7 +778,7 @@ export default function PhieuKiemCreate() {
                                                                 <TableCell>{row.NhaCungCap}</TableCell>
                                                             </>
                                                         )}
-                                                        {selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN" && (
+                                                        {isKeHoachSanXuatLoai(selectedLoai) && (
                                                             <>
                                                                 <TableCell>{row.Ten_DonVi}</TableCell>
                                                                 <TableCell>{row.MaSanPham}</TableCell>
@@ -781,13 +797,13 @@ export default function PhieuKiemCreate() {
                                                                 <TableCell>{row.Ten_KhoNhap}</TableCell>
                                                             </>
                                                         )}
-                                                        {selectedLoai?.MaLoai !== "KIEM_TREN_CHUYEN" && (
+                                                        {!isKeHoachSanXuatLoai(selectedLoai) && (
                                                             <TableCell><b>{selectedLoai?.MaLoai === "KIEM_DONG_CONT" ? row.Quantity : row.SoLuong}</b></TableCell>
                                                         )}
                                                         <TableCell>
                                                             {selectedLoai?.MaLoai === "KIEM_DONG_CONT"
                                                                 ? row.RequiredDateString
-                                                                : selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN"
+                                                                : isKeHoachSanXuatLoai(selectedLoai)
                                                                     ? (row.Ngay ? `${new Date(row.Ngay).toLocaleDateString('vi-VN')} ` : '')
                                                                     : selectedLoai?.Id === 4
                                                                         ? new Date(row.Ngay_NhapBTP).toLocaleDateString('vi-VN')

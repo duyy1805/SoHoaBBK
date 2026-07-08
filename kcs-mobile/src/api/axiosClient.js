@@ -7,8 +7,8 @@ import { navigationRef } from "../navigation/navigationRef";
 import Toast from "react-native-toast-message";
 
 const axiosClient = axios.create({
-    baseURL: "https://z76api.z76.vn/api",
-    // baseURL: "http://localhost:5001/api",
+    // baseURL: "https://z76api.z76.vn/api",
+    baseURL: "http://localhost:5001/api",
     timeout: 30000
 });
 

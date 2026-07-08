@@ -96,7 +96,9 @@ export default function PhieuListScreen({ navigation }) {
                 style={styles.card}
                 activeOpacity={0.8}
                 onPress={() => {
-                    if (item.LoaiKiemId === 4) {
+                    if (item.LoaiKiemId === 3) {
+                        navigation.navigate("CuoiChuyenInspection", { id: item.Id });
+                    } else if (item.LoaiKiemId === 4) {
                         navigation.navigate("SxbtInspection", { id: item.Id });
                     } else if (item.LoaiKiemId === 6) {
                         navigation.navigate("TrenChuyenInspection", { id: item.Id });

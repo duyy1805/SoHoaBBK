@@ -43,15 +43,34 @@ sharp.cache(false);
 
 const { Expo } = require('expo-server-sdk');
 let expo = new Expo();
+const CUOI_CHUYEN_LOAI_KIEM_ID = 3;
 const TREN_CHUYEN_LOAI_KIEM_ID = 6;
+const CUOI_CHUYEN_APPROVE_BOPHAN_FIELD = 'CuoiChuyen_ApproveBoPhanId';
+const CUOI_CHUYEN_COMPLETED_BY_FIELD = 'CuoiChuyen_CompletedByUserId';
+const CUOI_CHUYEN_COMPLETED_BY_NAME_FIELD = 'CuoiChuyen_CompletedByName';
 const TREN_CHUYEN_APPROVE_BOPHAN_FIELD = 'TrenChuyen_ApproveBoPhanId';
 const TREN_CHUYEN_COMPLETED_BY_FIELD = 'TrenChuyen_CompletedByUserId';
 const TREN_CHUYEN_COMPLETED_BY_NAME_FIELD = 'TrenChuyen_CompletedByName';
 
+const isCuoiChuyenLoaiKiem = (loaiKiemId) => Number(loaiKiemId) === CUOI_CHUYEN_LOAI_KIEM_ID;
 const isTrenChuyenLoaiKiem = (loaiKiemId) => Number(loaiKiemId) === TREN_CHUYEN_LOAI_KIEM_ID;
 const isAdminUser = (user = {}) =>
     Array.isArray(user?.permissions) && user.permissions.includes('QUAN_TRI_DM')
     || (Array.isArray(user?.roles) && user.roles.some((role) => String(role || '').toUpperCase().includes('ADMIN')));
+const getUserDisplayName = async (pool, userId, fallback = '') => {
+    const normalizedUserId = Number(userId || 0);
+    if (!normalizedUserId) return fallback || '';
+
+    const result = await pool.request()
+        .input('UserId', sql.Int, normalizedUserId)
+        .query(`
+            SELECT TOP 1 COALESCE(NULLIF(LTRIM(RTRIM(FullName)), ''), Username) AS DisplayName
+            FROM dbo.USERS
+            WHERE Id = @UserId
+        `);
+
+    return result.recordset?.[0]?.DisplayName || fallback || '';
+};
 const canManageTrenChuyenAll = (permissions = []) =>
     Array.isArray(permissions) && (permissions.includes('PHAN_BO_KIEM') || permissions.includes('KET_LUAN') || permissions.includes('QUAN_TRI_DM'));
 
@@ -112,6 +131,44 @@ const normalizeTrenChuyenSlots = (slots = []) => slots.map((slot, slotIndex) => 
                 })).filter((defect) => defect.defectId > 0 && defect.soLuong > 0)
                 : []
         }))
+        : []
+}));
+
+const normalizeCuoiChuyenPlans = (plans = []) => plans.map((plan, planIndex) => ({
+    planId: Number(plan?.planId || plan?.id || plan?.Id || 0) || null,
+    idKeHoachSanXuat: Number(plan?.idKeHoachSanXuat || plan?.ID_KeHoachSanXuat || plan?.sourceId || 0) || null,
+    sanPhamId: Number(plan?.sanPhamId || plan?.SanPhamId || 0) || null,
+    maSanPham: String(plan?.maSanPham || plan?.MaSanPham || '').trim(),
+    tenSanPham: String(plan?.tenSanPham || plan?.TenSanPham || '').trim(),
+    tenDonVi: String(plan?.tenDonVi || plan?.Ten_DonVi || plan?.TenDonVi || '').trim(),
+    tenBoPhan: String(plan?.tenBoPhan || plan?.Ten_BoPhan || plan?.TenBoPhan || '').trim(),
+    ngayKeHoach: plan?.ngayKeHoach || plan?.Ngay || plan?.NgayKeHoach || null,
+    soLuongKeHoach: plan?.soLuongKeHoach === '' || plan?.soLuongKeHoach == null
+        ? null
+        : Number(plan.soLuongKeHoach),
+    nangSuatDuKien: plan?.nangSuatDuKien === '' || plan?.nangSuatDuKien == null
+        ? null
+        : Number(plan.nangSuatDuKien),
+    daSanXuat: plan?.daSanXuat === '' || plan?.daSanXuat == null
+        ? null
+        : Number(plan.daSanXuat),
+    sortOrder: Number(plan?.sortOrder || planIndex + 1),
+    defects: Array.isArray(plan?.defects)
+        ? plan.defects.map((defect, defectIndex) => ({
+            defectId: Number(defect?.defectId || defect?.DefectId || 0),
+            soLuong: Number(defect?.soLuong || defect?.SoLuong || 0),
+            soLuongDatSauSua: defect?.soLuongDatSauSua === '' || defect?.soLuongDatSauSua == null
+                ? null
+                : Number(defect.soLuongDatSauSua),
+            soLuongKhongDatSauSua: defect?.soLuongKhongDatSauSua === '' || defect?.soLuongKhongDatSauSua == null
+                ? null
+                : Number(defect.soLuongKhongDatSauSua),
+            ghiChu: String(defect?.ghiChu || defect?.GhiChu || '').trim(),
+            imageUrls: Array.isArray(defect?.imageUrls)
+                ? defect.imageUrls.filter((url) => typeof url === 'string' && url.trim() !== '')
+                : [],
+            sortOrder: Number(defect?.sortOrder || defectIndex + 1)
+        })).filter((defect) => defect.defectId > 0 && defect.soLuong > 0)
         : []
 }));
 // Cấu hình Multer để lưu file
@@ -311,6 +368,24 @@ router.delete(
                     BEGIN
                         EXEC sp_executesql N'
                             DELETE FROM dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT
+                            WHERE PhieuKiemId = @InnerPhieuKiemId;
+                        ', N'@InnerPhieuKiemId INT', @InnerPhieuKiemId = @PhieuKiemId;
+                    END
+
+                    IF OBJECT_ID(N'dbo.PHIEU_KIEM_CUOI_CHUYEN_DEFECT', N'U') IS NOT NULL
+                    BEGIN
+                        EXEC sp_executesql N'
+                            DELETE d
+                            FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_DEFECT d
+                            INNER JOIN dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN p ON p.Id = d.PlanId
+                            WHERE p.PhieuKiemId = @InnerPhieuKiemId;
+                        ', N'@InnerPhieuKiemId INT', @InnerPhieuKiemId = @PhieuKiemId;
+                    END
+
+                    IF OBJECT_ID(N'dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN', N'U') IS NOT NULL
+                    BEGIN
+                        EXEC sp_executesql N'
+                            DELETE FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN
                             WHERE PhieuKiemId = @InnerPhieuKiemId;
                         ', N'@InnerPhieuKiemId INT', @InnerPhieuKiemId = @PhieuKiemId;
                     END
@@ -543,6 +618,117 @@ router.get(
                 });
             }
 
+            if (isCuoiChuyenLoaiKiem(loaiKiemId)) {
+                const result = await pool.request()
+                    .input('PhieuKiemId', sql.Int, id)
+                    .execute('sp_PhieuKiem_GetDetail_CuoiChuyen');
+
+                const phieu = result.recordsets?.[0]?.[0] || null;
+                await attachProductImageToPhieu(pool, phieu);
+                let dynamicFields = [];
+                if (phieu && phieu.DynamicFieldsJSON) {
+                    try {
+                        dynamicFields = JSON.parse(phieu.DynamicFieldsJSON);
+                    } catch (e) {
+                        console.error("Lỗi parse DynamicFieldsJSON CuoiChuyen:", e);
+                    }
+                    delete phieu.DynamicFieldsJSON;
+                }
+                const completedByUserId = Number(
+                    dynamicFields.find((field) => field?.FieldName === CUOI_CHUYEN_COMPLETED_BY_FIELD)?.FieldValue || 0
+                ) || null;
+                if (completedByUserId) {
+                    const completedByName = await getUserDisplayName(pool, completedByUserId);
+                    const completedByNameField = dynamicFields.find((field) => field?.FieldName === CUOI_CHUYEN_COMPLETED_BY_NAME_FIELD);
+                    if (completedByNameField) {
+                        completedByNameField.FieldValue = completedByName || completedByNameField.FieldValue;
+                    } else if (completedByName) {
+                        dynamicFields.push({
+                            FieldName: CUOI_CHUYEN_COMPLETED_BY_NAME_FIELD,
+                            FieldValue: completedByName
+                        });
+                    }
+                }
+
+                const planRecords = result.recordsets?.[1] || [];
+                const defectRecords = result.recordsets?.[2] || [];
+                const summary = result.recordsets?.[3]?.[0] || null;
+                let xacNhans = result.recordsets?.[4] || [];
+                if (xacNhans.length === 0) {
+                    const xacNhanResult = await pool.request()
+                        .input('PhieuKiemId', sql.Int, id)
+                        .query(`
+                            SELECT
+                                xn.Id,
+                                xn.PhieuKiemId,
+                                xn.VaiTro,
+                                xn.NguoiXacNhanId,
+                                xn.TrangThai,
+                                xn.NoiDung,
+                                xn.ThoiGian,
+                                u.FullName AS TenNguoiXacNhan,
+                                u.Username AS UsernameNguoiXacNhan,
+                                u.BoPhanId
+                            FROM dbo.PHIEU_KIEM_XAC_NHAN xn
+                            LEFT JOIN dbo.USERS u ON u.Id = xn.NguoiXacNhanId
+                            WHERE xn.PhieuKiemId = @PhieuKiemId
+                            ORDER BY xn.ThoiGian DESC, xn.Id DESC
+                        `);
+                    xacNhans = xacNhanResult.recordset || [];
+                }
+
+                const defectsByPlanId = {};
+                defectRecords.forEach((record) => {
+                    if (!defectsByPlanId[record.PlanId]) {
+                        defectsByPlanId[record.PlanId] = [];
+                    }
+
+                    let defectImageUrls = [];
+                    if (record.DefectImageUrls) {
+                        try {
+                            defectImageUrls = JSON.parse(record.DefectImageUrls);
+                        } catch (e) {
+                            defectImageUrls = [];
+                        }
+                    }
+                    if (!Array.isArray(defectImageUrls)) {
+                        defectImageUrls = [];
+                    }
+
+                    defectsByPlanId[record.PlanId].push({
+                        Id: record.DefectRowId,
+                        PlanId: record.PlanId,
+                        DefectId: record.DefectId,
+                        SoLuong: record.SoLuong,
+                        SoLuongDatSauSua: record.SoLuongDatSauSua,
+                        SoLuongKhongDatSauSua: record.SoLuongKhongDatSauSua,
+                        GhiChu: record.DefectGhiChu || '',
+                        SortOrder: record.DefectSortOrder || 0,
+                        MaLoi: record.MaLoi,
+                        TenLoi: record.TenLoi,
+                        MoTa: record.MoTa,
+                        DefectType: record.DefectType,
+                        PhuongAnXuLy: record.PhuongAnXuLy,
+                        ImageUrl: record.ImageUrl || null,
+                        ImageUrls: defectImageUrls
+                    });
+                });
+
+                const plans = planRecords.map((plan) => ({
+                    ...plan,
+                    Defects: [...(defectsByPlanId[plan.Id] || [])]
+                        .sort((a, b) => (a.SortOrder || 0) - (b.SortOrder || 0))
+                }));
+
+                return res.json({
+                    phieu,
+                    plans,
+                    summary,
+                    dynamicFields,
+                    xacNhans
+                });
+            }
+
             if (isTrenChuyenLoaiKiem(loaiKiemId)) {
                 const result = await pool.request()
                     .input('PhieuKiemId', sql.Int, id)
@@ -728,8 +914,12 @@ router.post(
             sourceId_LCD, // Thêm field cho lịch đóng cont (GUID)
             soLuong,
             Ngay_Giao,
-            mucDoKiemTra
+            mucDoKiemTra,
+            cuoiChuyenPlans
         } = req.body;
+        const normalizedCuoiChuyenPlans = isCuoiChuyenLoaiKiem(loaiKiemId)
+            ? normalizeCuoiChuyenPlans(cuoiChuyenPlans || [])
+            : [];
 
         // Bắt buộc phải có 1 trong 2 loại source
         if (!sanPhamId || !loaiKiemId || !nguoiKiemId || !soLuong || (!sourceId && !sourceId_LCD)) {
@@ -738,8 +928,45 @@ router.post(
             });
         }
 
+        if (isCuoiChuyenLoaiKiem(loaiKiemId) && normalizedCuoiChuyenPlans.length === 0) {
+            return res.status(400).json({
+                message: 'Phiếu kiểm cuối chuyền cần ít nhất một kế hoạch sản xuất'
+            });
+        }
+
         try {
             const pool = await poolPromise;
+
+            if (isCuoiChuyenLoaiKiem(loaiKiemId)) {
+                const selectedPlanIds = normalizedCuoiChuyenPlans
+                    .map((plan) => plan.idKeHoachSanXuat)
+                    .filter((id) => Number(id) > 0);
+
+                if (selectedPlanIds.length !== normalizedCuoiChuyenPlans.length) {
+                    return res.status(400).json({ message: 'Kế hoạch cuối chuyền không hợp lệ' });
+                }
+
+                const duplicateResult = await pool.request()
+                    .input('LoaiKiemId', sql.Int, loaiKiemId)
+                    .input('PlanIdsJson', sql.NVarChar(sql.MAX), JSON.stringify(selectedPlanIds))
+                    .query(`
+                        IF OBJECT_ID(N'dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN', N'U') IS NOT NULL
+                        BEGIN
+                            SELECT TOP 1 p.ID_KeHoachSanXuat
+                            FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN p
+                            INNER JOIN dbo.PHIEU_KIEM pk ON pk.Id = p.PhieuKiemId
+                            INNER JOIN OPENJSON(@PlanIdsJson) WITH (ID_KeHoachSanXuat INT '$') j
+                                ON j.ID_KeHoachSanXuat = p.ID_KeHoachSanXuat
+                            WHERE pk.LoaiKiemId = @LoaiKiemId;
+                        END
+                    `);
+
+                if (duplicateResult.recordset?.length > 0) {
+                    return res.status(409).json({
+                        message: `Kế hoạch ${duplicateResult.recordset[0].ID_KeHoachSanXuat} đã được tạo phiếu kiểm cuối chuyền`
+                    });
+                }
+            }
 
             const result = await pool.request()
                 .input('SanPhamId', sql.Int, sanPhamId)
@@ -761,6 +988,55 @@ router.post(
 
             if (isTrenChuyenLoaiKiem(loaiKiemId) && req.body.snapshotFields) {
                 await upsertPhieuKiemCustomFields(pool, newPhieuId, req.body.snapshotFields);
+            }
+
+            if (isCuoiChuyenLoaiKiem(loaiKiemId)) {
+                await pool.request()
+                    .input('PhieuKiemId', sql.Int, newPhieuId)
+                    .input('PlansJson', sql.NVarChar(sql.MAX), JSON.stringify(normalizedCuoiChuyenPlans))
+                    .query(`
+                        INSERT INTO dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN (
+                            PhieuKiemId,
+                            ID_KeHoachSanXuat,
+                            SanPhamId,
+                            MaSanPham,
+                            TenSanPham,
+                            TenDonVi,
+                            TenBoPhan,
+                            NgayKeHoach,
+                            SoLuongKeHoach,
+                            NangSuatDuKien,
+                            DaSanXuat,
+                            SortOrder
+                        )
+                        SELECT
+                            @PhieuKiemId,
+                            j.ID_KeHoachSanXuat,
+                            j.SanPhamId,
+                            NULLIF(LTRIM(RTRIM(j.MaSanPham)), ''),
+                            NULLIF(LTRIM(RTRIM(j.TenSanPham)), ''),
+                            NULLIF(LTRIM(RTRIM(j.TenDonVi)), ''),
+                            NULLIF(LTRIM(RTRIM(j.TenBoPhan)), ''),
+                            TRY_CONVERT(DATE, j.NgayKeHoach),
+                            j.SoLuongKeHoach,
+                            j.NangSuatDuKien,
+                            j.DaSanXuat,
+                            j.SortOrder
+                        FROM OPENJSON(@PlansJson)
+                        WITH (
+                            ID_KeHoachSanXuat INT '$.idKeHoachSanXuat',
+                            SanPhamId INT '$.sanPhamId',
+                            MaSanPham NVARCHAR(100) '$.maSanPham',
+                            TenSanPham NVARCHAR(255) '$.tenSanPham',
+                            TenDonVi NVARCHAR(255) '$.tenDonVi',
+                            TenBoPhan NVARCHAR(255) '$.tenBoPhan',
+                            NgayKeHoach NVARCHAR(30) '$.ngayKeHoach',
+                            SoLuongKeHoach INT '$.soLuongKeHoach',
+                            NangSuatDuKien INT '$.nangSuatDuKien',
+                            DaSanXuat INT '$.daSanXuat',
+                            SortOrder INT '$.sortOrder'
+                        ) j;
+                    `);
             }
 
             // ---- LOGIC THÔNG BÁO ----
@@ -859,6 +1135,192 @@ router.post(
             console.error('TrenChuyen save error:', err);
             res.status(500).json({
                 message: err?.originalError?.info?.message || err.message || 'Lưu phiếu kiểm trên chuyền thất bại'
+            });
+        }
+    }
+);
+
+router.post(
+    '/cuoi-chuyen/save',
+    authenticateToken,
+    authorize('THUC_HIEN_KIEM'),
+    async (req, res) => {
+        const { phieuKiemId, plans } = req.body;
+        const userId = req.user?.id || req.user?.userId;
+
+        if (!phieuKiemId || !Array.isArray(plans)) {
+            return res.status(400).json({ message: 'Thiếu dữ liệu lưu phiếu cuối chuyền' });
+        }
+
+        try {
+            const normalizedPlans = normalizeCuoiChuyenPlans(plans);
+
+            const pool = await poolPromise;
+            await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('UserId', sql.Int, userId)
+                .input('PlansJson', sql.NVarChar(sql.MAX), JSON.stringify(normalizedPlans))
+                .execute('sp_PhieuKiem_CuoiChuyen_SaveDefects');
+
+            await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .query(`
+                    UPDATE dbo.PHIEU_KIEM
+                    SET TrangThai = CASE WHEN TrangThai = 'TAO_MOI' THEN 'DANG_KIEM' ELSE TrangThai END
+                    WHERE Id = @PhieuKiemId;
+                `);
+
+            res.json({ success: true });
+        } catch (err) {
+            console.error('CuoiChuyen save error:', err);
+            res.status(500).json({
+                message: err?.originalError?.info?.message || err.message || 'Lưu phiếu kiểm cuối chuyền thất bại'
+            });
+        }
+    }
+);
+
+router.post(
+    '/cuoi-chuyen/complete',
+    authenticateToken,
+    authorize('THUC_HIEN_KIEM'),
+    async (req, res) => {
+        const { phieuKiemId, ketLuan } = req.body;
+        const userId = req.user?.id || req.user?.userId;
+        const boPhanId = req.user?.boPhanId;
+        const completedByNameFallback = req.user?.fullName || req.user?.username || '';
+
+        if (!phieuKiemId || !['DAT', 'KHONG_DAT'].includes(String(ketLuan || '').toUpperCase())) {
+            return res.status(400).json({ message: 'Thiếu dữ liệu hoàn tất hoặc kết luận không hợp lệ' });
+        }
+
+        if (!boPhanId) {
+            return res.status(400).json({ message: 'Không xác định được bộ phận duyệt của người hoàn tất phiếu' });
+        }
+
+        try {
+            const pool = await poolPromise;
+            const completedByName = await getUserDisplayName(pool, userId, completedByNameFallback);
+            await upsertPhieuKiemCustomFields(pool, phieuKiemId, {
+                [CUOI_CHUYEN_APPROVE_BOPHAN_FIELD]: String(boPhanId),
+                [CUOI_CHUYEN_COMPLETED_BY_FIELD]: String(userId || ''),
+                [CUOI_CHUYEN_COMPLETED_BY_NAME_FIELD]: completedByName
+            });
+
+            const result = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('KetLuan', sql.NVarChar(20), String(ketLuan).toUpperCase())
+                .input('UserId', sql.Int, userId)
+                .execute('sp_PhieuKiem_CuoiChuyen_Complete');
+
+            res.json({
+                success: true,
+                result: result.recordset?.[0] || null
+            });
+        } catch (err) {
+            console.error('CuoiChuyen complete error:', err);
+            res.status(500).json({
+                message: err?.originalError?.info?.message || err.message || 'Hoàn tất phiếu kiểm cuối chuyền thất bại'
+            });
+        }
+    }
+);
+
+router.post(
+    '/cuoi-chuyen/approve',
+    authenticateToken,
+    authorize('PHAN_CONG_NGUOI_XU_LY'),
+    async (req, res) => {
+        const { phieuKiemId } = req.body;
+        const userId = req.user?.id || req.user?.userId;
+        const boPhanId = req.user?.boPhanId;
+        const isAdmin = isAdminUser(req.user);
+
+        if (!phieuKiemId) {
+            return res.status(400).json({ message: 'Missing phieuKiemId' });
+        }
+
+        if (!boPhanId && !isAdmin) {
+            return res.status(400).json({ message: 'Không xác định được bộ phận của người duyệt' });
+        }
+
+        try {
+            const pool = await poolPromise;
+            let effectiveBoPhanId = boPhanId;
+            const approvalFieldsResult = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('ApproveFieldName', sql.NVarChar(100), CUOI_CHUYEN_APPROVE_BOPHAN_FIELD)
+                .input('CompletedByFieldName', sql.NVarChar(100), CUOI_CHUYEN_COMPLETED_BY_FIELD)
+                .query(`
+                    SELECT FieldName, FieldValue
+                    FROM dbo.PhieuKiem_CustomFields
+                    WHERE PhieuKiemId = @PhieuKiemId
+                      AND FieldName IN (@ApproveFieldName, @CompletedByFieldName)
+                `);
+
+            const approvalFields = Object.fromEntries(
+                (approvalFieldsResult.recordset || []).map((field) => [field.FieldName, field.FieldValue])
+            );
+            const completedByUserId = Number(approvalFields[CUOI_CHUYEN_COMPLETED_BY_FIELD] || 0) || null;
+
+            if (completedByUserId && Number(userId) === completedByUserId) {
+                return res.status(403).json({ message: 'Người hoàn tất phiếu không được tự duyệt phiếu' });
+            }
+
+            if (isAdmin) {
+                effectiveBoPhanId = Number(approvalFields[CUOI_CHUYEN_APPROVE_BOPHAN_FIELD] || 0) || null;
+            }
+
+            if (!effectiveBoPhanId) {
+                return res.status(400).json({ message: 'Không xác định được bộ phận duyệt của phiếu' });
+            }
+
+            const result = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('UserId', sql.Int, userId)
+                .input('BoPhanId', sql.Int, effectiveBoPhanId)
+                .input('IsAdmin', sql.Bit, isAdmin ? 1 : 0)
+                .execute('sp_PhieuKiem_CuoiChuyen_Approve');
+
+            res.json({
+                success: true,
+                result: result.recordset?.[0] || null
+            });
+        } catch (err) {
+            console.error('CuoiChuyen approve error:', err);
+            res.status(500).json({
+                message: err?.originalError?.info?.message || err.message || 'Duyệt phiếu kiểm cuối chuyền thất bại'
+            });
+        }
+    }
+);
+
+router.post(
+    '/cuoi-chuyen/create-bien-ban',
+    authenticateToken,
+    authorize('THUC_HIEN_KIEM'),
+    async (req, res) => {
+        const { phieuKiemId } = req.body;
+
+        if (!phieuKiemId) {
+            return res.status(400).json({ message: 'Missing phieuKiemId' });
+        }
+
+        try {
+            const pool = await poolPromise;
+            const result = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('UserId', sql.Int, req.user?.id || req.user?.userId)
+                .execute('sp_PhieuKiem_CuoiChuyen_CreateBienBan');
+
+            res.json({
+                success: true,
+                bienBanId: result.recordset?.[0]?.BienBanId || null
+            });
+        } catch (err) {
+            console.error('CuoiChuyen create bien ban error:', err);
+            res.status(500).json({
+                message: err?.originalError?.info?.message || err.message || 'Sinh biên bản kiểm cuối chuyền thất bại'
             });
         }
     }
@@ -1184,13 +1646,13 @@ router.post(
     authorize('THUC_HIEN_KIEM'),
     async (req, res) => {
         try {
-            const { 
-                phieuKiemId, 
-                dynamicFields, 
-                btpItems, 
-                summary, 
-                defects, 
-                ketLuan 
+            const {
+                phieuKiemId,
+                dynamicFields,
+                btpItems,
+                summary,
+                defects,
+                ketLuan
             } = req.body;
 
             if (!phieuKiemId) {
