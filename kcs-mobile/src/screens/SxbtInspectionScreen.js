@@ -15,7 +15,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
-import { Checkbox } from "react-native-paper";
 import {
     getPhieuKiemDetail,
     getBtpItems,
@@ -186,6 +185,19 @@ export default function SxbtInspectionScreen({ route, navigation }) {
             parts.push(`SL nhập: ${formatQuantity(lotRow.SoLuongNhap)}`);
         }
         return parts.join(" · ");
+    };
+
+    const getDefectTypeTone = (type) => {
+        if (type === "CRITICAL" || type === "Nghiêm trọng") {
+            return { bg: "#fee2e2", text: "#dc2626", label: "Nghiêm trọng" };
+        }
+        if (type === "MAJOR" || type === "Nặng") {
+            return { bg: "#fef3c7", text: "#d97706", label: "Nặng" };
+        }
+        if (type === "MINOR" || type === "Nhẹ") {
+            return { bg: "#e0f2fe", text: "#0369a1", label: "Nhẹ" };
+        }
+        return { bg: "#e0f2fe", text: "#0369a1", label: type || "Nhẹ" };
     };
 
     const openDefectModalForLot = (item, lotRow) => {
@@ -500,13 +512,12 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                     TyLeLoiNangNhe: tyLeMajorMinor
                 },
                 ...(SHOW_MANUAL_BTP_LOT_EDITOR ? { btpItems } : {}),
-                defects: activeDefects,
-                ketLuan: ketLuan
+                defects: activeDefects
             };
 
             await saveSxbtData(payload);
             if (showSuccessAlert) {
-                Alert.alert("Thành công", "Đã lưu kết quả kiểm tra.");
+                Alert.alert("Đã lưu nháp", "Đã lưu nháp phiếu kiểm.");
             }
             loadData();
         } catch (error) {
@@ -808,13 +819,73 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                                         <Text style={styles.emptyDefectText}>Chưa ghi nhận lỗi cho dòng này</Text>
                                     ) : lotDefects.map(d => {
                                         const defectKey = getDefectRowKey(d);
+                                        const tone = getDefectTypeTone(d.DefectType);
                                         return (
-                                            <View key={defectKey} style={styles.defectRow}>
-                                                <View style={{ flex: 1 }}>
-                                                    <Text style={styles.defectName}>{d.TenLoi}</Text>
-                                                    <Text style={styles.defectType}>{d.DefectType}</Text>
+                                            <View key={defectKey} style={styles.defectLineCard}>
+                                                <View style={styles.defectLineTop}>
+                                                    <View style={styles.defectLineInfo}>
+                                                        <Text style={styles.defectRowName}>{d.TenLoi}</Text>
+                                                        <View style={[styles.defectTypePill, { backgroundColor: tone.bg }]}>
+                                                            <Text style={[styles.defectTypePillText, { color: tone.text }]}>{tone.label}</Text>
+                                                        </View>
+                                                    </View>
+                                                    <View style={styles.defectActions}>
+                                                        <Text style={styles.counterLabel}>Số lỗi</Text>
+                                                        <View style={styles.counter}>
+                                                            <TouchableOpacity disabled={isCompleted} onPress={() => handleDefectChange(defectKey, -1)} style={styles.countBtn}>
+                                                                <Text style={styles.countBtnText}>-</Text>
+                                                            </TouchableOpacity>
+                                                            <TextInput
+                                                                style={styles.countInput}
+                                                                value={String(d.SoLuong)}
+                                                                editable={!isCompleted}
+                                                                keyboardType="number-pad"
+                                                                selectTextOnFocus
+                                                                onChangeText={(value) => handleDefectQuantityInput(defectKey, value)}
+                                                            />
+                                                            <TouchableOpacity disabled={isCompleted} onPress={() => handleDefectChange(defectKey, 1)} style={styles.countBtn}>
+                                                                <Text style={styles.countBtnText}>+</Text>
+                                                            </TouchableOpacity>
+                                                        </View>
+                                                    </View>
                                                 </View>
 
+                                                <TouchableOpacity
+                                                    disabled={isCompleted}
+                                                    onPress={() => toggleLapLai(defectKey)}
+                                                    style={[styles.repeatToggle, d.IsLapLai && styles.repeatToggleActive]}
+                                                >
+                                                    <View style={[styles.repeatCheckBox, d.IsLapLai && styles.repeatCheckBoxActive]}>
+                                                        {d.IsLapLai ? <Text style={styles.repeatCheckText}>✓</Text> : null}
+                                                    </View>
+                                                    <Text style={[styles.repeatText, d.IsLapLai && styles.repeatTextActive]}>Lỗi lặp lại</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                        );
+                                    })}
+                                </View>
+                            );
+                        })
+                    ))}
+
+                    {getUnassignedDefects().length > 0 && (
+                        <View style={styles.defectTargetCard}>
+                            <Text style={styles.defectTargetTitle}>Lỗi chưa gắn dòng BTP</Text>
+                            <Text style={styles.defectTargetMeta}>Dữ liệu cũ hoặc lỗi chưa có thông tin lot</Text>
+                            {getUnassignedDefects().map(d => {
+                                const defectKey = getDefectRowKey(d);
+                                const tone = getDefectTypeTone(d.DefectType);
+                                return (
+                                    <View key={defectKey} style={styles.defectLineCard}>
+                                        <View style={styles.defectLineTop}>
+                                            <View style={styles.defectLineInfo}>
+                                                <Text style={styles.defectRowName}>{d.TenLoi}</Text>
+                                                <View style={[styles.defectTypePill, { backgroundColor: tone.bg }]}>
+                                                    <Text style={[styles.defectTypePillText, { color: tone.text }]}>{tone.label}</Text>
+                                                </View>
+                                            </View>
+                                            <View style={styles.defectActions}>
+                                                <Text style={styles.counterLabel}>Số lỗi</Text>
                                                 <View style={styles.counter}>
                                                     <TouchableOpacity disabled={isCompleted} onPress={() => handleDefectChange(defectKey, -1)} style={styles.countBtn}>
                                                         <Text style={styles.countBtnText}>-</Text>
@@ -831,59 +902,19 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                                                         <Text style={styles.countBtnText}>+</Text>
                                                     </TouchableOpacity>
                                                 </View>
-
-                                                <View style={styles.lapLaiBox}>
-                                                    <Text style={styles.lapLaiText}>Lặp lại</Text>
-                                                    <Checkbox
-                                                        status={d.IsLapLai ? 'checked' : 'unchecked'}
-                                                        disabled={isCompleted}
-                                                        onPress={() => toggleLapLai(defectKey)}
-                                                    />
-                                                </View>
                                             </View>
-                                        );
-                                    })}
-                                </View>
-                            );
-                        })
-                    ))}
+                                        </View>
 
-                    {getUnassignedDefects().length > 0 && (
-                        <View style={styles.defectTargetCard}>
-                            <Text style={styles.defectTargetTitle}>Lỗi chưa gắn dòng BTP</Text>
-                            <Text style={styles.defectTargetMeta}>Dữ liệu cũ hoặc lỗi chưa có thông tin lot</Text>
-                            {getUnassignedDefects().map(d => {
-                                const defectKey = getDefectRowKey(d);
-                                return (
-                                    <View key={defectKey} style={styles.defectRow}>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.defectName}>{d.TenLoi}</Text>
-                                            <Text style={styles.defectType}>{d.DefectType}</Text>
-                                        </View>
-                                        <View style={styles.counter}>
-                                            <TouchableOpacity disabled={isCompleted} onPress={() => handleDefectChange(defectKey, -1)} style={styles.countBtn}>
-                                                <Text style={styles.countBtnText}>-</Text>
-                                            </TouchableOpacity>
-                                            <TextInput
-                                                style={styles.countInput}
-                                                value={String(d.SoLuong)}
-                                                editable={!isCompleted}
-                                                keyboardType="number-pad"
-                                                selectTextOnFocus
-                                                onChangeText={(value) => handleDefectQuantityInput(defectKey, value)}
-                                            />
-                                            <TouchableOpacity disabled={isCompleted} onPress={() => handleDefectChange(defectKey, 1)} style={styles.countBtn}>
-                                                <Text style={styles.countBtnText}>+</Text>
-                                            </TouchableOpacity>
-                                        </View>
-                                        <View style={styles.lapLaiBox}>
-                                            <Text style={styles.lapLaiText}>Lặp lại</Text>
-                                            <Checkbox
-                                                status={d.IsLapLai ? 'checked' : 'unchecked'}
-                                                disabled={isCompleted}
-                                                onPress={() => toggleLapLai(defectKey)}
-                                            />
-                                        </View>
+                                        <TouchableOpacity
+                                            disabled={isCompleted}
+                                            onPress={() => toggleLapLai(defectKey)}
+                                            style={[styles.repeatToggle, d.IsLapLai && styles.repeatToggleActive]}
+                                        >
+                                            <View style={[styles.repeatCheckBox, d.IsLapLai && styles.repeatCheckBoxActive]}>
+                                                {d.IsLapLai ? <Text style={styles.repeatCheckText}>✓</Text> : null}
+                                            </View>
+                                            <Text style={[styles.repeatText, d.IsLapLai && styles.repeatTextActive]}>Lỗi lặp lại</Text>
+                                        </TouchableOpacity>
                                     </View>
                                 );
                             })}
@@ -892,13 +923,20 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                 </View>
 
                 {!isCompleted && isKCS && (
-                    <View style={styles.actionRow}>
+                    <View style={styles.draftActionRow}>
                         <TouchableOpacity
-                            style={[styles.saveBtn, { flex: 1, backgroundColor: "#0052cc" }]}
+                            style={[styles.saveBtn, styles.draftBtn]}
+                            onPress={() => handleSave(true)}
+                            disabled={saving}
+                        >
+                            {saving ? <ActivityIndicator color="#334155" /> : <Text style={styles.draftBtnText}>Lưu nháp</Text>}
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.saveBtn, styles.completeBtn]}
                             onPress={handleComplete}
                             disabled={saving}
                         >
-                            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Hoàn Tất</Text>}
+                            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Hoàn tất</Text>}
                         </TouchableOpacity>
                     </View>
                 )}
@@ -1135,23 +1173,42 @@ const styles = StyleSheet.create({
     typeBtnTextActive: { color: "#2563eb", fontWeight: "bold" },
     input: { borderWidth: 1, borderColor: "#d1d5db", borderRadius: 6, padding: 10, marginBottom: 12 },
     statsBox: { backgroundColor: "#f3f4f6", padding: 12, borderRadius: 6, marginBottom: 12 },
-    defectRow: { flexDirection: "row", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#e5e7eb" },
-    defectName: { fontWeight: "bold", fontSize: 14 },
-    defectType: { fontSize: 12, color: "#ef4444" },
-    counter: { flexDirection: "row", alignItems: "center", backgroundColor: "#f3f4f6", borderRadius: 6, marginHorizontal: 8 },
-    countBtn: { padding: 8, width: 36, alignItems: "center" },
-    countBtnText: { fontSize: 18, fontWeight: "bold", color: "#4b5563" },
+    defectTargetCard: { borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 14, padding: 12, marginTop: 12, backgroundColor: "#f8fafc" },
+    defectTargetHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
+    defectTargetTitle: { fontSize: 15, fontWeight: "800", color: "#0f172a", lineHeight: 20 },
+    defectTargetMeta: { fontSize: 12, color: "#64748b", marginTop: 3, lineHeight: 17 },
+    emptyDefectText: { fontSize: 12, color: "#94a3b8", marginTop: 10, fontStyle: "italic" },
+    defectLineCard: { marginTop: 10, padding: 12, borderRadius: 12, backgroundColor: "#fff", borderWidth: 1, borderColor: "#e5e7eb" },
+    defectLineTop: { flexDirection: "row", alignItems: "center", gap: 10 },
+    defectLineInfo: { flex: 1, minWidth: 0 },
+    defectRowName: { fontSize: 15, fontWeight: "800", color: "#111827", lineHeight: 20 },
+    defectTypePill: { alignSelf: "flex-start", marginTop: 6, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
+    defectTypePillText: { fontSize: 11, fontWeight: "800", textTransform: "uppercase" },
+    defectActions: { alignItems: "center" },
+    counterLabel: { fontSize: 10, fontWeight: "700", color: "#64748b", marginBottom: 4, textTransform: "uppercase" },
+    counter: { flexDirection: "row", alignItems: "center", backgroundColor: "#f1f5f9", borderRadius: 12, borderWidth: 1, borderColor: "#e2e8f0", overflow: "hidden" },
+    countBtn: { width: 36, height: 34, alignItems: "center", justifyContent: "center" },
+    countBtnText: { fontSize: 20, fontWeight: "800", color: "#334155" },
     countText: { paddingHorizontal: 8, fontWeight: "bold", minWidth: 24, textAlign: "center" },
-    countInput: { paddingHorizontal: 8, paddingVertical: 6, fontWeight: "bold", minWidth: 42, textAlign: "center", color: "#0f172a" },
-    lapLaiBox: { alignItems: "center" },
-    lapLaiText: { fontSize: 10, color: "#6b7280" },
-    saveBtn: { backgroundColor: "#10b981", padding: 16, borderRadius: 8, alignItems: "center", marginVertical: 16 },
+    countInput: { paddingHorizontal: 4, paddingVertical: 4, fontWeight: "800", minWidth: 38, textAlign: "center", color: "#0f172a", fontSize: 15 },
+    repeatToggle: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", marginTop: 12, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#fff" },
+    repeatToggleActive: { backgroundColor: "#fff7ed", borderColor: "#fed7aa" },
+    repeatCheckBox: { width: 20, height: 20, borderRadius: 5, borderWidth: 2, borderColor: "#94a3b8", alignItems: "center", justifyContent: "center", backgroundColor: "#fff", marginRight: 8 },
+    repeatCheckBoxActive: { borderColor: "#7c3aed", backgroundColor: "#7c3aed" },
+    repeatCheckText: { color: "#fff", fontSize: 14, fontWeight: "900", lineHeight: 16 },
+    repeatText: { fontSize: 12, fontWeight: "800", color: "#64748b" },
+    repeatTextActive: { color: "#c2410c" },
+    saveBtn: { padding: 16, borderRadius: 8, alignItems: "center", marginVertical: 16 },
     saveBtnText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+    draftActionRow: { flexDirection: "row", gap: 10, marginVertical: 16 },
+    draftBtn: { flex: 0.9, backgroundColor: "#fff", borderWidth: 1, borderColor: "#cbd5e1" },
+    draftBtnText: { color: "#334155", fontWeight: "800", fontSize: 16 },
+    completeBtn: { flex: 1.1, backgroundColor: "#0052cc" },
     formGroup: { marginBottom: 2 },
     inputLabel: { fontSize: 13, fontWeight: "600", color: "#334155", marginBottom: 6 },
     actionRow: { flexDirection: "row", justifyContent: "space-between", marginVertical: 16 },
-    addDefectBtn: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: "#e0e7ff", borderRadius: 6 },
-    addDefectBtnText: { color: "#4f46e5", fontWeight: "bold", fontSize: 13 },
+    addDefectBtn: { paddingHorizontal: 11, paddingVertical: 7, backgroundColor: "#eff6ff", borderRadius: 999, borderWidth: 1, borderColor: "#bfdbfe" },
+    addDefectBtnText: { color: "#1d4ed8", fontWeight: "800", fontSize: 12 },
 
     // Defect Modal Styles (matched with CheckItemScreen)
     modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },

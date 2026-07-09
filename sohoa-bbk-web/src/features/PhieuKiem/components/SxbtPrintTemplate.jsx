@@ -286,11 +286,8 @@ export const SxbtPrintTemplate = React.forwardRef(({
                 <table style={{ ...s.table, fontSize: '9pt' }}>
                     <tbody>
                         <tr>
-                            <td style={{ border: 'none', padding: '1px 0', width: '33%' }}>
-                                Khách hàng:&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '80px' }}>{phieu.KhachHang || ''}</span>;
-                            </td>
-                            <td style={{ border: 'none', padding: '1px 4px', width: '34%' }}>
-                                Mã KH:&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '80px' }}>{phieu.MaKH || ''}</span>;
+                            <td style={{ border: 'none', padding: '1px 0', width: '67%' }} colSpan={2}>
+                                Mã đơn vị:&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '160px' }}>{phieu.MaDonVi || phieu.Ma_NhaThau || ''}</span>;
                             </td>
                             <td style={{ border: 'none', padding: '1px 0', width: '33%' }}>
                                 Số phiếu:&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '90px' }}>{phieu.SoPhieu || ''}</span>;
@@ -301,7 +298,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
                                 Số lượng nhập (KH):&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '50px' }}>{phieu.SoLuong ?? ''}</span>
                             </td>
                             <td style={{ border: 'none', padding: '1px 4px' }}>
-                                Số đơn hàng:&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '70px' }}>{phieu.MaDonHang || '—'}</span>
+                                Mã đơn hàng:&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '70px' }}>{phieu.MaDonHang || '—'}</span>
                             </td>
                             <td style={{ border: 'none', padding: '1px 0' }}>
                                 Ngày nhập:&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '80px' }}>
@@ -369,23 +366,23 @@ export const SxbtPrintTemplate = React.forwardRef(({
                             ? btpPrintRows.map(({ item, lotRow, lotIndex }) => {
                                 const itemRowCount = getLotRows(item).length;
                                 return (
-                                <tr key={`${item.Id}-${lotIndex}`}>
-                                    {lotIndex === 0 && (
-                                        <td rowSpan={itemRowCount} style={{ ...s.td, fontWeight: 600 }}>
-                                            {item.TenSanPham}
+                                    <tr key={`${item.Id}-${lotIndex}`}>
+                                        {lotIndex === 0 && (
+                                            <td rowSpan={itemRowCount} style={{ ...s.td, fontWeight: 600 }}>
+                                                {item.TenSanPham}
+                                            </td>
+                                        )}
+                                        <td style={s.tdc}>{lotRow.SoLuongNhap != null && lotRow.SoLuongNhap !== '' ? Number(lotRow.SoLuongNhap).toLocaleString('vi-VN') : ''}</td>
+                                        <td style={s.tdc}>{lotRow.DauTuanGS1 || ''}</td>
+                                        <td style={s.tdc}>{lotRow.ThuTu || ''}</td>
+                                        <td style={s.tdc}>{lotRow.LxvtLot || ''}</td>
+                                        <td style={s.tdc}>{lotRow.SoLotSX || ''}</td>
+                                        <td style={{ ...s.tdc, minHeight: '18px' }}>
+                                            {lotRow.SoLuongKhoXacNhan != null && lotRow.SoLuongKhoXacNhan !== ''
+                                                ? Number(lotRow.SoLuongKhoXacNhan).toLocaleString('vi-VN')
+                                                : ''}
                                         </td>
-                                    )}
-                                    <td style={s.tdc}>{lotRow.SoLuongNhap != null && lotRow.SoLuongNhap !== '' ? Number(lotRow.SoLuongNhap).toLocaleString('vi-VN') : ''}</td>
-                                    <td style={s.tdc}>{lotRow.DauTuanGS1 || ''}</td>
-                                    <td style={s.tdc}>{lotRow.ThuTu || ''}</td>
-                                    <td style={s.tdc}>{lotRow.LxvtLot || ''}</td>
-                                    <td style={s.tdc}>{lotRow.SoLotSX || ''}</td>
-                                    <td style={{ ...s.tdc, minHeight: '18px' }}>
-                                        {lotRow.SoLuongKhoXacNhan != null && lotRow.SoLuongKhoXacNhan !== ''
-                                            ? Number(lotRow.SoLuongKhoXacNhan).toLocaleString('vi-VN')
-                                            : ''}
-                                    </td>
-                                </tr>
+                                    </tr>
                                 );
                             })
                             : emptyRows(3, 7)
