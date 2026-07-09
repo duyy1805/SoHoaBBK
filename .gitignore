@@ -7,5 +7,5 @@ server/uploads
 dist/
 build/
 
-# *.sql
+*.sql
 *.xlsx

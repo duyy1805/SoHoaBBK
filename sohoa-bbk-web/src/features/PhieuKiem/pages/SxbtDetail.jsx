@@ -8,7 +8,7 @@ import {
     CircularProgress, Button, Fade, Paper, Container,
     Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
     Divider, Alert, LinearProgress,
-    Dialog, DialogTitle, DialogContent, DialogActions
+    Dialog, DialogTitle, DialogContent, DialogActions, TextField
 } from "@mui/material";
 import PrintIcon from "@mui/icons-material/Print";
 import { useReactToPrint } from "react-to-print";
@@ -24,12 +24,11 @@ import BugReportIcon from "@mui/icons-material/BugReport";
 import { SxbtPrintTemplate } from "../components/SxbtPrintTemplate";
 import {
     completeSxbt,
-    confirmKN,
-    confirmPX,
+    confirmKhoSxbt,
+    confirmSxbt,
     getPhieuKiemDetail
 } from "../../../api/phieuKiem.api";
 import { getBienBanSxbtDetail } from "../../../api/bienBan.api";
-import { updateSanPhamImage, uploadSanPhamImage } from "../../../api/lookup.api";
 import { hasPermission } from "../../../utils/auth";
 
 // ============================================================
@@ -37,6 +36,8 @@ import { hasPermission } from "../../../utils/auth";
 // ============================================================
 const STATUS_MAP = {
     CHUA_KIEM: { label: "Chưa kiểm", color: "default" },
+    CHO_SXBT_XAC_NHAN: { label: "Chờ SXBT xác nhận", color: "warning" },
+    CHO_KHO_XAC_NHAN: { label: "Chờ Kho xác nhận", color: "info" },
     CHO_KIEM_NGHIEM: { label: "Chờ kiểm nghiệm", color: "info" },
     CHO_XUONG_XAC_NHAN: { label: "Chờ Kho xác nhận", color: "warning" },
     HOAN_THANH: { label: "Hoàn thành", color: "success" },
@@ -98,10 +99,28 @@ const getBtpLotRows = (item = {}) => {
             LxvtLot: item.LxvtLot,
             SoLotSX: item.SoLotSX,
             SoLuongNhap: item.SoLuongNhap,
+            SoLuongKhoXacNhan: item.SoLuongKhoXacNhan,
             SortOrder: 1
         }].filter(isFilledLotRow);
 
     return rows.length > 0 ? rows : [{}];
+};
+
+const getLotRowKey = (row = {}, fallback) => String(row.Id || fallback);
+
+const formatQuantity = (value) =>
+    value !== undefined && value !== null && value !== ""
+        ? Number(value).toLocaleString("vi-VN")
+        : "—";
+
+const getLotContextText = (item = {}, lotRow = {}) => {
+    const parts = [];
+    if (item.SourceID_KeHoachSanXuat) parts.push(`KH #${item.SourceID_KeHoachSanXuat}`);
+    if (lotRow.SoLotSX) parts.push(`Lot SX: ${lotRow.SoLotSX}`);
+    if (lotRow.SoLuongNhap !== undefined && lotRow.SoLuongNhap !== null && lotRow.SoLuongNhap !== "") {
+        parts.push(`SL nhập: ${formatQuantity(lotRow.SoLuongNhap)}`);
+    }
+    return parts.join(" · ");
 };
 
 const DEFECT_TYPE_COLOR = {
@@ -126,12 +145,11 @@ export default function SxbtDetail() {
     const [defects, setDefects] = useState([]);
     const [dynamicFields, setDynamicFields] = useState([]);
     const [confirmSteps, setConfirmSteps] = useState([]);
+    const [khoLotQuantities, setKhoLotQuantities] = useState({});
     const [error, setError] = useState(null);
     const [actionNotice, setActionNotice] = useState(null);
     const [loadingAction, setLoadingAction] = useState(false);
     const [openPrint, setOpenPrint] = useState(false);
-    const productImageInputRef = useRef(null);
-
     const triggerPrint = useReactToPrint({
         contentRef: printRef,
         documentTitle: phieu ? `SXBT_${phieu.SoPhieu}` : 'PhieuKiemSXBT',
@@ -147,8 +165,10 @@ export default function SxbtDetail() {
             setError(null);
             const res = await getPhieuKiemDetail(id);
             const data = res.data;
+            const nextBtpItems = data.btpItems || [];
             setPhieu(data.phieu || null);
-            setBtpItems(data.btpItems || []);
+            setBtpItems(nextBtpItems);
+            setKhoLotQuantities(buildKhoQuantityState(nextBtpItems));
             setSummary(data.summary || null);
             setDefects((data.defects || []).filter(d => d.SoLuong > 0));
             setDynamicFields(data.dynamicFields || []);
@@ -174,32 +194,17 @@ export default function SxbtDetail() {
         }
     };
 
-    const handleTriggerProductImageUpload = () => {
-        if (!phieu?.SanPhamId) {
-            window.alert("Phiếu chưa có sản phẩm để gắn ảnh.");
-            return;
-        }
-        productImageInputRef.current?.click();
-    };
-
-    const handleProductImageSelected = async (event) => {
-        const file = event.target.files?.[0];
-        event.target.value = "";
-        if (!file || !phieu?.SanPhamId) return;
-
-        try {
-            const uploadRes = await uploadSanPhamImage(file, {
-                maSanPham: phieu?.MaSanPham,
-                tenSanPham: phieu?.TenSanPham
+    const buildKhoQuantityState = (items = []) => {
+        const next = {};
+        items.forEach((item) => {
+            getBtpLotRows(item).forEach((row, rowIndex) => {
+                next[getLotRowKey(row, `${item.Id}-${rowIndex}`)] =
+                    row.SoLuongKhoXacNhan !== undefined && row.SoLuongKhoXacNhan !== null
+                        ? String(row.SoLuongKhoXacNhan)
+                        : "";
             });
-            const imageUrl = uploadRes?.data?.imageUrl;
-            if (!imageUrl) throw new Error("UPLOAD_FAILED");
-            await updateSanPhamImage(phieu.SanPhamId, imageUrl);
-            await loadData();
-        } catch (error) {
-            console.error(error);
-            window.alert(error?.response?.data?.message || "Không thể cập nhật ảnh sản phẩm.");
-        }
+        });
+        return next;
     };
 
     if (loading) {
@@ -239,9 +244,29 @@ export default function SxbtDetail() {
     };
 
     const isKCS = hasPermission("THUC_HIEN_KIEM");
-    const isPX = hasPermission("XAC_NHAN_PX");
-    const isKN = hasPermission("XAC_NHAN_KIEM_NGHIEM");
-    const isCompleted = ["CHO_KIEM_NGHIEM", "CHO_XUONG_XAC_NHAN", "HOAN_THANH", "HOAN_TAT"].includes(phieu?.TrangThai);
+    const isSXBTConfirm = hasPermission("XAC_NHAN_SXBT");
+    const isKhoSXBT = hasPermission("XAC_NHAN_KHO_SXBT");
+    const isCompleted = ["CHO_SXBT_XAC_NHAN", "CHO_KHO_XAC_NHAN", "CHO_KIEM_NGHIEM", "CHO_XUONG_XAC_NHAN", "HOAN_THANH", "HOAN_TAT"].includes(phieu?.TrangThai);
+    const canEditKhoQuantity = phieu?.TrangThai === "CHO_KHO_XAC_NHAN" && isKhoSXBT;
+    const defectGroups = btpItems.flatMap((item) =>
+        getBtpLotRows(item).map((lotRow, lotIndex) => ({
+            key: `${item.Id}-${lotRow.Id || lotIndex}`,
+            item,
+            lotRow,
+            lotIndex,
+            defects: defects.filter(d =>
+                Number(d.BtpItemId) === Number(item.Id) &&
+                Number(d.BtpLotRowId) === Number(lotRow.Id)
+            )
+        }))
+    );
+    const unassignedDefects = defects.filter(d =>
+        !d.BtpLotRowId ||
+        !defectGroups.some(group =>
+            Number(d.BtpItemId) === Number(group.item.Id) &&
+            Number(d.BtpLotRowId) === Number(group.lotRow.Id)
+        )
+    );
 
     const inferredKetLuan = phieu?.KetLuan ||
         (dkThungSanXe === "KHONG_DAT" || dkNgoaiQuan === "KHONG_DAT" || defects.length > 0 ? "KHONG_DAT" : "DAT");
@@ -255,7 +280,7 @@ export default function SxbtDetail() {
             setActionNotice(null);
             await completeSxbt(id, inferredKetLuan);
             await loadData();
-            setActionNotice({ type: "success", message: "Hoàn tất phiếu SXBT thành công. Phiếu đã chuyển sang bước xác nhận tiếp theo." });
+            setActionNotice({ type: "success", message: "Hoàn tất phiếu SXBT thành công. Phiếu đã chuyển sang bước SXBT xác nhận." });
         } catch (err) {
             setActionNotice({
                 type: "error",
@@ -266,34 +291,46 @@ export default function SxbtDetail() {
         }
     };
 
-    const handleConfirmPX = async () => {
+    const handleConfirmSXBT = async () => {
         try {
             setLoadingAction(true);
             setActionNotice(null);
-            await confirmPX(id);
+            await confirmSxbt(id);
             await loadData();
-            setActionNotice({ type: "success", message: "Kho đã xác nhận phiếu SXBT thành công" });
+            setActionNotice({ type: "success", message: "SXBT đã xác nhận phiếu thành công" });
         } catch (err) {
             setActionNotice({
                 type: "error",
-                message: err?.response?.data?.message || "Không thể xác nhận phiếu SXBT"
+                message: err?.response?.data?.message || "Không thể xác nhận SXBT"
             });
         } finally {
             setLoadingAction(false);
         }
     };
 
-    const handleConfirmKN = async () => {
+    const handleConfirmKho = async () => {
+        const lotRows = btpItems.flatMap((item) =>
+            getBtpLotRows(item).map((row, rowIndex) => ({
+                lotRowId: row.Id,
+                soLuongKhoXacNhan: khoLotQuantities[getLotRowKey(row, `${item.Id}-${rowIndex}`)]
+            }))
+        );
+
+        if (lotRows.length === 0 || lotRows.some((row) => !row.lotRowId || row.soLuongKhoXacNhan === "" || row.soLuongKhoXacNhan === undefined || row.soLuongKhoXacNhan === null)) {
+            setActionNotice({ type: "error", message: "Vui lòng nhập số lượng Kho xác nhận cho tất cả dòng lot." });
+            return;
+        }
+
         try {
             setLoadingAction(true);
             setActionNotice(null);
-            await confirmKN(id);
+            await confirmKhoSxbt(id, lotRows);
             await loadData();
-            setActionNotice({ type: "success", message: "Đã xác nhận kiểm nghiệm phiếu SXBT thành công" });
+            setActionNotice({ type: "success", message: "Kho đã xác nhận số lượng nhập. Phiếu đã hoàn thành." });
         } catch (err) {
             setActionNotice({
                 type: "error",
-                message: err?.response?.data?.message || "Không thể xác nhận kiểm nghiệm phiếu SXBT"
+                message: err?.response?.data?.message || "Không thể xác nhận Kho"
             });
         } finally {
             setLoadingAction(false);
@@ -448,6 +485,7 @@ export default function SxbtDetail() {
                                                 <TableCell sx={{ fontWeight: 700 }}>TT</TableCell>
                                                 <TableCell sx={{ fontWeight: 700 }}>LXVT/LOT</TableCell>
                                                 <TableCell sx={{ fontWeight: 700 }}>Số Lot SX</TableCell>
+                                                <TableCell align="right" sx={{ fontWeight: 700 }}>Tổng cái Kho xác nhận</TableCell>
                                                 <TableCell sx={{ fontWeight: 700 }}>Số bó hàng</TableCell>
                                                 <TableCell sx={{ fontWeight: 700 }}>Số cái/bó</TableCell>
                                             </TableRow>
@@ -468,6 +506,25 @@ export default function SxbtDetail() {
                                                         <TableCell>{lotRow.ThuTu || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
                                                         <TableCell>{lotRow.LxvtLot || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
                                                         <TableCell>{lotRow.SoLotSX || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
+                                                        <TableCell align="right">
+                                                            {canEditKhoQuantity ? (
+                                                                <TextField
+                                                                    size="small"
+                                                                    type="number"
+                                                                    inputProps={{ min: 0, step: "0.01", style: { textAlign: "right" } }}
+                                                                    value={khoLotQuantities[getLotRowKey(lotRow, `${item.Id}-${lotIndex}`)] || ""}
+                                                                    onChange={(event) => {
+                                                                        const key = getLotRowKey(lotRow, `${item.Id}-${lotIndex}`);
+                                                                        setKhoLotQuantities(prev => ({ ...prev, [key]: event.target.value }));
+                                                                    }}
+                                                                    sx={{ width: 130 }}
+                                                                />
+                                                            ) : lotRow.SoLuongKhoXacNhan !== null && lotRow.SoLuongKhoXacNhan !== undefined && lotRow.SoLuongKhoXacNhan !== "" ? (
+                                                                Number(lotRow.SoLuongKhoXacNhan).toLocaleString("vi-VN")
+                                                            ) : (
+                                                                <Typography variant="caption" color="text.disabled">—</Typography>
+                                                            )}
+                                                        </TableCell>
                                                         <TableCell>{item.SoBoHang || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
                                                         <TableCell>{item.SoCaiBo || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
                                                     </TableRow>
@@ -545,48 +602,100 @@ export default function SxbtDetail() {
                                     <Typography color="text.secondary">Không ghi nhận lỗi nào</Typography>
                                 </Box>
                             ) : (
-                                <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
-                                    <Table size="small">
-                                        <TableHead>
-                                            <TableRow sx={{ bgcolor: "grey.50" }}>
-                                                <TableCell sx={{ fontWeight: 700 }}>Tên lỗi</TableCell>
-                                                <TableCell sx={{ fontWeight: 700 }}>Loại lỗi</TableCell>
-                                                <TableCell align="center" sx={{ fontWeight: 700 }}>Số lượng</TableCell>
-                                                <TableCell align="center" sx={{ fontWeight: 700 }}>Lặp lại</TableCell>
-                                            </TableRow>
-                                        </TableHead>
-                                        <TableBody>
-                                            {defects.map((d, idx) => {
-                                                const color = DEFECT_TYPE_COLOR[d.DefectType] || "#64748b";
-                                                return (
-                                                    <TableRow key={d.DefectId ?? idx} hover>
-                                                        <TableCell sx={{ fontWeight: 600 }}>{d.TenLoi}</TableCell>
-                                                        <TableCell>
-                                                            <Chip
-                                                                label={d.DefectType}
-                                                                size="small"
-                                                                sx={{ bgcolor: color, color: "#fff", fontWeight: 700, fontSize: 11 }}
-                                                            />
-                                                        </TableCell>
-                                                        <TableCell align="center">
-                                                            <Chip
-                                                                label={d.SoLuong}
-                                                                color={d.SoLuong > 0 ? "error" : "default"}
-                                                                size="small"
-                                                                sx={{ fontWeight: 700, minWidth: 40 }}
-                                                            />
-                                                        </TableCell>
-                                                        <TableCell align="center">
-                                                            {d.IsLapLai
-                                                                ? <Chip label="Lặp lại" color="warning" size="small" icon={<WarningAmberIcon />} />
-                                                                : <Typography variant="caption" color="text.disabled">—</Typography>}
-                                                        </TableCell>
-                                                    </TableRow>
-                                                );
-                                            })}
-                                        </TableBody>
-                                    </Table>
-                                </TableContainer>
+                                <Stack spacing={2}>
+                                    {defectGroups.filter(group => group.defects.length > 0).map((group) => (
+                                        <Box key={group.key}>
+                                            <Typography fontWeight={800}>{group.item.TenSanPham || "BTP"}</Typography>
+                                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                                {getLotContextText(group.item, group.lotRow) || `Dòng lot ${group.lotIndex + 1}`}
+                                            </Typography>
+                                            <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+                                                <Table size="small">
+                                                    <TableHead>
+                                                        <TableRow sx={{ bgcolor: "grey.50" }}>
+                                                            <TableCell sx={{ fontWeight: 700 }}>Tên lỗi</TableCell>
+                                                            <TableCell sx={{ fontWeight: 700 }}>Loại lỗi</TableCell>
+                                                            <TableCell align="center" sx={{ fontWeight: 700 }}>Số lượng</TableCell>
+                                                            <TableCell align="center" sx={{ fontWeight: 700 }}>Lặp lại</TableCell>
+                                                        </TableRow>
+                                                    </TableHead>
+                                                    <TableBody>
+                                                        {group.defects.map((d, idx) => {
+                                                            const color = DEFECT_TYPE_COLOR[d.DefectType] || "#64748b";
+                                                            return (
+                                                                <TableRow key={`${d.DefectId}-${d.BtpLotRowId}-${idx}`} hover>
+                                                                    <TableCell sx={{ fontWeight: 600 }}>{d.TenLoi}</TableCell>
+                                                                    <TableCell>
+                                                                        <Chip
+                                                                            label={d.DefectType}
+                                                                            size="small"
+                                                                            sx={{ bgcolor: color, color: "#fff", fontWeight: 700, fontSize: 11 }}
+                                                                        />
+                                                                    </TableCell>
+                                                                    <TableCell align="center">
+                                                                        <Chip
+                                                                            label={d.SoLuong}
+                                                                            color={d.SoLuong > 0 ? "error" : "default"}
+                                                                            size="small"
+                                                                            sx={{ fontWeight: 700, minWidth: 40 }}
+                                                                        />
+                                                                    </TableCell>
+                                                                    <TableCell align="center">
+                                                                        {d.IsLapLai
+                                                                            ? <Chip label="Lặp lại" color="warning" size="small" icon={<WarningAmberIcon />} />
+                                                                            : <Typography variant="caption" color="text.disabled">—</Typography>}
+                                                                    </TableCell>
+                                                                </TableRow>
+                                                            );
+                                                        })}
+                                                    </TableBody>
+                                                </Table>
+                                            </TableContainer>
+                                        </Box>
+                                    ))}
+
+                                    {unassignedDefects.length > 0 && (
+                                        <Box>
+                                            <Typography fontWeight={800}>Lỗi chưa gắn dòng BTP</Typography>
+                                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                                Dữ liệu cũ hoặc lỗi chưa có thông tin lot
+                                            </Typography>
+                                            <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+                                                <Table size="small">
+                                                    <TableHead>
+                                                        <TableRow sx={{ bgcolor: "grey.50" }}>
+                                                            <TableCell sx={{ fontWeight: 700 }}>Tên lỗi</TableCell>
+                                                            <TableCell sx={{ fontWeight: 700 }}>Loại lỗi</TableCell>
+                                                            <TableCell align="center" sx={{ fontWeight: 700 }}>Số lượng</TableCell>
+                                                            <TableCell align="center" sx={{ fontWeight: 700 }}>Lặp lại</TableCell>
+                                                        </TableRow>
+                                                    </TableHead>
+                                                    <TableBody>
+                                                        {unassignedDefects.map((d, idx) => {
+                                                            const color = DEFECT_TYPE_COLOR[d.DefectType] || "#64748b";
+                                                            return (
+                                                                <TableRow key={`${d.DefectId}-unassigned-${idx}`} hover>
+                                                                    <TableCell sx={{ fontWeight: 600 }}>{d.TenLoi}</TableCell>
+                                                                    <TableCell>
+                                                                        <Chip label={d.DefectType} size="small" sx={{ bgcolor: color, color: "#fff", fontWeight: 700, fontSize: 11 }} />
+                                                                    </TableCell>
+                                                                    <TableCell align="center">
+                                                                        <Chip label={d.SoLuong} color={d.SoLuong > 0 ? "error" : "default"} size="small" sx={{ fontWeight: 700, minWidth: 40 }} />
+                                                                    </TableCell>
+                                                                    <TableCell align="center">
+                                                                        {d.IsLapLai
+                                                                            ? <Chip label="Lặp lại" color="warning" size="small" icon={<WarningAmberIcon />} />
+                                                                            : <Typography variant="caption" color="text.disabled">—</Typography>}
+                                                                    </TableCell>
+                                                                </TableRow>
+                                                            );
+                                                        })}
+                                                    </TableBody>
+                                                </Table>
+                                            </TableContainer>
+                                        </Box>
+                                    )}
+                                </Stack>
                             )}
                         </CardContent>
                     </Card>
@@ -606,30 +715,30 @@ export default function SxbtDetail() {
                         </Paper>
                     )}
 
-                    {phieu?.TrangThai === "CHO_XUONG_XAC_NHAN" && isPX && (
+                    {phieu?.TrangThai === "CHO_SXBT_XAC_NHAN" && isSXBTConfirm && (
                         <Paper sx={{ position: "sticky", bottom: 0, zIndex: 9, mt: 2, mb: 3, p: 2, borderTop: "1px solid #e0e0e0" }}>
                             <Stack direction="row" justifyContent="flex-end">
                                 <Button
                                     variant="contained"
-                                    onClick={handleConfirmPX}
+                                    onClick={handleConfirmSXBT}
                                     disabled={loadingAction}
                                 >
-                                    {loadingAction ? "Đang xử lý..." : "Kho xác nhận"}
+                                    {loadingAction ? "Đang xử lý..." : "SXBT xác nhận"}
                                 </Button>
                             </Stack>
                         </Paper>
                     )}
 
-                    {phieu?.TrangThai === "CHO_KIEM_NGHIEM" && isKN && (
+                    {phieu?.TrangThai === "CHO_KHO_XAC_NHAN" && isKhoSXBT && (
                         <Paper sx={{ position: "sticky", bottom: 0, zIndex: 9, mt: 2, mb: 3, p: 2, borderTop: "1px solid #e0e0e0" }}>
                             <Stack direction="row" justifyContent="flex-end">
                                 <Button
                                     variant="contained"
-                                    color="secondary"
-                                    onClick={handleConfirmKN}
+                                    color="success"
+                                    onClick={handleConfirmKho}
                                     disabled={loadingAction}
                                 >
-                                    {loadingAction ? "Đang xử lý..." : "Xác nhận kiểm nghiệm"}
+                                    {loadingAction ? "Đang xử lý..." : "Kho xác nhận số lượng"}
                                 </Button>
                             </Stack>
                         </Paper>
@@ -640,13 +749,6 @@ export default function SxbtDetail() {
                 <Dialog open={openPrint} onClose={() => setOpenPrint(false)} maxWidth="md" fullWidth>
                     <DialogTitle>Xem trước phiếu kiểm SXBT</DialogTitle>
                     <DialogContent dividers sx={{ bgcolor: '#e5e7eb', p: 2 }}>
-                        <input
-                            ref={productImageInputRef}
-                            type="file"
-                            accept="image/*"
-                            style={{ display: "none" }}
-                            onChange={handleProductImageSelected}
-                        />
                         <SxbtPrintTemplate
                             ref={printRef}
                             phieu={phieu}
@@ -655,7 +757,6 @@ export default function SxbtDetail() {
                             defects={defects}
                             dynamicFields={dynamicFields}
                             confirmSteps={confirmSteps}
-                            onRequestProductImageUpload={handleTriggerProductImageUpload}
                         />
                     </DialogContent>
                     <DialogActions>

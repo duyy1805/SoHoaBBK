@@ -81,6 +81,12 @@ export default function PhieuListScreen({ navigation }) {
                     text: item?.LoaiKiemId === 4 ? "Chờ Kho" : "Chờ PX"
                 };
 
+            case "CHO_SXBT_XAC_NHAN":
+                return { backgroundColor: "#fef3c7", color: "#b45309", text: "Chờ SXBT" };
+
+            case "CHO_KHO_XAC_NHAN":
+                return { backgroundColor: "#dbeafe", color: "#1d4ed8", text: "Chờ Kho" };
+
             case "CHO_KIEM_NGHIEM":
                 return { backgroundColor: "#ede9fe", color: "#6d28d9", text: "Chờ kiểm nghiệm" };
 

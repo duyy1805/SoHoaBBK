@@ -111,6 +111,14 @@ export const completeSxbt = (phieuKiemId, ketLuan) => {
     return axiosClient.post("/phieu-kiem/sxbt-complete", { phieuKiemId, ketLuan });
 };
 
+export const confirmSxbt = (phieuKiemId) => {
+    return axiosClient.post("/phieu-kiem/sxbt/confirm-sxbt", { phieuKiemId });
+};
+
+export const confirmKhoSxbt = (phieuKiemId, lotRows) => {
+    return axiosClient.post("/phieu-kiem/sxbt/confirm-kho", { phieuKiemId, lotRows });
+};
+
 export const saveTrenChuyenData = (data) => {
     return axiosClient.post("/phieu-kiem/tren-chuyen/save", data);
 };

@@ -12,7 +12,7 @@
  Target Server Version : 13005026 (13.00.5026)
  File Encoding         : 65001
 
- Date: 08/07/2026 11:28:56
+ Date: 09/07/2026 10:33:42
 */
 
 
@@ -580,7 +580,11 @@ CREATE TABLE [dbo].[PHIEU_KIEM_BTP_ITEM] (
   [SoBoHang] nvarchar(100) COLLATE SQL_Latin1_General_CP1_CI_AS  NULL,
   [SoCaiBo] nvarchar(100) COLLATE SQL_Latin1_General_CP1_CI_AS  NULL,
   [NgayNhap] datetime  NULL,
-  [SoLuongNhap] decimal(18,2)  NULL
+  [SoLuongNhap] decimal(18,2)  NULL,
+  [SourceID_DonHang] int  NULL,
+  [SourceID_DonHang_SanPham] int  NULL,
+  [SourceID_DonHang_LoSanXuat] int  NULL,
+  [SourceID_KeHoachSanXuat] int  NULL
 )
 GO
 
@@ -2496,138 +2500,6 @@ JOIN PHIEU_KIEM_SECTION s ON pkd.SectionId = s.Id
 
 WHERE s.PhieuKiemId = @PhieuKiemId
 
-END
-GO
-
-
--- ----------------------------
--- procedure structure for sp_PhieuKiem_Create_SXBT
--- ----------------------------
-IF EXISTS (SELECT * FROM sys.all_objects WHERE object_id = OBJECT_ID(N'[dbo].[sp_PhieuKiem_Create_SXBT]') AND type IN ('P', 'PC', 'RF', 'X'))
-	DROP PROCEDURE[dbo].[sp_PhieuKiem_Create_SXBT]
-GO
-
-CREATE PROCEDURE [dbo].[sp_PhieuKiem_Create_SXBT]
-    @LoaiKiemId INT,
-    @NguoiKiemId INT,
-    @NguoiLapId INT,
-    @SourceId INT,      -- ID_PhieuNhapBTP
-    @SoLuong INT,
-    @DoiTuong NVARCHAR(100),
-    @MucDoKiemTra NVARCHAR(50) = NULL
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    -- 1. Kiểm tra trùng
-    IF EXISTS (SELECT 1 FROM PHIEU_KIEM WHERE SourceId = @SourceId AND LoaiKiemId = @LoaiKiemId)
-    BEGIN
-        RAISERROR(N'Phiếu nhập BTP này đã được tạo phiếu kiểm rồi.', 16, 1);
-        RETURN;
-    END
-
-    -- 2. Lấy ID_SanPham chuẩn từ bảng DonHang_SanPham (thông qua join chi tiết phiếu nhập)
-    DECLARE @DaiDienSanPhamId INT;
-    
---     SELECT TOP 1 @DaiDienSanPhamId = dmsp.Id 
---     FROM TAG_QTKD.dbo.PhieuNhapBTP_ChiTiet ct
---     INNER JOIN TAG_QTKD.dbo.DonHang_SanPham sp ON ct.ID_DonHang_SanPham = sp.ID_DonHang_SanPham
---     INNER JOIN TAG_QTKD.dbo.DM_SanPham tsp ON sp.ID_SanPham = tsp.ID_SanPham
---     INNER JOIN DM_SAN_PHAM dmsp ON dmsp.MaSanPham = tsp.ItemCode
---     WHERE ct.ID_PhieuNhapBTP = @SourceId;
-    
-    SELECT TOP 1 @DaiDienSanPhamId = dmsp.Id 
-    FROM TAG_QTKD.dbo.PhieuNhapBTP_KeHoachSanXuat ct
-    INNER JOIN TAG_QLSX.dbo.KeHoachSanXuat khsx ON ct.ID_KeHoachSanXuat = khsx.ID_KeHoachSanXuat
-    INNER JOIN TAG_QLSX.dbo.LenhSanXuat lsx ON khsx.ID_LenhSanXuat = lsx.ID_LenhSanXuat
---     INNER JOIN TAG_QTKD.dbo.DonHang dh ON dh.ID_DonHang = lsx.ID_DonHang
-    INNER JOIN TAG_QTKD.dbo.DonHang_SanPham dh_sp ON dh_sp.ID_DonHang = lsx.ID_DonHang
-    INNER JOIN TAG_QTKD.dbo.DM_SanPham tsp ON dh_sp.ID_SanPham = tsp.ID_SanPham
-    INNER JOIN DM_SAN_PHAM dmsp ON dmsp.MaSanPham = tsp.ItemCode
-    WHERE ct.ID_PhieuNhapBTP = @SourceId;
-
-    -- Nếu không tìm thấy hoặc null, lấy đại diện 1 ID bất kỳ trong DM_SAN_PHAM để tránh lỗi FK
-    IF @DaiDienSanPhamId IS NULL
-    BEGIN
-        SELECT TOP 1 @DaiDienSanPhamId = Id FROM DM_SAN_PHAM;
-    END
-
-    -- 3. Tạo Số Phiếu tự động
-    DECLARE @SoPhieu NVARCHAR(50);
-    DECLARE @TodayStr NVARCHAR(6) = FORMAT(GETDATE(), 'yyMMdd');
-    DECLARE @Prefix NVARCHAR(10) = N'BT-';
-    DECLARE @NextSeq INT;
-
-    SELECT @NextSeq = ISNULL(MAX(CAST(RIGHT(SoPhieu, 3) AS INT)), 0) + 1
-    FROM PHIEU_KIEM
-    WHERE SoPhieu LIKE @Prefix + @TodayStr + '-%';
-
-    SET @SoPhieu = @Prefix + @TodayStr + '-' + RIGHT('000' + CAST(@NextSeq AS NVARCHAR(3)), 3);
-
-    -- 4. Chèn vào bảng PHIEU_KIEM
-    DECLARE @InsertedIds TABLE (Id INT);
-
-    INSERT INTO [dbo].[PHIEU_KIEM] (
-        [SoPhieu],
-        [SanPhamId],
-        [LoaiKiemId],
-        [Lot],
-        [DoiTuong],
-        [NguoiKiemId],
-        [NguoiLapId],
-        [SourceId],
-        [SoLuong],
-        [CreatedAt],
-        [TrangThai],
-        [MucDoKiemTra]
-    )
-    OUTPUT INSERTED.Id INTO @InsertedIds
-    VALUES (
-        @SoPhieu,
-        @DaiDienSanPhamId, 
-        @LoaiKiemId,
-        N'', 
-        @DoiTuong,
-        @NguoiKiemId,
-        @NguoiLapId,
-        @SourceId,
-        @SoLuong,
-        GETDATE(),
-        N'CHUA_KIEM',
-        @MucDoKiemTra
-    );
-
-    DECLARE @NewPhieuKiemId INT;
-    SELECT TOP 1 @NewPhieuKiemId = Id FROM @InsertedIds;
-
-    -- 5. Copy chi tiết mặt hàng
-    IF @NewPhieuKiemId IS NOT NULL
-    BEGIN
-        INSERT INTO [dbo].[PHIEU_KIEM_BTP_ITEM] (
-            [PhieuKiemId],
-            [ItemCode],
-            [TenSanPham],
-            [SoLuong],
-            [DonViTinh],
-            [MaDonHang]
-        )
-        SELECT 
-            @NewPhieuKiemId,
-            tsp.ItemCode,
-            ISNULL(tsp.Ten_SanPham, dh.Ma_DonHang),
-            ct.SoLuong_NhapKho,
-            dvt.Ten_DonViTinh,
-            dh.Ma_DonHang
-        FROM TAG_QTKD.dbo.PhieuNhapBTP_ChiTiet ct
-        INNER JOIN TAG_QTKD.dbo.DonHang dh ON ct.ID_DonHang = dh.ID_DonHang
-        LEFT JOIN TAG_QTKD.dbo.DonHang_SanPham sp ON ct.ID_DonHang_SanPham = sp.ID_DonHang_SanPham
-        LEFT JOIN TAG_QTKD.dbo.DM_SanPham tsp ON tsp.ID_SanPham = sp.ID_SanPham
-        LEFT JOIN TAG_QTKD.dbo.DM_DonViTinh dvt ON sp.ID_DonViTinh = dvt.ID_DonViTinh
-        WHERE ct.ID_PhieuNhapBTP = @SourceId;
-    END
-
-    -- Trả về thông tin
-    SELECT @NewPhieuKiemId AS Id, @SoPhieu AS SoPhieu;
 END
 GO
 
@@ -8433,7 +8305,7 @@ GO
 -- ----------------------------
 -- Auto increment value for DM_CHECK_ITEM
 -- ----------------------------
-DBCC CHECKIDENT ('[dbo].[DM_CHECK_ITEM]', RESEED, 6475)
+DBCC CHECKIDENT ('[dbo].[DM_CHECK_ITEM]', RESEED, 6567)
 GO
 
 
@@ -8518,7 +8390,7 @@ GO
 -- ----------------------------
 -- Auto increment value for DM_NHOM_KIEM
 -- ----------------------------
-DBCC CHECKIDENT ('[dbo].[DM_NHOM_KIEM]', RESEED, 1162)
+DBCC CHECKIDENT ('[dbo].[DM_NHOM_KIEM]', RESEED, 1186)
 GO
 
 
@@ -8550,7 +8422,7 @@ GO
 -- ----------------------------
 -- Auto increment value for NOTIFICATIONS
 -- ----------------------------
-DBCC CHECKIDENT ('[dbo].[NOTIFICATIONS]', RESEED, 743)
+DBCC CHECKIDENT ('[dbo].[NOTIFICATIONS]', RESEED, 814)
 GO
 
 
@@ -8591,7 +8463,7 @@ GO
 -- ----------------------------
 -- Auto increment value for PHIEU_KIEM
 -- ----------------------------
-DBCC CHECKIDENT ('[dbo].[PHIEU_KIEM]', RESEED, 846)
+DBCC CHECKIDENT ('[dbo].[PHIEU_KIEM]', RESEED, 931)
 GO
 
 
@@ -8616,7 +8488,7 @@ GO
 -- ----------------------------
 -- Auto increment value for PHIEU_KIEM_BTP_ITEM
 -- ----------------------------
-DBCC CHECKIDENT ('[dbo].[PHIEU_KIEM_BTP_ITEM]', RESEED, 230)
+DBCC CHECKIDENT ('[dbo].[PHIEU_KIEM_BTP_ITEM]', RESEED, 231)
 GO
 
 
@@ -8626,6 +8498,16 @@ GO
 CREATE NONCLUSTERED INDEX [IX_PHIEU_KIEM_BTP_ITEM_PhieuKiemId]
 ON [dbo].[PHIEU_KIEM_BTP_ITEM] (
   [PhieuKiemId] ASC
+)
+GO
+
+CREATE NONCLUSTERED INDEX [IX_PHIEU_KIEM_BTP_ITEM_Source]
+ON [dbo].[PHIEU_KIEM_BTP_ITEM] (
+  [PhieuKiemId] ASC,
+  [SourceID_KeHoachSanXuat] ASC,
+  [SourceID_DonHang] ASC,
+  [SourceID_DonHang_SanPham] ASC,
+  [SourceID_DonHang_LoSanXuat] ASC
 )
 GO
 
@@ -8670,7 +8552,7 @@ GO
 -- ----------------------------
 -- Auto increment value for PHIEU_KIEM_CHECK_ITEM
 -- ----------------------------
-DBCC CHECKIDENT ('[dbo].[PHIEU_KIEM_CHECK_ITEM]', RESEED, 7735)
+DBCC CHECKIDENT ('[dbo].[PHIEU_KIEM_CHECK_ITEM]', RESEED, 7923)
 GO
 
 
@@ -8748,7 +8630,7 @@ GO
 -- ----------------------------
 -- Auto increment value for PHIEU_KIEM_DEFECT
 -- ----------------------------
-DBCC CHECKIDENT ('[dbo].[PHIEU_KIEM_DEFECT]', RESEED, 1209)
+DBCC CHECKIDENT ('[dbo].[PHIEU_KIEM_DEFECT]', RESEED, 1215)
 GO
 
 
@@ -8764,7 +8646,7 @@ GO
 -- ----------------------------
 -- Auto increment value for PHIEU_KIEM_SECTION
 -- ----------------------------
-DBCC CHECKIDENT ('[dbo].[PHIEU_KIEM_SECTION]', RESEED, 2124)
+DBCC CHECKIDENT ('[dbo].[PHIEU_KIEM_SECTION]', RESEED, 2173)
 GO
 
 
@@ -8806,7 +8688,7 @@ GO
 -- ----------------------------
 -- Auto increment value for PHIEU_KIEM_THONG_SO_KQ
 -- ----------------------------
-DBCC CHECKIDENT ('[dbo].[PHIEU_KIEM_THONG_SO_KQ]', RESEED, 4014)
+DBCC CHECKIDENT ('[dbo].[PHIEU_KIEM_THONG_SO_KQ]', RESEED, 4128)
 GO
 
 
@@ -8881,7 +8763,7 @@ GO
 -- ----------------------------
 -- Auto increment value for PHIEU_KIEM_XAC_NHAN
 -- ----------------------------
-DBCC CHECKIDENT ('[dbo].[PHIEU_KIEM_XAC_NHAN]', RESEED, 147)
+DBCC CHECKIDENT ('[dbo].[PHIEU_KIEM_XAC_NHAN]', RESEED, 182)
 GO
 
 
@@ -8940,7 +8822,7 @@ GO
 -- ----------------------------
 -- Auto increment value for SAN_PHAM_NHOM_KIEM
 -- ----------------------------
-DBCC CHECKIDENT ('[dbo].[SAN_PHAM_NHOM_KIEM]', RESEED, 3979)
+DBCC CHECKIDENT ('[dbo].[SAN_PHAM_NHOM_KIEM]', RESEED, 4088)
 GO
 
 

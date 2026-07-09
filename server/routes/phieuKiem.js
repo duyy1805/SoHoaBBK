@@ -22,9 +22,13 @@ const attachBtpLotRows = (btpItems = [], lotRows = []) => {
                     LxvtLot: item.LxvtLot,
                     SoLotSX: item.SoLotSX,
                     SoLuongNhap: item.SoLuongNhap,
+                    SoLuongKhoXacNhan: item.SoLuongKhoXacNhan,
+                    KhoXacNhanBy: item.KhoXacNhanBy,
+                    KhoXacNhanAt: item.KhoXacNhanAt,
                     SortOrder: 1
                 }].filter(row =>
                     (row.SoLuongNhap !== null && row.SoLuongNhap !== undefined) ||
+                    (row.SoLuongKhoXacNhan !== null && row.SoLuongKhoXacNhan !== undefined) ||
                     row.DauTuanGS1 || row.ThuTu || row.LxvtLot || row.SoLotSX
                 )
         };
@@ -102,6 +106,30 @@ const upsertPhieuKiemCustomFields = async (pool, phieuKiemId, fields) => {
         .input('PhieuKiemId', sql.Int, phieuKiemId)
         .input('JsonData', sql.NVarChar(sql.MAX), JSON.stringify(fields))
         .execute('SP_Upsert_PhieuKiem_CustomFields');
+};
+
+const enrichSxbtSignatureFields = async (pool, dynamicFields = [], phieu = null) => {
+    const fields = Array.isArray(dynamicFields) ? [...dynamicFields] : [];
+    const fieldMap = new Map(fields.map((field) => [field.FieldName, field.FieldValue]));
+    const signatureUserFields = [
+        ['SxbtKcsCompletedBy', 'SxbtKcsCompletedByName'],
+        ['SxbtConfirmedBy', 'SxbtConfirmedByName'],
+        ['SxbtKhoConfirmedBy', 'SxbtKhoConfirmedByName']
+    ];
+
+    for (const [idField, nameField] of signatureUserFields) {
+        const userId = Number(fieldMap.get(idField) || 0);
+        if (!userId || fieldMap.has(nameField)) continue;
+
+        const fallbackName = idField === 'SxbtKcsCompletedBy' ? phieu?.TenNguoiKiem : '';
+        const displayName = await getUserDisplayName(pool, userId, fallbackName || '');
+        fields.push({
+            FieldName: nameField,
+            FieldValue: displayName
+        });
+    }
+
+    return fields;
 };
 
 const normalizeTrenChuyenSlots = (slots = []) => slots.map((slot, slotIndex) => ({
@@ -607,6 +635,7 @@ router.get(
                     } catch (e) { }
                     delete phieu.DynamicFieldsJSON;
                 }
+                dynamicFields = await enrichSxbtSignatureFields(pool, dynamicFields, phieu);
 
                 const btpItems = attachBtpLotRows(result.recordsets[1] || [], result.recordsets[4] || []);
 
@@ -1610,6 +1639,9 @@ router.get(
                             CAST(NULL AS NVARCHAR(100)) AS LxvtLot,
                             CAST(NULL AS NVARCHAR(100)) AS SoLotSX,
                             CAST(NULL AS DECIMAL(18,2)) AS SoLuongNhap,
+                            CAST(NULL AS DECIMAL(18,2)) AS SoLuongKhoXacNhan,
+                            CAST(NULL AS INT) AS KhoXacNhanBy,
+                            CAST(NULL AS DATETIME2) AS KhoXacNhanAt,
                             CAST(NULL AS INT) AS SortOrder
                     END
                 `);
@@ -1635,8 +1667,7 @@ router.post(
                 dynamicFields,
                 btpItems,
                 summary,
-                defects,
-                ketLuan
+                defects
             } = req.body;
 
             if (!phieuKiemId) {
@@ -1647,11 +1678,92 @@ router.post(
             const result = await pool.request()
                 .input('PhieuKiemId', sql.Int, phieuKiemId)
                 .input('DynamicFieldsJson', sql.NVarChar(sql.MAX), dynamicFields ? JSON.stringify(dynamicFields) : null)
-                .input('BtpItemsJson', sql.NVarChar(sql.MAX), btpItems ? JSON.stringify(btpItems) : null)
+                .input('BtpItemsJson', sql.NVarChar(sql.MAX), null)
                 .input('SummaryJson', sql.NVarChar(sql.MAX), summary ? JSON.stringify(summary) : null)
                 .input('DefectsJson', sql.NVarChar(sql.MAX), defects ? JSON.stringify(defects) : null)
-                .input('KetLuan', sql.NVarChar(50), ketLuan || null)
+                .input('KetLuan', sql.NVarChar(50), null)
                 .execute('sp_PhieuKiem_SXBT_Save');
+
+            if (Array.isArray(btpItems) && btpItems.length > 0) {
+                await pool.request()
+                    .input('PhieuKiemId', sql.Int, phieuKiemId)
+                    .input('BtpItemsJson', sql.NVarChar(sql.MAX), JSON.stringify(btpItems))
+                    .query(`
+                        IF @BtpItemsJson IS NOT NULL AND @BtpItemsJson != N'[]'
+                        BEGIN
+                            IF OBJECT_ID('tempdb..#ManualBtpItems') IS NOT NULL DROP TABLE #ManualBtpItems;
+                            IF OBJECT_ID('tempdb..#ManualLotRows') IS NOT NULL DROP TABLE #ManualLotRows;
+
+                            SELECT
+                                Id,
+                                LotRows
+                            INTO #ManualBtpItems
+                            FROM OPENJSON(@BtpItemsJson)
+                            WITH (
+                                Id INT '$.Id',
+                                LotRows NVARCHAR(MAX) '$.LotRows' AS JSON
+                            );
+
+                            SELECT
+                                item.Id AS BtpItemId,
+                                lot.Id AS LotRowId,
+                                lot.DauTuanGS1,
+                                lot.ThuTu,
+                                lot.LxvtLot,
+                                COALESCE(lot.SortOrder, TRY_CONVERT(INT, lotJson.[key]) + 1) AS SortOrder
+                            INTO #ManualLotRows
+                            FROM #ManualBtpItems item
+                            CROSS APPLY OPENJSON(item.LotRows) lotJson
+                            CROSS APPLY OPENJSON(lotJson.value)
+                            WITH (
+                                Id INT '$.Id',
+                                DauTuanGS1 NVARCHAR(100) '$.DauTuanGS1',
+                                ThuTu NVARCHAR(50) '$.ThuTu',
+                                LxvtLot NVARCHAR(100) '$.LxvtLot',
+                                SortOrder INT '$.SortOrder'
+                            ) AS lot
+                            WHERE item.LotRows IS NOT NULL
+                              AND lot.Id IS NOT NULL;
+
+                            UPDATE lot
+                            SET
+                                lot.DauTuanGS1 = NULLIF(LTRIM(RTRIM(src.DauTuanGS1)), N''),
+                                lot.ThuTu = NULLIF(LTRIM(RTRIM(src.ThuTu)), N''),
+                                lot.LxvtLot = NULLIF(LTRIM(RTRIM(src.LxvtLot)), N'')
+                            FROM dbo.PHIEU_KIEM_BTP_ITEM_LOT lot
+                            INNER JOIN dbo.PHIEU_KIEM_BTP_ITEM item ON item.Id = lot.BtpItemId
+                            INNER JOIN #ManualLotRows src ON src.LotRowId = lot.Id
+                            WHERE item.PhieuKiemId = @PhieuKiemId
+                              AND item.Id = src.BtpItemId
+                              AND EXISTS (
+                                  SELECT 1
+                                  FROM dbo.PHIEU_KIEM pk
+                                  WHERE pk.Id = @PhieuKiemId
+                                    AND pk.TrangThai NOT IN (N'HOAN_THANH', N'HOAN_TAT', N'CHO_SXBT_XAC_NHAN', N'CHO_KHO_XAC_NHAN')
+                              );
+
+                            ;WITH first_lot AS (
+                                SELECT
+                                    lot.BtpItemId,
+                                    lot.DauTuanGS1,
+                                    lot.ThuTu,
+                                    lot.LxvtLot,
+                                    ROW_NUMBER() OVER (PARTITION BY lot.BtpItemId ORDER BY lot.SortOrder, lot.Id) AS rn
+                                FROM dbo.PHIEU_KIEM_BTP_ITEM_LOT lot
+                                INNER JOIN dbo.PHIEU_KIEM_BTP_ITEM item ON item.Id = lot.BtpItemId
+                                WHERE item.PhieuKiemId = @PhieuKiemId
+                            )
+                            UPDATE item
+                            SET
+                                item.DauTuanGS1 = first_lot.DauTuanGS1,
+                                item.ThuTu = first_lot.ThuTu,
+                                item.LxvtLot = first_lot.LxvtLot
+                            FROM dbo.PHIEU_KIEM_BTP_ITEM item
+                            LEFT JOIN first_lot ON first_lot.BtpItemId = item.Id AND first_lot.rn = 1
+                            WHERE item.PhieuKiemId = @PhieuKiemId;
+                        END
+                    `);
+            }
 
             res.json({
                 success: true,
@@ -1661,6 +1773,104 @@ router.post(
         } catch (err) {
             console.error('SXBT Save error:', err);
             res.status(500).json({ message: 'Lỗi lưu dữ liệu Sản Xuất Bổ Trợ' });
+        }
+    }
+);
+
+/* =========================================================
+   POST /phieu-kiem/sxbt/confirm-sxbt (SXBT xác nhận)
+========================================================= */
+router.post(
+    '/sxbt/confirm-sxbt',
+    authenticateToken,
+    authorize('XAC_NHAN_SXBT'),
+    async (req, res) => {
+        const { phieuKiemId } = req.body;
+        const userId = req.user.userId;
+
+        if (!phieuKiemId) {
+            return res.status(400).json({ message: 'Thiếu phieuKiemId' });
+        }
+
+        try {
+            const pool = await poolPromise;
+            const result = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('UserId', sql.Int, userId)
+                .execute('sp_PhieuKiem_SXBT_ConfirmSXBT');
+
+            res.json({
+                success: true,
+                message: result.recordset?.[0]?.Message || 'SXBT đã xác nhận phiếu thành công'
+            });
+        } catch (err) {
+            console.error('SXBT Confirm SXBT error:', err);
+            res.status(500).json({ message: err.message || 'Không thể xác nhận SXBT' });
+        }
+    }
+);
+
+/* =========================================================
+   POST /phieu-kiem/sxbt/confirm-kho (Kho xác nhận số lượng)
+========================================================= */
+router.post(
+    '/sxbt/confirm-kho',
+    authenticateToken,
+    authorize('XAC_NHAN_KHO_SXBT'),
+    async (req, res) => {
+        const { phieuKiemId, lotRows } = req.body;
+        const userId = req.user.userId;
+
+        if (!phieuKiemId || !Array.isArray(lotRows)) {
+            return res.status(400).json({ message: 'Thiếu phieuKiemId hoặc lotRows' });
+        }
+
+        try {
+            const pool = await poolPromise;
+            const result = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('UserId', sql.Int, userId)
+                .input('LotRowsJson', sql.NVarChar(sql.MAX), JSON.stringify(lotRows))
+                .execute('sp_PhieuKiem_SXBT_ConfirmKho');
+
+            res.json({
+                success: true,
+                message: result.recordset?.[0]?.Message || 'Kho đã xác nhận số lượng nhập thành công'
+            });
+        } catch (err) {
+            console.error('SXBT Confirm Kho error:', err);
+            res.status(500).json({ message: err.message || 'Không thể xác nhận Kho' });
+        }
+    }
+);
+
+/* =========================================================
+   POST /phieu-kiem/sxbt-sync-btp-source (sync số lượng về nguồn)
+========================================================= */
+router.post(
+    '/sxbt-sync-btp-source',
+    authenticateToken,
+    authorize('QUAN_TRI_DM'),
+    async (req, res) => {
+        const { phieuKiemId } = req.body;
+
+        if (!phieuKiemId) {
+            return res.status(400).json({ message: 'Thiếu phieuKiemId' });
+        }
+
+        try {
+            const pool = await poolPromise;
+            const result = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .execute('sp_PhieuKiem_SXBT_SyncKhoQuantityToSource');
+
+            res.json({
+                success: true,
+                message: result.recordset?.[0]?.Message || 'Đã đồng bộ số lượng Kho xác nhận về phiếu nhập BTP'
+            });
+        } catch (err) {
+            console.error('SXBT Sync BTP Source error:', err);
+            res.status(500).json({ message: err.message || 'Không thể đồng bộ số lượng về phiếu nhập BTP' });
         }
     }
 );

@@ -1,6 +1,4 @@
 import React from 'react';
-import { getAssetUrl } from "../../../api/lookup.api";
-
 // ============================================================
 // SxbtPrintTemplate — Phiếu kiểm tra sản xuất bổ trợ (A4 đứng)
 // Khớp mẫu: BM.01-HD.07-QT.03-B8
@@ -24,8 +22,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
     summary = null,
     defects = [],
     dynamicFields = [],
-    confirmSteps = [],
-    onRequestProductImageUpload = null
+    confirmSteps = []
 }, ref) => {
     if (!phieu) return null;
 
@@ -72,6 +69,28 @@ export const SxbtPrintTemplate = React.forwardRef(({
         getLotRows(item).map((lotRow, lotIndex) => ({ item, lotRow, lotIndex }))
     );
 
+    const formatQuantity = (value) =>
+        value !== undefined && value !== null && value !== ''
+            ? Number(value).toLocaleString('vi-VN')
+            : '';
+
+    const getDefectContextLabel = (defect = {}) => {
+        const matched = btpPrintRows.find(({ item, lotRow }) =>
+            Number(defect.BtpItemId) === Number(item.Id) &&
+            Number(defect.BtpLotRowId) === Number(lotRow.Id)
+        );
+        if (!matched) return defect.BtpLotRowId ? '' : 'Chưa gắn dòng BTP';
+
+        const { item, lotRow } = matched;
+        const parts = [item.TenSanPham].filter(Boolean);
+        if (item.SourceID_KeHoachSanXuat) parts.push(`KH #${item.SourceID_KeHoachSanXuat}`);
+        if (lotRow.SoLotSX) parts.push(`Lot SX: ${lotRow.SoLotSX}`);
+        if (lotRow.SoLuongNhap !== undefined && lotRow.SoLuongNhap !== null && lotRow.SoLuongNhap !== '') {
+            parts.push(`SL nhập: ${formatQuantity(lotRow.SoLuongNhap)}`);
+        }
+        return parts.join(' - ');
+    };
+
     const criticalDefects = defects.filter(d =>
         d.DefectType === 'CRITICAL' || d.DefectType === 'Nghiêm trọng'
     );
@@ -79,15 +98,59 @@ export const SxbtPrintTemplate = React.forwardRef(({
         d.DefectType !== 'CRITICAL' && d.DefectType !== 'Nghiêm trọng'
     );
 
-    const confirmedSteps = (confirmSteps || []).filter((step) => step?.TrangThai === "DA_XAC_NHAN");
-    const productImageUrl = phieu?.ImageUrl ? getAssetUrl(phieu.ImageUrl) : "";
-
     const signatureLabels = {
+        KCS: "KCS",
         SXBT: "BỘ PHẬN SXBT",
+        KHO: "KHO",
         B8: "PHÒNG KIỂM NGHIỆM",
         B7: "PHÒNG CHẤT LƯỢNG",
         GD: "GIÁM ĐỐC"
     };
+
+    const formatSignatureDate = (value) => {
+        if (!value) return 'Ngày.................';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return 'Ngày.................';
+        return `Ngày ${date.getDate()} tháng ${date.getMonth() + 1} năm ${date.getFullYear()}`;
+    };
+
+    const sxbtApprovalSignatures = [
+        {
+            key: 'KHO',
+            title: signatureLabels.KHO,
+            userName: dynVal('SxbtKhoConfirmedByName'),
+            date: dynVal('SxbtKhoConfirmedAt'),
+            signed: !!dynVal('SxbtKhoConfirmedBy')
+        },
+        {
+            key: 'SXBT',
+            title: signatureLabels.SXBT,
+            userName: dynVal('SxbtConfirmedByName'),
+            date: dynVal('SxbtConfirmedAt'),
+            signed: !!dynVal('SxbtConfirmedBy')
+        },
+        {
+            key: 'KCS',
+            title: signatureLabels.KCS,
+            userName: dynVal('SxbtKcsCompletedByName') || phieu.TenNguoiKiem || '',
+            date: dynVal('SxbtKcsCompletedAt') || phieu.NgayKiem,
+            signed: !!dynVal('SxbtKcsCompletedBy') || !!phieu.NgayKiem
+        }
+    ];
+
+    const legacyConfirmedSteps = (confirmSteps || [])
+        .filter((step) => step?.TrangThai === "DA_XAC_NHAN")
+        .map((step, index) => ({
+            key: step.Id || `${step.MaBoPhan}-${index}`,
+            title: signatureLabels[step.MaBoPhan] || step.TenBoPhan || step.MaBoPhan || `Bộ phận ${index + 1}`,
+            userName: step.TenNguoiXacNhan || '',
+            date: step.ConfirmedAt,
+            signed: true
+        }));
+
+    const signatureSlots = sxbtApprovalSignatures.some((slot) => slot.signed)
+        ? sxbtApprovalSignatures
+        : legacyConfirmedSteps;
 
     // CSS styles (inline + print rules)
     const s = {
@@ -134,6 +197,12 @@ export const SxbtPrintTemplate = React.forwardRef(({
             fontSize: '9pt',
             verticalAlign: 'middle',
             textAlign: 'center',
+        },
+        defectContext: {
+            marginTop: '2px',
+            fontSize: '8pt',
+            fontStyle: 'italic',
+            color: '#333',
         },
         bold: { fontWeight: 'bold' },
         section: { fontWeight: 'bold', fontSize: '9.5pt', marginBottom: '5px', marginTop: '6px' },
@@ -185,8 +254,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
                     .avoid-break { page-break-inside: avoid !important; break-inside: avoid !important; }
                     thead { display: table-header-group; }
                     tr { page-break-inside: avoid !important; break-inside: avoid !important; }
-                    .screen-only-upload-trigger,
-                    .screen-only-upload-action { display: none !important; }
+                    .screen-only-signed-stamp { display: none !important; }
                 }
             `}</style>
 
@@ -239,63 +307,6 @@ export const SxbtPrintTemplate = React.forwardRef(({
                                 Ngày nhập:&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '80px' }}>
                                     {phieu.NgayNhap ? new Date(phieu.NgayNhap).toLocaleDateString('vi-VN') : ''}
                                 </span>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-
-                <table style={{ ...s.table, marginBottom: '8px' }}>
-                    <tbody>
-                        <tr>
-                            <td style={{ ...s.td, width: '35%', fontWeight: 600 }}>
-                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-                                    <span>Hình ảnh minh họa sản phẩm</span>
-                                    {productImageUrl && typeof onRequestProductImageUpload === "function" ? (
-                                        <span
-                                            className="screen-only-upload-action"
-                                            onClick={onRequestProductImageUpload}
-                                            style={{
-                                                fontSize: "9pt",
-                                                color: "#2563eb",
-                                                cursor: "pointer",
-                                                textDecoration: "underline",
-                                                fontWeight: 400
-                                            }}
-                                        >
-                                            Đổi ảnh
-                                        </span>
-                                    ) : null}
-                                </div>
-                            </td>
-                            <td style={{ ...s.td, textAlign: 'center', padding: '6px', height: '142px' }}>
-                                {productImageUrl ? (
-                                    <img
-                                        src={productImageUrl}
-                                        alt={phieu.TenSanPham || "Ảnh sản phẩm"}
-                                        style={{ width: '100%', maxHeight: '130px', objectFit: 'contain' }}
-                                    />
-                                ) : typeof onRequestProductImageUpload === "function" ? (
-                                    <div
-                                        className="screen-only-upload-trigger"
-                                        onClick={onRequestProductImageUpload}
-                                        style={{
-                                            width: '100%',
-                                            minHeight: '124px',
-                                            border: '1px dashed #94a3b8',
-                                            borderRadius: '6px',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            textAlign: 'center',
-                                            color: '#475569',
-                                            fontSize: '10pt',
-                                            cursor: 'pointer',
-                                            padding: '0 12px'
-                                        }}
-                                    >
-                                        Nhấn để thêm ảnh cho item code này
-                                    </div>
-                                ) : null}
                             </td>
                         </tr>
                     </tbody>
@@ -369,7 +380,11 @@ export const SxbtPrintTemplate = React.forwardRef(({
                                     <td style={s.tdc}>{lotRow.ThuTu || ''}</td>
                                     <td style={s.tdc}>{lotRow.LxvtLot || ''}</td>
                                     <td style={s.tdc}>{lotRow.SoLotSX || ''}</td>
-                                    <td style={{ ...s.tdc, minHeight: '18px' }}></td>
+                                    <td style={{ ...s.tdc, minHeight: '18px' }}>
+                                        {lotRow.SoLuongKhoXacNhan != null && lotRow.SoLuongKhoXacNhan !== ''
+                                            ? Number(lotRow.SoLuongKhoXacNhan).toLocaleString('vi-VN')
+                                            : ''}
+                                    </td>
                                 </tr>
                                 );
                             })
@@ -466,10 +481,14 @@ export const SxbtPrintTemplate = React.forwardRef(({
                         {criticalDefects.length > 0
                             ? criticalDefects.map((d, i) => {
                                 const pct = soMau > 0 ? ((d.SoLuong / soMau) * 100).toFixed(1) : '';
+                                const contextLabel = getDefectContextLabel(d);
                                 return (
                                     <tr key={d.DefectId ?? i} className="avoid-break">
                                         <td style={s.tdc}></td>
-                                        <td style={s.td}>{d.TenLoi}</td>
+                                        <td style={s.td}>
+                                            <div>{d.TenLoi}</div>
+                                            {contextLabel ? <div style={s.defectContext}>{contextLabel}</div> : null}
+                                        </td>
                                         <td style={s.tdc}>{d.SoLuong}</td>
                                         <td style={s.tdc}>{pct ? `${pct}%` : ''}</td>
                                         <td style={{ ...s.tdc, fontWeight: 'bold' }}>{i === 0 ? '0' : ''}</td>
@@ -503,10 +522,14 @@ export const SxbtPrintTemplate = React.forwardRef(({
                         {majorMinorDefects.length > 0
                             ? majorMinorDefects.map((d, i) => {
                                 const pct = soMau > 0 ? ((d.SoLuong / soMau) * 100).toFixed(1) : '';
+                                const contextLabel = getDefectContextLabel(d);
                                 return (
                                     <tr key={d.DefectId ?? i} className="avoid-break">
                                         <td style={s.tdc}></td>
-                                        <td style={s.td}>{d.TenLoi}</td>
+                                        <td style={s.td}>
+                                            <div>{d.TenLoi}</div>
+                                            {contextLabel ? <div style={s.defectContext}>{contextLabel}</div> : null}
+                                        </td>
                                         <td style={s.tdc}>{d.SoLuong}</td>
                                         <td style={s.tdc}>{pct ? `${pct}%` : ''}</td>
                                         <td style={{ ...s.tdc, fontWeight: 'bold' }}>{i === 0 ? '≤ 4%' : ''}</td>
@@ -563,7 +586,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
                 </div>
 
                 {/* ===== CHỮ KÝ ===== */}
-                {confirmedSteps.length > 0 && (
+                {signatureSlots.length > 0 && (
                     <div
                         className="avoid-break"
                         style={{
@@ -576,26 +599,16 @@ export const SxbtPrintTemplate = React.forwardRef(({
                             breakInside: 'avoid'
                         }}
                     >
-                        {confirmedSteps.map((step, index) => {
-                            const stepDate = step.ConfirmedAt
-                                ? new Date(step.ConfirmedAt)
-                                : null;
-                            const dateLabel = stepDate
-                                ? `Ngày ${stepDate.getDate()} tháng ${stepDate.getMonth() + 1} năm ${stepDate.getFullYear()}`
-                                : 'Ngày.................';
-                            const title = signatureLabels[step.MaBoPhan] || step.TenBoPhan || step.MaBoPhan || `Bộ phận ${index + 1}`;
-
-                            return (
-                                <div key={step.Id || `${step.MaBoPhan}-${index}`} style={{ flex: 1, textAlign: 'center' }}>
-                                    <div style={{ fontStyle: 'italic', marginBottom: '4px' }}>{dateLabel}</div>
-                                    <div style={{ fontWeight: 'bold', fontSize: '10pt' }}>{title}</div>
-                                    <div style={{ height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <span style={s.signedStamp}>ĐÃ KÝ</span>
-                                    </div>
-                                    <div style={{ fontWeight: 'bold' }}>{step.TenNguoiXacNhan || ''}</div>
+                        {signatureSlots.map((slot) => (
+                            <div key={slot.key} style={{ flex: 1, textAlign: 'center' }}>
+                                <div style={{ fontStyle: 'italic', marginBottom: '4px' }}>{formatSignatureDate(slot.date)}</div>
+                                <div style={{ fontWeight: 'bold', fontSize: '10pt' }}>{slot.title}</div>
+                                <div style={{ height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    {slot.signed ? <span className="screen-only-signed-stamp" style={s.signedStamp}>ĐÃ KÝ</span> : null}
                                 </div>
-                            );
-                        })}
+                                <div style={{ fontWeight: 'bold' }}>{slot.userName || ''}</div>
+                            </div>
+                        ))}
                     </div>
                 )}
 

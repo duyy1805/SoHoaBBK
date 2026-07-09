@@ -23,10 +23,13 @@ import {
     getDefectList,
     saveSxbtData,
     completeSxbt,
-    confirmPX,
-    confirmKN
+    confirmSxbt,
+    confirmKhoSxbt
 } from "../api/phieuKiem.api";
 import { getUser } from "../utils/auth";
+
+const SHOW_MANUAL_BTP_LOT_EDITOR = true;
+const SHOW_MANUAL_BTP_LOT_ADD_ROW = false;
 
 export default function SxbtInspectionScreen({ route, navigation }) {
     const { id } = route.params;
@@ -45,6 +48,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
     const [btpItems, setBtpItems] = useState([]);
     const [selectedBtp, setSelectedBtp] = useState(null);
     const [btpModalVisible, setBtpModalVisible] = useState(false);
+    const [khoLotQuantities, setKhoLotQuantities] = useState({});
 
     // Mục III: Tỷ lệ
     const [loaiMau, setLoaiMau] = useState("LAN_1_2");
@@ -57,18 +61,22 @@ export default function SxbtInspectionScreen({ route, navigation }) {
     const [defectList, setDefectList] = useState([]);
     const [masterDefectList, setMasterDefectList] = useState([]);
     const [defectModalVisible, setDefectModalVisible] = useState(false);
+    const [selectedDefectTarget, setSelectedDefectTarget] = useState(null);
     const [searchText, setSearchText] = useState("");
 
     // 2. Derived Variables
     const hasPermission = (p) => user?.permissions?.includes(p);
     const isKCS = hasPermission("THUC_HIEN_KIEM") || user?.Role === "KCS";
-    const isPX = hasPermission("XAC_NHAN_PX");
-    const isKN = hasPermission("XAC_NHAN_KIEM_NGHIEM");
+    const isSXBTConfirm = hasPermission("XAC_NHAN_SXBT");
+    const isKhoSXBT = hasPermission("XAC_NHAN_KHO_SXBT");
 
-    const isCompleted = phieu?.TrangThai === "CHO_KIEM_NGHIEM" ||
+    const isCompleted = phieu?.TrangThai === "CHO_SXBT_XAC_NHAN" ||
+        phieu?.TrangThai === "CHO_KHO_XAC_NHAN" ||
+        phieu?.TrangThai === "CHO_KIEM_NGHIEM" ||
         phieu?.TrangThai === "CHO_XUONG_XAC_NHAN" ||
         phieu?.TrangThai === "HOAN_THANH" ||
         phieu?.TrangThai === "HOAN_TAT";
+    const canEditKhoQuantity = phieu?.TrangThai === "CHO_KHO_XAC_NHAN" && isKhoSXBT;
 
     console.log("Status check:", { isCompleted, isKCS, status: phieu?.TrangThai });
 
@@ -76,6 +84,8 @@ export default function SxbtInspectionScreen({ route, navigation }) {
         switch (status) {
             case "CHUA_KIEM": return "#94a3b8";
             case "HOAN_THANH": return "#10b981";
+            case "CHO_SXBT_XAC_NHAN": return "#f59e0b";
+            case "CHO_KHO_XAC_NHAN": return "#2563eb";
             case "CHO_XUONG_XAC_NHAN": return "#f59e0b";
             case "CHO_KIEM_NGHIEM": return "#3b82f6";
             default: return "#64748b";
@@ -87,6 +97,8 @@ export default function SxbtInspectionScreen({ route, navigation }) {
             case "CHUA_KIEM": return "Chưa kiểm";
             case "HOAN_THANH": return "Hoàn thành";
             case "HOAN_TAT": return "Hoàn thành";
+            case "CHO_SXBT_XAC_NHAN": return "Chờ SXBT xác nhận";
+            case "CHO_KHO_XAC_NHAN": return "Chờ Kho xác nhận";
             case "CHO_XUONG_XAC_NHAN": return "Chờ Kho xác nhận";
             case "CHO_KIEM_NGHIEM": return "Chờ TP_B8 xác nhận";
             default: return status;
@@ -107,16 +119,6 @@ export default function SxbtInspectionScreen({ route, navigation }) {
         !!row.ThuTu ||
         !!row.LxvtLot ||
         !!row.SoLotSX;
-
-    const createEmptyBtpLotRow = (btpItemId, sortOrder = 1) => ({
-        BtpItemId: btpItemId,
-        DauTuanGS1: "",
-        ThuTu: "",
-        LxvtLot: "",
-        SoLotSX: "",
-        SoLuongNhap: "",
-        SortOrder: sortOrder
-    });
 
     const legacyLotRowFromItem = (item = {}) => {
         item = item || {};
@@ -145,6 +147,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
             LxvtLot: row.LxvtLot || "",
             SoLotSX: row.SoLotSX || "",
             SoLuongNhap: row.SoLuongNhap ?? "",
+            SoLuongKhoXacNhan: row.SoLuongKhoXacNhan ?? "",
             SortOrder: row.SortOrder || index + 1
         }));
     };
@@ -156,8 +159,62 @@ export default function SxbtInspectionScreen({ route, navigation }) {
 
     const getBtpLotRows = (item = {}) => normalizeBtpLotRows(item);
 
+    const getDefectRowKey = (defect = {}) =>
+        `${defect.DefectId || "defect"}-${defect.BtpLotRowId || "unassigned"}`;
+
+    const getDefectsForLot = (item = {}, lotRow = {}) =>
+        defectList.filter(d =>
+            Number(d.BtpItemId) === Number(item.Id) &&
+            Number(d.BtpLotRowId) === Number(lotRow.Id)
+        );
+
+    const getUnassignedDefects = () => defectList.filter(d => {
+        if (!d.BtpLotRowId) return true;
+        return !btpItems.some(item =>
+            getBtpLotRows(item).some(row =>
+                Number(d.BtpItemId) === Number(item.Id) &&
+                Number(d.BtpLotRowId) === Number(row.Id)
+            )
+        );
+    });
+
+    const getLotContextText = (item = {}, lotRow = {}) => {
+        const parts = [];
+        if (item.SourceID_KeHoachSanXuat) parts.push(`KH #${item.SourceID_KeHoachSanXuat}`);
+        if (lotRow.SoLotSX) parts.push(`Lot SX: ${lotRow.SoLotSX}`);
+        if (lotRow.SoLuongNhap !== undefined && lotRow.SoLuongNhap !== null && lotRow.SoLuongNhap !== "") {
+            parts.push(`SL nhập: ${formatQuantity(lotRow.SoLuongNhap)}`);
+        }
+        return parts.join(" · ");
+    };
+
+    const openDefectModalForLot = (item, lotRow) => {
+        setSelectedDefectTarget({ item, lotRow });
+        setDefectModalVisible(true);
+    };
+
+    const formatQuantity = (value) =>
+        value !== undefined && value !== null && value !== ""
+            ? Number(value).toLocaleString("vi-VN")
+            : "---";
+
     const getBtpTotalInputQuantity = (item = {}) =>
         getBtpLotRows(item).reduce((sum, row) => sum + (Number(row.SoLuongNhap) || 0), 0);
+
+    const getLotRowKey = (row = {}, fallback) => String(row.Id || fallback);
+
+    const initializeKhoLotQuantities = (items = []) => {
+        const next = {};
+        items.forEach((item) => {
+            getBtpLotRows(item).forEach((row, rowIndex) => {
+                next[getLotRowKey(row, `${item.Id}-${rowIndex}`)] =
+                    row.SoLuongKhoXacNhan !== undefined && row.SoLuongKhoXacNhan !== null
+                        ? String(row.SoLuongKhoXacNhan)
+                        : "";
+            });
+        });
+        setKhoLotQuantities(next);
+    };
 
     useEffect(() => {
         loadData();
@@ -186,7 +243,9 @@ export default function SxbtInspectionScreen({ route, navigation }) {
             if (dkNgoaiQuan) setDkvcNgoaiQuan(dkNgoaiQuan);
 
             // 2. Mục II: BTP Items
-            setBtpItems((data.btpItems || []).map(normalizeBtpItem));
+            const normalizedBtpItems = (data.btpItems || []).map(normalizeBtpItem);
+            setBtpItems(normalizedBtpItems);
+            initializeKhoLotQuantities(normalizedBtpItems);
 
             // 3. Mục III: Tỷ lệ (từ summary)
             if (data.summary && data.summary.SoLuongMau) {
@@ -221,7 +280,12 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                     TenLoi: master ? master.TenLoi : s.TenLoi,
                     DefectType: master ? master.DefectType : s.DefectType,
                     SoLuong: s.SoLuong,
-                    IsLapLai: s.IsLapLai
+                    IsLapLai: s.IsLapLai,
+                    BtpItemId: s.BtpItemId || null,
+                    BtpLotRowId: s.BtpLotRowId || null,
+                    BtpTenSanPham: s.BtpTenSanPham || "",
+                    BtpSoLotSX: s.BtpSoLotSX || "",
+                    SourceID_KeHoachSanXuat: s.SourceID_KeHoachSanXuat || null
                 };
             }).filter(d => d.SoLuong > 0);
 
@@ -233,61 +297,6 @@ export default function SxbtInspectionScreen({ route, navigation }) {
         } finally {
             setLoading(false);
         }
-    };
-
-    // Handle BTP Modal
-    const handleBtpLotChange = (index, field, value) => {
-        setSelectedBtp(prev => {
-            const rows = getBtpLotRows(prev);
-            const nextRows = rows.map((row, rowIndex) =>
-                rowIndex === index ? { ...row, [field]: value } : row
-            );
-            return { ...prev, LotRows: nextRows };
-        });
-    };
-
-    const addBtpLotRow = () => {
-        setSelectedBtp(prev => {
-            const rows = getBtpLotRows(prev);
-            return {
-                ...prev,
-                LotRows: [...rows, createEmptyBtpLotRow(prev?.Id, rows.length + 1)]
-            };
-        });
-    };
-
-    const removeBtpLotRow = (index) => {
-        setSelectedBtp(prev => {
-            const rows = getBtpLotRows(prev)
-                .filter((_, rowIndex) => rowIndex !== index)
-                .map((row, rowIndex) => ({ ...row, SortOrder: rowIndex + 1 }));
-            return { ...prev, LotRows: rows };
-        });
-    };
-
-    const inputValue = (value) => value === undefined || value === null ? "" : String(value);
-
-    const saveBtpItem = () => {
-        const cleanBtp = { ...(selectedBtp || {}) };
-        const lotRows = getBtpLotRows(cleanBtp)
-            .filter(isFilledBtpLotRow)
-            .map((row, index) => ({
-                ...row,
-                BtpItemId: cleanBtp.Id,
-                SoLuongNhap: row.SoLuongNhap === "" || row.SoLuongNhap === undefined || row.SoLuongNhap === null
-                    ? null
-                    : Number(String(row.SoLuongNhap).replace(",", ".")) || 0,
-                SortOrder: index + 1
-            }));
-        const firstLot = lotRows[0] || {};
-        cleanBtp.LotRows = lotRows;
-        cleanBtp.SoLuongNhap = firstLot.SoLuongNhap ?? null;
-        cleanBtp.DauTuanGS1 = firstLot.DauTuanGS1 || null;
-        cleanBtp.ThuTu = firstLot.ThuTu || null;
-        cleanBtp.LxvtLot = firstLot.LxvtLot || null;
-        cleanBtp.SoLotSX = firstLot.SoLotSX || null;
-        setBtpItems(prev => prev.map(item => item.Id === cleanBtp.Id ? cleanBtp : item));
-        setBtpModalVisible(false);
     };
 
     const getDefaultSampleRate = (type) => {
@@ -328,10 +337,42 @@ export default function SxbtInspectionScreen({ route, navigation }) {
         }
     };
 
+    // Manual BTP lot editor is kept behind SHOW_MANUAL_BTP_LOT_EDITOR for temporary rollout.
+    const handleBtpLotChange = (index, field, value) => {
+        setSelectedBtp(prev => {
+            const rows = getBtpLotRows(prev);
+            const nextRows = rows.map((row, rowIndex) =>
+                rowIndex === index ? { ...row, [field]: value } : row
+            );
+            return { ...prev, LotRows: nextRows };
+        });
+    };
+
+    const inputValue = (value) => value === undefined || value === null ? "" : String(value);
+
+    const saveBtpItem = () => {
+        const cleanBtp = { ...(selectedBtp || {}) };
+        const lotRows = getBtpLotRows(cleanBtp)
+            .map((row, index) => ({
+                ...row,
+                BtpItemId: cleanBtp.Id,
+                SortOrder: index + 1
+            }));
+        const firstLot = lotRows[0] || {};
+        cleanBtp.LotRows = lotRows;
+        cleanBtp.SoLuongNhap = firstLot.SoLuongNhap ?? null;
+        cleanBtp.DauTuanGS1 = firstLot.DauTuanGS1 || null;
+        cleanBtp.ThuTu = firstLot.ThuTu || null;
+        cleanBtp.LxvtLot = firstLot.LxvtLot || null;
+        cleanBtp.SoLotSX = firstLot.SoLotSX || null;
+        setBtpItems(prev => prev.map(item => item.Id === cleanBtp.Id ? cleanBtp : item));
+        setBtpModalVisible(false);
+    };
+
     // Handle Defect
-    const handleDefectChange = (defectId, delta) => {
+    const handleDefectChange = (defectKey, delta) => {
         setDefectList(prev => prev.map(d => {
-            if (d.DefectId === defectId) {
+            if (getDefectRowKey(d) === defectKey) {
                 const newQuantity = Math.max(0, d.SoLuong + delta);
                 return { ...d, SoLuong: newQuantity };
             }
@@ -339,33 +380,46 @@ export default function SxbtInspectionScreen({ route, navigation }) {
         }));
     };
 
-    const handleDefectQuantityInput = (defectId, value) => {
+    const handleDefectQuantityInput = (defectKey, value) => {
         const normalizedValue = value.replace(/[^0-9]/g, "");
         setDefectList(prev => prev.map(d =>
-            d.DefectId === defectId
+            getDefectRowKey(d) === defectKey
                 ? { ...d, SoLuong: normalizedValue === "" ? 0 : Number(normalizedValue) }
                 : d
         ));
     };
 
-    const toggleLapLai = (defectId) => {
-        setDefectList(prev => prev.map(d => d.DefectId === defectId ? { ...d, IsLapLai: !d.IsLapLai } : d));
+    const toggleLapLai = (defectKey) => {
+        setDefectList(prev => prev.map(d => getDefectRowKey(d) === defectKey ? { ...d, IsLapLai: !d.IsLapLai } : d));
     };
 
     const addDefect = (masterDefect) => {
-        const exists = defectList.find(d => d.DefectId === masterDefect.Id);
+        const targetItem = selectedDefectTarget?.item || null;
+        const targetLotRow = selectedDefectTarget?.lotRow || null;
+        const targetBtpItemId = targetItem?.Id || null;
+        const targetBtpLotRowId = targetLotRow?.Id || null;
+        const exists = defectList.find(d =>
+            d.DefectId === masterDefect.Id &&
+            String(d.BtpLotRowId || "") === String(targetBtpLotRowId || "")
+        );
         if (exists) {
-            handleDefectChange(masterDefect.Id, 1);
+            handleDefectChange(getDefectRowKey(exists), 1);
         } else {
             setDefectList(prev => [...prev, {
                 DefectId: masterDefect.Id,
                 TenLoi: masterDefect.TenLoi,
                 DefectType: masterDefect.DefectType,
                 SoLuong: 1,
-                IsLapLai: false
+                IsLapLai: false,
+                BtpItemId: targetBtpItemId,
+                BtpLotRowId: targetBtpLotRowId,
+                BtpTenSanPham: targetItem?.TenSanPham || "",
+                BtpSoLotSX: targetLotRow?.SoLotSX || "",
+                SourceID_KeHoachSanXuat: targetItem?.SourceID_KeHoachSanXuat || null
             }]);
         }
         setDefectModalVisible(false);
+        setSelectedDefectTarget(null);
     };
 
     // Calculate Percentages
@@ -384,27 +438,43 @@ export default function SxbtInspectionScreen({ route, navigation }) {
     const tyLeMajorMinor = totalSamples > 0 ? (majorMinorDefects / totalSamples) * 100 : 0;
 
     // Các hàm xác nhận
-    const handleConfirmPX = async () => {
+    const handleConfirmSXBT = async () => {
         try {
             setSaving(true);
-            await confirmPX(id);
-            Alert.alert("Thành công", "Kho đã xác nhận");
+            await confirmSxbt(id);
+            Alert.alert("Thành công", "SXBT đã xác nhận phiếu.");
             navigation.goBack();
-        } catch {
-            Alert.alert("Lỗi", "Không thể xác nhận");
+        } catch (error) {
+            Alert.alert("Lỗi", error?.response?.data?.message || "Không thể xác nhận SXBT");
         } finally {
             setSaving(false);
         }
     };
 
-    const handleConfirmKN = async () => {
+    const handleConfirmKho = async () => {
+        const lotRows = [];
+        btpItems.forEach((item) => {
+            getBtpLotRows(item).forEach((row, rowIndex) => {
+                const key = getLotRowKey(row, `${item.Id}-${rowIndex}`);
+                lotRows.push({
+                    lotRowId: row.Id,
+                    soLuongKhoXacNhan: khoLotQuantities[key]
+                });
+            });
+        });
+
+        if (lotRows.length === 0 || lotRows.some((row) => !row.lotRowId || row.soLuongKhoXacNhan === "" || row.soLuongKhoXacNhan === undefined || row.soLuongKhoXacNhan === null)) {
+            Alert.alert("Thiếu dữ liệu", "Vui lòng nhập số lượng Kho xác nhận cho tất cả dòng lot.");
+            return;
+        }
+
         try {
             setSaving(true);
-            await confirmKN(id);
-            Alert.alert("Thành công", "Đã xác nhận kiểm nghiệm");
+            await confirmKhoSxbt(id, lotRows);
+            Alert.alert("Thành công", "Kho đã xác nhận số lượng nhập. Phiếu đã hoàn thành.");
             navigation.goBack();
-        } catch {
-            Alert.alert("Lỗi", "Không thể xác nhận");
+        } catch (error) {
+            Alert.alert("Lỗi", error?.response?.data?.message || "Không thể xác nhận Kho");
         } finally {
             setSaving(false);
         }
@@ -421,7 +491,6 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                     { FieldCode: "DKVC_THUNG_SAN_XE", Value: dkvcThungSanXe },
                     { FieldCode: "DKVC_NGOAI_QUAN", Value: dkvcNgoaiQuan }
                 ],
-                btpItems: btpItems,
                 summary: {
                     LoaiMau: loaiMau,
                     SoLuongMau: totalSamples,
@@ -430,6 +499,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                     TyLeLoiNghiemTrong: tyLeCritical,
                     TyLeLoiNangNhe: tyLeMajorMinor
                 },
+                ...(SHOW_MANUAL_BTP_LOT_EDITOR ? { btpItems } : {}),
                 defects: activeDefects,
                 ketLuan: ketLuan
             };
@@ -466,7 +536,6 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                                     { FieldCode: "DKVC_THUNG_SAN_XE", Value: dkvcThungSanXe },
                                     { FieldCode: "DKVC_NGOAI_QUAN", Value: dkvcNgoaiQuan }
                                 ],
-                                btpItems,
                                 summary: {
                                     LoaiMau: loaiMau,
                                     SoLuongMau: totalSamples,
@@ -475,6 +544,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                                     TyLeLoiNghiemTrong: tyLeCritical,
                                     TyLeLoiNangNhe: tyLeMajorMinor
                                 },
+                                ...(SHOW_MANUAL_BTP_LOT_EDITOR ? { btpItems } : {}),
                                 defects: activeDefects
                                 // Không gửi ketLuan ở đây – SP Save không đổi TrangThai
                             };
@@ -483,7 +553,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                             // Bước 2: Hoàn tất – gửi kết luận để SP Complete đổi TrangThai
                             await completeSxbt(id, ketLuan);
 
-                            Alert.alert("Đã hoàn tất", "Chờ TPB8 xác nhận");
+                            Alert.alert("Đã hoàn tất", "Chờ SXBT xác nhận");
                             navigation.goBack();
                         } catch (error) {
                             console.error(error);
@@ -581,42 +651,69 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                     {btpItems.map((item, index) => {
                         const lotRows = getBtpLotRows(item);
                         const totalInputQuantity = getBtpTotalInputQuantity(item);
-                        const previewRows = lotRows.slice(0, 2);
 
                         return (
-                            <TouchableOpacity
+                            <View
                                 key={item.Id}
                                 style={styles.itemRow}
-                                disabled={isCompleted}
-                                onPress={() => { setSelectedBtp(normalizeBtpItem(item)); setBtpModalVisible(true); }}
                             >
                                 <View style={{ flex: 1 }}>
                                     <Text style={styles.itemName}>{item.TenSanPham}</Text>
-                                    <Text style={styles.itemSub}>SL phiếu: {item.SoLuong} {item.DonViTinh}</Text>
+                                    <Text style={styles.itemSub}>
+                                        {item.SourceID_KeHoachSanXuat ? `KH #${item.SourceID_KeHoachSanXuat} • ` : ""}
+                                        SL phiếu: {formatQuantity(item.SoLuong)} {item.DonViTinh || ""}
+                                        {item.MaDonHang ? ` • Đơn hàng: ${item.MaDonHang}` : ""}
+                                    </Text>
                                     <View style={styles.btpDetailBox}>
                                         {lotRows.length > 0 ? (
                                             <>
                                                 <Text style={styles.btpDetailText}>
-                                                    • Đã nhập <Text style={{ fontWeight: 'bold' }}>{lotRows.length}</Text> dòng lot
-                                                    {totalInputQuantity > 0 ? <Text> - Tổng SL: <Text style={{ fontWeight: 'bold' }}>{totalInputQuantity}</Text></Text> : null}
+                                                    • Dữ liệu từ phiếu nhập: <Text style={{ fontWeight: 'bold' }}>{lotRows.length}</Text> dòng lot
+                                                    {totalInputQuantity > 0 ? <Text> - Tổng SL nhập: <Text style={{ fontWeight: 'bold' }}>{formatQuantity(totalInputQuantity)}</Text></Text> : null}
                                                 </Text>
-                                                {previewRows.map((row, rowIndex) => (
-                                                    <Text key={`${item.Id}-lot-${rowIndex}`} style={styles.btpDetailText}>
-                                                        • {row.DauTuanGS1 || "Chưa có dấu tuần"} / {row.SoLotSX || "Chưa có lot"}
-                                                        {row.SoLuongNhap !== "" && row.SoLuongNhap !== null && row.SoLuongNhap !== undefined ? ` - SL ${row.SoLuongNhap}` : ""}
-                                                    </Text>
+                                                {lotRows.map((row, rowIndex) => (
+                                                    <View key={`${item.Id}-lot-${rowIndex}`} style={styles.btpLotReadonlyRow}>
+                                                        <Text style={styles.btpLotReadonlyTitle}>Lot {rowIndex + 1}</Text>
+                                                        <Text style={styles.btpLotReadonlyText}>Số lượng nhập: {formatQuantity(row.SoLuongNhap)}</Text>
+                                                        <Text style={styles.btpLotReadonlyText}>Số Lot SX: {row.SoLotSX || "---"}</Text>
+                                                        <Text style={styles.btpLotReadonlyText}>
+                                                            Tổng cái Kho xác nhận: {row.SoLuongKhoXacNhan !== undefined && row.SoLuongKhoXacNhan !== null && row.SoLuongKhoXacNhan !== ""
+                                                                ? formatQuantity(row.SoLuongKhoXacNhan)
+                                                                : "---"}
+                                                        </Text>
+                                                        {canEditKhoQuantity && (
+                                                            <TextInput
+                                                                style={styles.khoQuantityInput}
+                                                                placeholder="Nhập số lượng Kho xác nhận"
+                                                                keyboardType="decimal-pad"
+                                                                value={khoLotQuantities[getLotRowKey(row, `${item.Id}-${rowIndex}`)] || ""}
+                                                                onChangeText={(value) => {
+                                                                    const normalized = value.replace(",", ".").replace(/[^0-9.]/g, "");
+                                                                    const key = getLotRowKey(row, `${item.Id}-${rowIndex}`);
+                                                                    setKhoLotQuantities(prev => ({ ...prev, [key]: normalized }));
+                                                                }}
+                                                            />
+                                                        )}
+                                                    </View>
                                                 ))}
-                                                {lotRows.length > previewRows.length && (
-                                                    <Text style={[styles.btpDetailText, { color: '#64748b' }]}>• Còn {lotRows.length - previewRows.length} dòng khác</Text>
-                                                )}
                                             </>
                                         ) : (
-                                            <Text style={[styles.btpDetailText, { color: '#9ca3af', fontStyle: 'italic' }]}>Chưa nhập thông tin chi tiết</Text>
+                                            <Text style={[styles.btpDetailText, { color: '#9ca3af', fontStyle: 'italic' }]}>Chưa có dữ liệu lot từ phiếu nhập</Text>
                                         )}
                                     </View>
+                                    {SHOW_MANUAL_BTP_LOT_EDITOR && !isCompleted && (
+                                        <TouchableOpacity
+                                            style={styles.addLotBtn}
+                                            onPress={() => {
+                                                setSelectedBtp(normalizeBtpItem(item));
+                                                setBtpModalVisible(true);
+                                            }}
+                                        >
+                                            <Text style={styles.addLotBtnText}>Cập nhật dấu tuần/lot</Text>
+                                        </TouchableOpacity>
+                                    )}
                                 </View>
-                                {!isCompleted && <MaterialCommunityIcons name="pencil" size={20} color="#0052cc" style={{ alignSelf: 'flex-start', marginTop: 4 }} />}
-                            </TouchableOpacity>
+                            </View>
                         );
                     })}
                 </View>
@@ -688,49 +785,110 @@ export default function SxbtInspectionScreen({ route, navigation }) {
 
                 {/* MỤC IV */}
                 <View style={styles.card}>
-                    <View style={styles.row}>
-                        <Text style={styles.sectionTitle}>IV. Ghi nhận lỗi</Text>
-                        {!isCompleted && (
-                            <TouchableOpacity onPress={() => setDefectModalVisible(true)} style={styles.addDefectBtn}>
-                                <Text style={styles.addDefectBtnText}>+ Thêm lỗi</Text>
-                            </TouchableOpacity>
-                        )}
-                    </View>
+                    <Text style={styles.sectionTitle}>IV. Ghi nhận lỗi</Text>
 
-                    {defectList.map(d => (
-                        <View key={d.DefectId} style={styles.defectRow}>
-                            <View style={{ flex: 1 }}>
-                                <Text style={styles.defectName}>{d.TenLoi}</Text>
-                                <Text style={styles.defectType}>{d.DefectType}</Text>
-                            </View>
+                    {btpItems.map((item) => (
+                        getBtpLotRows(item).map((lotRow, lotIndex) => {
+                            const lotDefects = getDefectsForLot(item, lotRow);
+                            return (
+                                <View key={`${item.Id}-${lotRow.Id || lotIndex}`} style={styles.defectTargetCard}>
+                                    <View style={styles.defectTargetHeader}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.defectTargetTitle}>{item.TenSanPham || "BTP"}</Text>
+                                            <Text style={styles.defectTargetMeta}>{getLotContextText(item, lotRow) || `Dòng lot ${lotIndex + 1}`}</Text>
+                                        </View>
+                                        {!isCompleted && lotRow.Id && (
+                                            <TouchableOpacity onPress={() => openDefectModalForLot(item, lotRow)} style={styles.addDefectBtn}>
+                                                <Text style={styles.addDefectBtnText}>+ Thêm lỗi</Text>
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
 
-                            <View style={styles.counter}>
-                                <TouchableOpacity disabled={isCompleted} onPress={() => handleDefectChange(d.DefectId, -1)} style={styles.countBtn}>
-                                    <Text style={styles.countBtnText}>-</Text>
-                                </TouchableOpacity>
-                                <TextInput
-                                    style={styles.countInput}
-                                    value={String(d.SoLuong)}
-                                    editable={!isCompleted}
-                                    keyboardType="number-pad"
-                                    selectTextOnFocus
-                                    onChangeText={(value) => handleDefectQuantityInput(d.DefectId, value)}
-                                />
-                                <TouchableOpacity disabled={isCompleted} onPress={() => handleDefectChange(d.DefectId, 1)} style={styles.countBtn}>
-                                    <Text style={styles.countBtnText}>+</Text>
-                                </TouchableOpacity>
-                            </View>
+                                    {lotDefects.length === 0 ? (
+                                        <Text style={styles.emptyDefectText}>Chưa ghi nhận lỗi cho dòng này</Text>
+                                    ) : lotDefects.map(d => {
+                                        const defectKey = getDefectRowKey(d);
+                                        return (
+                                            <View key={defectKey} style={styles.defectRow}>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={styles.defectName}>{d.TenLoi}</Text>
+                                                    <Text style={styles.defectType}>{d.DefectType}</Text>
+                                                </View>
 
-                            <View style={styles.lapLaiBox}>
-                                <Text style={styles.lapLaiText}>Lặp lại</Text>
-                                <Checkbox
-                                    status={d.IsLapLai ? 'checked' : 'unchecked'}
-                                    disabled={isCompleted}
-                                    onPress={() => toggleLapLai(d.DefectId)}
-                                />
-                            </View>
-                        </View>
+                                                <View style={styles.counter}>
+                                                    <TouchableOpacity disabled={isCompleted} onPress={() => handleDefectChange(defectKey, -1)} style={styles.countBtn}>
+                                                        <Text style={styles.countBtnText}>-</Text>
+                                                    </TouchableOpacity>
+                                                    <TextInput
+                                                        style={styles.countInput}
+                                                        value={String(d.SoLuong)}
+                                                        editable={!isCompleted}
+                                                        keyboardType="number-pad"
+                                                        selectTextOnFocus
+                                                        onChangeText={(value) => handleDefectQuantityInput(defectKey, value)}
+                                                    />
+                                                    <TouchableOpacity disabled={isCompleted} onPress={() => handleDefectChange(defectKey, 1)} style={styles.countBtn}>
+                                                        <Text style={styles.countBtnText}>+</Text>
+                                                    </TouchableOpacity>
+                                                </View>
+
+                                                <View style={styles.lapLaiBox}>
+                                                    <Text style={styles.lapLaiText}>Lặp lại</Text>
+                                                    <Checkbox
+                                                        status={d.IsLapLai ? 'checked' : 'unchecked'}
+                                                        disabled={isCompleted}
+                                                        onPress={() => toggleLapLai(defectKey)}
+                                                    />
+                                                </View>
+                                            </View>
+                                        );
+                                    })}
+                                </View>
+                            );
+                        })
                     ))}
+
+                    {getUnassignedDefects().length > 0 && (
+                        <View style={styles.defectTargetCard}>
+                            <Text style={styles.defectTargetTitle}>Lỗi chưa gắn dòng BTP</Text>
+                            <Text style={styles.defectTargetMeta}>Dữ liệu cũ hoặc lỗi chưa có thông tin lot</Text>
+                            {getUnassignedDefects().map(d => {
+                                const defectKey = getDefectRowKey(d);
+                                return (
+                                    <View key={defectKey} style={styles.defectRow}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.defectName}>{d.TenLoi}</Text>
+                                            <Text style={styles.defectType}>{d.DefectType}</Text>
+                                        </View>
+                                        <View style={styles.counter}>
+                                            <TouchableOpacity disabled={isCompleted} onPress={() => handleDefectChange(defectKey, -1)} style={styles.countBtn}>
+                                                <Text style={styles.countBtnText}>-</Text>
+                                            </TouchableOpacity>
+                                            <TextInput
+                                                style={styles.countInput}
+                                                value={String(d.SoLuong)}
+                                                editable={!isCompleted}
+                                                keyboardType="number-pad"
+                                                selectTextOnFocus
+                                                onChangeText={(value) => handleDefectQuantityInput(defectKey, value)}
+                                            />
+                                            <TouchableOpacity disabled={isCompleted} onPress={() => handleDefectChange(defectKey, 1)} style={styles.countBtn}>
+                                                <Text style={styles.countBtnText}>+</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                        <View style={styles.lapLaiBox}>
+                                            <Text style={styles.lapLaiText}>Lặp lại</Text>
+                                            <Checkbox
+                                                status={d.IsLapLai ? 'checked' : 'unchecked'}
+                                                disabled={isCompleted}
+                                                onPress={() => toggleLapLai(defectKey)}
+                                            />
+                                        </View>
+                                    </View>
+                                );
+                            })}
+                        </View>
+                    )}
                 </View>
 
                 {!isCompleted && isKCS && (
@@ -745,142 +903,33 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                     </View>
                 )}
 
-                {/* PX xác nhận */}
-                {phieu?.TrangThai === "CHO_XUONG_XAC_NHAN" && isPX && (
+                {/* SXBT xác nhận */}
+                {phieu?.TrangThai === "CHO_SXBT_XAC_NHAN" && isSXBTConfirm && (
                     <View style={styles.actionRow}>
                         <TouchableOpacity
                             style={[styles.saveBtn, { flex: 1, backgroundColor: "#2563eb" }]}
-                            onPress={handleConfirmPX}
+                            onPress={handleConfirmSXBT}
                             disabled={saving}
                         >
-                            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Kho xác nhận</Text>}
+                            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>SXBT xác nhận</Text>}
                         </TouchableOpacity>
                     </View>
                 )}
 
-                {/* Kiểm nghiệm xác nhận */}
-                {phieu?.TrangThai === "CHO_KIEM_NGHIEM" && isKN && (
+                {/* Kho xác nhận số lượng */}
+                {phieu?.TrangThai === "CHO_KHO_XAC_NHAN" && isKhoSXBT && (
                     <View style={styles.actionRow}>
                         <TouchableOpacity
-                            style={[styles.saveBtn, { flex: 1, backgroundColor: "#7c3aed" }]}
-                            onPress={handleConfirmKN}
+                            style={[styles.saveBtn, { flex: 1, backgroundColor: "#0f766e" }]}
+                            onPress={handleConfirmKho}
                             disabled={saving}
                         >
-                            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Xác nhận kiểm nghiệm</Text>}
+                            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Kho xác nhận số lượng</Text>}
                         </TouchableOpacity>
                     </View>
                 )}
 
             </ScrollView>
-
-            {/* BTP Input Modal */}
-            <Modal visible={btpModalVisible} transparent animationType="slide">
-                <KeyboardAvoidingView
-                    behavior={Platform.OS === "ios" ? "padding" : "height"}
-                    style={styles.modalBg}
-                >
-                    <View style={styles.btpModalContent}>
-                        <Text style={styles.btpModalTitle}>Cập nhật thông tin BTP</Text>
-
-                        <View style={styles.btpInfoBox}>
-                            <Text style={styles.btpInfoName}>{selectedBtp?.TenSanPham || "BTP"}</Text>
-                            {!!selectedBtp?.DonViTinh && (
-                                <Text style={styles.btpInfoMeta}>Đơn vị tính: {selectedBtp.DonViTinh}</Text>
-                            )}
-                        </View>
-
-                        <ScrollView
-                            style={styles.btpModalScroll}
-                            contentContainerStyle={styles.btpModalScrollContent}
-                            keyboardShouldPersistTaps="handled"
-                            keyboardDismissMode="none"
-                            showsVerticalScrollIndicator
-                        >
-                            {getBtpLotRows(selectedBtp).length === 0 && (
-                                <View style={styles.emptyLotBox}>
-                                    <Text style={styles.emptyLotText}>Chưa có dòng dấu tuần/lot</Text>
-                                </View>
-                            )}
-
-                            {getBtpLotRows(selectedBtp).map((row, rowIndex) => (
-                                <View key={`btp-lot-${rowIndex}`} style={styles.lotCard}>
-                                    <View style={styles.lotHeader}>
-                                        <Text style={styles.lotTitle}>Dòng lot {rowIndex + 1}</Text>
-                                        <TouchableOpacity onPress={() => removeBtpLotRow(rowIndex)} style={styles.removeLotBtn}>
-                                            <MaterialCommunityIcons name="trash-can-outline" size={18} color="#ef4444" />
-                                        </TouchableOpacity>
-                                    </View>
-
-                                    <View style={styles.formGroup}>
-                                        <Text style={styles.inputLabel}>Số lượng</Text>
-                                        <TextInput
-                                            style={styles.input}
-                                            placeholder="Nhập số lượng"
-                                            value={inputValue(row.SoLuongNhap)}
-                                            onChangeText={(t) => handleBtpLotChange(rowIndex, 'SoLuongNhap', t)}
-                                            keyboardType="decimal-pad"
-                                        />
-                                    </View>
-
-                                    <View style={styles.formGroup}>
-                                        <Text style={styles.inputLabel}>Dấu tuần/GS1</Text>
-                                        <TextInput
-                                            style={styles.input}
-                                            placeholder="Nhập dấu tuần/GS1"
-                                            value={inputValue(row.DauTuanGS1)}
-                                            onChangeText={(t) => handleBtpLotChange(rowIndex, 'DauTuanGS1', t)}
-                                        />
-                                    </View>
-
-                                    <View style={styles.formGroup}>
-                                        <Text style={styles.inputLabel}>TT</Text>
-                                        <TextInput
-                                            style={styles.input}
-                                            placeholder="Nhập TT"
-                                            value={inputValue(row.ThuTu)}
-                                            onChangeText={(t) => handleBtpLotChange(rowIndex, 'ThuTu', t)}
-                                        />
-                                    </View>
-
-                                    <View style={styles.formGroup}>
-                                        <Text style={styles.inputLabel}>LXVT/LOT</Text>
-                                        <TextInput
-                                            style={styles.input}
-                                            placeholder="Nhập LXVT/LOT"
-                                            value={inputValue(row.LxvtLot)}
-                                            onChangeText={(t) => handleBtpLotChange(rowIndex, 'LxvtLot', t)}
-                                        />
-                                    </View>
-
-                                    <View style={styles.formGroup}>
-                                        <Text style={styles.inputLabel}>Số Lot SX</Text>
-                                        <TextInput
-                                            style={styles.input}
-                                            placeholder="Nhập số Lot SX"
-                                            value={inputValue(row.SoLotSX)}
-                                            onChangeText={(t) => handleBtpLotChange(rowIndex, 'SoLotSX', t)}
-                                        />
-                                    </View>
-                                </View>
-                            ))}
-
-                            <TouchableOpacity style={styles.addLotBtn} onPress={addBtpLotRow}>
-                                <MaterialCommunityIcons name="plus" size={18} color="#0052cc" />
-                                <Text style={styles.addLotText}>Thêm dấu tuần/lot</Text>
-                            </TouchableOpacity>
-                        </ScrollView>
-
-                        <View style={styles.modalActions}>
-                            <TouchableOpacity style={styles.modalBtnCancel} onPress={() => setBtpModalVisible(false)}>
-                                <Text>Hủy</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.modalBtnSave} onPress={saveBtpItem}>
-                                <Text style={{ color: '#fff' }}>Xong</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </KeyboardAvoidingView>
-            </Modal>
 
             {/* Defect Selection Modal */}
             <Modal visible={defectModalVisible} transparent animationType="slide">
@@ -962,6 +1011,80 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                     </KeyboardAvoidingView>
                 </View>
             </Modal>
+
+            {SHOW_MANUAL_BTP_LOT_EDITOR && (
+                <Modal visible={btpModalVisible} transparent animationType="slide">
+                    <View style={styles.modalOverlay}>
+                        <KeyboardAvoidingView
+                            behavior={Platform.OS === "ios" ? "padding" : "height"}
+                            style={[styles.modalContent, styles.btpModalContent]}
+                        >
+                            <Text style={styles.modalTitle}>Cập nhật thông tin BTP</Text>
+                            {selectedBtp && (
+                                <>
+                                    <View style={styles.btpModalHeader}>
+                                        <Text style={styles.itemName}>{selectedBtp.TenSanPham}</Text>
+                                        <Text style={styles.itemSub}>Đơn vị tính: {selectedBtp.DonViTinh || "---"}</Text>
+                                        <Text style={styles.itemSub}>
+                                            Kế hoạch sản xuất: {selectedBtp.SourceID_KeHoachSanXuat ? `KH #${selectedBtp.SourceID_KeHoachSanXuat}` : "---"}
+                                        </Text>
+                                        {selectedBtp.MaDonHang ? (
+                                            <Text style={styles.itemSub}>Đơn hàng: {selectedBtp.MaDonHang}</Text>
+                                        ) : null}
+                                    </View>
+
+                                    <ScrollView
+                                        showsVerticalScrollIndicator={false}
+                                        contentContainerStyle={styles.btpModalScrollContent}
+                                    >
+                                        {getBtpLotRows(selectedBtp).map((row, rowIndex) => (
+                                            <View key={`manual-lot-${rowIndex}`} style={styles.btpLotEditCard}>
+                                                <View style={styles.btpLotEditHeader}>
+                                                    <Text style={styles.btpLotReadonlyTitle}>Dòng lot {rowIndex + 1}</Text>
+                                                </View>
+                                                <Text style={styles.btpLotReadonlyText}>Số lượng nhập: {formatQuantity(row.SoLuongNhap)}</Text>
+                                                <Text style={[styles.btpLotReadonlyText, { marginBottom: 8 }]}>Số Lot SX: {row.SoLotSX || "---"}</Text>
+
+                                                {[
+                                                    ["DauTuanGS1", "Dấu tuần/GS1", "Nhập dấu tuần/GS1", "default"],
+                                                    ["ThuTu", "TT", "Nhập TT", "default"],
+                                                    ["LxvtLot", "LXVT/LOT", "Nhập LXVT/LOT", "default"]
+                                                ].map(([field, label, placeholder, keyboardType]) => (
+                                                    <View key={field} style={styles.formGroup}>
+                                                        <Text style={styles.inputLabel}>{label}</Text>
+                                                        <TextInput
+                                                            style={styles.input}
+                                                            placeholder={placeholder}
+                                                            keyboardType={keyboardType}
+                                                            value={inputValue(row[field])}
+                                                            onChangeText={(value) => handleBtpLotChange(rowIndex, field, value)}
+                                                        />
+                                                    </View>
+                                                ))}
+                                            </View>
+                                        ))}
+
+                                        {SHOW_MANUAL_BTP_LOT_ADD_ROW && (
+                                            <TouchableOpacity style={styles.addLotBtn}>
+                                                <Text style={styles.addLotBtnText}>+ Thêm dấu tuần/lô</Text>
+                                            </TouchableOpacity>
+                                        )}
+                                    </ScrollView>
+                                </>
+                            )}
+
+                            <View style={styles.modalActionRow}>
+                                <TouchableOpacity style={[styles.closeBtn, { flex: 1, backgroundColor: "#e5e7eb" }]} onPress={() => setBtpModalVisible(false)}>
+                                    <Text style={[styles.saveText, { color: "#111827" }]}>Hủy</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={[styles.closeBtn, { flex: 1, backgroundColor: "#0052cc" }]} onPress={saveBtpItem}>
+                                    <Text style={styles.saveText}>Xong</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </KeyboardAvoidingView>
+                    </View>
+                </Modal>
+            )}
         </SafeAreaView>
     );
 }
@@ -994,6 +1117,17 @@ const styles = StyleSheet.create({
     itemSub: { fontSize: 13, color: "#6b7280" },
     btpDetailBox: { marginTop: 8, padding: 8, backgroundColor: "#f8fafc", borderRadius: 6, borderWidth: 1, borderColor: "#f1f5f9" },
     btpDetailText: { fontSize: 12, color: "#475569", marginBottom: 2 },
+    btpLotReadonlyRow: { marginTop: 8, padding: 10, backgroundColor: "#fff", borderRadius: 6, borderWidth: 1, borderColor: "#e5e7eb" },
+    btpLotReadonlyTitle: { fontSize: 12, fontWeight: "700", color: "#0f172a", marginBottom: 4 },
+    btpLotReadonlyText: { fontSize: 12, color: "#475569", marginBottom: 2 },
+    btpModalContent: { paddingBottom: Platform.OS === "ios" ? 36 : 24 },
+    btpModalScrollContent: { paddingBottom: 12 },
+    btpModalHeader: { backgroundColor: "#fff", padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "#e2e8f0", marginBottom: 12 },
+    btpLotEditCard: { backgroundColor: "#fff", padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "#e2e8f0", marginBottom: 12 },
+    btpLotEditHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
+    khoQuantityInput: { marginTop: 8, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 6, padding: 10, fontSize: 13, backgroundColor: "#f8fafc" },
+    addLotBtn: { marginTop: 10, paddingVertical: 10, borderRadius: 6, borderWidth: 1, borderColor: "#93c5fd", backgroundColor: "#eff6ff", alignItems: "center" },
+    addLotBtnText: { color: "#2563eb", fontWeight: "700", fontSize: 13 },
     typeGroup: { flexDirection: "row", gap: 8, marginBottom: 16 },
     typeBtn: { flex: 1, padding: 8, borderWidth: 1, borderColor: "#d1d5db", borderRadius: 6, alignItems: "center" },
     typeBtnActive: { backgroundColor: "#dbeafe", borderColor: "#3b82f6" },
@@ -1013,29 +1147,8 @@ const styles = StyleSheet.create({
     lapLaiText: { fontSize: 10, color: "#6b7280" },
     saveBtn: { backgroundColor: "#10b981", padding: 16, borderRadius: 8, alignItems: "center", marginVertical: 16 },
     saveBtnText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
-    modalBg: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end", paddingHorizontal: 12, paddingTop: 24 },
-    modalContent: { backgroundColor: "#fff", padding: 20, borderRadius: 8 },
-    modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 16 },
-    btpModalContent: { backgroundColor: "#fff", borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 18, width: "100%", maxHeight: "88%" },
-    btpModalTitle: { fontSize: 18, fontWeight: "bold", color: "#0f172a", marginBottom: 12 },
-    btpInfoBox: { backgroundColor: "#f8fafc", borderRadius: 12, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: "#e2e8f0" },
-    btpInfoName: { fontSize: 15, fontWeight: "700", color: "#0f172a" },
-    btpInfoMeta: { fontSize: 12, color: "#64748b", marginTop: 4 },
-    btpModalScroll: { flexGrow: 0 },
-    btpModalScrollContent: { paddingBottom: 8 },
     formGroup: { marginBottom: 2 },
     inputLabel: { fontSize: 13, fontWeight: "600", color: "#334155", marginBottom: 6 },
-    emptyLotBox: { padding: 14, borderRadius: 10, backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", marginBottom: 12 },
-    emptyLotText: { color: "#94a3b8", fontStyle: "italic", textAlign: "center" },
-    lotCard: { padding: 12, borderRadius: 12, backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", marginBottom: 12 },
-    lotHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-    lotTitle: { fontSize: 14, fontWeight: "700", color: "#0f172a" },
-    removeLotBtn: { padding: 6 },
-    addLotBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff" },
-    addLotText: { color: "#0052cc", fontWeight: "700" },
-    modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 16 },
-    modalBtnCancel: { padding: 12 },
-    modalBtnSave: { backgroundColor: "#0052cc", padding: 12, borderRadius: 6 },
     actionRow: { flexDirection: "row", justifyContent: "space-between", marginVertical: 16 },
     addDefectBtn: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: "#e0e7ff", borderRadius: 6 },
     addDefectBtnText: { color: "#4f46e5", fontWeight: "bold", fontSize: 13 },
@@ -1055,5 +1168,6 @@ const styles = StyleSheet.create({
     noteBox: { flexDirection: "row", alignItems: "center", marginTop: 8, backgroundColor: "#eff6ff", padding: 8, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: '#2563eb' },
     noteText: { fontSize: 12, color: "#1e40af", fontWeight: "500", marginLeft: 4, flex: 1 },
     closeBtn: { backgroundColor: "#64748b", padding: 14, borderRadius: 14, alignItems: "center", marginTop: 15 },
+    modalActionRow: { flexDirection: "row", gap: 12, marginBottom: Platform.OS === "ios" ? 10 : 4 },
     saveText: { color: "#fff", fontWeight: "bold", fontSize: 16 }
 });
