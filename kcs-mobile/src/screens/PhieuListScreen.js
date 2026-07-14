@@ -1,6 +1,6 @@
 // src/screens/PhieuListScreen.jsx
 
-import { useEffect, useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
     View,
     Text,
@@ -26,17 +26,6 @@ export default function PhieuListScreen({ navigation }) {
             loadData();
         }, [])
     );
-
-    const filteredData = (data || []).filter(item => {
-        const searchLower = searchText.toLowerCase();
-        const maSP = (item.MaSanPham || "").toLowerCase();
-        const tenSP = (item.TenSanPham || "").toLowerCase();
-        const ngayGiao = item.Ngay_Giao ? new Date(item.Ngay_Giao).toLocaleDateString("vi-VN") : "";
-
-        return maSP.includes(searchLower) ||
-            tenSP.includes(searchLower) ||
-            ngayGiao.includes(searchLower);
-    });
 
     const truncate = (text, max = 30) => {
         if (!text) return "";
@@ -94,6 +83,104 @@ export default function PhieuListScreen({ navigation }) {
                 return { backgroundColor: "#e2e8f0", color: "#475569", text: status };
         }
     };
+
+    const normalizeSearchText = (value) =>
+        String(value || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/đ/g, "d")
+            .replace(/Đ/g, "D")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, " ")
+            .trim();
+
+    const normalizeCompactText = (value) =>
+        normalizeSearchText(value).replace(/\s+/g, "");
+
+    const formatDateVariants = (value) => {
+        if (!value) return [];
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return [];
+        const dd = String(date.getDate()).padStart(2, "0");
+        const mm = String(date.getMonth() + 1).padStart(2, "0");
+        const yyyy = String(date.getFullYear());
+        return [
+            `${dd}/${mm}/${yyyy}`,
+            `${dd}-${mm}-${yyyy}`,
+            `${dd}${mm}${yyyy}`,
+            `${dd}/${mm}/${yyyy.slice(-2)}`,
+            `${dd}${mm}${yyyy.slice(-2)}`
+        ];
+    };
+
+    const getSearchDocument = (item) => {
+        const statusStyle = getStatusStyle(item);
+        const values = [
+            item.SoPhieu,
+            item.Lot,
+            item.MaSanPham,
+            item.TenSanPham,
+            item.TenLoaiKiem,
+            item.DoiTuong,
+            item.TenNguoiKiem,
+            item.SoLuong,
+            item.TrangThai,
+            statusStyle.text,
+            ...formatDateVariants(item.Ngay_Giao),
+            ...formatDateVariants(item.CreatedAt),
+            ...formatDateVariants(item.NgayKiem)
+        ];
+        return values.filter(v => v !== undefined && v !== null && v !== "").join(" ");
+    };
+
+    const getSearchScore = (item, rawQuery) => {
+        const query = normalizeSearchText(rawQuery);
+        if (!query) return 1;
+
+        const tokens = query.split(/\s+/).filter(Boolean);
+        const document = normalizeSearchText(getSearchDocument(item));
+        const compactDocument = normalizeCompactText(getSearchDocument(item));
+        const compactQuery = normalizeCompactText(rawQuery);
+
+        if (!tokens.every(token => document.includes(token) || compactDocument.includes(token))) {
+            return 0;
+        }
+
+        let score = 10;
+        const soPhieu = normalizeSearchText(item.SoPhieu);
+        const soPhieuCompact = normalizeCompactText(item.SoPhieu);
+        const maSP = normalizeSearchText(item.MaSanPham);
+        const tenSP = normalizeSearchText(item.TenSanPham);
+
+        if (soPhieu === query || soPhieuCompact === compactQuery) score += 100;
+        else if (soPhieu.includes(query) || soPhieuCompact.includes(compactQuery)) score += 70;
+        if (maSP.includes(query)) score += 40;
+        if (tenSP.includes(query)) score += 25;
+        if (document.includes(query)) score += 15;
+
+        tokens.forEach(token => {
+            if (soPhieu.includes(token) || soPhieuCompact.includes(token)) score += 12;
+            if (maSP.includes(token)) score += 8;
+            if (tenSP.includes(token)) score += 5;
+        });
+
+        return score;
+    };
+
+    const filteredData = useMemo(() => {
+        const query = searchText.trim();
+        if (!query) return data || [];
+
+        return (data || [])
+            .map((item, index) => ({
+                item,
+                index,
+                score: getSearchScore(item, query)
+            }))
+            .filter(result => result.score > 0)
+            .sort((a, b) => b.score - a.score || a.index - b.index)
+            .map(result => result.item);
+    }, [data, searchText]);
 
     const renderItem = ({ item }) => {
         const statusStyle = getStatusStyle(item);
@@ -179,7 +266,12 @@ export default function PhieuListScreen({ navigation }) {
 
     const renderEmpty = () => (
         <View style={styles.empty}>
-            <Text style={styles.emptyText}>Không có phiếu kiểm</Text>
+            <Text style={styles.emptyText}>
+                {searchText.trim() ? "Không tìm thấy phiếu phù hợp" : "Không có phiếu kiểm"}
+            </Text>
+            {searchText.trim() ? (
+                <Text style={styles.emptyHint}>Thử tìm bằng số phiếu, itemcode, lot, người kiểm hoặc ngày.</Text>
+            ) : null}
         </View>
     );
 
@@ -203,13 +295,28 @@ export default function PhieuListScreen({ navigation }) {
             />
 
             <View style={styles.searchContainer}>
+                <View style={styles.searchHeader}>
+                    <Text style={styles.searchTitle}>Tìm kiếm phiếu</Text>
+                    {searchText.trim() ? (
+                        <Text style={styles.searchCount}>{filteredData.length}/{data.length}</Text>
+                    ) : null}
+                </View>
                 <TextInput
                     style={styles.searchInput}
-                    placeholder="Tìm theo Mã SP, Quy cách, Ngày giao (dd/mm/yyyy)..."
+                    placeholder="Số phiếu, itemcode, quy cách, lot, ngày..."
                     value={searchText}
                     onChangeText={setSearchText}
                     clearButtonMode="while-editing"
+                    autoCapitalize="none"
+                    autoCorrect={false}
                 />
+                {searchText.trim() ? (
+                    <TouchableOpacity style={styles.clearSearchBtn} onPress={() => setSearchText("")}>
+                        <Text style={styles.clearSearchText}>Xóa tìm kiếm</Text>
+                    </TouchableOpacity>
+                ) : (
+                    <Text style={styles.searchHint}>Có thể tìm không dấu, không cần gạch/khoảng trắng trong số phiếu.</Text>
+                )}
             </View>
         </KeyboardAvoidingView>
     );
@@ -227,6 +334,28 @@ const styles = StyleSheet.create({
         borderTopColor: "#e2e8f0",
         paddingBottom: 24
     },
+    searchHeader: {
+        marginHorizontal: 12,
+        marginBottom: 8,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between"
+    },
+    searchTitle: {
+        fontSize: 13,
+        fontWeight: "700",
+        color: "#334155"
+    },
+    searchCount: {
+        fontSize: 12,
+        fontWeight: "700",
+        color: "#2563eb",
+        backgroundColor: "#eff6ff",
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 999,
+        overflow: "hidden"
+    },
     searchInput: {
         backgroundColor: "#f1f5f9",
         borderRadius: 12,
@@ -237,6 +366,28 @@ const styles = StyleSheet.create({
         color: "#1e293b",
         borderWidth: 1,
         borderColor: "#cbd5e1",
+    },
+    searchHint: {
+        marginHorizontal: 12,
+        marginTop: 6,
+        fontSize: 11,
+        color: "#94a3b8"
+    },
+    clearSearchBtn: {
+        alignSelf: "flex-end",
+        marginTop: 8,
+        marginRight: 12,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 999,
+        backgroundColor: "#f8fafc",
+        borderWidth: 1,
+        borderColor: "#e2e8f0"
+    },
+    clearSearchText: {
+        fontSize: 12,
+        fontWeight: "700",
+        color: "#475569"
     },
     card: {
         backgroundColor: "#ffffff",
@@ -296,6 +447,15 @@ const styles = StyleSheet.create({
     },
     emptyText: {
         color: "#94a3b8",
-        fontSize: 15
+        fontSize: 15,
+        fontWeight: "700"
+    },
+    emptyHint: {
+        marginTop: 8,
+        color: "#94a3b8",
+        fontSize: 12,
+        textAlign: "center",
+        paddingHorizontal: 32,
+        lineHeight: 18
     }
 });
