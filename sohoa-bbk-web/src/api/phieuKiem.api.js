@@ -37,12 +37,17 @@ export const deletePhieuKiem = (id) => {
     return axiosClient.delete(`/phieu-kiem/${id}`);
 };
 
+const normalizeCreatePayload = (data = {}) => ({
+    ...data,
+    doiTuong: data.doiTuong == null ? "" : String(data.doiTuong),
+});
+
 export const createPhieuKiem = (data) => {
-    return axiosClient.post("/phieu-kiem/create", data);
+    return axiosClient.post("/phieu-kiem/create", normalizeCreatePayload(data));
 };
 
 export const createPhieuKiemSXBT = (data) => {
-    return axiosClient.post("/phieu-kiem/create-sxbt", data);
+    return axiosClient.post("/phieu-kiem/create-sxbt", normalizeCreatePayload(data));
 };
 
 export const getLichDongContChuaKiem = () =>
