@@ -1120,8 +1120,8 @@ BEGIN
         CASE
             WHEN pk.TrangThai = 'DA_TAO_SECTION' THEN N'Chưa kiểm'
             WHEN pk.TrangThai = 'DANG_KIEM' THEN N'Đang kiểm'
-            WHEN pk.TrangThai = 'CHO_XUONG_XAC_NHAN' THEN N'Chờ trưởng bộ phận'
-            WHEN pk.TrangThai = 'CHO_KIEM_NGHIEM' THEN N'Chờ trưởng bộ phận'
+            WHEN pk.TrangThai = 'CHO_XUONG_XAC_NHAN' THEN N'Chờ Trưởng bộ phận'
+            WHEN pk.TrangThai = 'CHO_KIEM_NGHIEM' THEN N'Chờ Trưởng bộ phận'
             WHEN pk.TrangThai = 'HOAN_TAT' THEN N'Hoàn tất'
         END AS TrangThaiText
     FROM PHIEU_KIEM pk

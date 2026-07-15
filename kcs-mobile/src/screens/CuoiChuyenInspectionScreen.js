@@ -33,7 +33,7 @@ const getStatusMeta = (status) => {
     case "DANG_KIEM":
       return { label: "Đang kiểm", bg: "#dbeafe", color: "#1d4ed8" };
     case "CHO_TBP_DUYET":
-      return { label: "Chờ TBP duyệt", bg: "#ede9fe", color: "#6d28d9" };
+      return { label: "Chờ Trưởng bộ phận", bg: "#ede9fe", color: "#6d28d9" };
     case "HOAN_TAT":
       return { label: "Hoàn tất", bg: "#dcfce7", color: "#15803d" };
     default:

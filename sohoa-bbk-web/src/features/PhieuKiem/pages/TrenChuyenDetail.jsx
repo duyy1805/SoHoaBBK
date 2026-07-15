@@ -55,7 +55,7 @@ const statusMeta = (trangThai, ketLuan) => {
         };
     }
     if (trangThai === "CHO_KIEM_NGHIEM") return { label: "Chờ kiểm nghiệm", color: "warning" };
-    if (trangThai === "CHO_TBP_DUYET") return { label: "Chờ TBP duyệt", color: "secondary" };
+    if (trangThai === "CHO_TBP_DUYET") return { label: "Chờ Trưởng bộ phận", color: "secondary" };
     if (trangThai === "DANG_KIEM") return { label: "Đang kiểm", color: "info" };
     if (trangThai === "TAO_MOI") return { label: "Mới tạo", color: "default" };
     return { label: trangThai || "---", color: ketLuan === "KHONG_DAT" ? "error" : "default" };

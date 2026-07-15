@@ -58,7 +58,7 @@ export default function PhieuListScreen({ navigation }) {
                 return { backgroundColor: "#fef9c3", color: "#a16207", text: "Đang kiểm" };
 
             case "CHO_TBP_DUYET":
-                return { backgroundColor: "#ede9fe", color: "#6d28d9", text: "Chờ TBP duyệt" };
+                return { backgroundColor: "#ede9fe", color: "#6d28d9", text: "Chờ Trưởng bộ phận" };
 
             case "DA_TAO_SECTION":
                 return { backgroundColor: "#e0f2fe", color: "#0369a1", text: "Đang kiểm" };
@@ -67,7 +67,7 @@ export default function PhieuListScreen({ navigation }) {
                 return {
                     backgroundColor: "#fef3c7",
                     color: "#b45309",
-                    text: item?.LoaiKiemId === 4 ? "Chờ Kho" : "Chờ TBP"
+                    text: item?.LoaiKiemId === 4 ? "Chờ Kho" : "Chờ Trưởng bộ phận"
                 };
 
             case "CHO_SXBT_XAC_NHAN":
@@ -77,7 +77,7 @@ export default function PhieuListScreen({ navigation }) {
                 return { backgroundColor: "#dbeafe", color: "#1d4ed8", text: "Chờ Kho" };
 
             case "CHO_KIEM_NGHIEM":
-                return { backgroundColor: "#fef3c7", color: "#b45309", text: "Chờ TBP" };
+                return { backgroundColor: "#fef3c7", color: "#b45309", text: "Chờ Trưởng bộ phận" };
 
             default:
                 return { backgroundColor: "#e2e8f0", color: "#475569", text: status };

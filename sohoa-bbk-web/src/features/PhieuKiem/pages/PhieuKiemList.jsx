@@ -84,15 +84,15 @@ export default function PhieuKiemList() {
             case "DANG_KIEM":
                 return <Chip label="Đang kiểm" color="warning" size="small" />;
             case "CHO_TBP_DUYET":
-                return <Chip label="Chờ TBP duyệt" color="secondary" size="small" />;
+                return <Chip label="Chờ Trưởng bộ phận" color="secondary" size="small" />;
             case "CHO_XUONG_XAC_NHAN":
-                return <Chip label="Chờ trưởng bộ phận xác nhận" color="info" size="small" />;
+                return <Chip label="Chờ Trưởng bộ phận" color="info" size="small" />;
             case "CHO_SXBT_XAC_NHAN":
                 return <Chip label="Chờ SXBT xác nhận" color="warning" size="small" />;
             case "CHO_KHO_XAC_NHAN":
                 return <Chip label="Chờ Kho xác nhận" color="info" size="small" />;
             case "CHO_KIEM_NGHIEM":
-                return <Chip label="Chờ trưởng bộ phận xác nhận" color="info" size="small" />;
+                return <Chip label="Chờ Trưởng bộ phận" color="info" size="small" />;
             case "HOAN_TAT":
                 return <Chip label="Hoàn tất" color="success" size="small" />;
             default:
@@ -104,7 +104,11 @@ export default function PhieuKiemList() {
     const filteredData = useMemo(() => {
         return data.filter((item) => {
             // Lọc theo trạng thái
-            if (filterStatus && item.TrangThai !== filterStatus) return false;
+            if (filterStatus === "CHO_TRUONG_BO_PHAN") {
+                if (!["CHO_TBP_DUYET", "CHO_XUONG_XAC_NHAN"].includes(item.TrangThai)) return false;
+            } else if (filterStatus && item.TrangThai !== filterStatus) {
+                return false;
+            }
 
             // Lọc theo keyword (tìm trên Số phiếu, Lot, Người kiểm, Tên Sản Phẩm)
             if (searchText) {
@@ -214,8 +218,7 @@ export default function PhieuKiemList() {
                         <MenuItem value="">Tất cả</MenuItem>
                         <MenuItem value="DA_TAO_SECTION">Chưa kiểm</MenuItem>
                         <MenuItem value="DANG_KIEM">Đang kiểm</MenuItem>
-                        <MenuItem value="CHO_TBP_DUYET">Chờ TBP duyệt</MenuItem>
-                        <MenuItem value="CHO_XUONG_XAC_NHAN">Chờ trưởng bộ phận xác nhận</MenuItem>
+                        <MenuItem value="CHO_TRUONG_BO_PHAN">Chờ Trưởng bộ phận</MenuItem>
                         <MenuItem value="CHO_SXBT_XAC_NHAN">Chờ SXBT xác nhận</MenuItem>
                         <MenuItem value="CHO_KHO_XAC_NHAN">Chờ Kho xác nhận</MenuItem>
                         <MenuItem value="HOAN_TAT">Hoàn tất</MenuItem>

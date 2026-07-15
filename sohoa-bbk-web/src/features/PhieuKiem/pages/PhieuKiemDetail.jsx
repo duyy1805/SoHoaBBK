@@ -265,9 +265,9 @@ export default function PhieuKiemDetail() {
             case "DANG_KIEM":
                 return <Chip label="Đang kiểm" color="warning" size="small" />;
             case "CHO_XUONG_XAC_NHAN":
-                return <Chip label="Chờ trưởng bộ phận xác nhận" color="info" size="small" />;
+                return <Chip label="Chờ Trưởng bộ phận" color="info" size="small" />;
             case "CHO_KIEM_NGHIEM":
-                return <Chip label="Chờ trưởng bộ phận xác nhận" color="info" size="small" />;
+                return <Chip label="Chờ Trưởng bộ phận" color="info" size="small" />;
             case "HOAN_TAT":
                 return <Chip label="Hoàn tất" color="success" size="small" />;
             default:

@@ -34,13 +34,13 @@ const getStatusMeta = (status) => {
     case "DANG_KIEM":
       return { label: "Đang kiểm", bg: "#dbeafe", color: "#1d4ed8" };
     case "CHO_TBP_DUYET":
-      return { label: "Chờ TBP duyệt", bg: "#ede9fe", color: "#6d28d9" };
+      return { label: "Chờ Trưởng bộ phận", bg: "#ede9fe", color: "#6d28d9" };
     case "HOAN_TAT":
       return { label: "Hoàn tất", bg: "#dcfce7", color: "#15803d" };
     case "CHO_KIEM_NGHIEM":
       return { label: "Chờ kiểm nghiệm", bg: "#ede9fe", color: "#6d28d9" };
     case "CHO_XUONG_XAC_NHAN":
-      return { label: "Chờ PX xác nhận", bg: "#fef3c7", color: "#b45309" };
+      return { label: "Chờ Trưởng bộ phận", bg: "#fef3c7", color: "#b45309" };
     default:
       return { label: status || "---", bg: "#e2e8f0", color: "#475569" };
   }
