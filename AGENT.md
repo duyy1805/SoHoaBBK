@@ -67,8 +67,8 @@ Hệ thống dựa trên JWT chứa `roles` và `permissions`. Các permission q
 - `XEM_PHIEU_KIEM`: xem danh sách/nguồn phiếu kiểm.
 - `PHAN_BO_KIEM`: tổ trưởng/leader KCS, tạo phiếu, phân công người kiểm, tạo section.
 - `THUC_HIEN_KIEM`: nhân viên KCS thực hiện kiểm, nhập kết quả, upload ảnh, hoàn tất bước kiểm.
-- `XAC_NHAN_PX`: PX/Kho xác nhận sau khi KCS hoàn tất. Với SXBT, label UI thường là Kho xác nhận.
-- `XAC_NHAN_KIEM_NGHIEM`: phòng kiểm nghiệm xác nhận bước cuối nếu luồng yêu cầu.
+- `XAC_NHAN_PX`: trưởng bộ phận/PX xác nhận sau khi KCS hoàn tất phiếu thường.
+- `XAC_NHAN_KIEM_NGHIEM`: quyền cũ, không còn dùng trong luồng phiếu kiểm thường.
 - `KET_LUAN`: người có quyền kết luận/hoàn tất biên bản hoặc một số bước quản lý chất lượng.
 - `QUAN_TRI_DM`: quản trị danh mục.
 - `XAC_NHAN_NGUOI_XU_LY`: phân công/xác nhận người xử lý biên bản.
@@ -82,8 +82,8 @@ Các trạng thái chính đang xuất hiện trong Web/Mobile:
 - `TAO_MOI`: phiếu vừa tạo, chưa tạo section kiểm.
 - `DA_TAO_SECTION`: đã tạo section/checklist, có thể thực hiện kiểm.
 - `DANG_KIEM`: đang kiểm.
-- `CHO_XUONG_XAC_NHAN`: đã hoàn tất bước KCS, chờ PX/Kho xác nhận.
-- `CHO_KIEM_NGHIEM`: đã qua PX/Kho, chờ kiểm nghiệm xác nhận.
+- `CHO_XUONG_XAC_NHAN`: đã hoàn tất bước KCS, chờ trưởng bộ phận/PX xác nhận.
+- `CHO_KIEM_NGHIEM`: trạng thái legacy; dữ liệu cũ nên được chuyển về `CHO_XUONG_XAC_NHAN`.
 - `HOAN_TAT`: phiếu hoàn tất.
 - `HOAN_THANH`: xuất hiện ở UI SXBT như trạng thái đã khóa sửa, cần xem như đã hoàn tất/không cho chỉnh.
 
@@ -107,8 +107,8 @@ Luồng chung cho phiếu không phải SXBT, hiện dùng màn `PhieuKiemDetail
 9. Kết quả mục kiểm lưu qua `POST /phieu-kiem/check-item`.
 10. Khi đủ dữ liệu section, tính/chốt AQL qua `POST /phieu-kiem/calculate-aql`.
 11. Khi tất cả section có kết luận, KCS/leader hoàn tất phiếu qua `POST /phieu-kiem/complete`.
-12. Nếu chuyển `CHO_XUONG_XAC_NHAN`, user có `XAC_NHAN_PX` xác nhận qua `POST /phieu-kiem/xac-nhan-px`.
-13. Nếu chuyển `CHO_KIEM_NGHIEM`, user có `XAC_NHAN_KIEM_NGHIEM` xác nhận qua `POST /phieu-kiem/xac-nhan-kiem-nghiem`.
+12. Phiếu chuyển `CHO_XUONG_XAC_NHAN`; user có `XAC_NHAN_PX` xác nhận qua `POST /phieu-kiem/xac-nhan-px`.
+13. Sau xác nhận trưởng bộ phận/PX, phiếu chuyển `HOAN_TAT`.
 14. Khi hoàn tất, Web có thể xem/in phiếu bằng các print template trong `sohoa-bbk-web/src/features/PhieuKiem/components/`.
 15. Nếu phát sinh KPH/biên bản, phiếu có `BienBanId` và UI cho mở sang biên bản tương ứng.
 

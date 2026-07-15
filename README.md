@@ -51,8 +51,8 @@ Hệ thống vận hành dựa trên các mã quyền cụ thể cho từng bộ
 | :-------------------- | :--------------------- | :----------------------------------------------------------------- | :----------- |
 | **Tổ trưởng KCS**     | `PHAN_BO_KIEM`         | Tạo phiếu, phân công người kiểm, cấu hình bậc kiểm tra.            | Web / Mobile |
 | **Nhân viên KCS**     | `THUC_HIEN_KIEM`       | Thực hiện lấy mẫu, nhập số lượng lỗi, tính AQL, hoàn tất kiểm tra. | Mobile       |
-| **Quản đốc PX**       | `XAC_NHAN_PX`          | Xác nhận kết quả kiểm tra từ phía phân xưởng sản xuất.             | Mobile / Web |
-| **Phòng Kiểm nghiệm** | `XAC_NHAN_KIEM_NGHIEM` | Xác nhận các chỉ số kỹ thuật chuyên sâu.                           | Web          |
+| **Trưởng bộ phận/PX** | `XAC_NHAN_PX`          | Xác nhận kết quả kiểm tra sau khi KCS hoàn tất.                    | Mobile / Web |
+| **Phòng Kiểm nghiệm** | `XAC_NHAN_KIEM_NGHIEM` | Quyền cũ, không còn dùng trong luồng phiếu kiểm thường.            | Web          |
 | **Quản trị viên**     | `QUAN_TRI_DM`          | Quản lý danh mục Sản phẩm, Loại lỗi, Định mức kiểm tra.            | Web          |
 
 ---
@@ -64,10 +64,9 @@ Hệ thống vận hành dựa trên các mã quyền cụ thể cho từng bộ
 1.  **Khởi tạo**: Tổ trưởng KCS tạo phiếu từ Lịch đóng cont hoặc Chứng từ nhập. Phân công Nhân viên KCS thực hiện.
 2.  **Thực hiện**: Nhân viên KCS nhận phiếu trên Mobile, tiến hành kiểm tra theo từng mục (Check Items). Nếu có lỗi, nhập số lượng lỗi theo mã lỗi tương ứng.
 3.  **Đánh giá**: Hệ thống tự động tính toán kết quả AQL (Chấp nhận/Loại bỏ) dựa trên số lỗi đã nhập và bậc kiểm tra.
-4.  **Xác nhận đa tầng**:
+4.  **Xác nhận trưởng bộ phận**:
     - **KCS** hoàn tất phiếu.
-    - **Quản đốc PX** kiểm tra và bấm xác nhận trên App.
-    - **Phòng Kiểm nghiệm** xác nhận (nếu loại hình kiểm yêu cầu).
+    - **Trưởng bộ phận/PX** kiểm tra và bấm xác nhận trên App/Web.
 5.  **Kết luận & In ấn**: Quản lý đưa ra kết luận cuối cùng và in phiếu PDF từ Web để lưu hồ sơ.
 
 ### 2. Quy trình Biên bản sự cố (Bien Ban)
@@ -115,8 +114,8 @@ Các trạng thái xuất hiện trong app:
 - `TAO_MOI`: vừa tạo, chưa thiết lập section.
 - `DA_TAO_SECTION`: đã tạo section kiểm, chưa xác nhận kết quả cuối.
 - `DANG_KIEM`: đang thực hiện kiểm.
-- `CHO_XUONG_XAC_NHAN`: chờ xác nhận phía xưởng/kho.
-- `CHO_KIEM_NGHIEM`: chờ xác nhận kiểm nghiệm.
+- `CHO_XUONG_XAC_NHAN`: chờ trưởng bộ phận/PX xác nhận.
+- `CHO_KIEM_NGHIEM`: trạng thái legacy, dữ liệu cũ nên chuyển về `CHO_XUONG_XAC_NHAN`.
 - `HOAN_TAT`: hoàn tất.
 - Với phiếu SXBT còn thấy `HOAN_THANH` ở lớp UI, được xem là trạng thái đã khóa sửa.
 
@@ -126,8 +125,8 @@ Quyền được đọc từ `user.permissions`:
 
 - `THUC_HIEN_KIEM`: KCS trực tiếp kiểm và hoàn tất bước kiểm.
 - `PHAN_BO_KIEM`: leader có thể thao tác như KCS ở luồng section.
-- `XAC_NHAN_PX`: xác nhận bước xưởng/kho.
-- `XAC_NHAN_KIEM_NGHIEM`: xác nhận bước kiểm nghiệm cuối.
+- `XAC_NHAN_PX`: xác nhận bước trưởng bộ phận/PX.
+- `XAC_NHAN_KIEM_NGHIEM`: quyền cũ, không còn dùng trong luồng phiếu kiểm thường.
 
 ### 4) Luồng phiếu đầu vào (incoming)
 
@@ -150,13 +149,10 @@ Phiếu đầu vào đang dùng luồng chung `PhieuDetailScreen`:
    - Điều kiện UI: tất cả section đã có kết luận.
    - API: `POST /phieu-kiem/complete`.
    - Kết luận tổng sẽ suy ra từ section reject (và phần kiểm đặc biệt nếu có).
-7. Xác nhận PX:
+7. Xác nhận trưởng bộ phận/PX:
    - Trạng thái `CHO_XUONG_XAC_NHAN`.
    - API: `POST /phieu-kiem/xac-nhan-px`.
-8. Xác nhận kiểm nghiệm:
-   - Trạng thái `CHO_KIEM_NGHIEM`.
-   - API: `POST /phieu-kiem/xac-nhan-kiem-nghiem`.
-9. Kết thúc: `HOAN_TAT`.
+8. Kết thúc: `HOAN_TAT`.
 
 ### 5) Luồng phiếu kiểm cuối (final inspection)
 
@@ -168,7 +164,7 @@ Hiện tại kiểm cuối cũng chạy trên `PhieuDetailScreen` + `CheckItemSc
    - Thiết lập section (nếu `TAO_MOI`).
    - Xác nhận LOT.
    - Kiểm từng check item, ghi lỗi/ảnh, chốt AQL từng section.
-   - `complete` -> `xac-nhan-px` -> `xac-nhan-kiem-nghiem`.
+   - `complete` -> `xac-nhan-px`.
 4. Nếu phát sinh KPH, phiếu có thể liên kết `BienBanId` và cho mở sang màn biên bản.
 
 Lưu ý: app không tách riêng API riêng cho kiểm cuối, đang đi chung bộ API `phieu-kiem/*`.
@@ -193,8 +189,7 @@ SXBT là luồng riêng tại `SxbtInspectionScreen` (khi `LoaiKiemId === 4`):
    - Bước 1: gọi `sxbt-save` để chốt dữ liệu mới nhất.
    - Bước 2: gọi `POST /phieu-kiem/sxbt-complete` với `ketLuan` để chuyển trạng thái.
 5. Xác nhận sau hoàn tất:
-   - Trạng thái `CHO_XUONG_XAC_NHAN`: user quyền `XAC_NHAN_PX` gọi `POST /phieu-kiem/xac-nhan-px`.
-   - Trạng thái `CHO_KIEM_NGHIEM`: user quyền `XAC_NHAN_KIEM_NGHIEM` gọi `POST /phieu-kiem/xac-nhan-kiem-nghiem`.
+   - SXBT giữ luồng riêng theo quyền `XAC_NHAN_SXBT` và `XAC_NHAN_KHO_SXBT`.
 6. Trạng thái đã khóa sửa trong UI SXBT:
    - `CHO_XUONG_XAC_NHAN`, `CHO_KIEM_NGHIEM`, `HOAN_THANH`, `HOAN_TAT`.
 

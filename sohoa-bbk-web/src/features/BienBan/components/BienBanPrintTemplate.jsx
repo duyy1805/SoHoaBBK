@@ -18,6 +18,9 @@ export const BienBanPrintTemplate = React.forwardRef(({
         return acc;
     }, {});
 
+    const getDefectCode = (defect = {}) =>
+        defect.MaLoi || defect.maLoi || defect.TenLoiTuNhap || defect.TenLoi || defect.DefectType || "";
+
     const bienBanDonViSanXuat =
         customData.TenBoPhan ||
         customData.TrenChuyen_TenDonVi ||
@@ -420,7 +423,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                                 <th style={styles.th}>VT/BTP/TP</th>
                                                 <th style={{ ...styles.th, width: '100px' }}>Số lượng kiểm</th>
                                                 <th style={{ ...styles.th, width: '90px' }}>Tỷ lệ lỗi, %</th>
-                                                <th style={{ ...styles.th, width: '120px' }}>Dạng lỗi</th>
+                                                <th style={{ ...styles.th, width: '120px' }}>Mã lỗi</th>
                                                 <th style={styles.th}>Ghi chú</th>
                                             </tr>
                                         </thead>
@@ -435,7 +438,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                                             ? ((d.SoLuong / d.SoLuongKiem) * 100).toFixed(0) + '%'
                                                             : (d.SoLuong > 0 && !d.SoLuongKiem) ? '100%' : '0%'}
                                                     </td>
-                                                    <td style={{ ...styles.td, textAlign: 'center' }}>{d.DefectType}</td>
+                                                    <td style={{ ...styles.td, textAlign: 'center' }}>{getDefectCode(d)}</td>
                                                     <td style={styles.td}></td>
                                                 </tr>
                                             )) : (

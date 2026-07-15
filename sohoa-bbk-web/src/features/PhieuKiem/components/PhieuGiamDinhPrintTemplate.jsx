@@ -442,9 +442,9 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                     {/* Chữ ký dàn ngang */}
                                     <Box style={{ ...styles.signatureBlock, marginTop: '10px' }}>
                                         <Box style={styles.signatureCol}>
-                                            <div style={{ ...styles.text, minHeight: '30px' }}><b>Phòng QLCL</b></div>
+                                            <div style={{ ...styles.text, minHeight: '30px' }}><b>Trưởng bộ phận</b></div>
                                             <Box height="60px"></Box>
-                                            <div style={styles.text}>{phieu.KiemNghiem}</div>
+                                            <div style={styles.text}>{phieu.BoPhan}</div>
                                         </Box>
                                         <Box style={styles.signatureCol}>
                                             <div style={{ ...styles.text, minHeight: '30px' }}><b>Nhân viên KT</b></div>

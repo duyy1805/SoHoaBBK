@@ -67,7 +67,7 @@ export default function PhieuListScreen({ navigation }) {
                 return {
                     backgroundColor: "#fef3c7",
                     color: "#b45309",
-                    text: item?.LoaiKiemId === 4 ? "Chờ Kho" : "Chờ PX"
+                    text: item?.LoaiKiemId === 4 ? "Chờ Kho" : "Chờ TBP"
                 };
 
             case "CHO_SXBT_XAC_NHAN":
@@ -77,7 +77,7 @@ export default function PhieuListScreen({ navigation }) {
                 return { backgroundColor: "#dbeafe", color: "#1d4ed8", text: "Chờ Kho" };
 
             case "CHO_KIEM_NGHIEM":
-                return { backgroundColor: "#ede9fe", color: "#6d28d9", text: "Chờ kiểm nghiệm" };
+                return { backgroundColor: "#fef3c7", color: "#b45309", text: "Chờ TBP" };
 
             default:
                 return { backgroundColor: "#e2e8f0", color: "#475569", text: status };

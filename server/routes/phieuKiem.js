@@ -565,8 +565,6 @@ router.get(
 
             const permissions = req.user.permissions;
             let mode = 'VIEW';
-            if (permissions.includes('XAC_NHAN_KIEM_NGHIEM'))
-                mode = 'KIEM_NGHIEM';
             if (permissions.includes('XAC_NHAN_PX'))
                 mode = 'PX';
             if (permissions.includes('THUC_HIEN_KIEM'))
@@ -2208,7 +2206,7 @@ router.post(
 
             res.json({
                 success: true,
-                message: 'Phân xưởng đã xác nhận'
+                message: 'Trưởng bộ phận đã xác nhận'
             });
 
         } catch (err) {
@@ -2216,7 +2214,7 @@ router.post(
             console.error('XacNhanPX error:', err);
 
             res.status(500).json({
-                message: 'xác nhận trưởng bộ phận thất bại'
+                message: 'Xác nhận trưởng bộ phận thất bại'
             });
 
         }

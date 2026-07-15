@@ -20,7 +20,6 @@ import {
     calculateAQL,
     completePhieuKiem,
     confirmPX,
-    confirmKN,
     updateLot,
     getThongSoKq,
     deletePhieuKiem,
@@ -145,7 +144,6 @@ export default function PhieuDetailScreen({ route, navigation }) {
 
     const isKCS = hasPermission("THUC_HIEN_KIEM");
     const isPX = hasPermission("XAC_NHAN_PX");
-    const isKN = hasPermission("XAC_NHAN_KIEM_NGHIEM");
     const isLeader = hasPermission("PHAN_BO_KIEM");
     const canConfig = isKCS || isLeader;
     const canDeletePhieu = sections.length === 0 && trangThai === "TAO_MOI" && canConfig;
@@ -180,10 +178,10 @@ export default function PhieuDetailScreen({ route, navigation }) {
             case "TAO_MOI": return "Tạo mới";
             case "DA_TAO_SECTION": return "Chưa kiểm";
             case "DANG_KIEM": return "Đang kiểm";
-            case "CHO_XUONG_XAC_NHAN": return "Chờ PX xác nhận";
+            case "CHO_XUONG_XAC_NHAN": return "Chờ trưởng bộ phận xác nhận";
             case "CHO_SXBT_XAC_NHAN": return "Chờ SXBT xác nhận";
             case "CHO_KHO_XAC_NHAN": return "Chờ Kho xác nhận";
-            case "CHO_KIEM_NGHIEM": return "Chờ kiểm nghiệm";
+            case "CHO_KIEM_NGHIEM": return "Chờ trưởng bộ phận xác nhận";
             case "HOAN_TAT": return "Hoàn tất";
             default: return status;
         }
@@ -282,37 +280,13 @@ export default function PhieuDetailScreen({ route, navigation }) {
 
             await confirmPX(id);
 
-            Alert.alert("Thành công", "PX đã xác nhận");
+            Alert.alert("Thành công", "Trưởng bộ phận đã xác nhận");
 
             navigation.goBack();
 
         } catch {
 
-            Alert.alert("Lỗi", "Không thể xác nhận PX");
-
-        } finally {
-
-            setLoadingAction(false);
-
-        }
-
-    };
-
-    const handleConfirmKN = async () => {
-
-        try {
-
-            setLoadingAction(true);
-
-            await confirmKN(id);
-
-            Alert.alert("Thành công", "Đã xác nhận kiểm nghiệm");
-
-            navigation.goBack();
-
-        } catch {
-
-            Alert.alert("Lỗi", "Không thể xác nhận");
+            Alert.alert("Lỗi", "Không thể xác nhận trưởng bộ phận");
 
         } finally {
 
@@ -867,27 +841,6 @@ export default function PhieuDetailScreen({ route, navigation }) {
 
                         <Text style={styles.actionText}>
                             xác nhận trưởng bộ phận
-                        </Text>
-
-                    </TouchableOpacity>
-
-                </View>
-
-            )}
-
-            {/* Kiểm nghiệm xác nhận */}
-
-            {trangThai === "CHO_KIEM_NGHIEM" && isKN && (
-
-                <View style={styles.actionWrapper}>
-
-                    <TouchableOpacity
-                        style={[styles.actionButton, { backgroundColor: "#7c3aed" }]}
-                        onPress={handleConfirmKN}
-                    >
-
-                        <Text style={styles.actionText}>
-                            Xác nhận kiểm nghiệm
                         </Text>
 
                     </TouchableOpacity>

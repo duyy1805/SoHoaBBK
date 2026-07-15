@@ -1120,8 +1120,8 @@ BEGIN
         CASE
             WHEN pk.TrangThai = 'DA_TAO_SECTION' THEN N'Chưa kiểm'
             WHEN pk.TrangThai = 'DANG_KIEM' THEN N'Đang kiểm'
-            WHEN pk.TrangThai = 'CHO_XUONG_XAC_NHAN' THEN N'Chờ PX'
-            WHEN pk.TrangThai = 'CHO_KIEM_NGHIEM' THEN N'Chờ kiểm nghiệm'
+            WHEN pk.TrangThai = 'CHO_XUONG_XAC_NHAN' THEN N'Chờ trưởng bộ phận'
+            WHEN pk.TrangThai = 'CHO_KIEM_NGHIEM' THEN N'Chờ trưởng bộ phận'
             WHEN pk.TrangThai = 'HOAN_TAT' THEN N'Hoàn tất'
         END AS TrangThaiText
     FROM PHIEU_KIEM pk
@@ -1142,9 +1142,6 @@ BEGIN
         OR
         (@Mode = 'PX'
             AND pk.TrangThai = 'CHO_XUONG_XAC_NHAN')
-        OR
-        (@Mode = 'KIEM_NGHIEM'
-            AND pk.TrangThai = 'CHO_KIEM_NGHIEM')
         OR
         (@Mode = 'VIEW')
     )
@@ -1935,7 +1932,7 @@ BEGIN
     );
 
     UPDATE PHIEU_KIEM
-    SET TrangThai = 'CHO_KIEM_NGHIEM'
+    SET TrangThai = 'HOAN_TAT'
     WHERE Id = @PhieuKiemId;
 END
 GO
@@ -5557,8 +5554,7 @@ BEGIN
     BEGIN
         UPDATE PHIEU_KIEM
         SET KetLuan = 'KHONG_DAT',
---             TrangThai = 'CHO_XUONG_XAC_NHAN'
-            TrangThai = 'CHO_KIEM_NGHIEM'
+            TrangThai = 'CHO_XUONG_XAC_NHAN'
         WHERE Id = @PhieuKiemId;
 
         -- Tạo biên bản nếu chưa tồn tại
@@ -5572,7 +5568,7 @@ BEGIN
     BEGIN
         UPDATE PHIEU_KIEM
         SET KetLuan = 'DAT',
-            TrangThai = 'CHO_KIEM_NGHIEM',
+            TrangThai = 'CHO_XUONG_XAC_NHAN',
             NgayKiem = GETDATE()
         WHERE Id = @PhieuKiemId;
     END

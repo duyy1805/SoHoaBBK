@@ -41,7 +41,6 @@ import {
     getThongSoKq,
     completePhieuKiem,
     confirmPX,
-    confirmKN,
     deletePhieuKiem
 } from "../../../api/phieuKiem.api";
 
@@ -266,9 +265,9 @@ export default function PhieuKiemDetail() {
             case "DANG_KIEM":
                 return <Chip label="Đang kiểm" color="warning" size="small" />;
             case "CHO_XUONG_XAC_NHAN":
-                return <Chip label="Chờ PX xác nhận" color="info" size="small" />;
+                return <Chip label="Chờ trưởng bộ phận xác nhận" color="info" size="small" />;
             case "CHO_KIEM_NGHIEM":
-                return <Chip label="Chờ kiểm nghiệm" color="secondary" size="small" />;
+                return <Chip label="Chờ trưởng bộ phận xác nhận" color="info" size="small" />;
             case "HOAN_TAT":
                 return <Chip label="Hoàn tất" color="success" size="small" />;
             default:
@@ -279,7 +278,6 @@ export default function PhieuKiemDetail() {
     const isKCS = hasPermission("THUC_HIEN_KIEM");
     const isLeader = hasPermission("PHAN_BO_KIEM");
     const isPX = hasPermission("XAC_NHAN_PX");
-    const isKN = hasPermission("XAC_NHAN_KIEM_NGHIEM");
     const canDeletePhieu = sections.length === 0 && phieu?.TrangThai === "TAO_MOI" && (isKCS || isLeader);
     const isAllConfirmed = sections.length > 0 && sections.every(s => s.KetLuan);
     const hasReject = sections.some(s => s.KetLuan === "REJECT");
@@ -326,23 +324,6 @@ export default function PhieuKiemDetail() {
             setActionNotice({
                 type: "error",
                 message: err?.response?.data?.message || "Không thể xác nhận trưởng bộ phận"
-            });
-        } finally {
-            setLoadingAction(false);
-        }
-    };
-
-    const handleConfirmKN = async () => {
-        try {
-            setLoadingAction(true);
-            setActionNotice(null);
-            await confirmKN(id);
-            await loadData();
-            setActionNotice({ type: "success", message: "Xác nhận kiểm nghiệm thành công" });
-        } catch (err) {
-            setActionNotice({
-                type: "error",
-                message: err?.response?.data?.message || "Không thể xác nhận kiểm nghiệm"
             });
         } finally {
             setLoadingAction(false);
@@ -694,20 +675,6 @@ export default function PhieuKiemDetail() {
                     </Paper>
                 )}
 
-                {phieu?.TrangThai === "CHO_KIEM_NGHIEM" && isKN && (
-                    <Paper sx={{ position: "sticky", bottom: 0, zIndex: 9, mt: 2, p: 2, borderTop: "1px solid #e0e0e0" }}>
-                        <Stack direction="row" justifyContent="flex-end">
-                            <Button
-                                variant="contained"
-                                color="secondary"
-                                onClick={handleConfirmKN}
-                                disabled={loadingAction}
-                            >
-                                {loadingAction ? "Đang xử lý..." : "Xác nhận kiểm nghiệm"}
-                            </Button>
-                        </Stack>
-                    </Paper>
-                )}
                 {/* Print Preview Modal */}
                 <Dialog open={openPrintModal} onClose={() => setOpenPrintModal(false)} maxWidth="lg" fullWidth>
                     <DialogTitle>Xem trước bản in</DialogTitle>

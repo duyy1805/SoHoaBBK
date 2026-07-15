@@ -89,9 +89,9 @@ const getStatusProps = (status) => {
         case "DANG_KIEM":
             return { label: "Đang kiểm", color: "warning" };
         case "CHO_XUONG_XAC_NHAN":
-            return { label: "Chờ PX xác nhận", color: "info" };
+            return { label: "Chờ trưởng bộ phận xác nhận", color: "info" };
         case "CHO_KIEM_NGHIEM":
-            return { label: "Chờ kiểm nghiệm", color: "secondary" };
+            return { label: "Chờ trưởng bộ phận xác nhận", color: "info" };
         case "HOAN_TAT":
             return { label: "Hoàn tất", color: "success" };
         default:

@@ -5,6 +5,29 @@ const sql = require("mssql");
 const { poolPromise } = require("../db");
 const authenticateToken = require("../middlewares/auth.middleware");
 
+const enrichDefectCodes = async (pool, defects = []) => {
+    const defectIds = [...new Set(
+        defects
+            .filter((item) => !item.MaLoi && item.DefectId)
+            .map((item) => Number(item.DefectId))
+            .filter((id) => Number.isInteger(id) && id > 0)
+    )];
+
+    if (defectIds.length === 0) return defects;
+
+    const result = await pool.request().query(`
+        SELECT Id, MaLoi, TenLoi, DefectType
+        FROM dbo.DM_DEFECT
+        WHERE Id IN (${defectIds.join(",")})
+    `);
+    const defectMap = new Map((result.recordset || []).map((item) => [Number(item.Id), item]));
+
+    return defects.map((item) => {
+        const catalog = defectMap.get(Number(item.DefectId));
+        return catalog ? { ...catalog, ...item, MaLoi: item.MaLoi || catalog.MaLoi } : item;
+    });
+};
+
 router.get("/", authenticateToken, async (req, res) => {
     try {
         const pool = await poolPromise;
@@ -66,7 +89,7 @@ router.get("/:id", authenticateToken, async (req, res) => {
 
         res.json({
             info,
-            defects: result.recordsets?.[1] || [],
+            defects: await enrichDefectCodes(pool, result.recordsets?.[1] || []),
             assigns: result.recordsets?.[2] || [],
             xuLy: result.recordsets?.[3] || [],
             chiPhi: result.recordsets?.[4] || [],
