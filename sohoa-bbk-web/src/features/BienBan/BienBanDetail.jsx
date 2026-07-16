@@ -82,6 +82,7 @@ import ConfirmDialog from "../../components/common/ConfirmDialog";
 import { BienBanPrintTemplate } from "./components/BienBanPrintTemplate";
 import { BienBanTrenChuyenPrintTemplate } from "./components/BienBanTrenChuyenPrintTemplate";
 import { PhieuXuLyKhongPhuHopPrintTemplate } from "./components/PhieuXuLyKhongPhuHopPrintTemplate";
+import KphV01WorkflowSections from "./components/KphV01WorkflowSections";
 import { useToast } from "../../components/common/ToastContext";
 
 export default function BienBanDetail({ standalone = false }) {
@@ -101,6 +102,8 @@ export default function BienBanDetail({ standalone = false }) {
     const [xacNhan, setXacNhan] = useState([]);
     const [phieuKiemXacNhan, setPhieuKiemXacNhan] = useState([]);
     const [hanhDong, setHanhDong] = useState([]);
+    const [specialistOpinions, setSpecialistOpinions] = useState([]);
+    const [followUpEvaluation, setFollowUpEvaluation] = useState(null);
 
     const [loading, setLoading] = useState(true);
 
@@ -186,7 +189,7 @@ export default function BienBanDetail({ standalone = false }) {
                         images = typeof d.ImageUrls === 'string' ? JSON.parse(d.ImageUrls) : d.ImageUrls;
                         // Đảm bảo kết quả là mảng
                         if (!Array.isArray(images)) images = [images];
-                    } catch (e) {
+                    } catch {
                         // Nếu parse lỗi thì coi như là 1 chuỗi đơn
                         images = [d.ImageUrls];
                     }
@@ -200,6 +203,8 @@ export default function BienBanDetail({ standalone = false }) {
             setXacNhan(res.data.xacNhan || []);
             setPhieuKiemXacNhan(res.data.phieuKiemXacNhan || []);
             setHanhDong(res.data.hanhDong || []);
+            setSpecialistOpinions(res.data.specialistOpinions || []);
+            setFollowUpEvaluation(res.data.followUpEvaluation || null);
             setDynamicFields(res.data.dynamicFields || []);
             setIsEditingStandaloneDefects((res.data.defects || []).length === 0);
             const fieldsMap = (res.data.dynamicFields || []).reduce((acc, field) => {
@@ -498,6 +503,12 @@ export default function BienBanDetail({ standalone = false }) {
     const hasXuLy = xuLy.some(x => x.BoPhanId === currentUserBoPhanId);
     const isConfirmed = xacNhan.some(x => x.BoPhanId === currentUserBoPhanId);
     const allConfirmed = assigns.length > 0 && assigns.every(a => xacNhan.some(x => x.BoPhanId === a.BoPhanId));
+    const hasSignedSpecialistOpinion = specialistOpinions.some(item => item.NguoiTraLoiId);
+    const allOpinionsAnswered = specialistOpinions.length === assigns.length &&
+        assigns.every(assign => specialistOpinions.some(item => Number(item.BoPhanId) === Number(assign.BoPhanId) && item.NguoiTraLoiId));
+    const canSubmitCompletion = allConfirmed &&
+        (info?.MauPhieuVersion !== "V01" || allOpinionsAnswered) &&
+        !["CHO_THEO_DOI", "HOAN_TAT"].includes(info?.TrangThai);
     const defectCount = defects.length;
     const totalDefectQty = defects.reduce((sum, item) => sum + (Number(item.SoLuong) || 0), 0);
 
@@ -1072,7 +1083,7 @@ export default function BienBanDetail({ standalone = false }) {
                                             <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                                 <GroupWorkIcon color="primary" /> Bộ phận phối hợp xử lý
                                             </Typography>
-                                            {!info.AssignConfirmed && isManagerOrQA && (
+                                            {!info.AssignConfirmed && !hasSignedSpecialistOpinion && isManagerOrQA && (
                                                 <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => setOpenAssignModal(true)}>
                                                     Cập nhật
                                                 </Button>
@@ -1126,7 +1137,7 @@ export default function BienBanDetail({ standalone = false }) {
                                             </Grid>
                                         )}
 
-                                        {!info.AssignConfirmed && assigns.length > 0 && isManagerOrQA && (
+                                        {!info.AssignConfirmed && !hasSignedSpecialistOpinion && assigns.length > 0 && isManagerOrQA && (
                                             <Box sx={{ mt: 3, textAlign: 'right' }}>
                                                 <Button variant="contained" color="warning" onClick={handleConfirmAssign} startIcon={<AssignmentTurnedInIcon />}>
                                                     Chốt phân công
@@ -1249,6 +1260,13 @@ export default function BienBanDetail({ standalone = false }) {
                                 </Grid>
                             </Grid>
 
+                            <KphV01WorkflowSections
+                                bienBanId={bienBanId} info={info}
+                                opinions={specialistOpinions} evaluation={followUpEvaluation}
+                                currentUserBoPhanId={currentUserBoPhanId} permissions={currentUserPermissions}
+                                reload={loadData} showToast={showToast}
+                            />
+
                             {/* Lịch sử xác nhận */}
                             {xacNhan.length > 0 && (
                                 <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
@@ -1274,7 +1292,7 @@ export default function BienBanDetail({ standalone = false }) {
                 </Grid>
 
                 {/* Floating Bottom Action Bar */}
-                {((info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy) || allConfirmed) && (
+                {((info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy) || canSubmitCompletion) && (
                     <Paper elevation={4} sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, p: 2, bgcolor: 'white', zIndex: 100, borderTop: '1px solid #e0e0e0' }}>
                         <Container maxWidth="xl">
                             <Stack direction="row" justifyContent="flex-end" spacing={2}>
@@ -1283,7 +1301,7 @@ export default function BienBanDetail({ standalone = false }) {
                                         Xác nhận tiến độ xử lý của bộ phận
                                     </Button>
                                 )}
-                                {allConfirmed && (
+                                {canSubmitCompletion && (
                                     <Button variant="contained" color="success" size="large" onClick={handleComplete} startIcon={<SaveIcon />}>
                                         Hoàn tất Biên Bản
                                     </Button>
@@ -1313,6 +1331,8 @@ export default function BienBanDetail({ standalone = false }) {
                                     xacNhan={xacNhan}
                                     assigns={assigns}
                                     dynamicFields={dynamicFields}
+                                    specialistOpinions={specialistOpinions}
+                                    followUpEvaluation={followUpEvaluation}
                                 />
                             ) : isTrenChuyenBienBan ? (
                                 <BienBanTrenChuyenPrintTemplate
@@ -1326,6 +1346,8 @@ export default function BienBanDetail({ standalone = false }) {
                                     phieuKiemXacNhan={phieuKiemXacNhan}
                                     assigns={assigns}
                                     dynamicFields={dynamicFields}
+                                    specialistOpinions={specialistOpinions}
+                                    followUpEvaluation={followUpEvaluation}
                                 />
                             ) : (
                                 <BienBanPrintTemplate
@@ -1338,6 +1360,8 @@ export default function BienBanDetail({ standalone = false }) {
                                     xacNhan={xacNhan}
                                     assigns={assigns}
                                     dynamicFields={dynamicFields}
+                                    specialistOpinions={specialistOpinions}
+                                    followUpEvaluation={followUpEvaluation}
                                 />
                             )}
                         </Paper>
@@ -1546,10 +1570,14 @@ function ChiPhiDialog({ open, onClose, bienBanId, reload }) {
     const [form, setForm] = useState({ LoaiChiPhi: '', GiaTri: '', ThoiHan: '' });
 
     const handleSubmit = async () => {
+        if (!form.LoaiChiPhi.trim()) {
+            alert("Vui lòng nhập tên chi phí");
+            return;
+        }
         try {
             await addChiPhi({
                 bienBanId,
-                loaiChiPhi: form.LoaiChiPhi,
+                loaiChiPhi: form.LoaiChiPhi.trim(),
                 giaTri: Number(form.GiaTri),
                 thoiHan: form.ThoiHan
             });
@@ -1570,6 +1598,7 @@ function ChiPhiDialog({ open, onClose, bienBanId, reload }) {
                         fullWidth
                         value={form.LoaiChiPhi}
                         onChange={e => setForm({ ...form, LoaiChiPhi: e.target.value })}
+                        placeholder="Nhập chi phí thực tế của bộ phận"
                     />
                     <TextField
                         label="Giá trị (VND)"
@@ -1597,14 +1626,15 @@ function ChiPhiDialog({ open, onClose, bienBanId, reload }) {
 }
 
 function HanhDongDialog({ open, onClose, bienBanId, reload }) {
-    const [form, setForm] = useState({ NoiDung: '', ThoiHan: '' });
+    const [form, setForm] = useState({ NoiDung: '', ThoiHan: '', TheoDoi: '' });
 
     const handleSubmit = async () => {
         try {
             await addHanhDong({
                 bienBanId,
                 noiDung: form.NoiDung,
-                thoiHan: form.ThoiHan
+                thoiHan: form.ThoiHan,
+                theoDoi: form.TheoDoi
             });
             reload();
             onClose();
@@ -1634,6 +1664,7 @@ function HanhDongDialog({ open, onClose, bienBanId, reload }) {
                         value={form.ThoiHan}
                         onChange={e => setForm({ ...form, ThoiHan: e.target.value })}
                     />
+                    <TextField label="Theo dõi" fullWidth value={form.TheoDoi} onChange={e => setForm({ ...form, TheoDoi: e.target.value })} />
                 </Stack>
             </DialogContent>
             <DialogActions sx={{ p: 2 }}>

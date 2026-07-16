@@ -82,6 +82,7 @@ import ConfirmDialog from "../../components/common/ConfirmDialog";
 import { BienBanPrintTemplate } from "./components/BienBanPrintTemplate";
 import { BienBanTrenChuyenPrintTemplate } from "./components/BienBanTrenChuyenPrintTemplate";
 import { PhieuXuLyKhongPhuHopPrintTemplate } from "./components/PhieuXuLyKhongPhuHopPrintTemplate";
+import KphV01WorkflowSections from "./components/KphV01WorkflowSections";
 import { useToast } from "../../components/common/ToastContext";
 
 const PHAT_HIEN_TU_OPTIONS = [
@@ -129,6 +130,8 @@ export default function PhieuXuLyKhongPhuHopDetail() {
     const [xacNhan, setXacNhan] = useState([]);
     const [phieuKiemXacNhan, setPhieuKiemXacNhan] = useState([]);
     const [hanhDong, setHanhDong] = useState([]);
+    const [specialistOpinions, setSpecialistOpinions] = useState([]);
+    const [followUpEvaluation, setFollowUpEvaluation] = useState(null);
 
     const [loading, setLoading] = useState(true);
 
@@ -228,6 +231,8 @@ export default function PhieuXuLyKhongPhuHopDetail() {
             setXacNhan(res.data.xacNhan || []);
             setPhieuKiemXacNhan(res.data.phieuKiemXacNhan || []);
             setHanhDong(res.data.hanhDong || []);
+            setSpecialistOpinions(res.data.specialistOpinions || []);
+            setFollowUpEvaluation(res.data.followUpEvaluation || null);
             setDynamicFields(res.data.dynamicFields || []);
             setIsEditingStandaloneDefects((res.data.defects || []).length === 0 && (res.data.assigns || []).length === 0);
             const fieldsMap = (res.data.dynamicFields || []).reduce((acc, field) => {
@@ -325,6 +330,8 @@ export default function PhieuXuLyKhongPhuHopDetail() {
         DefectType: "MINOR",
         MoTa: "",
         SoLuong: 1,
+        TenDoiTuong: headerFields.TenSanPham || "",
+        SoLuongKiem: "",
         GhiChu: "",
         sourceType
     });
@@ -413,12 +420,18 @@ export default function PhieuXuLyKhongPhuHopDetail() {
             DefectType: draft.DefectType || "MINOR",
             MoTa: draft.MoTa || "",
             SoLuong: Number(draft.SoLuong) || 1,
+            TenDoiTuong: draft.TenDoiTuong || headerFields.TenSanPham || "",
+            SoLuongKiem: draft.SoLuongKiem === "" ? null : Number(draft.SoLuongKiem),
             GhiChu: draft.GhiChu || "",
             sourceType: isManual ? "manual" : "catalog"
         };
 
         if (!normalized.DefectId && !normalized.TenLoiTuNhap.trim()) {
             showToast("Vui lòng chọn lỗi hoặc nhập tên lỗi", "warning");
+            return;
+        }
+        if (normalized.SoLuongKiem !== null && normalized.SoLuong > normalized.SoLuongKiem) {
+            showToast("Số lượng lỗi không được vượt số lượng kiểm", "warning");
             return;
         }
 
@@ -461,6 +474,8 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                 TenLoiTuNhap: item.TenLoiTuNhap || "",
                 MoTa: item.MoTa || "",
                 SoLuong: Number(item.SoLuong) || 0,
+                TenDoiTuong: item.TenDoiTuong || headerFields.TenSanPham || "",
+                SoLuongKiem: item.SoLuongKiem === null || item.SoLuongKiem === "" ? null : Number(item.SoLuongKiem),
                 GhiChu: item.GhiChu || "",
                 SortOrder: index + 1
             }))
@@ -603,6 +618,12 @@ export default function PhieuXuLyKhongPhuHopDetail() {
     const hasXuLy = xuLy.some(x => x.BoPhanId === currentUserBoPhanId);
     const isConfirmed = xacNhan.some(x => x.BoPhanId === currentUserBoPhanId);
     const allConfirmed = assigns.length > 0 && assigns.every(a => xacNhan.some(x => x.BoPhanId === a.BoPhanId));
+    const hasSignedSpecialistOpinion = specialistOpinions.some(item => item.NguoiTraLoiId);
+    const allOpinionsAnswered = specialistOpinions.length === assigns.length &&
+        assigns.every(assign => specialistOpinions.some(item => Number(item.BoPhanId) === Number(assign.BoPhanId) && item.NguoiTraLoiId));
+    const canSubmitCompletion = allConfirmed &&
+        (info?.MauPhieuVersion !== "V01" || allOpinionsAnswered) &&
+        !["CHO_THEO_DOI", "HOAN_TAT"].includes(info?.TrangThai);
     const defectCount = defects.length;
     const totalDefectQty = defects.reduce((sum, item) => sum + (Number(item.SoLuong) || 0), 0);
     const canEditCommonAndDefects = assigns.length === 0;
@@ -1170,7 +1191,7 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                                             <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                                 <GroupWorkIcon color="primary" /> Bộ phận phối hợp xử lý
                                             </Typography>
-                                            {!info.AssignConfirmed && isManagerOrQA && (
+                                            {!info.AssignConfirmed && !hasSignedSpecialistOpinion && isManagerOrQA && (
                                                 <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => setOpenAssignModal(true)}>
                                                     Cập nhật
                                                 </Button>
@@ -1241,7 +1262,7 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                                             </Grid>
                                         )}
 
-                                        {!info.AssignConfirmed && assigns.length > 0 && isManagerOrQA && (
+                                        {!info.AssignConfirmed && !hasSignedSpecialistOpinion && assigns.length > 0 && isManagerOrQA && (
                                             <Box sx={{ mt: 3, textAlign: 'right' }}>
                                                 <Button variant="contained" color="warning" onClick={handleConfirmAssign} startIcon={<AssignmentTurnedInIcon />}>
                                                     Chốt phân công
@@ -1364,6 +1385,13 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                                 </Grid>
                             </Grid>
 
+                            <KphV01WorkflowSections
+                                bienBanId={bienBanId} info={info}
+                                opinions={specialistOpinions} evaluation={followUpEvaluation}
+                                currentUserBoPhanId={currentUserBoPhanId} permissions={currentUserPermissions}
+                                reload={loadData} showToast={showToast}
+                            />
+
                             {/* Lịch sử xác nhận */}
                             {xacNhan.length > 0 && (
                                 <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
@@ -1389,7 +1417,7 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                 </Grid>
 
                 {/* Floating Bottom Action Bar */}
-                {(canConfirmProcessing || canConfirmBpsxSignature || allConfirmed) && (
+                {(canConfirmProcessing || canConfirmBpsxSignature || canSubmitCompletion) && (
                     <Paper elevation={4} sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, p: 2, bgcolor: 'white', zIndex: 100, borderTop: '1px solid #e0e0e0' }}>
                         <Container maxWidth="xl">
                             <Stack direction="row" justifyContent="flex-end" spacing={2}>
@@ -1403,7 +1431,7 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                                         Xác nhận bộ phận sản xuất
                                     </Button>
                                 )}
-                                {allConfirmed && (
+                                {canSubmitCompletion && (
                                     <Button variant="contained" color="success" size="large" onClick={handleComplete} startIcon={<SaveIcon />}>
                                         Hoàn tất Biên Bản
                                     </Button>
@@ -1433,6 +1461,8 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                                     xacNhan={xacNhan}
                                     assigns={assigns}
                                     dynamicFields={dynamicFields}
+                                    specialistOpinions={specialistOpinions}
+                                    followUpEvaluation={followUpEvaluation}
                                 />
                             ) : isTrenChuyenBienBan ? (
                                 <BienBanTrenChuyenPrintTemplate
@@ -1446,6 +1476,8 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                                     phieuKiemXacNhan={phieuKiemXacNhan}
                                     assigns={assigns}
                                     dynamicFields={dynamicFields}
+                                    specialistOpinions={specialistOpinions}
+                                    followUpEvaluation={followUpEvaluation}
                                 />
                             ) : (
                                 <BienBanPrintTemplate
@@ -1458,6 +1490,8 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                                     xacNhan={xacNhan}
                                     assigns={assigns}
                                     dynamicFields={dynamicFields}
+                                    specialistOpinions={specialistOpinions}
+                                    followUpEvaluation={followUpEvaluation}
                                 />
                             )}
                         </Paper>
@@ -1554,6 +1588,21 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                         )}
 
                         <Grid container spacing={2}>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                                <TextField
+                                    fullWidth size="small" label="VT/BTP/TP"
+                                    value={defectDraft?.TenDoiTuong || ""}
+                                    onChange={(e) => updateDefectDraft({ TenDoiTuong: e.target.value })}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                                <TextField
+                                    fullWidth size="small" type="number" label="Số lượng kiểm"
+                                    value={defectDraft?.SoLuongKiem ?? ""}
+                                    onChange={(e) => updateDefectDraft({ SoLuongKiem: e.target.value })}
+                                    inputProps={{ min: 0 }}
+                                />
+                            </Grid>
                             <Grid size={{ xs: 12, sm: 6 }}>
                                 <TextField
                                     fullWidth
@@ -1823,10 +1872,14 @@ function ChiPhiDialog({ open, onClose, bienBanId, reload }) {
     const [form, setForm] = useState({ LoaiChiPhi: '', GiaTri: '', ThoiHan: '' });
 
     const handleSubmit = async () => {
+        if (!form.LoaiChiPhi.trim()) {
+            alert("Vui lòng nhập tên chi phí");
+            return;
+        }
         try {
             await addChiPhi({
                 bienBanId,
-                loaiChiPhi: form.LoaiChiPhi,
+                loaiChiPhi: form.LoaiChiPhi.trim(),
                 giaTri: Number(form.GiaTri),
                 thoiHan: form.ThoiHan
             });
@@ -1847,6 +1900,7 @@ function ChiPhiDialog({ open, onClose, bienBanId, reload }) {
                         fullWidth
                         value={form.LoaiChiPhi}
                         onChange={e => setForm({ ...form, LoaiChiPhi: e.target.value })}
+                        placeholder="Nhập chi phí thực tế của bộ phận"
                     />
                     <TextField
                         label="Giá trị (VND)"
@@ -1874,14 +1928,15 @@ function ChiPhiDialog({ open, onClose, bienBanId, reload }) {
 }
 
 function HanhDongDialog({ open, onClose, bienBanId, reload }) {
-    const [form, setForm] = useState({ NoiDung: '', ThoiHan: '' });
+    const [form, setForm] = useState({ NoiDung: '', ThoiHan: '', TheoDoi: '' });
 
     const handleSubmit = async () => {
         try {
             await addHanhDong({
                 bienBanId,
                 noiDung: form.NoiDung,
-                thoiHan: form.ThoiHan
+                thoiHan: form.ThoiHan,
+                theoDoi: form.TheoDoi
             });
             reload();
             onClose();
@@ -1911,6 +1966,7 @@ function HanhDongDialog({ open, onClose, bienBanId, reload }) {
                         value={form.ThoiHan}
                         onChange={e => setForm({ ...form, ThoiHan: e.target.value })}
                     />
+                    <TextField label="Theo dõi" fullWidth value={form.TheoDoi} onChange={e => setForm({ ...form, TheoDoi: e.target.value })} />
                 </Stack>
             </DialogContent>
             <DialogActions sx={{ p: 2 }}>

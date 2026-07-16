@@ -9,7 +9,9 @@ export const BienBanPrintTemplate = React.forwardRef(({
     hanhDong = [],
     xacNhan = [],
     assigns = [],
-    dynamicFields = []
+    dynamicFields = [],
+    specialistOpinions = [],
+    followUpEvaluation = null
 }, ref) => {
 
     // 1. Lấy dữ liệu Custom Data đã lưu từ API
@@ -18,6 +20,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
         return acc;
     }, {});
 
+    const isV01 = info.MauPhieuVersion === 'V01';
     const getDefectCode = (defect = {}) =>
         defect.MaLoi || defect.maLoi || defect.TenLoiTuNhap || defect.TenLoi || defect.DefectType || "";
 
@@ -42,6 +45,15 @@ export const BienBanPrintTemplate = React.forwardRef(({
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
             .toUpperCase();
+
+    const treatmentLabels = ['Cho vào SX', 'Trả lại NCC/ĐVSX', 'Loại bỏ', 'Sửa chữa', 'Giảm giá/ hạ cấp', 'Hình thức khác'];
+    const selectedTreatments = new Set((xuLy || []).map((item) => normalizeText(item.DeNghiXuLy)));
+    const isTreatmentSelected = (label) => {
+        const normalizedLabel = normalizeText(label);
+        return [...selectedTreatments].some((value) => value.includes(normalizedLabel) || normalizedLabel.includes(value));
+    };
+    const totalCost = (chiPhi || []).reduce((sum, item) => sum + (Number(item.GiaTri) || 0), 0);
+    const printCosts = chiPhi || [];
 
     const inferPhatHienTu = () => {
         if (customData.PhatHienTu || info.PhatHienTu) {
@@ -174,7 +186,19 @@ export const BienBanPrintTemplate = React.forwardRef(({
             {label}
         </span>
     );
-    console.log(phatHienTu);
+
+    const renderInfoLine = (fields) => (
+        <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: '10px', gap: '5px', ...styles.text }}>
+            {fields.map((field, index) => (
+                <React.Fragment key={field.name}>
+                    <span style={{ whiteSpace: 'nowrap', marginLeft: index === 0 ? 0 : '5px' }}>{field.label}:</span>
+                    <span style={{ ...styles.dottedLine, flexGrow: field.grow || 1 }}>
+                        <input name={field.name} className="custom-field" type="text" defaultValue={field.value || ''} style={styles.inputField} />
+                    </span>
+                </React.Fragment>
+            ))}
+        </div>
+    );
     // Cập nhật Ô check cho phần 2 (Chỉ chọn 1 - Radio)
     const renderRadioRight = (label, value) => (
         <div
@@ -213,6 +237,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
             'BỘ PHẬN';
     };
 
+    const kphKnSignature = (xacNhan || []).find(item => item.VaiTro === 'KPH_KN');
     const kphBpsxSignature = (xacNhan || []).find(item => item.VaiTro === 'KPH_BPSX');
 
     const signatureRows = Array.from(
@@ -222,6 +247,18 @@ export const BienBanPrintTemplate = React.forwardRef(({
             return map;
         }, new Map()).values()
     );
+    const printDefects = isV01
+        ? [...(defects || []), ...Array(Math.max(0, 5 - (defects || []).length)).fill(null)]
+        : (defects || []);
+    const printActions = isV01
+        ? [...(hanhDong || []), ...Array(Math.max(0, 4 - (hanhDong || []).length)).fill(null)]
+        : (hanhDong || []);
+    const printProposals = isV01
+        ? [...(xuLy || []), ...Array(Math.max(0, 8 - (xuLy || []).length)).fill(null)]
+        : (xuLy || []);
+    const printOpinions = isV01
+        ? [...(specialistOpinions || []), ...Array(Math.max(0, 4 - (specialistOpinions || []).length)).fill(null)]
+        : [];
 
     return (
         <div ref={ref} style={styles.previewBackground} className="preview-background">
@@ -272,26 +309,46 @@ export const BienBanPrintTemplate = React.forwardRef(({
                             <td style={{ border: 'none', paddingBottom: '10px' }}>
                                 <table style={styles.headerTable}>
                                     <tbody>
-                                        <tr>
-                                            <td rowSpan={2} style={{ ...styles.headerTd, width: '20%' }}>
-                                                <img src="/logo.png" alt="Logo Z76" style={{ height: '70px', display: 'block', margin: '0 auto' }} />
-                                            </td>
-                                            <td style={{ ...styles.headerTd, width: '50%', borderBottom: '1px solid #000' }}>
-                                                <div style={{ fontSize: '14pt' }}>CÔNG TY TNHH MTV 76</div>
-                                            </td>
-                                            <td rowSpan={2} style={{ ...styles.headerTd, width: '30%', textAlign: 'left', paddingLeft: '10px' }}>
-                                                <div style={{ fontSize: '11pt' }}>Mã số: BM.01-QT.02-B8</div>
-                                                <div style={{ fontSize: '11pt' }}>Ngày HL: 20/01/2026</div>
-                                                <div style={{ fontSize: '11pt' }}>Phiên bản: 00</div>
-                                                <div style={{ fontSize: '11pt' }}>Trang: ....................</div>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td style={styles.headerTd}>
-                                                <div style={{ fontWeight: 'bold', fontSize: '14pt' }}>PHIẾU XỬ LÝ VT, BTP, TP</div>
-                                                <div style={{ fontWeight: 'bold', fontSize: '14pt' }}>KHÔNG PHÙ HỢP</div>
-                                            </td>
-                                        </tr>
+                                        {isV01 ? (
+                                            <tr>
+                                                <td style={{ ...styles.headerTd, width: '20%' }}>
+                                                    <img src="/logo.png" alt="Logo Z76" style={{ height: '70px', display: 'block', margin: '0 auto' }} />
+                                                </td>
+                                                <td style={{ ...styles.headerTd, width: '55%' }}>
+                                                    <div style={{ fontWeight: 'bold', fontSize: '16pt' }}>PHIẾU XỬ LÝ VT, BTP, TP</div>
+                                                    <div style={{ fontWeight: 'bold', fontSize: '16pt' }}>KHÔNG PHÙ HỢP</div>
+                                                </td>
+                                                <td style={{ ...styles.headerTd, width: '25%', textAlign: 'left', paddingLeft: '8px' }}>
+                                                    <div style={{ fontSize: '9.5pt', whiteSpace: 'nowrap' }}>Mã số: BM.01-QT.02-B8</div>
+                                                    <div style={{ fontSize: '9.5pt', whiteSpace: 'nowrap' }}>Ngày hiệu lực: 15/07/2026</div>
+                                                    <div style={{ fontSize: '9.5pt' }}>Phiên bản: 01</div>
+                                                    <div style={{ fontSize: '9.5pt' }}>Trang: …………</div>
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            <>
+                                                <tr>
+                                                    <td rowSpan={2} style={{ ...styles.headerTd, width: '20%' }}>
+                                                        <img src="/logo.png" alt="Logo Z76" style={{ height: '70px', display: 'block', margin: '0 auto' }} />
+                                                    </td>
+                                                    <td style={{ ...styles.headerTd, width: '50%', borderBottom: '1px solid #000' }}>
+                                                        <div style={{ fontSize: '14pt' }}>CÔNG TY TNHH MTV 76</div>
+                                                    </td>
+                                                    <td rowSpan={2} style={{ ...styles.headerTd, width: '30%', textAlign: 'left', paddingLeft: '10px' }}>
+                                                        <div style={{ fontSize: '11pt' }}>Mã số: BM.01-QT.02-B8</div>
+                                                        <div style={{ fontSize: '11pt' }}>Ngày HL: 20/01/2026</div>
+                                                        <div style={{ fontSize: '11pt' }}>Phiên bản: 00</div>
+                                                        <div style={{ fontSize: '11pt' }}>Trang: ....................</div>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td style={styles.headerTd}>
+                                                        <div style={{ fontWeight: 'bold', fontSize: '14pt' }}>PHIẾU XỬ LÝ VT, BTP, TP</div>
+                                                        <div style={{ fontWeight: 'bold', fontSize: '14pt' }}>KHÔNG PHÙ HỢP</div>
+                                                    </td>
+                                                </tr>
+                                            </>
+                                        )}
                                     </tbody>
                                 </table>
                             </td>
@@ -308,8 +365,11 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                     <div style={{ width: '450px' }}>
                                         <Box style={{ display: 'flex', justifyContent: 'space-between', width: '450px' }}>
                                             <div style={{ ...styles.text, fontStyle: 'italic', display: 'flex', alignItems: 'center' }}>
-                                                {/* <span style={{ whiteSpace: 'nowrap' }}>Số: </span> */}
-                                                {/* <input name="SoPhieuBienBan" className="custom-field" type="text" defaultValue={customData.SoPhieuBienBan || info.SoPhieu || ''} placeholder=".........." style={{ ...styles.inputField, width: '100px', borderBottom: '1px dotted #000', marginLeft: 4 }} /> /KN. */}
+                                                {isV01 && (
+                                                    <span style={{ whiteSpace: 'nowrap' }}>
+                                                        Số: {info.SoBienBan || '………'}/{info.MaDonViTaoPhieu || info.MaBoPhan || 'Đơn vị tạo phiếu'}
+                                                    </span>
+                                                )}
                                             </div>
                                             <div style={{ ...styles.text, fontStyle: 'italic' }}>
                                                 Ngày {info.NgayKiem ? new Date(info.NgayKiem).toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm ')) : new Date().toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm '))}
@@ -321,50 +381,46 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                 {/* 1. Thông tin */}
                                 <Box mb={2} className="avoid-break">
                                     <div style={styles.sectionTitle}>1. Thông tin sự không phù hợp</div>
-                                    <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: '12px', ...styles.text }}>
-                                        <span style={{ whiteSpace: 'nowrap' }}>Đơn vị sản xuất:</span>
-                                        <span style={styles.dottedLine}>
-                                            <input name="TenBoPhan" className="custom-field" type="text" defaultValue={bienBanDonViSanXuat} style={styles.inputField} />
-                                        </span>
-                                        <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Mã ĐVSX:</span>
-                                        <span style={{ ...styles.dottedLine, flexGrow: 0.6 }}>
-                                            <input name="MaBoPhan" className="custom-field" type="text" defaultValue={bienBanMaDonViSanXuat} style={styles.inputField} />
-                                        </span>
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: '12px', ...styles.text }}>
-                                        <span style={{ whiteSpace: 'nowrap' }}>Tên VT/BTP/TP:</span>
-                                        <span style={styles.dottedLine}>
-                                            <input name="TenSanPham" className="custom-field" type="text" defaultValue={customData.TenSanPham || info.TenSanPham || ''} style={styles.inputField} />
-                                        </span>
-                                        <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Mã Item:</span>
-                                        <span style={{ ...styles.dottedLine, flexGrow: 0.6 }}>
-                                            <input name="MaItem" className="custom-field" type="text" defaultValue={customData.MaItem || info.MaSanPham || ''} style={styles.inputField} />
-                                        </span>
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: '12px', ...styles.text }}>
-                                        <span style={{ whiteSpace: 'nowrap' }}>Mã truy nguyên:</span>
-                                        <span style={styles.dottedLine}>
-                                            <input name="MaTruyNguyen" className="custom-field" type="text" defaultValue={customData.MaTruyNguyen || ''} style={styles.inputField} />
-                                        </span>
-                                        <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Đơn hàng:</span>
-                                        <span style={{ ...styles.dottedLine, flexGrow: 0.5 }}>
-                                            <input name="DonHang" className="custom-field" type="text" defaultValue={customData.DonHang || ''} style={styles.inputField} />
-                                        </span>
-                                        <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Lô SX:</span>
-                                        <span style={{ ...styles.dottedLine, flexGrow: 0.3 }}>
-                                            <input name="Lot" className="custom-field" type="text" defaultValue={customData.Lot || info.Lot || ''} style={styles.inputField} />
-                                        </span>
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'flex-end', marginTop: '24px', marginBottom: '12px', ...styles.text }}>
-                                        <span style={{ whiteSpace: 'nowrap' }}>Số lượng:</span>
-                                        <span style={styles.dottedLine}>
-                                            <input name="SoLuongKPH" className="custom-field" type="text" defaultValue={bienBanSoLuongKhongPhuHop} style={styles.inputField} />
-                                        </span>
-                                        <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Dấu tuần:</span>
-                                        <span style={{ ...styles.dottedLine, flexGrow: 0.4 }}>
-                                            <input name="DauTuan" className="custom-field" type="text" defaultValue={customData.DauTuan || ''} style={styles.inputField} />
-                                        </span>
-                                    </div>
+                                    {isV01 ? (
+                                        <>
+                                            {renderInfoLine([
+                                                { label: 'Đơn vị sản xuất', name: 'TenBoPhan', value: bienBanDonViSanXuat },
+                                                { label: 'Tên VT/BTP/TP', name: 'TenSanPham', value: customData.TenSanPham || info.TenSanPham }
+                                            ])}
+                                            {renderInfoLine([
+                                                { label: 'Mã truy nguyên', name: 'MaTruyNguyen', value: customData.MaTruyNguyen },
+                                                { label: 'Mã Item', name: 'MaItem', value: customData.MaItem || info.MaSanPham }
+                                            ])}
+                                            {renderInfoLine([
+                                                { label: 'Số lượng', name: 'SoLuongKPH', value: bienBanSoLuongKhongPhuHop },
+                                                { label: 'Đơn hàng', name: 'DonHang', value: customData.DonHang }
+                                            ])}
+                                            {renderInfoLine([
+                                                { label: 'Lô/Lot sản xuất', name: 'Lot', value: customData.Lot || info.Lot },
+                                                { label: 'Dấu tuần', name: 'DauTuan', value: customData.DauTuan }
+                                            ])}
+                                        </>
+                                    ) : (
+                                        <>
+                                            {renderInfoLine([
+                                                { label: 'Đơn vị sản xuất', name: 'TenBoPhan', value: bienBanDonViSanXuat },
+                                                { label: 'Mã ĐVSX', name: 'MaBoPhan', value: bienBanMaDonViSanXuat, grow: 0.6 }
+                                            ])}
+                                            {renderInfoLine([
+                                                { label: 'Tên VT/BTP/TP', name: 'TenSanPham', value: customData.TenSanPham || info.TenSanPham },
+                                                { label: 'Mã Item', name: 'MaItem', value: customData.MaItem || info.MaSanPham, grow: 0.6 }
+                                            ])}
+                                            {renderInfoLine([
+                                                { label: 'Mã truy nguyên', name: 'MaTruyNguyen', value: customData.MaTruyNguyen },
+                                                { label: 'Đơn hàng', name: 'DonHang', value: customData.DonHang, grow: 0.5 },
+                                                { label: 'Lô SX', name: 'Lot', value: customData.Lot || info.Lot, grow: 0.3 }
+                                            ])}
+                                            {renderInfoLine([
+                                                { label: 'Số lượng', name: 'SoLuongKPH', value: bienBanSoLuongKhongPhuHop },
+                                                { label: 'Dấu tuần', name: 'DauTuan', value: customData.DauTuan, grow: 0.4 }
+                                            ])}
+                                        </>
+                                    )}
                                 </Box>
 
                                 {/* 2. Phát hiện từ */}
@@ -426,18 +482,18 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {defects.length > 0 ? defects.map((d, index) => (
+                                            {printDefects.length > 0 ? printDefects.map((d, index) => (
                                                 <tr key={index}>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{index + 1}</td>
-                                                    <td style={styles.td}>{d.TenLoi}</td>
-                                                    <td style={{ ...styles.td, textAlign: 'center' }}>{d.SoLuongKiem || 0}</td>
+                                                    <td style={styles.td}>{d ? (isV01 ? (d.TenDoiTuong || customData.TenSanPham || info.TenSanPham || '') : d.TenLoi) : '\u00a0'}</td>
+                                                    <td style={{ ...styles.td, textAlign: 'center' }}>{d ? (d.SoLuongKiem ?? info.SoLuong ?? '') : ''}</td>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>
-                                                        {(d.SoLuong && d.SoLuongKiem)
-                                                            ? ((d.SoLuong / d.SoLuongKiem) * 100).toFixed(0) + '%'
-                                                            : (d.SoLuong > 0 && !d.SoLuongKiem) ? '100%' : '0%'}
+                                                        {d && (d.SoLuong && (d.SoLuongKiem || info.SoLuong))
+                                                            ? ((d.SoLuong / (d.SoLuongKiem || info.SoLuong)) * 100).toFixed(0) + '%'
+                                                            : d ? ((d.SoLuong > 0 && !d.SoLuongKiem) ? '100%' : '0%') : ''}
                                                     </td>
-                                                    <td style={{ ...styles.td, textAlign: 'center' }}>{getDefectCode(d)}</td>
-                                                    <td style={styles.td}></td>
+                                                    <td style={{ ...styles.td, textAlign: 'center' }}>{d ? getDefectCode(d) : ''}</td>
+                                                    <td style={styles.td}>{d?.GhiChu || ''}</td>
                                                 </tr>
                                             )) : (
                                                 <tr>
@@ -455,14 +511,29 @@ export const BienBanPrintTemplate = React.forwardRef(({
 
                                 {/* Chữ ký 1 */}
                                 <Box className="avoid-break" style={styles.signatureBlock}>
-                                    <Box style={styles.signatureCol}>
-                                        <div style={styles.text}>
-                                            {formatSignatureDate(kphBpsxSignature?.ThoiGian)}
-                                        </div>
-                                        <div style={styles.boldText}>TRƯỞNG BỘ PHẬN</div>
-                                        <Box height="60px"></Box>
-                                        <div style={styles.text}>{kphBpsxSignature?.FullName || '(Ký, họ tên)'}</div>
-                                    </Box>
+                                    {isV01 ? (
+                                        <Box style={styles.signatureCol}>
+                                            <div style={styles.text}>{formatSignatureDate(kphBpsxSignature?.ThoiGian)}</div>
+                                            <div style={styles.boldText}>TRƯỞNG BỘ PHẬN</div>
+                                            <Box height="60px"></Box>
+                                            <div style={styles.text}>{kphBpsxSignature?.FullName || '(Ký, họ tên)'}</div>
+                                        </Box>
+                                    ) : (
+                                        <>
+                                            <Box style={styles.signatureCol}>
+                                                <div style={styles.text}>{formatSignatureDate(kphKnSignature?.ThoiGian)}</div>
+                                                <div style={styles.boldText}>PHÒNG KN</div>
+                                                <Box height="60px"></Box>
+                                                <div style={styles.text}>{kphKnSignature?.FullName || '(Ký, họ tên)'}</div>
+                                            </Box>
+                                            <Box style={styles.signatureCol}>
+                                                <div style={styles.text}>{formatSignatureDate(kphBpsxSignature?.ThoiGian)}</div>
+                                                <div style={styles.boldText}>PHÒNG/BAN/BPSX</div>
+                                                <Box height="60px"></Box>
+                                                <div style={styles.text}>{kphBpsxSignature?.FullName || '(Ký, họ tên)'}</div>
+                                            </Box>
+                                        </>
+                                    )}
                                     <Box style={styles.signatureCol}>
                                         <div style={styles.text}>Ngày..................</div>
                                         <div style={styles.boldText}>NGƯỜI LẬP</div>
@@ -474,32 +545,43 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                 {/* 5. Đề xuất xử lý */}
                                 <Box mt={3}>
                                     <div style={styles.sectionTitle}>5. Đề xuất xử lý</div>
+                                    {isV01 && (
+                                        <Box className="avoid-break" mb={1} pl={1}>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+                                                {treatmentLabels.map((label, index) => (
+                                                    <div style={{ width: '33.33%' }} key={label}>
+                                                        {renderCheckbox(`${String.fromCharCode(97 + index)}) ${label}`, isTreatmentSelected(label))}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </Box>
+                                    )}
                                     <table style={styles.table}>
                                         <thead>
                                             <tr>
-                                                <th style={{ ...styles.th, width: '35%' }}>Nội dung</th>
-                                                <th style={styles.th}>Đề nghị xử lý</th>
+                                                <th style={{ ...styles.th, width: isV01 ? '45%' : '35%' }}>Nội dung</th>
+                                                {!isV01 && <th style={styles.th}>Đề nghị xử lý</th>}
                                                 <th style={styles.th}>Trách nhiệm</th>
                                                 <th style={styles.th}>Thời hạn</th>
                                                 <th style={styles.th}>Theo dõi</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {xuLy.length > 0 ? xuLy.map((x, index) => (
+                                            {printProposals.length > 0 ? printProposals.map((x, index) => (
                                                 <tr key={index}>
-                                                    <td style={styles.td}>{x.NoiDung}</td>
-                                                    <td style={styles.td}>{x.DeNghiXuLy}</td>
-                                                    <td style={styles.td}>{x.TenBoPhan}</td>
-                                                    <td style={{ ...styles.td, textAlign: 'center' }}>{x.ThoiHan ? new Date(x.ThoiHan).toLocaleDateString('vi-VN') : ''}</td>
-                                                    <td style={styles.td}>{x.NguoiXuLy}</td>
+                                                    <td style={styles.td}>{x?.NoiDung || '\u00a0'}</td>
+                                                    {!isV01 && <td style={styles.td}>{x?.DeNghiXuLy || ''}</td>}
+                                                    <td style={styles.td}>{x?.TrachNhiem || x?.TenBoPhan || ''}</td>
+                                                    <td style={{ ...styles.td, textAlign: 'center' }}>{x?.ThoiHan ? new Date(x.ThoiHan).toLocaleDateString('vi-VN') : ''}</td>
+                                                    <td style={styles.td}>{x?.TheoDoi || x?.NguoiXuLy || ''}</td>
                                                 </tr>
                                             )) : (
-                                                <tr><td style={styles.td}>&nbsp;</td><td style={styles.td}></td><td style={styles.td}></td><td style={styles.td}></td><td style={styles.td}></td></tr>
+                                                <tr><td style={styles.td}>&nbsp;</td>{!isV01 && <td style={styles.td}></td>}<td style={styles.td}></td><td style={styles.td}></td><td style={styles.td}></td></tr>
                                             )}
                                         </tbody>
                                     </table>
 
-                                    <Box className="avoid-break" mt={1} pl={1}>
+                                    {!isV01 && <Box className="avoid-break" mt={1} pl={1}>
                                         <div style={{ ...styles.text, fontStyle: 'italic', marginBottom: '5px' }}>Các nội dung mục đề nghị xử lý:</div>
                                         <div style={{ display: 'flex', flexWrap: 'wrap' }}>
                                             <div style={{ width: '33.33%' }}>{renderCheckbox('a) Cho vào SX', false)}</div>
@@ -509,7 +591,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                             <div style={{ width: '33.33%' }}>{renderCheckbox('e) Giảm giá/ hạ cấp', false)}</div>
                                             <div style={{ width: '33.33%' }}>{renderCheckbox('f) Hình thức khác:', false)}</div>
                                         </div>
-                                    </Box>
+                                    </Box>}
                                 </Box>
 
                                 {/* 6. Chi phí phát sinh */}
@@ -533,16 +615,23 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {chiPhi.length > 0 ? chiPhi.map((c, index) => (
+                                            {printCosts.length > 0 ? printCosts.map((c, index) => (
                                                 <tr key={index}>
                                                     <td style={styles.td}>{c.TenChiPhi || c.LoaiChiPhi}</td>
                                                     <td style={{ ...styles.td, textAlign: 'right' }}>{c.GiaTri ? c.GiaTri.toLocaleString('vi-VN') : ''}</td>
                                                     <td style={styles.td}>{c.TenBoPhan || ''}</td>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{c.ThoiHan ? new Date(c.ThoiHan).toLocaleDateString('vi-VN') : ''}</td>
-                                                    <td style={styles.td}>{c.NguoiXuLy}</td>
+                                                    <td style={styles.td}>{c.NguoiTheoDoi || c.NguoiXuLy || ''}</td>
                                                 </tr>
                                             )) : (
                                                 <tr><td style={styles.td}>&nbsp;</td><td style={styles.td}></td><td style={styles.td}></td><td style={styles.td}></td><td style={styles.td}></td></tr>
+                                            )}
+                                            {isV01 && (
+                                                <tr>
+                                                    <td style={{ ...styles.td, fontWeight: 'bold' }}>Tổng</td>
+                                                    <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{totalCost.toLocaleString('vi-VN')}</td>
+                                                    <td style={styles.td}></td><td style={styles.td}></td><td style={styles.td}></td>
+                                                </tr>
                                             )}
                                         </tbody>
                                     </table>
@@ -561,6 +650,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                     <table style={{ ...styles.table, marginTop: '10px' }}>
                                         <thead>
                                             <tr>
+                                                {isV01 && <th style={{ ...styles.th, width: '40px' }}>TT</th>}
                                                 <th style={{ ...styles.th, width: '40%' }}>Nội dung</th>
                                                 <th style={styles.th}>Trách nhiệm</th>
                                                 <th style={styles.th}>Thời hạn</th>
@@ -568,22 +658,53 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {hanhDong.length > 0 ? hanhDong.map((h, index) => (
+                                            {printActions.length > 0 ? printActions.map((h, index) => (
                                                 <tr key={index}>
-                                                    <td style={styles.td}>{h.NoiDung}</td>
-                                                    <td style={styles.td}>{h.TenBoPhan || h.FullName}</td>
-                                                    <td style={{ ...styles.td, textAlign: 'center' }}>{h.ThoiHan ? new Date(h.ThoiHan).toLocaleDateString('vi-VN') : ''}</td>
-                                                    <td style={styles.td}>{h.NguoiXuLy}</td>
+                                                    {isV01 && <td style={{ ...styles.td, textAlign: 'center' }}>{index + 1}</td>}
+                                                    <td style={styles.td}>{h?.NoiDung || '\u00a0'}</td>
+                                                    <td style={styles.td}>{h?.TenBoPhan || h?.FullName || ''}</td>
+                                                    <td style={{ ...styles.td, textAlign: 'center' }}>{h?.ThoiHan ? new Date(h.ThoiHan).toLocaleDateString('vi-VN') : ''}</td>
+                                                    <td style={styles.td}>{h?.NguoiTheoDoi || h?.NguoiXuLy || h?.TheoDoi || ''}</td>
                                                 </tr>
                                             )) : (
-                                                <tr><td style={styles.td}>&nbsp;</td><td style={styles.td}></td><td style={styles.td}></td><td style={styles.td}></td></tr>
+                                                <tr>{isV01 && <td style={styles.td}></td>}<td style={styles.td}>&nbsp;</td><td style={styles.td}></td><td style={styles.td}></td><td style={styles.td}></td></tr>
                                             )}
                                         </tbody>
                                     </table>
                                 </Box>
 
+                                {isV01 && (
+                                    <Box mt={2}>
+                                        <table style={styles.table}>
+                                            <thead>
+                                                <tr>
+                                                    <th style={{ ...styles.th, width: '80%' }}>Yêu cầu ý kiến Phòng ban chuyên môn</th>
+                                                    <th style={styles.th}>Ký xác nhận</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {printOpinions.map((opinion, index) => (
+                                                    <tr key={opinion?.Id || index}>
+                                                        <td style={{ ...styles.td, minHeight: '58px', verticalAlign: 'top' }}>
+                                                            <div style={{ fontWeight: 'bold' }}>
+                                                                {opinion ? `- ${opinion.MaBoPhan || opinion.TenBoPhan || ''}` : '\u00a0'}
+                                                                {' '}({renderCheckbox('Có', opinion?.LuaChon === 'CO')}{renderCheckbox('Không', opinion?.LuaChon === 'KHONG')})
+                                                                {opinion?.ThoiGian ? ` ${new Date(opinion.ThoiGian).toLocaleDateString('vi-VN')}` : ' …/…/20…'}
+                                                            </div>
+                                                            <div style={{ whiteSpace: 'pre-wrap', minHeight: '34px' }}>{opinion?.NoiDung || ''}</div>
+                                                        </td>
+                                                        <td style={{ ...styles.td, textAlign: 'center', verticalAlign: 'middle' }}>
+                                                            {opinion?.NguoiTraLoi || ''}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </Box>
+                                )}
+
                                 {/* Chữ ký 2 */}
-                                {signatureRows.length > 0 && (
+                                {!isV01 && signatureRows.length > 0 && (
                                     <Box className="avoid-break" style={{ ...styles.signatureBlock, justifyContent: 'flex-start', direction: 'rtl' }}>
                                         {signatureRows.map((item) => (
                                             <Box style={{ ...styles.signatureCol, direction: 'ltr', flex: '0 0 42%', maxWidth: '42%' }} key={item.Id || item.BoPhanId || item.NguoiXacNhanId}>
@@ -602,24 +723,25 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                 <Box className="avoid-break" mt={2} pt={0}>
                                     <div style={styles.sectionTitle}>8. Theo dõi đánh giá</div>
                                     <div style={{ display: 'flex', marginTop: '8px' }}>
-                                        {renderCheckbox('Thỏa mãn', false)}
-                                        {renderCheckbox('Không thỏa mãn', false)}
-                                        <span style={{ marginLeft: '40px' }}>Phiếu KPH mới số: ................................................</span>
+                                        {renderCheckbox('Thỏa mãn', followUpEvaluation?.KetQua === 'THOA_MAN')}
+                                        {renderCheckbox('Không thỏa mãn', followUpEvaluation?.KetQua === 'KHONG_THOA_MAN')}
+                                        <span style={{ marginLeft: '40px' }}>Phiếu KPH mới số: {followUpEvaluation?.PhieuKphMoiSo || '................................'}</span>
                                     </div>
-                                    <div style={{ marginTop: '16px' }}>
-                                        <div style={styles.text}>Ghi chú: ..........................................................................................................................................................</div>
+                                    <div style={{ marginTop: '16px', border: isV01 ? '1px solid #000' : 'none', minHeight: isV01 ? '100px' : 'auto', padding: isV01 ? '6px' : 0 }}>
+                                        <div style={styles.text}>Ghi chú: {followUpEvaluation?.GhiChu || '..........................................................................................................................................................'}</div>
                                     </div>
 
                                     <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                         <div style={{ paddingLeft: '16px' }}>
                                             <div style={styles.boldText}>Nơi nhận:</div>
-                                            <div style={styles.text}>- Lưu</div>
+                                            <div style={styles.text}>- {info.DonViTaoPhieu || '..................'};</div>
+                                            <div style={styles.text}>- Lưu ({info.DonViTaoPhieu || 'Đơn vị tạo phiếu'})</div>
                                         </div>
                                         <div style={{ textAlign: 'center', width: '250px' }}>
-                                            <div style={styles.text}>Ngày..................</div>
+                                            <div style={styles.text}>{formatSignatureDate(followUpEvaluation?.ThoiGian)}</div>
                                             <div style={styles.boldText}>NGƯỜI THEO DÕI</div>
                                             <Box height="60px"></Box>
-                                            <div style={styles.text}>(Ký, họ tên)</div>
+                                            <div style={styles.text}>{followUpEvaluation?.NguoiTheoDoi || '(Ký, họ tên)'}</div>
                                         </div>
                                     </div>
                                 </Box>

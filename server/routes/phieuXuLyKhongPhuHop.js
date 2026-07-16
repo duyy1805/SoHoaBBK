@@ -87,15 +87,67 @@ router.get("/:id", authenticateToken, async (req, res) => {
             delete info.DynamicFieldsJSON;
         }
 
+        const v01Result = await pool.request()
+            .input("BienBanId", sql.Int, bienBanId)
+            .query(`
+                SELECT TOP 1
+                    ISNULL(bb.MauPhieuVersion, 'V00') AS MauPhieuVersion,
+                    bp.MaBoPhan AS MaDonViTaoPhieu,
+                    bp.TenBoPhan AS DonViTaoPhieu
+                FROM dbo.BIEN_BAN_KIEM bb
+                LEFT JOIN dbo.USERS u ON u.Id = bb.NguoiLapId
+                LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id = u.BoPhanId
+                WHERE bb.Id = @BienBanId;
+
+                SELECT
+                    yk.Id, yk.BoPhanId,
+                    COALESCE(bp.MaBoPhan, yk.BoPhan) AS MaBoPhan,
+                    COALESCE(bp.TenBoPhan, yk.BoPhan) AS TenBoPhan,
+                    yk.TrangThai, yk.ThuTu,
+                    tl.LuaChon, tl.NoiDung, tl.NguoiTraLoiId,
+                    u.FullName AS NguoiTraLoi, tl.ThoiGian
+                FROM dbo.XIN_Y_KIEN yk
+                LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id = yk.BoPhanId
+                OUTER APPLY (
+                    SELECT TOP 1 * FROM dbo.TRA_LOI_Y_KIEN response
+                    WHERE response.XinYKienId = yk.Id
+                    ORDER BY response.ThoiGian DESC, response.Id DESC
+                ) tl
+                LEFT JOIN dbo.USERS u ON u.Id = tl.NguoiTraLoiId
+                WHERE yk.BienBanId = @BienBanId
+                ORDER BY yk.ThuTu, yk.Id;
+
+                SELECT TOP 1 td.*, u.FullName AS NguoiTheoDoi
+                FROM dbo.BIEN_BAN_THEO_DOI_DANH_GIA td
+                LEFT JOIN dbo.USERS u ON u.Id = td.NguoiTheoDoiId
+                WHERE td.BienBanId = @BienBanId;
+            `);
+        const printMeta = v01Result.recordsets?.[0]?.[0] || { MauPhieuVersion: "V00" };
+
+        if (info) Object.assign(info, printMeta);
+
+        const defectResult = await pool.request()
+            .input("BienBanId", sql.Int, bienBanId)
+            .query(`
+                SELECT d.*, CAST(NULL AS nvarchar(max)) AS ImageUrls
+                FROM dbo.BIEN_BAN_DEFECT d
+                WHERE d.BienBanId = @BienBanId
+                ORDER BY d.SortOrder, d.Id
+            `);
+
         res.json({
             info,
-            defects: await enrichDefectCodes(pool, result.recordsets?.[1] || []),
+            defects: await enrichDefectCodes(pool, defectResult.recordset || []),
             assigns: result.recordsets?.[2] || [],
             xuLy: result.recordsets?.[3] || [],
             chiPhi: result.recordsets?.[4] || [],
             xacNhan: result.recordsets?.[5] || [],
             hanhDong: result.recordsets?.[6] || [],
-            dynamicFields
+            dynamicFields,
+            templateVersion: printMeta.MauPhieuVersion,
+            specialistOpinions: v01Result.recordsets?.[1] || [],
+            followUpEvaluation: v01Result.recordsets?.[2]?.[0] || null,
+            printMeta
         });
     } catch (err) {
         console.error("GetStandaloneBienBanDetail error:", err);
@@ -135,8 +187,22 @@ router.post("/:id/defects", authenticateToken, async (req, res) => {
             moTa: item?.moTa ?? item?.MoTa ?? "",
             soLuong: item?.soLuong ?? item?.SoLuong ?? 0,
             ghiChu: item?.ghiChu ?? item?.GhiChu ?? "",
+            tenDoiTuong: item?.tenDoiTuong ?? item?.TenDoiTuong ?? "",
+            soLuongKiem: item?.soLuongKiem ?? item?.SoLuongKiem ?? null,
             sortOrder: item?.sortOrder ?? item?.SortOrder ?? index + 1
         }));
+
+        const invalidDefect = normalizedDefects.find((item) => {
+            const soLuong = Number(item.soLuong);
+            const soLuongKiem = item.soLuongKiem === null || item.soLuongKiem === ""
+                ? null
+                : Number(item.soLuongKiem);
+            return !Number.isFinite(soLuong) || soLuong < 0 ||
+                (soLuongKiem !== null && (!Number.isFinite(soLuongKiem) || soLuongKiem < 0 || soLuong > soLuongKiem));
+        });
+        if (invalidDefect) {
+            return res.status(400).json({ message: "Số lượng lỗi phải không âm và không vượt số lượng kiểm" });
+        }
 
         const pool = await poolPromise;
         await pool.request()
@@ -155,9 +221,27 @@ router.delete("/:id", authenticateToken, async (req, res) => {
     try {
         const bienBanId = Number(req.params.id);
         const pool = await poolPromise;
-        await pool.request()
-            .input("BienBanId", sql.Int, bienBanId)
-            .execute("dbo.sp_PhieuXuLyKPH_Delete");
+        const transaction = new sql.Transaction(pool);
+        await transaction.begin();
+        try {
+            await new sql.Request(transaction)
+                .input("BienBanId", sql.Int, bienBanId)
+                .query(`
+                    DELETE tl
+                    FROM dbo.TRA_LOI_Y_KIEN tl
+                    JOIN dbo.XIN_Y_KIEN yk ON yk.Id = tl.XinYKienId
+                    WHERE yk.BienBanId = @BienBanId;
+                    DELETE FROM dbo.XIN_Y_KIEN WHERE BienBanId = @BienBanId;
+                    DELETE FROM dbo.BIEN_BAN_THEO_DOI_DANH_GIA WHERE BienBanId = @BienBanId;
+                `);
+            await new sql.Request(transaction)
+                .input("BienBanId", sql.Int, bienBanId)
+                .execute("dbo.sp_PhieuXuLyKPH_Delete");
+            await transaction.commit();
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
 
         res.json({ success: true, message: "Đã xóa phiếu xử lý không phù hợp" });
     } catch (err) {

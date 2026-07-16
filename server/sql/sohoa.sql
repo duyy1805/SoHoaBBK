@@ -73,7 +73,8 @@ CREATE TABLE [dbo].[BIEN_BAN_CHI_PHI] (
   [ThoiHan] date  NULL,
   [CreatedBy] int  NULL,
   [CreatedAt] datetime2(7) DEFAULT getdate() NULL,
-  [BoPhanId] int  NULL
+  [BoPhanId] int  NULL,
+  [TheoDoiBy] int  NULL
 )
 GO
 
@@ -100,7 +101,9 @@ CREATE TABLE [dbo].[BIEN_BAN_DEFECT] (
   [SoLuong] int DEFAULT 1 NOT NULL,
   [GhiChu] nvarchar(max) COLLATE SQL_Latin1_General_CP1_CI_AS  NULL,
   [SortOrder] int DEFAULT 0 NOT NULL,
-  [CreatedAt] datetime2(7) DEFAULT sysdatetime() NOT NULL
+  [CreatedAt] datetime2(7) DEFAULT sysdatetime() NOT NULL,
+  [TenDoiTuong] nvarchar(255) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+  [SoLuongKiem] int NULL
 )
 GO
 
@@ -122,6 +125,7 @@ CREATE TABLE [dbo].[BIEN_BAN_HANH_DONG] (
   [BoPhanId] int  NULL,
   [ThoiHan] date  NULL,
   [TheoDoi] nvarchar(255) COLLATE SQL_Latin1_General_CP1_CI_AS  NULL,
+  [TheoDoiBy] int NULL,
   [CreatedBy] int  NULL,
   [CreatedAt] datetime2(7) DEFAULT getdate() NULL
 )
@@ -152,7 +156,8 @@ CREATE TABLE [dbo].[BIEN_BAN_KIEM] (
   [AssignConfirmed] bit DEFAULT 0 NULL,
   [LoaiBienBan] nvarchar(20) COLLATE SQL_Latin1_General_CP1_CI_AS DEFAULT 'GENERAL' NULL,
   [MucDoKhongPhuHopConfirmed] bit DEFAULT 0 NOT NULL,
-  [DynamicFieldsJSON] nvarchar(max) COLLATE SQL_Latin1_General_CP1_CI_AS  NULL
+  [DynamicFieldsJSON] nvarchar(max) COLLATE SQL_Latin1_General_CP1_CI_AS  NULL,
+  [MauPhieuVersion] varchar(10) DEFAULT 'V01' NOT NULL
 )
 GO
 
@@ -997,7 +1002,8 @@ CREATE TABLE [dbo].[TRA_LOI_Y_KIEN] (
   [XinYKienId] int  NOT NULL,
   [NguoiTraLoiId] int  NULL,
   [NoiDung] nvarchar(max) COLLATE SQL_Latin1_General_CP1_CI_AS  NULL,
-  [ThoiGian] datetime2(7) DEFAULT sysdatetime() NULL
+  [ThoiGian] datetime2(7) DEFAULT sysdatetime() NULL,
+  [LuaChon] varchar(10) NULL
 )
 GO
 
@@ -1078,7 +1084,9 @@ CREATE TABLE [dbo].[XIN_Y_KIEN] (
   [BienBanId] int  NOT NULL,
   [BoPhan] nvarchar(255) COLLATE SQL_Latin1_General_CP1_CI_AS  NULL,
   [TrangThai] nvarchar(50) COLLATE SQL_Latin1_General_CP1_CI_AS  NULL,
-  [CreatedAt] datetime2(7) DEFAULT sysdatetime() NULL
+  [CreatedAt] datetime2(7) DEFAULT sysdatetime() NULL,
+  [BoPhanId] int NULL,
+  [ThuTu] int DEFAULT 0 NOT NULL
 )
 GO
 
@@ -2699,11 +2707,35 @@ CREATE PROCEDURE [dbo].[sp_BienBan_ConfirmAssign]
 )
 AS
 BEGIN
+  SET NOCOUNT ON;
 
-  UPDATE BIEN_BAN_KIEM
+  IF NOT EXISTS (SELECT 1 FROM dbo.BIEN_BAN_ASSIGN WHERE BienBanId = @BienBanId)
+      THROW 51020, N'Vui lòng chọn ít nhất một bộ phận xử lý', 1;
+
+  IF EXISTS (
+      SELECT 1
+      FROM dbo.BIEN_BAN_KIEM bb
+      WHERE bb.Id = @BienBanId
+        AND ISNULL(bb.MauPhieuVersion, 'V00') = 'V01'
+        AND (
+            EXISTS (
+                SELECT a.BoPhanId FROM dbo.BIEN_BAN_ASSIGN a WHERE a.BienBanId = @BienBanId
+                EXCEPT
+                SELECT yk.BoPhanId FROM dbo.XIN_Y_KIEN yk WHERE yk.BienBanId = @BienBanId
+            )
+            OR EXISTS (
+                SELECT yk.BoPhanId FROM dbo.XIN_Y_KIEN yk WHERE yk.BienBanId = @BienBanId
+                EXCEPT
+                SELECT a.BoPhanId FROM dbo.BIEN_BAN_ASSIGN a WHERE a.BienBanId = @BienBanId
+            )
+        )
+  )
+      THROW 51021, N'Danh sách ý kiến chuyên môn chưa khớp phân công xử lý', 1;
+
+  UPDATE dbo.BIEN_BAN_KIEM
   SET AssignConfirmed = 1,
       TrangThai = 'CHO_XAC_NHAN'
-  WHERE Id = @BienBanId
+  WHERE Id = @BienBanId;
 
 END
 GO
@@ -3199,9 +3231,13 @@ BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
 
-    DECLARE @LoaiBienBan NVARCHAR(50);
+    DECLARE @LoaiBienBan NVARCHAR(50),
+            @MauPhieuVersion VARCHAR(10),
+            @AssignConfirmed BIT;
 
-    SELECT @LoaiBienBan = LoaiBienBan
+    SELECT @LoaiBienBan = LoaiBienBan,
+           @MauPhieuVersion = ISNULL(MauPhieuVersion, 'V00'),
+           @AssignConfirmed = ISNULL(AssignConfirmed, 0)
     FROM dbo.BIEN_BAN_KIEM
     WHERE Id = @BienBanId;
 
@@ -3211,18 +3247,39 @@ BEGIN
         RETURN;
     END;
 
+    IF @MauPhieuVersion = 'V01' AND @AssignConfirmed = 1
+        THROW 51022, N'Phân công đã được xác nhận và không thể thay đổi', 1;
+
+    IF @MauPhieuVersion = 'V01' AND EXISTS (
+        SELECT 1
+        FROM dbo.XIN_Y_KIEN yk
+        JOIN dbo.TRA_LOI_Y_KIEN tl ON tl.XinYKienId = yk.Id
+        WHERE yk.BienBanId = @BienBanId
+    )
+        THROW 51023, N'Không thể thay đổi phân công sau khi đã có ý kiến ký xác nhận', 1;
+
     DECLARE @Selected TABLE (
-        BoPhanId INT NOT NULL PRIMARY KEY
+        BoPhanId INT NOT NULL PRIMARY KEY,
+        ThuTu INT NOT NULL
     );
 
-    INSERT INTO @Selected (BoPhanId)
-    SELECT DISTINCT TRY_CAST(LTRIM(RTRIM(value)) AS INT)
-    FROM STRING_SPLIT(ISNULL(@BoPhanIds, ''), ',')
-    WHERE TRY_CAST(LTRIM(RTRIM(value)) AS INT) IS NOT NULL;
-
+    INSERT INTO @Selected (BoPhanId, ThuTu)
+    SELECT TRY_CAST(value AS INT), MIN(TRY_CAST([key] AS INT)) + 1
+    FROM OPENJSON(N'[' + ISNULL(@BoPhanIds, '') + N']')
+    WHERE TRY_CAST(value AS INT) IS NOT NULL
+    GROUP BY TRY_CAST(value AS INT);
     IF NOT EXISTS (SELECT 1 FROM @Selected)
     BEGIN
         RAISERROR(N'Vui lòng chọn ít nhất một bộ phận xử lý', 16, 1);
+        RETURN;
+    END;
+
+    IF EXISTS (
+        SELECT 1 FROM @Selected s
+        WHERE NOT EXISTS (SELECT 1 FROM dbo.DM_BO_PHAN bp WHERE bp.Id = s.BoPhanId)
+    )
+    BEGIN
+        RAISERROR(N'Danh sách bộ phận xử lý không hợp lệ', 16, 1);
         RETURN;
     END;
 
@@ -3272,6 +3329,46 @@ BEGIN
             END
         FROM dbo.BIEN_BAN_ASSIGN a
         WHERE a.BienBanId = @BienBanId;
+
+        IF @MauPhieuVersion = 'V01'
+        BEGIN
+            DELETE yk
+            FROM dbo.XIN_Y_KIEN yk
+            WHERE yk.BienBanId = @BienBanId
+              AND NOT EXISTS (
+                  SELECT 1 FROM @Selected s WHERE s.BoPhanId = yk.BoPhanId
+              );
+
+            ;WITH DuplicateOpinions AS (
+                SELECT yk.Id,
+                       ROW_NUMBER() OVER (PARTITION BY yk.BoPhanId ORDER BY yk.Id) AS RowNumber
+                FROM dbo.XIN_Y_KIEN yk
+                WHERE yk.BienBanId = @BienBanId
+            )
+            DELETE yk
+            FROM dbo.XIN_Y_KIEN yk
+            JOIN DuplicateOpinions duplicate ON duplicate.Id = yk.Id
+            WHERE duplicate.RowNumber > 1;
+
+            UPDATE yk
+            SET yk.ThuTu = s.ThuTu,
+                yk.BoPhan = bp.MaBoPhan,
+                yk.TrangThai = N'DANG_XIN'
+            FROM dbo.XIN_Y_KIEN yk
+            JOIN @Selected s ON s.BoPhanId = yk.BoPhanId
+            JOIN dbo.DM_BO_PHAN bp ON bp.Id = s.BoPhanId
+            WHERE yk.BienBanId = @BienBanId;
+
+            INSERT INTO dbo.XIN_Y_KIEN (BienBanId, BoPhanId, BoPhan, TrangThai, ThuTu)
+            SELECT @BienBanId, s.BoPhanId, bp.MaBoPhan, N'DANG_XIN', s.ThuTu
+            FROM @Selected s
+            JOIN dbo.DM_BO_PHAN bp ON bp.Id = s.BoPhanId
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM dbo.XIN_Y_KIEN yk
+                WHERE yk.BienBanId = @BienBanId AND yk.BoPhanId = s.BoPhanId
+            );
+        END;
 
         IF @LoaiBienBan = N'STANDALONE'
         BEGIN

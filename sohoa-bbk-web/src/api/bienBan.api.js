@@ -109,6 +109,14 @@ export const completeBienBan = (bienBanId) => {
     });
 };
 
+export const respondSpecialistOpinion = (bienBanId, opinionId, data) => {
+    return axiosClient.post(`/bien-ban/${bienBanId}/specialist-opinions/${opinionId}/respond`, data);
+};
+
+export const saveFollowUpEvaluation = (bienBanId, data) => {
+    return axiosClient.post(`/bien-ban/${bienBanId}/follow-up-evaluation`, data);
+};
+
 export const getDeNghiXuLy = () => {
     return axiosClient.get("/lookup/de-nghi-xu-ly");
 };
