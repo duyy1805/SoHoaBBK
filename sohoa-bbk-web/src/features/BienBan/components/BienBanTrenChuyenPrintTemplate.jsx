@@ -8,7 +8,6 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
     chiPhi = [],
     hanhDong = [],
     xacNhan = [],
-    phieuKiemXacNhan = [],
     assigns = [],
     dynamicFields = []
 }, ref) => {
@@ -211,7 +210,7 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
             assignedDepartment?.TenBoPhan ||
             item.MaBoPhan ||
             assignedDepartment?.MaBoPhan ||
-            'PHÒNG KIỂM NGHIỆM';
+            'BỘ PHẬN';
     };
 
     const signatureRows = Array.from(
@@ -221,9 +220,7 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
             return map;
         }, new Map()).values()
     );
-    const tbpPhieuKiemApproval = (phieuKiemXacNhan || []).find(
-        (item) => String(item?.VaiTro || '').toUpperCase() === 'TBP'
-    );
+    const kphBpsxSignature = (xacNhan || []).find(item => item.VaiTro === 'KPH_BPSX');
 
     return (
         <div ref={ref} style={styles.previewBackground} className="preview-background">
@@ -451,15 +448,10 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                 {/* Chữ ký 1 */}
                                 <Box className="avoid-break" style={styles.signatureBlock}>
                                     <Box style={styles.signatureCol}>
-                                        <div style={styles.text}>Ngày..................</div>
-                                        <div style={styles.boldText}>PHÒNG KN</div>
+                                        <div style={styles.text}>{formatSignatureDate(kphBpsxSignature?.ThoiGian)}</div>
+                                        <div style={styles.boldText}>TRƯỞNG BỘ PHẬN</div>
                                         <Box height="60px"></Box>
-                                    </Box>
-                                    <Box style={styles.signatureCol}>
-                                        <div style={styles.text}>{formatSignatureDate(tbpPhieuKiemApproval?.ThoiGian)}</div>
-                                        <div style={styles.boldText}>PHÒNG/BAN/BPSX</div>
-                                        <Box height="60px"></Box>
-                                        <div style={styles.text}>{tbpPhieuKiemApproval?.TenNguoiXacNhan || '(Ký, họ tên)'}</div>
+                                        <div style={styles.text}>{kphBpsxSignature?.FullName || '(Ký, họ tên)'}</div>
                                     </Box>
                                     <Box style={styles.signatureCol}>
                                         <div style={styles.text}>Ngày..................</div>

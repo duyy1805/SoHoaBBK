@@ -210,11 +210,9 @@ export const BienBanPrintTemplate = React.forwardRef(({
             assignedDepartment?.TenBoPhan ||
             item.MaBoPhan ||
             assignedDepartment?.MaBoPhan ||
-            'PHÒNG KIỂM NGHIỆM';
+            'BỘ PHẬN';
     };
 
-    const isStandaloneBienBan = info.LoaiBienBan === 'STANDALONE';
-    const kphKnSignature = (xacNhan || []).find(item => item.VaiTro === 'KPH_KN');
     const kphBpsxSignature = (xacNhan || []).find(item => item.VaiTro === 'KPH_BPSX');
 
     const signatureRows = Array.from(
@@ -459,23 +457,11 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                 <Box className="avoid-break" style={styles.signatureBlock}>
                                     <Box style={styles.signatureCol}>
                                         <div style={styles.text}>
-                                            {isStandaloneBienBan ? formatSignatureDate(kphKnSignature?.ThoiGian) : 'Ngày..................'}
+                                            {formatSignatureDate(kphBpsxSignature?.ThoiGian)}
                                         </div>
-                                        <div style={styles.boldText}>PHÒNG KN</div>
+                                        <div style={styles.boldText}>TRƯỞNG BỘ PHẬN</div>
                                         <Box height="60px"></Box>
-                                        {isStandaloneBienBan && (
-                                            <div style={styles.text}>{kphKnSignature?.FullName || '(Ký, họ tên)'}</div>
-                                        )}
-                                    </Box>
-                                    <Box style={styles.signatureCol}>
-                                        <div style={styles.text}>
-                                            {isStandaloneBienBan ? formatSignatureDate(kphBpsxSignature?.ThoiGian) : 'Ngày..................'}
-                                        </div>
-                                        <div style={styles.boldText}>PHÒNG/BAN/BPSX</div>
-                                        <Box height="60px"></Box>
-                                        {isStandaloneBienBan && (
-                                            <div style={styles.text}>{kphBpsxSignature?.FullName || '(Ký, họ tên)'}</div>
-                                        )}
+                                        <div style={styles.text}>{kphBpsxSignature?.FullName || '(Ký, họ tên)'}</div>
                                     </Box>
                                     <Box style={styles.signatureCol}>
                                         <div style={styles.text}>Ngày..................</div>

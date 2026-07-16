@@ -21,10 +21,12 @@ import {
     TableRow,
     TablePagination,
     IconButton,
-    Tooltip
+    Tooltip,
+    Popover
 } from "@mui/material";
 import {
     Add as AddIcon,
+    FilterList as FilterListIcon,
     Search as SearchIcon,
     Visibility as VisibilityIcon
 } from "@mui/icons-material";
@@ -38,6 +40,10 @@ export default function PhieuKiemList() {
 
     // Filter & Pagination states
     const [filterStatus, setFilterStatus] = useState("");
+    const [filterLoaiKiem, setFilterLoaiKiem] = useState("");
+    const [filterNguoiKiem, setFilterNguoiKiem] = useState("");
+    const [filterKetLuan, setFilterKetLuan] = useState("");
+    const [filterPopover, setFilterPopover] = useState({ field: "", anchorEl: null });
     const [searchText, setSearchText] = useState("");
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -100,9 +106,27 @@ export default function PhieuKiemList() {
         }
     };
 
+    const normalizeFilterText = (value) => String(value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+
+    const getLoaiKiemLabel = (item) => item.TenLoaiKiem || (item.LoaiKiemId ? `Loại ${item.LoaiKiemId}` : "");
+
+    const includesFilter = (value, filter) => {
+        const normalizedFilter = normalizeFilterText(filter);
+        if (!normalizedFilter) return true;
+        return normalizeFilterText(value).includes(normalizedFilter);
+    };
+
     // Xử lý bộ lọc đa trường bằng useMemo
     const filteredData = useMemo(() => {
         return data.filter((item) => {
+            if (!includesFilter(getLoaiKiemLabel(item), filterLoaiKiem)) return false;
+            if (!includesFilter(item.TenNguoiKiem || "", filterNguoiKiem)) return false;
+            if (filterKetLuan && item.KetLuan !== filterKetLuan) return false;
+
             // Lọc theo trạng thái
             if (filterStatus === "CHO_TRUONG_BO_PHAN") {
                 if (!["CHO_TBP_DUYET", "CHO_XUONG_XAC_NHAN"].includes(item.TrangThai)) return false;
@@ -125,7 +149,7 @@ export default function PhieuKiemList() {
 
             return true;
         });
-    }, [data, filterStatus, searchText]);
+    }, [data, filterLoaiKiem, filterNguoiKiem, filterKetLuan, filterStatus, searchText]);
 
     // Xử lý dữ liệu phân trang
     const paginatedData = useMemo(() => {
@@ -140,6 +164,95 @@ export default function PhieuKiemList() {
     const handleChangeRowsPerPage = (event) => {
         setRowsPerPage(parseInt(event.target.value, 10));
         setPage(0);
+    };
+
+    const closeFilterPopover = () => {
+        setFilterPopover({ field: "", anchorEl: null });
+    };
+
+    const renderFilterHeader = ({ field, label, value, onChange, placeholder, options }) => {
+        const isOpen = filterPopover.field === field;
+        const hasValue = Boolean(value);
+
+        return (
+            <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="space-between">
+                <span>{label}</span>
+                <Tooltip title={`Lọc ${label.toLowerCase()}`}>
+                    <IconButton
+                        size="small"
+                        color={hasValue ? "primary" : "default"}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setFilterPopover({ field, anchorEl: e.currentTarget });
+                        }}
+                        sx={{
+                            width: 28,
+                            height: 28,
+                            bgcolor: hasValue ? "action.selected" : "transparent"
+                        }}
+                    >
+                        <FilterListIcon fontSize="small" />
+                    </IconButton>
+                </Tooltip>
+                <Popover
+                    open={isOpen}
+                    anchorEl={filterPopover.anchorEl}
+                    onClose={closeFilterPopover}
+                    anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+                    transformOrigin={{ vertical: "top", horizontal: "left" }}
+                    PaperProps={{
+                        sx: {
+                            mt: 0.5,
+                            borderRadius: 2,
+                            boxShadow: "0 12px 32px rgba(15, 23, 42, 0.18)"
+                        }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <Box sx={{ p: 2, width: 280 }}>
+                        <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
+                            {label}
+                        </Typography>
+                        <TextField
+                            autoFocus
+                            select={Boolean(options)}
+                            fullWidth
+                            size="small"
+                            placeholder={placeholder}
+                            value={value}
+                            onChange={(e) => {
+                                onChange(e.target.value);
+                                setPage(0);
+                            }}
+                            onKeyDown={(e) => {
+                                if (e.key === "Escape") closeFilterPopover();
+                            }}
+                        >
+                            {options?.map((option) => (
+                                <MenuItem key={option.value} value={option.value}>
+                                    {option.label}
+                                </MenuItem>
+                            ))}
+                        </TextField>
+                        <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 2 }}>
+                            <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={() => {
+                                    onChange("");
+                                    setPage(0);
+                                }}
+                            >
+                                Bỏ lọc
+                            </Button>
+                            <Button variant="contained" size="small" onClick={closeFilterPopover}>
+                                Đóng
+                            </Button>
+                        </Stack>
+                    </Box>
+                </Popover>
+            </Stack>
+        );
     };
 
     if (loading) {
@@ -232,12 +345,41 @@ export default function PhieuKiemList() {
                             <TableHead>
                                 <TableRow hover>
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Số phiếu</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Mã CT Nhập</TableCell>
+                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper', minWidth: 170 }}>
+                                        {renderFilterHeader({
+                                            field: "loaiKiem",
+                                            label: "Loại kiểm",
+                                            value: filterLoaiKiem,
+                                            onChange: setFilterLoaiKiem,
+                                            placeholder: "Nhập loại kiểm"
+                                        })}
+                                    </TableCell>
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Sản phẩm</TableCell>
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>LOT</TableCell>
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }} align="right">SL Kế hoạch</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Người kiểm</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }} align="center">Kết luận</TableCell>
+                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper', minWidth: 170 }}>
+                                        {renderFilterHeader({
+                                            field: "nguoiKiem",
+                                            label: "Người kiểm",
+                                            value: filterNguoiKiem,
+                                            onChange: setFilterNguoiKiem,
+                                            placeholder: "Nhập người kiểm"
+                                        })}
+                                    </TableCell>
+                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper', minWidth: 160 }} align="center">
+                                        {renderFilterHeader({
+                                            field: "ketLuan",
+                                            label: "Kết luận",
+                                            value: filterKetLuan,
+                                            onChange: setFilterKetLuan,
+                                            placeholder: "Chọn kết luận",
+                                            options: [
+                                                { value: "", label: "Tất cả" },
+                                                { value: "DAT", label: "Đạt" },
+                                                { value: "KHONG_DAT", label: "Không đạt" }
+                                            ]
+                                        })}
+                                    </TableCell>
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }} align="center">Trạng thái</TableCell>
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }} align="center">Thao tác</TableCell>
                                 </TableRow>
@@ -262,8 +404,12 @@ export default function PhieuKiemList() {
                                             <TableCell sx={{ fontWeight: 600, color: 'primary.main' }}>
                                                 {item.SoPhieu}
                                             </TableCell>
-                                            <TableCell sx={{ fontWeight: 500 }}>
-                                                {item.ID_ChungTuNhap || "—"}
+                                            <TableCell>
+                                                <Chip
+                                                    label={item.TenLoaiKiem || `Loại ${item.LoaiKiemId || "—"}`}
+                                                    size="small"
+                                                    variant="outlined"
+                                                />
                                             </TableCell>
                                             <TableCell>
                                                 {/* Hiển thị Tên Sản Phẩm */}
