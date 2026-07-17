@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import {
-    Box, Button, Card, CardContent, Chip, Grid, MenuItem, Stack, TextField, Typography
+    Alert, AlertTitle, Button, Card, CardContent, Chip, MenuItem, Stack, Table, TableBody,
+    TableCell, TableContainer, TableHead, TableRow, TextField, Typography
 } from "@mui/material";
 import {
     respondSpecialistOpinion, saveFollowUpEvaluation
@@ -12,7 +13,9 @@ export default function KphV01WorkflowSections({
     opinions = [],
     evaluation,
     currentUserBoPhanId,
+    roles = [],
     permissions = [],
+    isAdmin = false,
     reload,
     showToast
 }) {
@@ -26,16 +29,32 @@ export default function KphV01WorkflowSections({
         [opinions, currentUserBoPhanId]
     );
 
+    console.log("[KPH_V01_OPINION_DEBUG]", {
+        bienBanId,
+        currentUserBoPhanId,
+        roles,
+        isAdmin,
+        assignConfirmed: Boolean(info?.AssignConfirmed),
+        opinions: opinions.map((item) => ({
+            id: item.Id,
+            boPhanId: item.BoPhanId,
+            maBoPhan: item.MaBoPhan,
+            tenBoPhan: item.TenBoPhan,
+            daTraLoi: Boolean(item.NguoiTraLoiId),
+            trungBoPhanNguoiDung: Number(item.BoPhanId) === Number(currentUserBoPhanId)
+        }))
+    });
+
     const submitOpinion = async (opinion) => {
         const value = responses[opinion.Id] || {};
-        if (!["CO", "KHONG"].includes(value.luaChon)) {
-            showToast("Vui lòng chọn Có hoặc Không", "warning");
-            return;
-        }
+        const payload = {
+            ...value,
+            luaChon: "CO"
+        };
         try {
             setSaving(true);
-            await respondSpecialistOpinion(bienBanId, opinion.Id, value);
-            showToast("Đã ký xác nhận ý kiến", "success");
+            await respondSpecialistOpinion(bienBanId, opinion.Id, payload);
+            showToast("Đã xác nhận ý kiến", "success");
             await reload();
         } catch (error) {
             showToast(error?.response?.data?.message || "Không thể xác nhận ý kiến", "error");
@@ -64,44 +83,101 @@ export default function KphV01WorkflowSections({
             <Card elevation={0} sx={{ border: "1px solid #e0e0e0", borderRadius: 2 }}>
                 <CardContent>
                     <Typography variant="h6" sx={{ mb: 2 }}>Ý kiến phòng ban chuyên môn</Typography>
+                    {Boolean(info.AssignConfirmed) && (isAdmin ? opinions.some((item) => !item.NguoiTraLoiId) : ownPendingOpinions.length > 0) && (
+                        <Alert severity="info" sx={{ mb: 2, alignItems: "flex-start" }}>
+                            <AlertTitle sx={{ fontWeight: 700 }}>Hướng dẫn xác nhận dành cho Trưởng bộ phận</AlertTitle>
+                            Kiểm tra nội dung và phương án xử lý của bộ phận trước khi xác nhận. Nếu có ý kiến,
+                            nhập nội dung vào ô bên dưới; nếu không có nội dung bổ sung thì có thể để trống.
+                            Ý kiến của bộ phận luôn được ghi nhận là “Có”. Sau khi xác nhận ý kiến, bạn mới có thể
+                            xác nhận tiến độ xử lý của bộ phận.
+                        </Alert>
+                    )}
                     {opinions.length === 0 ? (
                         <Typography color="text.secondary">Ý kiến chuyên môn sẽ được tạo theo danh sách bộ phận xử lý.</Typography>
                     ) : (
-                        <Grid container spacing={2}>
-                            {opinions.map((opinion) => {
-                                const pendingForCurrentUser = Boolean(info.AssignConfirmed) &&
-                                    ownPendingOpinions.some((item) => item.Id === opinion.Id);
-                                const draft = responses[opinion.Id] || {};
-                                return (
-                                    <Grid size={{ xs: 12, md: 6 }} key={opinion.Id}>
-                                        <Box sx={{ border: "1px solid #e5e7eb", borderRadius: 2, p: 2 }}>
-                                            <Stack direction="row" justifyContent="space-between" sx={{ mb: 1 }}>
-                                                <Typography fontWeight={700}>{opinion.TenBoPhan || opinion.MaBoPhan}</Typography>
-                                                <Chip size="small" color={opinion.NguoiTraLoiId ? "success" : "warning"} label={opinion.NguoiTraLoiId ? "Đã ký" : "Chờ ý kiến"} />
-                                            </Stack>
-                                            {opinion.NguoiTraLoiId ? (
-                                                <Stack spacing={0.75}>
-                                                    <Typography variant="body2"><strong>{opinion.LuaChon === "CO" ? "Có" : "Không"}</strong> — {opinion.NoiDung || "Không có ghi chú"}</Typography>
-                                                    <Typography variant="caption" color="text.secondary">{opinion.NguoiTraLoi} · {new Date(opinion.ThoiGian).toLocaleString("vi-VN")}</Typography>
-                                                </Stack>
-                                            ) : pendingForCurrentUser ? (
-                                                <Stack spacing={1.5}>
-                                                    <TextField select size="small" label="Ý kiến" value={draft.luaChon || ""} onChange={(event) => setResponses((prev) => ({ ...prev, [opinion.Id]: { ...draft, luaChon: event.target.value } }))}>
-                                                        <MenuItem value="CO">Có</MenuItem><MenuItem value="KHONG">Không</MenuItem>
-                                                    </TextField>
-                                                    <TextField multiline minRows={2} size="small" label="Nội dung" value={draft.noiDung || ""} onChange={(event) => setResponses((prev) => ({ ...prev, [opinion.Id]: { ...draft, noiDung: event.target.value } }))} />
-                                                    <Button variant="contained" disabled={saving} onClick={() => submitOpinion(opinion)}>Ký xác nhận</Button>
-                                                </Stack>
-                                            ) : (
-                                                <Typography variant="body2" color="text.secondary">
-                                                    {info.AssignConfirmed ? "Đang chờ phòng ban phản hồi." : "Đang chờ xác nhận phân công."}
-                                                </Typography>
-                                            )}
-                                        </Box>
-                                    </Grid>
-                                );
-                            })}
-                        </Grid>
+                        <Stack spacing={2}>
+                            {opinions.some((opinion) => opinion.NguoiTraLoiId) && (
+                                <TableContainer sx={{ border: "1px solid #e5e7eb", borderRadius: 2 }}>
+                                    <Table size="small">
+                                        <TableHead sx={{ bgcolor: "#f8fafc" }}>
+                                            <TableRow>
+                                                <TableCell>Bộ phận</TableCell>
+                                                <TableCell>Ý kiến</TableCell>
+                                                <TableCell>Nội dung</TableCell>
+                                                <TableCell>Người xác nhận</TableCell>
+                                                <TableCell>Thời gian</TableCell>
+                                            </TableRow>
+                                        </TableHead>
+                                        <TableBody>
+                                            {opinions.filter((opinion) => opinion.NguoiTraLoiId).map((opinion) => (
+                                                <TableRow key={opinion.Id} hover>
+                                                    <TableCell sx={{ fontWeight: 700 }}>{opinion.TenBoPhan || opinion.MaBoPhan}</TableCell>
+                                                    <TableCell>
+                                                        <Chip
+                                                            size="small"
+                                                            color="success"
+                                                            label="Có"
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell sx={{ whiteSpace: "pre-wrap", minWidth: 220 }}>{opinion.NoiDung || "—"}</TableCell>
+                                                    <TableCell>{opinion.NguoiTraLoi || "—"}</TableCell>
+                                                    <TableCell sx={{ whiteSpace: "nowrap" }}>{opinion.ThoiGian ? new Date(opinion.ThoiGian).toLocaleString("vi-VN") : "—"}</TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </TableContainer>
+                            )}
+                            {opinions.some((opinion) => !opinion.NguoiTraLoiId) && (
+                                <TableContainer sx={{ border: "1px solid #e5e7eb", borderRadius: 2 }}>
+                                    <Table size="small" sx={{ minWidth: 760 }}>
+                                        <TableHead sx={{ bgcolor: "#f8fafc" }}>
+                                            <TableRow>
+                                                <TableCell>Bộ phận</TableCell>
+                                                <TableCell sx={{ width: 120 }}>Ý kiến</TableCell>
+                                                <TableCell>Nội dung</TableCell>
+                                                <TableCell sx={{ width: 130 }}>Trạng thái</TableCell>
+                                                <TableCell align="center" sx={{ width: 140 }}>Thao tác</TableCell>
+                                            </TableRow>
+                                        </TableHead>
+                                        <TableBody>
+                                            {opinions.filter((opinion) => !opinion.NguoiTraLoiId).map((opinion) => {
+                                                const pendingForCurrentUser = Boolean(info.AssignConfirmed) &&
+                                                    (isAdmin || ownPendingOpinions.some((item) => item.Id === opinion.Id));
+                                                const draft = responses[opinion.Id] || {};
+                                                return (
+                                                    <TableRow key={opinion.Id} hover>
+                                                        <TableCell sx={{ fontWeight: 700 }}>{opinion.TenBoPhan || opinion.MaBoPhan}</TableCell>
+                                                        <TableCell>
+                                                            {pendingForCurrentUser ? (
+                                                                <Chip
+                                                                    size="small"
+                                                                    color="success"
+                                                                    label="Có"
+                                                                />
+                                                            ) : "—"}
+                                                        </TableCell>
+                                                        <TableCell sx={{ minWidth: 240 }}>
+                                                            {pendingForCurrentUser ? (
+                                                                <TextField fullWidth multiline minRows={2} size="small" placeholder="Nhập nội dung nếu có ý kiến" value={draft.noiDung || ""} onChange={(event) => setResponses((prev) => ({ ...prev, [opinion.Id]: { ...draft, noiDung: event.target.value } }))} />
+                                                            ) : (
+                                                                <Typography variant="body2" color="text.secondary">
+                                                                    {info.AssignConfirmed ? "Đang chờ phòng ban phản hồi." : "Đang chờ xác nhận phân công."}
+                                                                </Typography>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell><Chip size="small" color="warning" label="Chờ ý kiến" /></TableCell>
+                                                        <TableCell align="center">
+                                                            {pendingForCurrentUser && <Button variant="contained" size="small" disabled={saving} onClick={() => submitOpinion(opinion)}>Xác nhận</Button>}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                        </TableBody>
+                                    </Table>
+                                </TableContainer>
+                            )}
+                        </Stack>
                     )}
                 </CardContent>
             </Card>

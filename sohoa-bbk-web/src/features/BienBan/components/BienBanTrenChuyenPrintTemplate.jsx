@@ -9,7 +9,8 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
     hanhDong = [],
     xacNhan = [],
     assigns = [],
-    dynamicFields = []
+    dynamicFields = [],
+    canEditCustomFields = false
 }, ref) => {
 
     // 1. Lấy dữ liệu Custom Data đã lưu từ API
@@ -179,7 +180,7 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
     const renderRadioRight = (label, value) => (
         <div
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '85%', cursor: 'pointer' }}
-            onClick={() => setPhatHienTu(prev => prev === value ? '' : value)}
+            onClick={() => canEditCustomFields && setPhatHienTu(prev => prev === value ? '' : value)}
         >
             <span style={{ fontSize: '12pt' }}>{label}</span>
             {renderSquareBox(phatHienTu === value)}
@@ -190,7 +191,7 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
     const renderMucDoRadio = (label, value) => (
         <div
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '85%', cursor: 'pointer' }}
-            onClick={() => setMucDo(prev => prev === value ? '' : value)}
+            onClick={() => canEditCustomFields && setMucDo(prev => prev === value ? '' : value)}
         >
             <span style={{ fontSize: '12pt' }}>{label}</span>
             {renderSquareBox(mucDo === value)}
@@ -323,45 +324,45 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                     <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: '12px', ...styles.text }}>
                                         <span style={{ whiteSpace: 'nowrap' }}>Đơn vị sản xuất:</span>
                                         <span style={styles.dottedLine}>
-                                            <input name="TenBoPhan" className="custom-field" type="text" defaultValue={bienBanDonViSanXuat} style={styles.inputField} />
+                                            <input name="TenBoPhan" className="custom-field" type="text" defaultValue={bienBanDonViSanXuat} readOnly={!canEditCustomFields} style={styles.inputField} />
                                         </span>
                                         <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Mã ĐVSX:</span>
                                         <span style={{ ...styles.dottedLine, flexGrow: 0.6 }}>
-                                            <input name="MaBoPhan" className="custom-field" type="text" defaultValue={bienBanMaDonViSanXuat} style={styles.inputField} />
+                                            <input name="MaBoPhan" className="custom-field" type="text" defaultValue={bienBanMaDonViSanXuat} readOnly={!canEditCustomFields} style={styles.inputField} />
                                         </span>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: '12px', ...styles.text }}>
                                         <span style={{ whiteSpace: 'nowrap' }}>Tên VT/BTP/TP:</span>
                                         <span style={styles.dottedLine}>
-                                            <input name="TenSanPham" className="custom-field" type="text" defaultValue={customData.TenSanPham || info.TenSanPham || ''} style={styles.inputField} />
+                                            <input name="TenSanPham" className="custom-field" type="text" defaultValue={customData.TenSanPham || info.TenSanPham || ''} readOnly={!canEditCustomFields} style={styles.inputField} />
                                         </span>
                                         <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Mã Item:</span>
                                         <span style={{ ...styles.dottedLine, flexGrow: 0.6 }}>
-                                            <input name="MaItem" className="custom-field" type="text" defaultValue={customData.MaItem || info.MaSanPham || ''} style={styles.inputField} />
+                                            <input name="MaSanPham" className="custom-field" type="text" defaultValue={customData.MaSanPham || customData.MaItem || info.MaSanPham || ''} readOnly={!canEditCustomFields} style={styles.inputField} />
                                         </span>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: '12px', ...styles.text }}>
                                         <span style={{ whiteSpace: 'nowrap' }}>Mã truy nguyên:</span>
                                         <span style={styles.dottedLine}>
-                                            <input name="MaTruyNguyen" className="custom-field" type="text" defaultValue={customData.MaTruyNguyen || ''} style={styles.inputField} />
+                                            <input name="MaTruyNguyen" className="custom-field" type="text" defaultValue={customData.MaTruyNguyen || ''} readOnly={!canEditCustomFields} style={styles.inputField} />
                                         </span>
                                         <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Đơn hàng:</span>
                                         <span style={{ ...styles.dottedLine, flexGrow: 0.5 }}>
-                                            <input name="DonHang" className="custom-field" type="text" defaultValue={customData.DonHang || ''} style={styles.inputField} />
+                                            <input name="DonHang" className="custom-field" type="text" defaultValue={customData.DonHang || ''} readOnly={!canEditCustomFields} style={styles.inputField} />
                                         </span>
                                         <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Lô SX:</span>
                                         <span style={{ ...styles.dottedLine, flexGrow: 0.3 }}>
-                                            <input name="Lot" className="custom-field" type="text" defaultValue={customData.Lot || info.Lot || ''} style={styles.inputField} />
+                                            <input name="Lot" className="custom-field" type="text" defaultValue={customData.Lot || info.Lot || ''} readOnly={!canEditCustomFields} style={styles.inputField} />
                                         </span>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'flex-end', marginTop: '24px', marginBottom: '12px', ...styles.text }}>
                                         <span style={{ whiteSpace: 'nowrap' }}>Số lượng:</span>
                                         <span style={styles.dottedLine}>
-                                            <input name="SoLuongKPH" className="custom-field" type="text" defaultValue={bienBanSoLuongKhongPhuHop} style={styles.inputField} />
+                                            <input name="SoLuongKPH" className="custom-field" type="text" defaultValue={bienBanSoLuongKhongPhuHop} readOnly={!canEditCustomFields} style={styles.inputField} />
                                         </span>
                                         <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Dấu tuần:</span>
                                         <span style={{ ...styles.dottedLine, flexGrow: 0.4 }}>
-                                            <input name="DauTuan" className="custom-field" type="text" defaultValue={customData.DauTuan || ''} style={styles.inputField} />
+                                            <input name="DauTuan" className="custom-field" type="text" defaultValue={customData.DauTuan || ''} readOnly={!canEditCustomFields} style={styles.inputField} />
                                         </span>
                                     </div>
                                 </Box>
@@ -508,8 +509,8 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                         <div style={{ ...styles.sectionTitle, marginTop: 0, marginBottom: 0, marginRight: '30px' }}>
                                             6. Chi phí phát sinh
                                         </div>
-                                        {renderCheckbox('Yêu cầu', chiPhi.length > 0)}
-                                        {renderCheckbox('Không yêu cầu', chiPhi.length === 0)}
+                                        {renderCheckbox('Yêu cầu', Boolean(info.YeuCauChiPhi))}
+                                        {renderCheckbox('Không yêu cầu', !info.YeuCauChiPhi)}
                                     </Box>
 
                                     <table style={{ ...styles.table, marginTop: '10px' }}>
@@ -544,8 +545,8 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                         <div style={{ ...styles.sectionTitle, marginTop: 0, marginBottom: 0, marginRight: '30px' }}>
                                             7. Hành động khắc phục, phòng ngừa
                                         </div>
-                                        {renderCheckbox('Yêu cầu', hanhDong.length > 0)}
-                                        {renderCheckbox('Không yêu cầu', hanhDong.length === 0)}
+                                        {renderCheckbox('Yêu cầu', Boolean(info.YeuCauHanhDong))}
+                                        {renderCheckbox('Không yêu cầu', !info.YeuCauHanhDong)}
                                     </Box>
 
                                     <table style={{ ...styles.table, marginTop: '10px' }}>

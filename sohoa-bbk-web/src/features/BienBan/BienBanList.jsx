@@ -19,14 +19,34 @@ import {
     TablePagination,
     InputAdornment,
     IconButton,
-    Tooltip
+    Tooltip,
+    Button,
+    Tabs,
+    Tab,
+    Paper
 } from "@mui/material";
 import {
     Search as SearchIcon,
-    Visibility as VisibilityIcon
+    Visibility as VisibilityIcon,
+    ArrowForward as ArrowForwardIcon
 } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import { getMyBienBan } from "../../api/bienBan.api"; // Giữ nguyên import của bạn
+import { decodeToken } from "../../utils/auth";
+import { getBienBanStatusMeta } from "./components/bienBanWorkflow";
+
+const getWorkBucket = (item, currentUser, isManager, isSxbt) => {
+    if (isSxbt) {
+        return item.TrangThai === "BB_SXBT_HOAN_TAT" ? "done" : "waiting";
+    }
+    if (["HOAN_TAT", "HOAN_THANH", "DA_XAC_NHAN"].includes(item.TrangThai)) return "done";
+    const explicitMyTurn = item.CanCurrentUserAct === true || item.CanCurrentUserAct === 1 ||
+        Number(item.NguoiXuLyId) === Number(currentUser.userId) ||
+        Number(item.BoPhanId) === Number(currentUser.boPhanId) ||
+        Number(item.BoPhanDangChoId) === Number(currentUser.boPhanId);
+    const managerTurn = isManager && ["BB_MOI", "CHO_PHAN_BO_XU_LY", "CHO_PHAN_BO_XY_LY", "CHO_TP_B8"].includes(item.TrangThai);
+    return explicitMyTurn || managerTurn ? "action" : "waiting";
+};
 
 export default function BienBanList() {
     const [data, setData] = useState([]);
@@ -37,6 +57,11 @@ export default function BienBanList() {
     const [searchText, setSearchText] = useState("");
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [workFilter, setWorkFilter] = useState("all");
+    const currentUser = useMemo(() => decodeToken() || {}, []);
+    const isManager = (currentUser.permissions || []).some((permission) =>
+        ["QUAN_TRI_DM", "XAC_NHAN_NGUOI_XU_LY", "KET_LUAN"].includes(permission)
+    );
 
     const navigate = useNavigate();
 
@@ -83,15 +108,7 @@ export default function BienBanList() {
             }
         }
 
-        const statusMap = {
-            "BB_MOI": { label: "Mới tạo", color: "default" },
-            "CHO_PHAN_BO_XY_LY": { label: "Xin ý kiến", color: "warning" },
-            "CHO_TP_B8": { label: "Chờ kết luận TP B8", color: "secondary" },
-            "DA_KET_LUAN": { label: "Đã kết luận", color: "primary" },
-            "CHO_XAC_NHAN": { label: "Chờ xác nhận", color: "info" },
-            "DA_XAC_NHAN": { label: "Đã xác nhận", color: "success" }
-        };
-        const status = statusMap[trangThai] || { label: trangThai || "Mới tạo", color: "default" };
+        const status = getBienBanStatusMeta(trangThai);
 
         return <Chip label={status.label} color={status.color} size="small" sx={{ fontWeight: 500 }} />;
     };
@@ -108,8 +125,15 @@ export default function BienBanList() {
     };
 
     // Lọc dữ liệu bằng useMemo để tối ưu hiệu năng
+    const workCounts = useMemo(() => data.reduce((result, item) => {
+        const bucket = getWorkBucket(item, currentUser, isManager, isSxbtBienBan(item));
+        result[bucket] += 1;
+        return result;
+    }, { action: 0, waiting: 0, done: 0 }), [data, currentUser, isManager]);
+
     const filteredData = useMemo(() => {
         return data.filter((item) => {
+            if (workFilter !== "all" && getWorkBucket(item, currentUser, isManager, isSxbtBienBan(item)) !== workFilter) return false;
             // Lọc theo trạng thái
             if (filterStatus && item.TrangThai !== filterStatus) return false;
 
@@ -127,7 +151,7 @@ export default function BienBanList() {
             }
             return true;
         });
-    }, [data, filterStatus, searchText]);
+    }, [data, filterStatus, searchText, workFilter, currentUser, isManager]);
 
     // Xử lý phân trang
     const paginatedData = useMemo(() => {
@@ -204,11 +228,13 @@ export default function BienBanList() {
                         >
                             <MenuItem value="">Tất cả</MenuItem>
                             <MenuItem value="BB_MOI">Mới tạo</MenuItem>
-                            <MenuItem value="CHO_PHAN_BO_XY_LY">Xin ý kiến</MenuItem>
+                            <MenuItem value="CHO_PHAN_BO_XU_LY">Chờ phân công xử lý</MenuItem>
                             <MenuItem value="CHO_TP_B8">Chờ kết luận</MenuItem>
                             <MenuItem value="DA_KET_LUAN">Đã kết luận</MenuItem>
                             <MenuItem value="CHO_XAC_NHAN">Chờ xác nhận</MenuItem>
                             <MenuItem value="DA_XAC_NHAN">Đã xác nhận</MenuItem>
+                            <MenuItem value="CHO_THEO_DOI">Chờ theo dõi đánh giá</MenuItem>
+                            <MenuItem value="HOAN_TAT">Hoàn tất</MenuItem>
                             <MenuItem value="BB_SXBT_MOI">SXBT chờ xác nhận mức</MenuItem>
                             <MenuItem value="BB_SXBT_TP_B8_DRAFT">SXBT chờ xác nhận mức</MenuItem>
                             <MenuItem value="BB_SXBT_CHO_XAC_NHAN">SXBT đang xử lý</MenuItem>
@@ -216,6 +242,24 @@ export default function BienBanList() {
                         </TextField>
                     </Stack>
                 </Stack>
+
+                <Paper variant="outlined" sx={{ mb: 2, borderRadius: 2, overflow: "hidden" }}>
+                    <Tabs
+                        value={workFilter}
+                        onChange={(_, value) => {
+                            setWorkFilter(value);
+                            setPage(0);
+                        }}
+                        variant="scrollable"
+                        scrollButtons="auto"
+                        aria-label="Lọc biên bản theo công việc"
+                    >
+                        <Tab value="action" label={`Cần tôi xử lý (${workCounts.action})`} />
+                        <Tab value="waiting" label={`Đang chờ (${workCounts.waiting})`} />
+                        <Tab value="done" label={`Hoàn tất (${workCounts.done})`} />
+                        <Tab value="all" label={`Tất cả (${data.length})`} />
+                    </Tabs>
+                </Paper>
 
                 {/* Data Table */}
                 <Card sx={{ borderRadius: 2, boxShadow: "0 4px 20px rgba(0,0,0,0.05)" }}>
@@ -307,22 +351,35 @@ export default function BienBanList() {
                                                 </Stack>
                                             </TableCell>
                                             <TableCell align="center">
-                                                <Tooltip title="Xem chi tiết">
-                                                    <IconButton
+                                                {isSxbtBienBan(item) ? (
+                                                    <Tooltip title="Xem chi tiết">
+                                                        <IconButton
+                                                            size="small"
+                                                            color="primary"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                navigate(`/bien-ban/sxbt/${item.BienBanId}`);
+                                                            }}
+                                                        >
+                                                            <VisibilityIcon fontSize="small" />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                ) : (
+                                                    <Button
                                                         size="small"
-                                                        color="primary"
+                                                        variant={getWorkBucket(item, currentUser, isManager, false) === "action" ? "contained" : "outlined"}
+                                                        endIcon={<ArrowForwardIcon />}
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            navigate(
-                                                                isSxbtBienBan(item)
-                                                                    ? `/bien-ban/sxbt/${item.BienBanId}`
-                                                                    : `/bien-ban/${item.BienBanId}`
-                                                            );
+                                                            navigate(`/bien-ban/${item.BienBanId}`);
                                                         }}
+                                                        sx={{ whiteSpace: "nowrap" }}
                                                     >
-                                                        <VisibilityIcon fontSize="small" />
-                                                    </IconButton>
-                                                </Tooltip>
+                                                        {getWorkBucket(item, currentUser, isManager, false) === "action"
+                                                            ? "Xử lý ngay"
+                                                            : getWorkBucket(item, currentUser, isManager, false) === "done" ? "Xem kết quả" : "Xem tiến độ"}
+                                                    </Button>
+                                                )}
                                             </TableCell>
                                         </TableRow>
                                     ))

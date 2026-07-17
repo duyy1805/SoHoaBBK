@@ -5,6 +5,33 @@ const sql = require("mssql");
 const { poolPromise } = require("../db");
 const authenticateToken = require("../middlewares/auth.middleware");
 
+const hasStrictLeadRole = (user) => Array.isArray(user?.roles) &&
+    user.roles.some((role) => String(role || "").toUpperCase().startsWith("TP_"));
+const hasRole = (user, roleCode) => Array.isArray(user?.roles) &&
+    user.roles.some((role) => String(role || "").toUpperCase() === roleCode);
+const isAdmin = (user) => hasRole(user, "ADMIN");
+const getHeaderAccess = async (pool, bienBanId, user) => {
+    const result = await pool.request().input("BienBanId", sql.Int, bienBanId).query(`
+        SELECT TOP 1 bb.NguoiLapId, bb.TrangThai, ISNULL(bb.MauPhieuVersion, 'V00') AS MauPhieuVersion,
+            creator.BoPhanId AS CreatorBoPhanId
+        FROM dbo.BIEN_BAN_KIEM bb
+        LEFT JOIN dbo.USERS creator ON creator.Id = bb.NguoiLapId
+        WHERE bb.Id = @BienBanId
+    `);
+    const record = result.recordset?.[0];
+    if (!record) return { exists: false, canEdit: false, record: null };
+    const canEdit = record.MauPhieuVersion === "V01" && record.TrangThai !== "HOAN_TAT" && (
+        Number(record.NguoiLapId) === Number(user?.userId) ||
+        (Number(record.CreatorBoPhanId) === Number(user?.boPhanId) && hasStrictLeadRole(user)) ||
+        isAdmin(user)
+    );
+    return { exists: true, canEdit, record };
+};
+const KPH_V01_CUSTOM_FIELDS = new Set([
+    "TenBoPhan", "MaBoPhan", "TenSanPham", "MaSanPham", "MaTruyNguyen",
+    "DonHang", "Lot", "SoLuongKPH", "DauTuan", "PhatHienTu", "MucDo"
+]);
+
 const enrichDefectCodes = async (pool, defects = []) => {
     const defectIds = [...new Set(
         defects
@@ -31,7 +58,7 @@ const enrichDefectCodes = async (pool, defects = []) => {
 router.get("/", authenticateToken, async (req, res) => {
     try {
         const pool = await poolPromise;
-        const isManager = req.user.permissions.includes("QUAN_TRI_DM")
+        const isManager = isAdmin(req.user) || req.user.permissions.includes("QUAN_TRI_DM")
             || req.user.permissions.includes("XAC_NHAN_NGUOI_XU_LY")
             || req.user.permissions.includes("KET_LUAN");
 
@@ -92,6 +119,8 @@ router.get("/:id", authenticateToken, async (req, res) => {
             .query(`
                 SELECT TOP 1
                     ISNULL(bb.MauPhieuVersion, 'V00') AS MauPhieuVersion,
+                    ISNULL(bb.YeuCauChiPhi, 0) AS YeuCauChiPhi,
+                    ISNULL(bb.YeuCauHanhDong, 0) AS YeuCauHanhDong,
                     bp.MaBoPhan AS MaDonViTaoPhieu,
                     bp.TenBoPhan AS DonViTaoPhieu
                 FROM dbo.BIEN_BAN_KIEM bb
@@ -123,8 +152,29 @@ router.get("/:id", authenticateToken, async (req, res) => {
                 WHERE td.BienBanId = @BienBanId;
             `);
         const printMeta = v01Result.recordsets?.[0]?.[0] || { MauPhieuVersion: "V00" };
+        const headerAccess = await getHeaderAccess(pool, bienBanId, req.user);
+        const proposalResult = await pool.request()
+            .input("BienBanId", sql.Int, bienBanId)
+            .query(`
+                SELECT x.Id, x.BoPhan, x.NoiDung, x.TrachNhiem, x.TheoDoi,
+                    dx.Ten AS DeNghiXuLy, x.ThoiHan, x.NguoiXuLyId,
+                    x.BoPhanId, creator.FullName AS NguoiNhap, x.CreatedAt,
+                    bp.MaBoPhan, bp.TenBoPhan
+                FROM dbo.BIEN_BAN_XU_LY x
+                LEFT JOIN dbo.DM_DE_NGHI_XU_LY dx ON dx.Id = x.DeNghiXuLyId
+                LEFT JOIN dbo.USERS creator ON creator.Id = x.CreatedBy
+                LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id = x.BoPhanId
+                WHERE x.BienBanId = @BienBanId
+                ORDER BY x.CreatedAt, x.Id
+            `);
 
         if (info) Object.assign(info, printMeta);
+        if (info) {
+            info.YeuCauChiPhi = Boolean(printMeta.YeuCauChiPhi);
+            info.YeuCauHanhDong = Boolean(printMeta.YeuCauHanhDong);
+            info.CanConfigureRequirements = hasRole(req.user, "TP_B8") || isAdmin(req.user);
+            info.IsAdmin = isAdmin(req.user);
+        }
 
         const defectResult = await pool.request()
             .input("BienBanId", sql.Int, bienBanId)
@@ -134,20 +184,29 @@ router.get("/:id", authenticateToken, async (req, res) => {
                 WHERE d.BienBanId = @BienBanId
                 ORDER BY d.SortOrder, d.Id
             `);
+        const confirmationResult = await pool.request().input("BienBanId", sql.Int, bienBanId).query(`
+            SELECT xn.*, COALESCE(xn.BoPhanId,u.BoPhanId) AS BoPhanId, u.FullName,
+                bp.MaBoPhan, bp.TenBoPhan
+            FROM dbo.BIEN_BAN_XAC_NHAN xn
+            LEFT JOIN dbo.USERS u ON u.Id=xn.NguoiXacNhanId
+            LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id=COALESCE(xn.BoPhanId,u.BoPhanId)
+            WHERE xn.BienBanId=@BienBanId
+        `);
 
         res.json({
             info,
             defects: await enrichDefectCodes(pool, defectResult.recordset || []),
             assigns: result.recordsets?.[2] || [],
-            xuLy: result.recordsets?.[3] || [],
+            xuLy: proposalResult.recordset || [],
             chiPhi: result.recordsets?.[4] || [],
-            xacNhan: result.recordsets?.[5] || [],
+            xacNhan: confirmationResult.recordset || [],
             hanhDong: result.recordsets?.[6] || [],
             dynamicFields,
             templateVersion: printMeta.MauPhieuVersion,
             specialistOpinions: v01Result.recordsets?.[1] || [],
             followUpEvaluation: v01Result.recordsets?.[2]?.[0] || null,
-            printMeta
+            printMeta,
+            canEditKphCustomFields: headerAccess.canEdit
         });
     } catch (err) {
         console.error("GetStandaloneBienBanDetail error:", err);
@@ -161,10 +220,17 @@ router.post("/:id/header", authenticateToken, async (req, res) => {
         const { moTaChung = "", fields = {} } = req.body || {};
 
         const pool = await poolPromise;
+        const access = await getHeaderAccess(pool, bienBanId, req.user);
+        if (!access.exists) return res.status(404).json({ message: "Không tìm thấy biên bản" });
+        if (access.record.MauPhieuVersion !== "V01") return res.status(409).json({ message: "Biên bản không sử dụng mẫu V01" });
+        if (!access.canEdit) return res.status(403).json({ message: "Bạn không có quyền sửa thông tin mẫu KPH" });
+        const normalizedFields = Object.fromEntries(
+            Object.entries(fields || {}).filter(([key]) => KPH_V01_CUSTOM_FIELDS.has(key))
+        );
         await pool.request()
             .input("BienBanId", sql.Int, bienBanId)
             .input("MoTaChung", sql.NVarChar(sql.MAX), moTaChung)
-            .input("FieldsJson", sql.NVarChar(sql.MAX), JSON.stringify(fields || {}))
+            .input("FieldsJson", sql.NVarChar(sql.MAX), JSON.stringify(normalizedFields))
             .execute("sp_PhieuXuLyKPH_SaveHeader");
 
         res.json({ success: true });

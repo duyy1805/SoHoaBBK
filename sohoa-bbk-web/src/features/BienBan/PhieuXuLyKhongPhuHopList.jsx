@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     Box,
     Typography,
@@ -18,22 +18,28 @@ import {
     Chip,
     Paper,
     InputAdornment,
-    IconButton
+    Tabs,
+    Tab
 } from "@mui/material";
-import { Add as AddIcon, Search as SearchIcon, Visibility as VisibilityIcon } from "@mui/icons-material";
+import { Add as AddIcon, Search as SearchIcon, ArrowForward as ArrowForwardIcon } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import { createStandaloneBienBan, getStandaloneBienBanList } from "../../api/bienBan.api";
+import { decodeToken } from "../../utils/auth";
+import { getBienBanStatusMeta } from "./components/bienBanWorkflow";
 
 const renderTrangThaiChip = (trangThai) => {
-    const statusMap = {
-        BB_MOI: { label: "Mới tạo", color: "default" },
-        CHO_PHAN_BO_XU_LY: { label: "Chờ phân bổ xử lý", color: "warning" },
-        CHO_TP_B8: { label: "Chờ TP B8", color: "secondary" },
-        HOAN_THANH: { label: "Hoàn thành", color: "success" }
-    };
-
-    const status = statusMap[trangThai] || { label: trangThai || "Mới tạo", color: "default" };
+    const status = getBienBanStatusMeta(trangThai);
     return <Chip label={status.label} color={status.color} size="small" sx={{ fontWeight: 500 }} />;
+};
+
+const getWorkBucket = (item, currentUser, isManager) => {
+    if (["HOAN_TAT", "HOAN_THANH", "DA_XAC_NHAN"].includes(item.TrangThai)) return "done";
+    const explicitMyTurn = item.CanCurrentUserAct === true || item.CanCurrentUserAct === 1 ||
+        Number(item.NguoiXuLyId) === Number(currentUser.userId) ||
+        Number(item.BoPhanId) === Number(currentUser.boPhanId) ||
+        Number(item.BoPhanDangChoId) === Number(currentUser.boPhanId);
+    const managerTurn = isManager && ["BB_MOI", "CHO_PHAN_BO_XU_LY", "CHO_PHAN_BO_XY_LY", "CHO_TP_B8"].includes(item.TrangThai);
+    return explicitMyTurn || managerTurn ? "action" : "waiting";
 };
 
 export default function PhieuXuLyKhongPhuHopList() {
@@ -42,32 +48,48 @@ export default function PhieuXuLyKhongPhuHopList() {
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [searchText, setSearchText] = useState("");
+    const [workFilter, setWorkFilter] = useState("all");
+    const currentUser = useMemo(() => decodeToken() || {}, []);
+    const isManager = (currentUser.permissions || []).some((permission) =>
+        ["QUAN_TRI_DM", "XAC_NHAN_NGUOI_XU_LY", "KET_LUAN"].includes(permission)
+    );
 
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         try {
             setLoading(true);
             const res = await getStandaloneBienBanList();
-            setData(res.data || []);
+            const rows = res.data || [];
+            setData(rows);
+            if (rows.some((item) => getWorkBucket(item, currentUser, isManager) === "action")) {
+                setWorkFilter("action");
+            }
         } catch (err) {
             console.error(err);
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentUser, isManager]);
 
     useEffect(() => {
         loadData();
-    }, []);
+    }, [loadData]);
+
+    const counts = useMemo(() => data.reduce((result, item) => {
+        const bucket = getWorkBucket(item, currentUser, isManager);
+        result[bucket] += 1;
+        return result;
+    }, { action: 0, waiting: 0, done: 0 }), [data, currentUser, isManager]);
 
     const filteredData = useMemo(() => {
         const keyword = searchText.trim().toLowerCase();
-        if (!keyword) return data;
-        return data.filter((item) =>
-            String(item.SoBienBan || "").toLowerCase().includes(keyword) ||
-            String(item.MoTaChung || "").toLowerCase().includes(keyword) ||
-            String(item.NguoiLap || "").toLowerCase().includes(keyword)
-        );
-    }, [data, searchText]);
+        return data.filter((item) => {
+            if (workFilter !== "all" && getWorkBucket(item, currentUser, isManager) !== workFilter) return false;
+            if (!keyword) return true;
+            return String(item.SoBienBan || "").toLowerCase().includes(keyword) ||
+                String(item.MoTaChung || "").toLowerCase().includes(keyword) ||
+                String(item.NguoiLap || "").toLowerCase().includes(keyword);
+        });
+    }, [data, searchText, workFilter, currentUser, isManager]);
 
     const handleCreate = async () => {
         try {
@@ -132,6 +154,21 @@ export default function PhieuXuLyKhongPhuHopList() {
                     </Stack>
                 </Stack>
 
+                <Paper variant="outlined" sx={{ mb: 2, borderRadius: 2, overflow: "hidden" }}>
+                    <Tabs
+                        value={workFilter}
+                        onChange={(_, value) => setWorkFilter(value)}
+                        variant="scrollable"
+                        scrollButtons="auto"
+                        aria-label="Lọc phiếu theo công việc"
+                    >
+                        <Tab value="action" label={`Cần tôi xử lý (${counts.action})`} />
+                        <Tab value="waiting" label={`Đang chờ (${counts.waiting})`} />
+                        <Tab value="done" label={`Hoàn tất (${counts.done})`} />
+                        <Tab value="all" label={`Tất cả (${data.length})`} />
+                    </Tabs>
+                </Paper>
+
                 <Card sx={{ borderRadius: 3 }}>
                     <CardContent sx={{ p: 0 }}>
                         <TableContainer component={Paper} elevation={0}>
@@ -144,7 +181,7 @@ export default function PhieuXuLyKhongPhuHopList() {
                                         <TableCell>Ngày tạo</TableCell>
                                         <TableCell>Tiến độ</TableCell>
                                         <TableCell>Trạng thái</TableCell>
-                                        <TableCell align="center">Chi tiết</TableCell>
+                                        <TableCell align="center">Thao tác</TableCell>
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
@@ -161,12 +198,29 @@ export default function PhieuXuLyKhongPhuHopList() {
                                                 <TableCell>{item.MoTaChung || "---"}</TableCell>
                                                 <TableCell>{item.NguoiLap || "---"}</TableCell>
                                                 <TableCell>{item.CreatedAt ? new Date(item.CreatedAt).toLocaleString("vi-VN") : "---"}</TableCell>
-                                                <TableCell>{`${item.DaCoYKien || 0}/${item.SoBoPhan || 0}`}</TableCell>
+                                                <TableCell>
+                                                    <Typography variant="body2" fontWeight={600}>
+                                                        {item.SoBoPhan > 0 ? `${item.DaCoYKien || 0}/${item.SoBoPhan} bộ phận` : "Chưa phân công"}
+                                                    </Typography>
+                                                    {item.BoPhanChuaXacNhanText && (
+                                                        <Typography variant="caption" color="text.secondary">
+                                                            Chờ: {item.BoPhanChuaXacNhanText}
+                                                        </Typography>
+                                                    )}
+                                                </TableCell>
                                                 <TableCell>{renderTrangThaiChip(item.TrangThai)}</TableCell>
                                                 <TableCell align="center">
-                                                    <IconButton onClick={() => navigate(`/phieu-xu-ly-khong-phu-hop/${item.BienBanId}`)}>
-                                                        <VisibilityIcon fontSize="small" />
-                                                    </IconButton>
+                                                    <Button
+                                                        size="small"
+                                                        variant={getWorkBucket(item, currentUser, isManager) === "action" ? "contained" : "outlined"}
+                                                        endIcon={<ArrowForwardIcon />}
+                                                        onClick={() => navigate(`/phieu-xu-ly-khong-phu-hop/${item.BienBanId}`)}
+                                                        sx={{ whiteSpace: "nowrap" }}
+                                                    >
+                                                        {getWorkBucket(item, currentUser, isManager) === "action"
+                                                            ? "Xử lý ngay"
+                                                            : getWorkBucket(item, currentUser, isManager) === "done" ? "Xem kết quả" : "Xem tiến độ"}
+                                                    </Button>
                                                 </TableCell>
                                             </TableRow>
                                         ))

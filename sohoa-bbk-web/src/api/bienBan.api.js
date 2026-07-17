@@ -94,8 +94,11 @@ export const addChiPhi = (data) => {
     return axiosClient.post("/bien-ban/chi-phi", data);
 };
 
-export const confirmUser = (bienBanId) =>
-    axiosClient.post("/bien-ban/xac-nhan", { bienBanId });
+export const confirmUser = (bienBanId, boPhanId = null) =>
+    axiosClient.post("/bien-ban/xac-nhan", { bienBanId, ...(boPhanId ? { boPhanId } : {}) });
+
+export const updateKphRequirements = (bienBanId, data) =>
+    axiosClient.patch(`/bien-ban/${bienBanId}/requirements`, data);
 
 export const addHanhDong = (data) =>
     axiosClient.post("/bien-ban/hanh-dong", data);

@@ -11,7 +11,8 @@ export const BienBanPrintTemplate = React.forwardRef(({
     assigns = [],
     dynamicFields = [],
     specialistOpinions = [],
-    followUpEvaluation = null
+    followUpEvaluation = null,
+    canEditCustomFields = false
 }, ref) => {
 
     // 1. Lấy dữ liệu Custom Data đã lưu từ API
@@ -54,6 +55,16 @@ export const BienBanPrintTemplate = React.forwardRef(({
     };
     const totalCost = (chiPhi || []).reduce((sum, item) => sum + (Number(item.GiaTri) || 0), 0);
     const printCosts = chiPhi || [];
+    const receiveDepartmentCodes = [...new Set(
+        (assigns || [])
+            .map((item) => item.MaBoPhan || item.TenBoPhan)
+            .filter(Boolean)
+    )];
+    const receiveDepartmentRows = [];
+    for (let index = 0; index < receiveDepartmentCodes.length; index += 4) {
+        receiveDepartmentRows.push(receiveDepartmentCodes.slice(index, index + 4));
+    }
+    const creatorDepartmentCode = info.MaDonViTaoPhieu || info.MaBoPhan || info.DonViTaoPhieu || 'Đơn vị tạo phiếu';
 
     const inferPhatHienTu = () => {
         if (customData.PhatHienTu || info.PhatHienTu) {
@@ -179,9 +190,23 @@ export const BienBanPrintTemplate = React.forwardRef(({
 
     // Ô check nhỏ bên dưới (phần đề xuất)
     const renderCheckbox = (label, checked) => (
-        <span style={{ marginRight: '15px', display: 'inline-flex', alignItems: 'center' }}>
-            <span style={{ width: '16px', height: '16px', border: '1px solid #000', display: 'inline-block', marginRight: '6px', textAlign: 'center', lineHeight: '14px', fontSize: '12px' }}>
-                {checked ? 'x' : ''}
+        <span style={{ marginRight: '15px', display: 'inline-flex', alignItems: 'center', verticalAlign: 'middle' }}>
+            <span style={{
+                width: '16px',
+                height: '16px',
+                border: '1px solid #000',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                marginRight: '6px',
+                fontSize: '13px',
+                fontFamily: 'Arial, sans-serif',
+                fontWeight: 700,
+                lineHeight: 1,
+                boxSizing: 'border-box'
+            }}>
+                {checked ? '×' : ''}
             </span>
             {label}
         </span>
@@ -193,7 +218,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                 <React.Fragment key={field.name}>
                     <span style={{ whiteSpace: 'nowrap', marginLeft: index === 0 ? 0 : '5px' }}>{field.label}:</span>
                     <span style={{ ...styles.dottedLine, flexGrow: field.grow || 1 }}>
-                        <input name={field.name} className="custom-field" type="text" defaultValue={field.value || ''} style={styles.inputField} />
+                        <input name={field.name} className="custom-field" type="text" defaultValue={field.value || ''} readOnly={!canEditCustomFields} style={{ ...styles.inputField, cursor: canEditCustomFields ? 'text' : 'default' }} />
                     </span>
                 </React.Fragment>
             ))}
@@ -202,8 +227,8 @@ export const BienBanPrintTemplate = React.forwardRef(({
     // Cập nhật Ô check cho phần 2 (Chỉ chọn 1 - Radio)
     const renderRadioRight = (label, value) => (
         <div
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '85%', cursor: 'pointer' }}
-            onClick={() => setPhatHienTu(prev => prev === value ? '' : value)}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '85%', cursor: canEditCustomFields ? 'pointer' : 'default' }}
+            onClick={() => canEditCustomFields && setPhatHienTu(prev => prev === value ? '' : value)}
         >
             <span style={{ fontSize: '12pt' }}>{label}</span>
             {renderSquareBox(phatHienTu === value)}
@@ -213,8 +238,8 @@ export const BienBanPrintTemplate = React.forwardRef(({
     // Cập nhật ô check cho phần 3 (Chỉ chọn 1 - Radio)
     const renderMucDoRadio = (label, value) => (
         <div
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '85%', cursor: 'pointer' }}
-            onClick={() => setMucDo(prev => prev === value ? '' : value)}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '85%', cursor: canEditCustomFields ? 'pointer' : 'default' }}
+            onClick={() => canEditCustomFields && setMucDo(prev => prev === value ? '' : value)}
         >
             <span style={{ fontSize: '12pt' }}>{label}</span>
             {renderSquareBox(mucDo === value)}
@@ -247,18 +272,10 @@ export const BienBanPrintTemplate = React.forwardRef(({
             return map;
         }, new Map()).values()
     );
-    const printDefects = isV01
-        ? [...(defects || []), ...Array(Math.max(0, 5 - (defects || []).length)).fill(null)]
-        : (defects || []);
-    const printActions = isV01
-        ? [...(hanhDong || []), ...Array(Math.max(0, 4 - (hanhDong || []).length)).fill(null)]
-        : (hanhDong || []);
-    const printProposals = isV01
-        ? [...(xuLy || []), ...Array(Math.max(0, 8 - (xuLy || []).length)).fill(null)]
-        : (xuLy || []);
-    const printOpinions = isV01
-        ? [...(specialistOpinions || []), ...Array(Math.max(0, 4 - (specialistOpinions || []).length)).fill(null)]
-        : [];
+    const printDefects = defects || [];
+    const printActions = hanhDong || [];
+    const printProposals = xuLy || [];
+    const printOpinions = isV01 ? (specialistOpinions || []) : [];
 
     return (
         <div ref={ref} style={styles.previewBackground} className="preview-background">
@@ -361,13 +378,13 @@ export const BienBanPrintTemplate = React.forwardRef(({
                             <td style={{ border: 'none' }}>
 
                                 {/* Số phiếu */}
-                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
-                                    <div style={{ width: '450px' }}>
-                                        <Box style={{ display: 'flex', justifyContent: 'space-between', width: '450px' }}>
+                                <div style={{ display: 'flex', width: '100%', marginBottom: '16px' }}>
+                                    <div style={{ width: '100%' }}>
+                                        <Box style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
                                             <div style={{ ...styles.text, fontStyle: 'italic', display: 'flex', alignItems: 'center' }}>
                                                 {isV01 && (
                                                     <span style={{ whiteSpace: 'nowrap' }}>
-                                                        Số: {info.SoBienBan || '………'}/{info.MaDonViTaoPhieu || info.MaBoPhan || 'Đơn vị tạo phiếu'}
+                                                        Số: {info.SoBienBan || info.SoPhieu || '………'}/{info.MaDonViTaoPhieu || '………'}
                                                     </span>
                                                 )}
                                             </div>
@@ -389,7 +406,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                             ])}
                                             {renderInfoLine([
                                                 { label: 'Mã truy nguyên', name: 'MaTruyNguyen', value: customData.MaTruyNguyen },
-                                                { label: 'Mã Item', name: 'MaItem', value: customData.MaItem || info.MaSanPham }
+                                                { label: 'Mã Item', name: 'MaSanPham', value: customData.MaSanPham || customData.MaItem || info.MaSanPham }
                                             ])}
                                             {renderInfoLine([
                                                 { label: 'Số lượng', name: 'SoLuongKPH', value: bienBanSoLuongKhongPhuHop },
@@ -408,7 +425,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                             ])}
                                             {renderInfoLine([
                                                 { label: 'Tên VT/BTP/TP', name: 'TenSanPham', value: customData.TenSanPham || info.TenSanPham },
-                                                { label: 'Mã Item', name: 'MaItem', value: customData.MaItem || info.MaSanPham, grow: 0.6 }
+                                                { label: 'Mã Item', name: 'MaSanPham', value: customData.MaSanPham || customData.MaItem || info.MaSanPham, grow: 0.6 }
                                             ])}
                                             {renderInfoLine([
                                                 { label: 'Mã truy nguyên', name: 'MaTruyNguyen', value: customData.MaTruyNguyen },
@@ -482,7 +499,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {printDefects.length > 0 ? printDefects.map((d, index) => (
+                                            {printDefects.map((d, index) => (
                                                 <tr key={index}>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{index + 1}</td>
                                                     <td style={styles.td}>{d ? (isV01 ? (d.TenDoiTuong || customData.TenSanPham || info.TenSanPham || '') : d.TenLoi) : '\u00a0'}</td>
@@ -495,16 +512,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{d ? getDefectCode(d) : ''}</td>
                                                     <td style={styles.td}>{d?.GhiChu || ''}</td>
                                                 </tr>
-                                            )) : (
-                                                <tr>
-                                                    <td style={{ ...styles.td, textAlign: 'center' }}>1</td>
-                                                    <td style={styles.td}>&nbsp;</td>
-                                                    <td style={styles.td}>&nbsp;</td>
-                                                    <td style={styles.td}>&nbsp;</td>
-                                                    <td style={styles.td}>&nbsp;</td>
-                                                    <td style={styles.td}>&nbsp;</td>
-                                                </tr>
-                                            )}
+                                            ))}
                                         </tbody>
                                     </table>
                                 </Box>
@@ -567,17 +575,15 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {printProposals.length > 0 ? printProposals.map((x, index) => (
+                                            {printProposals.map((x, index) => (
                                                 <tr key={index}>
                                                     <td style={styles.td}>{x?.NoiDung || '\u00a0'}</td>
                                                     {!isV01 && <td style={styles.td}>{x?.DeNghiXuLy || ''}</td>}
-                                                    <td style={styles.td}>{x?.TrachNhiem || x?.TenBoPhan || ''}</td>
+                                                    <td style={styles.td}>{x?.TrachNhiem || ''}</td>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{x?.ThoiHan ? new Date(x.ThoiHan).toLocaleDateString('vi-VN') : ''}</td>
-                                                    <td style={styles.td}>{x?.TheoDoi || x?.NguoiXuLy || ''}</td>
+                                                    <td style={styles.td}>{x?.TheoDoi || ''}</td>
                                                 </tr>
-                                            )) : (
-                                                <tr><td style={styles.td}>&nbsp;</td>{!isV01 && <td style={styles.td}></td>}<td style={styles.td}></td><td style={styles.td}></td><td style={styles.td}></td></tr>
-                                            )}
+                                            ))}
                                         </tbody>
                                     </table>
 
@@ -600,8 +606,8 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                         <div style={{ ...styles.sectionTitle, marginTop: 0, marginBottom: 0, marginRight: '30px' }}>
                                             6. Chi phí phát sinh
                                         </div>
-                                        {renderCheckbox('Yêu cầu', chiPhi.length > 0)}
-                                        {renderCheckbox('Không yêu cầu', chiPhi.length === 0)}
+                                        {renderCheckbox('Yêu cầu', Boolean(info.YeuCauChiPhi))}
+                                        {renderCheckbox('Không yêu cầu', !info.YeuCauChiPhi)}
                                     </Box>
 
                                     <table style={{ ...styles.table, marginTop: '10px' }}>
@@ -615,7 +621,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {printCosts.length > 0 ? printCosts.map((c, index) => (
+                                            {printCosts.map((c, index) => (
                                                 <tr key={index}>
                                                     <td style={styles.td}>{c.TenChiPhi || c.LoaiChiPhi}</td>
                                                     <td style={{ ...styles.td, textAlign: 'right' }}>{c.GiaTri ? c.GiaTri.toLocaleString('vi-VN') : ''}</td>
@@ -623,10 +629,8 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{c.ThoiHan ? new Date(c.ThoiHan).toLocaleDateString('vi-VN') : ''}</td>
                                                     <td style={styles.td}>{c.NguoiTheoDoi || c.NguoiXuLy || ''}</td>
                                                 </tr>
-                                            )) : (
-                                                <tr><td style={styles.td}>&nbsp;</td><td style={styles.td}></td><td style={styles.td}></td><td style={styles.td}></td><td style={styles.td}></td></tr>
-                                            )}
-                                            {isV01 && (
+                                            ))}
+                                            {isV01 && printCosts.length > 0 && (
                                                 <tr>
                                                     <td style={{ ...styles.td, fontWeight: 'bold' }}>Tổng</td>
                                                     <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{totalCost.toLocaleString('vi-VN')}</td>
@@ -643,8 +647,8 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                         <div style={{ ...styles.sectionTitle, marginTop: 0, marginBottom: 0, marginRight: '30px' }}>
                                             7. Hành động khắc phục, phòng ngừa
                                         </div>
-                                        {renderCheckbox('Yêu cầu', hanhDong.length > 0)}
-                                        {renderCheckbox('Không yêu cầu', hanhDong.length === 0)}
+                                        {renderCheckbox('Yêu cầu', Boolean(info.YeuCauHanhDong))}
+                                        {renderCheckbox('Không yêu cầu', !info.YeuCauHanhDong)}
                                     </Box>
 
                                     <table style={{ ...styles.table, marginTop: '10px' }}>
@@ -658,7 +662,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {printActions.length > 0 ? printActions.map((h, index) => (
+                                            {printActions.map((h, index) => (
                                                 <tr key={index}>
                                                     {isV01 && <td style={{ ...styles.td, textAlign: 'center' }}>{index + 1}</td>}
                                                     <td style={styles.td}>{h?.NoiDung || '\u00a0'}</td>
@@ -666,9 +670,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{h?.ThoiHan ? new Date(h.ThoiHan).toLocaleDateString('vi-VN') : ''}</td>
                                                     <td style={styles.td}>{h?.NguoiTheoDoi || h?.NguoiXuLy || h?.TheoDoi || ''}</td>
                                                 </tr>
-                                            )) : (
-                                                <tr>{isV01 && <td style={styles.td}></td>}<td style={styles.td}>&nbsp;</td><td style={styles.td}></td><td style={styles.td}></td><td style={styles.td}></td></tr>
-                                            )}
+                                            ))}
                                         </tbody>
                                     </table>
                                 </Box>
@@ -679,7 +681,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                             <thead>
                                                 <tr>
                                                     <th style={{ ...styles.th, width: '80%' }}>Yêu cầu ý kiến Phòng ban chuyên môn</th>
-                                                    <th style={styles.th}>Ký xác nhận</th>
+                                                    <th style={styles.th}>Xác nhận</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -688,7 +690,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                                         <td style={{ ...styles.td, minHeight: '58px', verticalAlign: 'top' }}>
                                                             <div style={{ fontWeight: 'bold' }}>
                                                                 {opinion ? `- ${opinion.MaBoPhan || opinion.TenBoPhan || ''}` : '\u00a0'}
-                                                                {' '}({renderCheckbox('Có', opinion?.LuaChon === 'CO')}{renderCheckbox('Không', opinion?.LuaChon === 'KHONG')})
+                                                                {' '}({renderCheckbox('Có', true)}{renderCheckbox('Không', false)})
                                                                 {opinion?.ThoiGian ? ` ${new Date(opinion.ThoiGian).toLocaleDateString('vi-VN')}` : ' …/…/20…'}
                                                             </div>
                                                             <div style={{ whiteSpace: 'pre-wrap', minHeight: '34px' }}>{opinion?.NoiDung || ''}</div>
@@ -734,8 +736,14 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                     <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                         <div style={{ paddingLeft: '16px' }}>
                                             <div style={styles.boldText}>Nơi nhận:</div>
-                                            <div style={styles.text}>- {info.DonViTaoPhieu || '..................'};</div>
-                                            <div style={styles.text}>- Lưu ({info.DonViTaoPhieu || 'Đơn vị tạo phiếu'})</div>
+                                            {receiveDepartmentRows.length > 0 ? receiveDepartmentRows.map((departmentCodes, index) => (
+                                                <div key={departmentCodes.join('-')} style={{ ...styles.text, fontSize: '9pt' }}>
+                                                    - {departmentCodes.join(', ')}{index === receiveDepartmentRows.length - 1 ? ';' : ','}
+                                                </div>
+                                            )) : (
+                                                <div style={{ ...styles.text, fontSize: '9pt' }}>- ..................;</div>
+                                            )}
+                                            <div style={{ ...styles.text, fontSize: '9pt' }}>- Lưu ({creatorDepartmentCode})</div>
                                         </div>
                                         <div style={{ textAlign: 'center', width: '250px' }}>
                                             <div style={styles.text}>{formatSignatureDate(followUpEvaluation?.ThoiGian)}</div>

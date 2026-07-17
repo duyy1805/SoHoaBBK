@@ -74,7 +74,8 @@ import {
     saveBienBanCustomFields,
     getAssignableUsers,
     assignUser,
-    deleteStandaloneBienBan
+    deleteStandaloneBienBan,
+    updateKphRequirements
 } from "../../api/bienBan.api";
 import { getDefectList } from "../../api/lookup.api";
 import { decodeToken } from "../../utils/auth";
@@ -83,6 +84,11 @@ import { BienBanPrintTemplate } from "./components/BienBanPrintTemplate";
 import { BienBanTrenChuyenPrintTemplate } from "./components/BienBanTrenChuyenPrintTemplate";
 import { PhieuXuLyKhongPhuHopPrintTemplate } from "./components/PhieuXuLyKhongPhuHopPrintTemplate";
 import KphV01WorkflowSections from "./components/KphV01WorkflowSections";
+import BienBanWorkflowGuide from "./components/BienBanWorkflowGuide";
+import {
+    buildBienBanWorkflow,
+    getBienBanStatusMeta
+} from "./components/bienBanWorkflow";
 import { useToast } from "../../components/common/ToastContext";
 
 const PHAT_HIEN_TU_OPTIONS = [
@@ -105,7 +111,7 @@ const HEADER_FIELD_CONFIG = [
     ["Đơn vị sản xuất", "TenBoPhan"],
     ["Mã ĐVSX", "MaBoPhan"],
     ["Tên VT/BTP/TP", "TenSanPham"],
-    ["Mã Item", "MaItem"],
+    ["Mã Item", "MaSanPham"],
     ["Mã truy nguyên", "MaTruyNguyen"],
     ["Đơn hàng", "DonHang"],
     ["Lô SX", "Lot"],
@@ -155,11 +161,12 @@ export default function PhieuXuLyKhongPhuHopDetail() {
     const [previewImage, setPreviewImage] = useState(null);
 
     const [dynamicFields, setDynamicFields] = useState([]);
+    const [canEditKphCustomFields, setCanEditKphCustomFields] = useState(false);
     const [headerFields, setHeaderFields] = useState({
         TenBoPhan: "",
         MaBoPhan: "",
         TenSanPham: "",
-        MaItem: "",
+        MaSanPham: "",
         MaTruyNguyen: "",
         DonHang: "",
         Lot: "",
@@ -234,6 +241,7 @@ export default function PhieuXuLyKhongPhuHopDetail() {
             setSpecialistOpinions(res.data.specialistOpinions || []);
             setFollowUpEvaluation(res.data.followUpEvaluation || null);
             setDynamicFields(res.data.dynamicFields || []);
+            setCanEditKphCustomFields(Boolean(res.data.canEditKphCustomFields));
             setIsEditingStandaloneDefects((res.data.defects || []).length === 0 && (res.data.assigns || []).length === 0);
             const fieldsMap = (res.data.dynamicFields || []).reduce((acc, field) => {
                 if (field?.FieldName) {
@@ -242,13 +250,13 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                 return acc;
             }, {});
             setHeaderFields({
-                TenBoPhan: fieldsMap.TenBoPhan || "",
-                MaBoPhan: fieldsMap.MaBoPhan || "",
-                TenSanPham: fieldsMap.TenSanPham || "",
-                MaItem: fieldsMap.MaItem || "",
+                TenBoPhan: fieldsMap.TenBoPhan || res.data.info?.DonViTaoPhieu || res.data.info?.TenBoPhan || "",
+                MaBoPhan: fieldsMap.MaBoPhan || res.data.info?.MaDonViTaoPhieu || res.data.info?.MaBoPhan || "",
+                TenSanPham: fieldsMap.TenSanPham || res.data.info?.TenSanPham || "",
+                MaSanPham: fieldsMap.MaSanPham || fieldsMap.MaItem || res.data.info?.MaSanPham || "",
                 MaTruyNguyen: fieldsMap.MaTruyNguyen || "",
                 DonHang: fieldsMap.DonHang || "",
-                Lot: fieldsMap.Lot || "",
+                Lot: fieldsMap.Lot || res.data.info?.Lot || "",
                 SoLuongKPH: fieldsMap.SoLuongKPH || "",
                 DauTuan: fieldsMap.DauTuan || "",
                 PhatHienTu: fieldsMap.PhatHienTu || "",
@@ -258,7 +266,7 @@ export default function PhieuXuLyKhongPhuHopDetail() {
             setMoTaChung(moTa);
             setMoTaConfirmed(!!moTa);
             const hasHeaderData = !!moTa.trim() || Object.values(fieldsMap).some((value) => String(value || "").trim());
-            setIsEditingStandaloneHeader(!hasHeaderData && (res.data.assigns || []).length === 0);
+            setIsEditingStandaloneHeader(!hasHeaderData && Boolean(res.data.canEditKphCustomFields));
 
         } catch (err) {
             console.error("Lỗi tải biên bản:", err);
@@ -298,11 +306,6 @@ export default function PhieuXuLyKhongPhuHopDetail() {
     };
 
     const handleSaveStandaloneHeader = async () => {
-        if (assigns.length > 0) {
-            showToast("Phiếu đã phân bộ phận xử lý, không thể chỉnh sửa thông tin chung", "warning");
-            return;
-        }
-
         if (!moTaChung.trim()) {
             showToast("Vui lòng nhập mô tả chung!", "warning");
             return;
@@ -510,7 +513,11 @@ export default function PhieuXuLyKhongPhuHopDetail() {
         });
     };
 
-    const handleConfirmUser = () => {
+    const handleConfirmUser = (targetBoPhanId = null) => {
+        if (!isAdminUser && info?.MauPhieuVersion === "V01" && !currentDepartmentOpinionAnswered) {
+            showToast("Vui lòng xác nhận ý kiến phòng ban chuyên môn trước", "warning");
+            return;
+        }
         setConfirmDialog({
             open: true,
             title: 'Xác nhận thông tin',
@@ -518,7 +525,7 @@ export default function PhieuXuLyKhongPhuHopDetail() {
             type: 'info',
             onConfirm: async () => {
                 try {
-                    await confirmUser(bienBanId);
+                    await confirmUser(bienBanId, targetBoPhanId);
                     showToast("Xác nhận thông tin thành công", "success");
                     loadData();
                     setConfirmDialog(prev => ({ ...prev, open: false }));
@@ -574,6 +581,10 @@ export default function PhieuXuLyKhongPhuHopDetail() {
     });
     const handlePrint = async () => {
         try {
+            if (!canEditKphCustomFields) {
+                triggerPrint();
+                return;
+            }
             // 1. Gom dữ liệu từ các thẻ input
             const inputs = document.querySelectorAll('.custom-field');
             const fieldsData = {};
@@ -605,23 +616,31 @@ export default function PhieuXuLyKhongPhuHopDetail() {
     };
 
     // --- UI Helpers & Conditions ---
-    const getStatusText = (boPhanId) => xuLy.some(x => x.BoPhanId === boPhanId) ? "Đã xử lý" : "Đang chờ";
-    const getStatusColor = (boPhanId) => xuLy.some(x => x.BoPhanId === boPhanId) ? "success" : "warning";
+    const getStatusText = (boPhanId) => xacNhan.some(x => Number(x.BoPhanId) === Number(boPhanId)) ? "Đã xác nhận" : "Đang chờ";
+    const getStatusColor = (boPhanId) => xacNhan.some(x => Number(x.BoPhanId) === Number(boPhanId)) ? "success" : "warning";
 
-    const isManagerOrQA = currentUserPermissions.includes("XAC_NHAN_NGUOI_XU_LY") ||
+    const isAdminUser = currentUserRoles.some((role) => String(role || "").toUpperCase() === "ADMIN");
+    const isManagerOrQA = isAdminUser || currentUserPermissions.includes("XAC_NHAN_NGUOI_XU_LY") ||
         currentUserPermissions.includes("KET_LUAN") ||
         currentUserPermissions.includes("QUAN_TRI_DM");
     const isStandaloneBienBan = true;
     const isTrenChuyenBienBan = Number(info?.LoaiKiemId) === 6;
 
     const isAssigned = assigns.some(a => a.BoPhanId === currentUserBoPhanId);
+    const b7Assign = assigns.find((a) => String(a.MaBoPhan || "").toUpperCase() === "B7");
+    const canAddProposal = Boolean(b7Assign) && (isAdminUser || Number(currentUserBoPhanId) === Number(b7Assign.BoPhanId));
     const hasXuLy = xuLy.some(x => x.BoPhanId === currentUserBoPhanId);
     const isConfirmed = xacNhan.some(x => x.BoPhanId === currentUserBoPhanId);
     const allConfirmed = assigns.length > 0 && assigns.every(a => xacNhan.some(x => x.BoPhanId === a.BoPhanId));
     const hasSignedSpecialistOpinion = specialistOpinions.some(item => item.NguoiTraLoiId);
     const allOpinionsAnswered = specialistOpinions.length === assigns.length &&
         assigns.every(assign => specialistOpinions.some(item => Number(item.BoPhanId) === Number(assign.BoPhanId) && item.NguoiTraLoiId));
-    const canSubmitCompletion = allConfirmed &&
+    const currentDepartmentOpinionAnswered = specialistOpinions.some(item =>
+        Number(item.BoPhanId) === Number(currentUserBoPhanId) && item.NguoiTraLoiId
+    );
+    const requiredSectionsReady = (!b7Assign || xuLy.some((x) => Number(x.BoPhanId) === Number(b7Assign.BoPhanId))) &&
+        (!info?.YeuCauChiPhi || chiPhi.length > 0) && (!info?.YeuCauHanhDong || hanhDong.length > 0);
+    const canSubmitCompletion = allConfirmed && requiredSectionsReady &&
         (info?.MauPhieuVersion !== "V01" || allOpinionsAnswered) &&
         !["CHO_THEO_DOI", "HOAN_TAT"].includes(info?.TrangThai);
     const defectCount = defects.length;
@@ -639,12 +658,51 @@ export default function PhieuXuLyKhongPhuHopDetail() {
         Number(bpsxSignatureBoPhanId) === Number(currentUserBoPhanId);
     const isBpsxSignatureConfirmed = xacNhan.some(x => x.VaiTro === "KPH_BPSX");
     const assignConfirmed = Boolean(info?.AssignConfirmed);
-    const canConfirmProcessing = assignConfirmed && isAssigned && !isConfirmed && hasXuLy;
+    const ownIsB7 = Number(currentUserBoPhanId) === Number(b7Assign?.BoPhanId);
+    const processingEntryReady = info?.MauPhieuVersion !== "V01" ? hasXuLy : (!ownIsB7 || hasXuLy);
+    const canConfirmProcessing = assignConfirmed && isAssigned && !isConfirmed && processingEntryReady &&
+        (info?.MauPhieuVersion !== "V01" || currentDepartmentOpinionAnswered);
+    const updateRequirement = async (field, value) => {
+        try { await updateKphRequirements(bienBanId, { [field]: value }); await loadData(); }
+        catch (err) { showToast(err?.response?.data?.message || "Không thể cập nhật yêu cầu", "error"); }
+    };
     const canConfirmBpsxSignature = assignConfirmed && isBpsxSignatureDepartment && !isBpsxSignatureConfirmed;
     const phatHienTuLabel = PHAT_HIEN_TU_OPTIONS.find((item) => item.value === headerFields.PhatHienTu)?.label || "---";
     const mucDoKphLabel = MUC_DO_KPH_OPTIONS.find((item) => item.value === headerFields.MucDo)?.label || "---";
     const defectDraftIsManual = defectDraft?.sourceType === "manual" || (!defectDraft?.DefectId && defectDraft?.TenLoiTuNhap);
     const selectedDefectOption = defectOptions.find((option) => Number(option.Id) === Number(defectDraft?.DefectId)) || null;
+    const scrollToSection = (sectionId) => {
+        document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    const workflow = buildBienBanWorkflow({
+        info,
+        defects,
+        assigns,
+        xuLy,
+        xacNhan,
+        opinions: specialistOpinions,
+        evaluation: followUpEvaluation,
+        currentUserBoPhanId,
+        isManagerOrQA,
+        basicInfoConfirmed: !isEditingStandaloneHeader,
+        canConfirmProcessing,
+        canConfirmBpsxSignature,
+        canSubmitCompletion,
+        actions: {
+            editInfo: () => {
+                setIsEditingStandaloneHeader(true);
+                scrollToSection("kph-thong-tin");
+            },
+            manageAssignments: () => setOpenAssignModal(true),
+            confirmAssignments: handleConfirmAssign,
+            addProcessing: () => setOpenXuLyModal(true),
+            openOpinions: () => scrollToSection("kph-y-kien-chuyen-mon"),
+            confirmProcessing: handleConfirmUser,
+            complete: handleComplete,
+            openFollowUp: () => scrollToSection("kph-y-kien-chuyen-mon")
+        }
+    });
+    const statusMeta = getBienBanStatusMeta(info?.TrangThai);
 
     if (loading) {
         return (
@@ -706,21 +764,22 @@ export default function PhieuXuLyKhongPhuHopDetail() {
             </Paper>
 
             <Box sx={{ px: { xs: 2, md: 4 } }}>
+                <BienBanWorkflowGuide workflow={workflow} status={info.TrangThai} />
                 {/* <Container > */}
                 <Grid container spacing={3}>
-                    {/* LEFT COLUMN: Thông tin chung & Lỗi */}
-                    <Grid size={{ xs: 12, lg: isStandaloneBienBan ? 12 : 4 }}>
+                    {/* Thông tin chung & lỗi: dùng toàn chiều rộng theo bố cục hồ sơ một cột. */}
+                    <Grid id="kph-thong-tin" size={{ xs: 12 }} sx={{ scrollMarginTop: 100 }}>
                         <Stack spacing={3}>
                             {/* Card Header Info */}
                             <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
-                                <CardContent>
-                                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={2}>
+                                <CardContent sx={{ p: { xs: 2, md: 2.5 }, '&:last-child': { pb: { xs: 2, md: 2.5 } } }}>
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.25}>
                                         <Typography variant="h5" color="primary.main" fontWeight="bold">
                                             {isStandaloneBienBan ? info.SoBienBan : info.SoPhieu}
                                         </Typography>
-                                        <Chip label={info.TrangThai} color="primary" variant="filled" size="small" />
+                                        <Chip label={statusMeta.label} color={statusMeta.color} variant="filled" size="small" />
                                     </Stack>
-                                    <Divider sx={{ mb: 2 }} />
+                                    <Divider sx={{ mb: 1.5 }} />
                                     {isStandaloneBienBan ? (
                                         <Stack spacing={1.5}>
                                             <Grid container spacing={2}>
@@ -752,28 +811,15 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                                             </Typography>
                                         </Stack>
                                     ) : (
-                                        <Stack spacing={1.5}>
-                                            <Box>
+                                        <Grid container spacing={{ xs: 1.5, md: 3 }} alignItems="start">
+                                            <Grid size={{ xs: 12, md: 5 }}>
                                                 <Typography variant="caption" color="text.secondary">Sản phẩm</Typography>
                                                 <Typography variant="body1" fontWeight="500">{info.TenSanPham}</Typography>
-                                            </Box>
-                                            <Stack direction="row" spacing={4}>
-                                                <Box>
-                                                    <Typography variant="caption" color="text.secondary">Lot</Typography>
-                                                    <Typography variant="body2">{info.Lot}</Typography>
-                                                </Box>
-                                                <Box>
-                                                    <Typography variant="caption" color="text.secondary">Người lập</Typography>
-                                                    <Typography variant="body2">{info.NguoiLap}</Typography>
-                                                </Box>
-                                                {info.DoiTuong && (
-                                                    <Box>
-                                                        <Typography variant="caption" color="text.secondary">Nơi đến</Typography>
-                                                        <Typography variant="body2">{info.DoiTuong}</Typography>
-                                                    </Box>
-                                                )}
-                                            </Stack>
-                                        </Stack>
+                                            </Grid>
+                                            <Grid size={{ xs: 6, sm: 3, md: 1.5 }}><Typography variant="caption" color="text.secondary">Lot</Typography><Typography variant="body2">{info.Lot || '—'}</Typography></Grid>
+                                            <Grid size={{ xs: 6, sm: 3, md: 2 }}><Typography variant="caption" color="text.secondary">Người lập</Typography><Typography variant="body2">{info.NguoiLap || '—'}</Typography></Grid>
+                                            <Grid size={{ xs: 12, sm: 6, md: 3.5 }}><Typography variant="caption" color="text.secondary">Nơi đến</Typography><Typography variant="body2">{info.DoiTuong || '—'}</Typography></Grid>
+                                        </Grid>
                                     )}
                                 </CardContent>
                             </Card>
@@ -791,7 +837,7 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                                             <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                                 <DescriptionIcon color="action" /> Thông tin phiếu
                                             </Typography>
-                                            {canEditCommonAndDefects && !isEditingStandaloneHeader && (
+                                            {canEditKphCustomFields && !isEditingStandaloneHeader && (
                                                 <Button
                                                     size="small"
                                                     variant="outlined"
@@ -808,7 +854,7 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                                         <Typography variant="subtitle2" sx={{ mb: 1.5, color: 'text.secondary' }}>
                                             Thông tin nhận diện
                                         </Typography>
-                                        {isEditingStandaloneHeader && canEditCommonAndDefects ? (
+                                        {isEditingStandaloneHeader && canEditKphCustomFields ? (
                                             <Grid container spacing={2}>
                                                 {HEADER_FIELD_CONFIG.map(([label, field]) => (
                                                     <Grid size={{ xs: 12, sm: 6, lg: 4 }} key={field}>
@@ -928,7 +974,7 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                                                 </Box>
                                             </Stack>
                                         )}
-                                        {canEditCommonAndDefects && isEditingStandaloneHeader && (
+                                        {canEditKphCustomFields && isEditingStandaloneHeader && (
                                             <Box sx={{ mt: 2, textAlign: 'right' }}>
                                                 {moTaConfirmed && (
                                                     <Button color="inherit" sx={{ mr: 1 }} onClick={loadData}>
@@ -1179,8 +1225,8 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                         </Stack>
                     </Grid>
 
-                    {/* RIGHT COLUMN: Các luồng xử lý */}
-                    <Grid size={{ xs: 12, lg: isStandaloneBienBan ? 12 : 8 }}>
+                    {/* Các luồng xử lý */}
+                    <Grid id="kph-xu-ly" size={{ xs: 12 }} sx={{ scrollMarginTop: 100 }}>
                         <Stack spacing={3}>
 
                             {/* Phân công xử lý */}
@@ -1213,54 +1259,17 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                                         {assigns.length === 0 ? (
                                             <Typography color="text.secondary" fontStyle="italic">Chưa có bộ phận được phân công.</Typography>
                                         ) : (
-                                            <Grid container spacing={2}>
-                                                {assigns.map((a, i) => {
-                                                    const isProductionDepartment = Number(a.BoPhanId) === Number(bpsxSignatureBoPhanId);
-                                                    const canAssign = info.AssignConfirmed && 
-                                                                    a.BoPhanId === currentUserBoPhanId && 
-                                                                    (currentUserPermissions.includes("XAC_NHAN_NGUOI_XU_LY") || 
-                                                                     currentUserRoles.some(r => r?.toUpperCase().includes("TP")) ||
-                                                                     currentUserRoles.length === 0);
-
-                                                    return (
-                                                        <Grid size={{ xs: 12, sm: 6, md: 4 }} key={i}>
-                                                            <Paper variant="outlined" sx={{ p: 1.5, bgcolor: '#f8fafc' }}>
-                                                                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                                                                    <Box>
-                                                                        <Typography variant="body2" fontWeight="bold">{a.TenBoPhan}</Typography>
-                                                                        <Typography variant="caption" color="text.secondary">Mã: {a.MaBoPhan}</Typography>
-                                                                    </Box>
-                                                                    <Stack direction="row" spacing={0.75} flexWrap="wrap" justifyContent="flex-end">
-                                                                        {isProductionDepartment && (
-                                                                            <Chip size="small" label="Bộ phận sản xuất" color="info" variant="outlined" />
-                                                                        )}
-                                                                        <Chip size="small" label={getStatusText(a.BoPhanId)} color={getStatusColor(a.BoPhanId)} />
-                                                                    </Stack>
-                                                                </Stack>
-                                                                <Box sx={{ borderTop: '1px solid #eee', pt: 1, mt: 1 }}>
-                                                                    <Typography variant="caption" color="primary" sx={{ display: 'block', mb: 0.5 }}>
-                                                                        Phụ trách: <strong>{a.NguoiXuLy || "Chưa phân công"}</strong>
-                                                                    </Typography>
-                                                                    {canAssign && !isConfirmed && (
-                                                                        <Button 
-                                                                            size="small" 
-                                                                            variant="text" 
-                                                                            onClick={() => {
-                                                                                setSelectedAssign(a);
-                                                                                setOpenAssignUserModal(true);
-                                                                            }}
-                                                                            sx={{ p: 0, minWidth: 0, fontSize: '0.75rem' }}
-                                                                        >
-                                                                            Phân cá nhân
-                                                                        </Button>
-                                                                    )}
-                                                                </Box>
-                                                            </Paper>
-                                                        </Grid>
-                                                    );
-                                                })}
-                                            </Grid>
+                                            <TableContainer sx={{ border: '1px solid #e5e7eb', borderRadius: 1 }}>
+                                                <Table size="small">
+                                                    <TableHead sx={{ bgcolor: '#f8fafc' }}><TableRow><TableCell>Bộ phận</TableCell><TableCell>Mã bộ phận</TableCell><TableCell>Vai trò</TableCell><TableCell align="right">Trạng thái</TableCell></TableRow></TableHead>
+                                                    <TableBody>{assigns.map((a, i) => {
+                                                        const isProductionDepartment = Number(a.BoPhanId) === Number(bpsxSignatureBoPhanId);
+                                                        return <TableRow key={i} hover><TableCell sx={{ fontWeight: 700 }}>{a.TenBoPhan || '—'}</TableCell><TableCell>{a.MaBoPhan || '—'}</TableCell><TableCell>{isProductionDepartment ? <Chip size="small" label="Bộ phận sản xuất" color="info" variant="outlined" /> : 'Phối hợp xử lý'}</TableCell><TableCell align="right"><Chip size="small" label={getStatusText(a.BoPhanId)} color={getStatusColor(a.BoPhanId)} /></TableCell></TableRow>;
+                                                    })}</TableBody>
+                                                </Table>
+                                            </TableContainer>
                                         )}
+                                        {isAdminUser && info.AssignConfirmed && <Stack direction="row" flexWrap="wrap" sx={{ mt: 2, gap: 1 }}>{assigns.filter((a) => !xacNhan.some((x) => Number(x.BoPhanId) === Number(a.BoPhanId))).map((a) => <Button key={a.BoPhanId} size="small" variant="outlined" onClick={() => handleConfirmUser(a.BoPhanId)}>Xác nhận thay {a.MaBoPhan}</Button>)}</Stack>}
 
                                         {!info.AssignConfirmed && !hasSignedSpecialistOpinion && assigns.length > 0 && isManagerOrQA && (
                                             <Box sx={{ mt: 3, textAlign: 'right' }}>
@@ -1280,7 +1289,7 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                                         <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                             <LightbulbCircleIcon color="warning" /> Ý kiến / Đề xuất xử lý
                                         </Typography>
-                                        {info.AssignConfirmed && isAssigned && !isConfirmed && (
+                                        {info.AssignConfirmed && canAddProposal && info.TrangThai !== "HOAN_TAT" && (
                                             <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => setOpenXuLyModal(true)}>
                                                 Thêm ý kiến
                                             </Button>
@@ -1290,25 +1299,24 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                                         <Table>
                                             <TableHead sx={{ bgcolor: '#f8fafc' }}>
                                                 <TableRow>
-                                                    <TableCell>Nội dung & Đề nghị</TableCell>
-                                                    <TableCell sx={{ width: '30%' }}>Người xử lý & Thời hạn</TableCell>
+                                                    <TableCell>Nội dung ý kiến</TableCell>
+                                                    <TableCell>Đề nghị xử lý</TableCell>
+                                                    <TableCell>Trách nhiệm</TableCell>
+                                                    <TableCell>Theo dõi</TableCell>
+                                                    <TableCell>Thời hạn</TableCell>
                                                 </TableRow>
                                             </TableHead>
                                             <TableBody>
                                                 {xuLy.length === 0 ? (
-                                                    <TableRow><TableCell colSpan={2} align="center" sx={{ py: 3, color: 'text.secondary' }}>Chưa có ý kiến xử lý</TableCell></TableRow>
+                                                    <TableRow><TableCell colSpan={5} align="center" sx={{ py: 3, color: 'text.secondary' }}>Chưa có ý kiến xử lý</TableCell></TableRow>
                                                 ) : (
                                                     xuLy.map((x, i) => (
                                                         <TableRow key={i} hover>
-                                                            <TableCell>
-                                                                <Typography variant="body2" fontWeight="500">{x.NoiDung}</Typography>
-                                                                <Chip size="small" label={`Đề nghị: ${x.DeNghiXuLy}`} sx={{ mt: 1 }} />
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                <Typography variant="body2" fontWeight="bold">{x.NguoiXuLy}</Typography>
-                                                                <Typography variant="caption" color="text.secondary" display="block">{x.MaBoPhan}</Typography>
-                                                                <Typography variant="caption" color="error.main">Hạn: {new Date(x.ThoiHan).toLocaleDateString("vi-VN")}</Typography>
-                                                            </TableCell>
+                                                            <TableCell sx={{ whiteSpace: 'pre-wrap', minWidth: 220 }}>{x.NoiDung || '—'}</TableCell>
+                                                            <TableCell>{x.DeNghiXuLy || '—'}</TableCell>
+                                                            <TableCell>{x.TrachNhiem || '—'}</TableCell>
+                                                            <TableCell sx={{ fontWeight: 600 }}>{x.TheoDoi || '—'}</TableCell>
+                                                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'error.main' }}>{x.ThoiHan ? new Date(x.ThoiHan).toLocaleDateString("vi-VN") : '—'}</TableCell>
                                                         </TableRow>
                                                     ))
                                                 )}
@@ -1318,79 +1326,75 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                                 </CardContent>
                             </Card>
 
-                            {/* Group: Chi phí & Hành động khắc phục (2 Cột) */}
+                            {/* Chi phí & hành động khắc phục xếp dọc để bảng có đủ không gian. */}
                             <Grid container spacing={3}>
-                                <Grid size={{ xs: 12, md: 6 }}>
+                                <Grid size={{ xs: 12 }}>
                                     <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2, height: '100%' }}>
                                         <CardContent>
                                             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
                                                 <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '1.1rem' }}>
                                                     <AttachMoneyIcon color="success" /> Chi phí phát sinh
                                                 </Typography>
-                                                {info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy && (
-                                                    <Button size="small" color="success" onClick={() => setOpenChiPhiModal(true)}><AddIcon /></Button>
+                                                <Stack direction="row" spacing={1} alignItems="center">
+                                                <Chip size="small" color={info.YeuCauChiPhi ? "success" : "default"} label={info.YeuCauChiPhi ? "Yêu cầu" : "Không yêu cầu"} />
+                                                {info.CanConfigureRequirements && <Button size="small" onClick={() => updateRequirement("yeuCauChiPhi", !info.YeuCauChiPhi)}>{info.YeuCauChiPhi ? "Bỏ yêu cầu" : "Yêu cầu"}</Button>}
+                                                {info.YeuCauChiPhi && info.TrangThai !== "HOAN_TAT" && (
+                                                    <Button size="small" color="success" startIcon={<AddIcon />} onClick={() => setOpenChiPhiModal(true)}>
+                                                        Thêm chi phí
+                                                    </Button>
                                                 )}
+                                                </Stack>
                                             </Stack>
                                             <Divider sx={{ mb: 2 }} />
-                                            {chiPhi.length === 0 ? (
-                                                <Typography color="text.secondary" variant="body2">Không ghi nhận chi phí.</Typography>
-                                            ) : (
-                                                <Stack spacing={1.5}>
-                                                    {chiPhi.map((c, i) => (
-                                                        <Paper key={i} variant="outlined" sx={{ p: 1.5, bgcolor: '#fbfdf8' }}>
-                                                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                                                                <Typography variant="body2" fontWeight="500">{c.LoaiChiPhi}</Typography>
-                                                                <Typography variant="body2" color="success.main" fontWeight="bold">
-                                                                    {c.GiaTri?.toLocaleString("vi-VN")} đ
-                                                                </Typography>
-                                                            </Box>
-                                                            <Typography variant="caption" color="text.secondary">{c.TenBoPhan}</Typography>
-                                                        </Paper>
-                                                    ))}
-                                                </Stack>
-                                            )}
+                                            <TableContainer sx={{ border: '1px solid #e5e7eb', borderRadius: 1 }}>
+                                                <Table size="small">
+                                                    <TableHead sx={{ bgcolor: '#f8fafc' }}><TableRow><TableCell>Loại chi phí</TableCell><TableCell>Bộ phận</TableCell><TableCell align="right">Giá trị</TableCell></TableRow></TableHead>
+                                                    <TableBody>{chiPhi.length === 0 ? <TableRow><TableCell colSpan={3} align="center" sx={{ color: 'text.secondary' }}>Không ghi nhận chi phí.</TableCell></TableRow> : chiPhi.map((c, i) => <TableRow key={i} hover><TableCell>{c.LoaiChiPhi || '—'}</TableCell><TableCell>{c.TenBoPhan || '—'}</TableCell><TableCell align="right" sx={{ color: 'success.main', fontWeight: 700, whiteSpace: 'nowrap' }}>{Number(c.GiaTri || 0).toLocaleString("vi-VN")} đ</TableCell></TableRow>)}</TableBody>
+                                                </Table>
+                                            </TableContainer>
                                         </CardContent>
                                     </Card>
                                 </Grid>
 
-                                <Grid size={{ xs: 12, md: 6 }}>
+                                <Grid size={{ xs: 12 }}>
                                     <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2, height: '100%' }}>
                                         <CardContent>
                                             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
                                                 <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '1.1rem' }}>
                                                     <BuildCircleIcon color="info" /> Hành động khắc phục
                                                 </Typography>
-                                                {info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy && (
-                                                    <Button size="small" color="info" onClick={() => setOpenHanhDongModal(true)}><AddIcon /></Button>
+                                                <Stack direction="row" spacing={1} alignItems="center">
+                                                <Chip size="small" color={info.YeuCauHanhDong ? "success" : "default"} label={info.YeuCauHanhDong ? "Yêu cầu" : "Không yêu cầu"} />
+                                                {info.CanConfigureRequirements && <Button size="small" onClick={() => updateRequirement("yeuCauHanhDong", !info.YeuCauHanhDong)}>{info.YeuCauHanhDong ? "Bỏ yêu cầu" : "Yêu cầu"}</Button>}
+                                                {info.YeuCauHanhDong && info.TrangThai !== "HOAN_TAT" && (
+                                                    <Button size="small" color="info" startIcon={<AddIcon />} onClick={() => setOpenHanhDongModal(true)}>
+                                                        Thêm hành động
+                                                    </Button>
                                                 )}
+                                                </Stack>
                                             </Stack>
                                             <Divider sx={{ mb: 2 }} />
-                                            {hanhDong.length === 0 ? (
-                                                <Typography color="text.secondary" variant="body2">Chưa có hành động cụ thể.</Typography>
-                                            ) : (
-                                                <Stack spacing={1.5}>
-                                                    {hanhDong.map((h, i) => (
-                                                        <Paper key={i} variant="outlined" sx={{ p: 1.5, bgcolor: '#f8fafc' }}>
-                                                            <Typography variant="body2" fontWeight="500" mb={1}>{h.NoiDung}</Typography>
-                                                            <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                                                <Typography variant="caption" color="text.secondary">{h.TenBoPhan}</Typography>
-                                                                <Typography variant="caption" color="error.main">Hạn: {new Date(h.ThoiHan).toLocaleDateString("vi-VN")}</Typography>
-                                                            </Stack>
-                                                        </Paper>
-                                                    ))}
-                                                </Stack>
-                                            )}
+                                            <TableContainer sx={{ border: '1px solid #e5e7eb', borderRadius: 1 }}>
+                                                <Table size="small">
+                                                    <TableHead sx={{ bgcolor: '#f8fafc' }}><TableRow><TableCell>Nội dung</TableCell><TableCell>Bộ phận</TableCell><TableCell>Thời hạn</TableCell><TableCell>Người theo dõi</TableCell></TableRow></TableHead>
+                                                    <TableBody>{hanhDong.length === 0 ? <TableRow><TableCell colSpan={4} align="center" sx={{ color: 'text.secondary' }}>Chưa có hành động cụ thể.</TableCell></TableRow> : hanhDong.map((h, i) => <TableRow key={i} hover><TableCell sx={{ whiteSpace: 'pre-wrap' }}>{h.NoiDung || '—'}</TableCell><TableCell>{h.TenBoPhan || '—'}</TableCell><TableCell sx={{ color: 'error.main', whiteSpace: 'nowrap' }}>{h.ThoiHan ? new Date(h.ThoiHan).toLocaleDateString("vi-VN") : '—'}</TableCell><TableCell>{h.NguoiTheoDoi || h.NguoiXuLy || h.TheoDoi || '—'}</TableCell></TableRow>)}</TableBody>
+                                                </Table>
+                                            </TableContainer>
                                         </CardContent>
                                     </Card>
                                 </Grid>
                             </Grid>
 
-                            <KphV01WorkflowSections
-                                bienBanId={bienBanId} info={info}
-                                opinions={specialistOpinions} evaluation={followUpEvaluation}
-                                currentUserBoPhanId={currentUserBoPhanId} permissions={currentUserPermissions}
-                                reload={loadData} showToast={showToast}
-                            />
+                            <Box id="kph-y-kien-chuyen-mon" sx={{ scrollMarginTop: 100 }}>
+                                <KphV01WorkflowSections
+                                    bienBanId={bienBanId} info={info}
+                                    opinions={specialistOpinions} evaluation={followUpEvaluation}
+                                    currentUserBoPhanId={currentUserBoPhanId} permissions={currentUserPermissions}
+                                    roles={currentUserRoles}
+                                    isAdmin={Boolean(info?.IsAdmin) || isAdminUser}
+                                    reload={loadData} showToast={showToast}
+                                />
+                            </Box>
 
                             {/* Lịch sử xác nhận */}
                             {xacNhan.length > 0 && (
@@ -1478,6 +1482,7 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                                     dynamicFields={dynamicFields}
                                     specialistOpinions={specialistOpinions}
                                     followUpEvaluation={followUpEvaluation}
+                                    canEditCustomFields={canEditKphCustomFields}
                                 />
                             ) : (
                                 <BienBanPrintTemplate
@@ -1492,6 +1497,7 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                                     dynamicFields={dynamicFields}
                                     specialistOpinions={specialistOpinions}
                                     followUpEvaluation={followUpEvaluation}
+                                    canEditCustomFields={canEditKphCustomFields}
                                 />
                             )}
                         </Paper>
@@ -1800,7 +1806,7 @@ function AssignDepartmentDialog({ open, onClose, bienBanId, reload, assignedIds,
 }
 
 function XuLyDialog({ open, onClose, bienBanId, currentUserId, reload }) {
-    const [form, setForm] = useState({ NoiDung: '', DeNghiXuLyId: '', ThoiHan: '' });
+    const [form, setForm] = useState({ NoiDung: '', DeNghiXuLyId: '', ThoiHan: '', TrachNhiem: '', TheoDoi: '' });
     const [deNghis, setDeNghis] = useState([]);
 
     useEffect(() => {
@@ -1816,6 +1822,8 @@ function XuLyDialog({ open, onClose, bienBanId, currentUserId, reload }) {
                 noiDung: form.NoiDung,
                 deNghiXuLyId: form.DeNghiXuLyId,
                 thoiHan: form.ThoiHan,
+                trachNhiem: form.TrachNhiem,
+                theoDoi: form.TheoDoi,
                 currentUserId
             });
             reload();
@@ -1858,6 +1866,8 @@ function XuLyDialog({ open, onClose, bienBanId, currentUserId, reload }) {
                         value={form.ThoiHan}
                         onChange={e => setForm({ ...form, ThoiHan: e.target.value })}
                     />
+                    <TextField label="Trách nhiệm" required fullWidth value={form.TrachNhiem} onChange={e => setForm({ ...form, TrachNhiem: e.target.value })} />
+                    <TextField label="Theo dõi" required fullWidth value={form.TheoDoi} onChange={e => setForm({ ...form, TheoDoi: e.target.value })} />
                 </Stack>
             </DialogContent>
             <DialogActions sx={{ p: 2 }}>
