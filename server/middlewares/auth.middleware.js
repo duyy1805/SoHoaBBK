@@ -6,6 +6,7 @@ const authenticateToken = (req, res, next) => {
 
     // Không có token
     if (!token) {
+        console.warn(`[AUTH] ${req.method} ${req.originalUrl}: missing access token`);
         return res.status(401).json({
             message: 'Missing access token'
         });
@@ -28,6 +29,10 @@ const authenticateToken = (req, res, next) => {
         req.user = decoded;
         next();
     } catch (err) {
+        console.warn(`[AUTH] ${req.method} ${req.originalUrl}: invalid or expired token`, {
+            message: err?.message,
+            name: err?.name
+        });
         return res.status(401).json({
             message: 'Invalid or expired token'
         });

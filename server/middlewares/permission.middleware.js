@@ -11,6 +11,7 @@ const authorize = (permissionCode) => {
     return (req, res, next) => {
         // Chưa authenticate
         if (!req.user) {
+            console.warn(`[AUTHZ] ${req.method} ${req.originalUrl}: unauthenticated`);
             return res.status(401).json({
                 message: 'Unauthenticated'
             });
@@ -20,6 +21,9 @@ const authorize = (permissionCode) => {
         const userRoles = Array.isArray(req.user.roles) ? req.user.roles : [];
 
         if (!Array.isArray(userPermissions)) {
+            console.warn(`[AUTHZ] ${req.method} ${req.originalUrl}: permissions missing`, {
+                userId: req.user?.userId
+            });
             return res.status(403).json({
                 message: 'No permissions found'
             });
@@ -42,6 +46,11 @@ const authorize = (permissionCode) => {
         );
 
         if (!hasPermission) {
+            console.warn(`[AUTHZ] ${req.method} ${req.originalUrl}: forbidden`, {
+                userId: req.user?.userId,
+                requiredPermissions,
+                userPermissions
+            });
             return res.status(403).json({
                 message: 'Forbidden',
                 requiredPermissions

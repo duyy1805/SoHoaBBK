@@ -85,6 +85,7 @@ import { BienBanTrenChuyenPrintTemplate } from "./components/BienBanTrenChuyenPr
 import { PhieuXuLyKhongPhuHopPrintTemplate } from "./components/PhieuXuLyKhongPhuHopPrintTemplate";
 import KphV01WorkflowSections from "./components/KphV01WorkflowSections";
 import BienBanWorkflowGuide from "./components/BienBanWorkflowGuide";
+import DefectImageGalleryDialog from "./components/DefectImageGalleryDialog";
 import {
     buildBienBanWorkflow,
     getBienBanStatusMeta
@@ -158,7 +159,7 @@ export default function PhieuXuLyKhongPhuHopDetail() {
     const [editingDefectIndex, setEditingDefectIndex] = useState(null);
     const [defectDraft, setDefectDraft] = useState(null);
     const [isEditingStandaloneHeader, setIsEditingStandaloneHeader] = useState(true);
-    const [previewImage, setPreviewImage] = useState(null);
+    const [imagePreview, setImagePreview] = useState({ images: [], index: 0 });
 
     const [dynamicFields, setDynamicFields] = useState([]);
     const [canEditKphCustomFields, setCanEditKphCustomFields] = useState(false);
@@ -640,7 +641,10 @@ export default function PhieuXuLyKhongPhuHopDetail() {
     );
     const requiredSectionsReady = (!b7Assign || xuLy.some((x) => Number(x.BoPhanId) === Number(b7Assign.BoPhanId))) &&
         (!info?.YeuCauChiPhi || chiPhi.length > 0) && (!info?.YeuCauHanhDong || hanhDong.length > 0);
-    const canSubmitCompletion = allConfirmed && requiredSectionsReady &&
+    const hasCompletionPermission = isAdminUser ||
+        currentUserPermissions.includes("QUAN_TRI_DM") ||
+        currentUserPermissions.includes("KET_LUAN");
+    const canSubmitCompletion = hasCompletionPermission && allConfirmed && requiredSectionsReady &&
         (info?.MauPhieuVersion !== "V01" || allOpinionsAnswered) &&
         !["CHO_THEO_DOI", "HOAN_TAT"].includes(info?.TrangThai);
     const defectCount = defects.length;
@@ -1201,7 +1205,10 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                                                                                         border: '1px solid #e0e0e0',
                                                                                         '&:hover': { opacity: 0.8 }
                                                                                     }}
-                                                                                    onClick={() => setPreviewImage(url.startsWith('http') ? url : `https://z76api.z76.vn${url}`)}
+                                                                                    onClick={() => setImagePreview({
+                                                                                        images: d.ImageUrls.map((item) => item.startsWith('http') ? item : `https://z76api.z76.vn${item}`),
+                                                                                        index: idx
+                                                                                    })}
                                                                                 />
                                                                             ))}
                                                                         </Stack>
@@ -1682,22 +1689,7 @@ export default function PhieuXuLyKhongPhuHopDetail() {
                 reload={loadData} 
             />
 
-            {/* Image Preview Modal */}
-            <Dialog open={!!previewImage} onClose={() => setPreviewImage(null)} maxWidth="md">
-                <Box sx={{ position: 'relative', p: 1, bgcolor: '#000', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                    <img
-                        src={previewImage}
-                        alt="Preview"
-                        style={{ maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain' }}
-                    />
-                    <Button
-                        onClick={() => setPreviewImage(null)}
-                        sx={{ position: 'absolute', top: 8, right: 8, color: 'white', bgcolor: 'rgba(0,0,0,0.5)', minWidth: 40 }}
-                    >
-                        X
-                    </Button>
-                </Box>
-            </Dialog>
+            <DefectImageGalleryDialog images={imagePreview.images} index={imagePreview.index} onChangeIndex={(index) => setImagePreview((prev) => ({ ...prev, index }))} onClose={() => setImagePreview({ images: [], index: 0 })} />
 
             {/* Confirm Dialog */}
             <ConfirmDialog

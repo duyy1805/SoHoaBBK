@@ -82,40 +82,6 @@ const getBienBanAssignRows = async (pool, bienBanId) => {
     return result.recordset;
 };
 
-const parseJsonArray = (value) => {
-    if (!value) return [];
-    if (Array.isArray(value)) return value.filter(Boolean);
-    try {
-        const parsed = JSON.parse(value);
-        return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
-    } catch {
-        return typeof value === "string" && value.trim() ? [value] : [];
-    }
-};
-
-const enrichDefectCodes = async (pool, defects = []) => {
-    const defectIds = [...new Set(
-        defects
-            .filter((item) => !item.MaLoi && item.DefectId)
-            .map((item) => Number(item.DefectId))
-            .filter((id) => Number.isInteger(id) && id > 0)
-    )];
-
-    if (defectIds.length === 0) return defects;
-
-    const result = await pool.request().query(`
-        SELECT Id, MaLoi, TenLoi, DefectType
-        FROM dbo.DM_DEFECT
-        WHERE Id IN (${defectIds.join(",")})
-    `);
-    const defectMap = new Map((result.recordset || []).map((item) => [Number(item.Id), item]));
-
-    return defects.map((item) => {
-        const catalog = defectMap.get(Number(item.DefectId));
-        return catalog ? { ...catalog, ...item, MaLoi: item.MaLoi || catalog.MaLoi } : item;
-    });
-};
-
 const getKphV01Data = async (pool, bienBanId) => {
     const result = await pool.request()
         .input("BienBanId", sql.Int, bienBanId)
@@ -284,6 +250,9 @@ router.get(
             const result = await pool.request()
                 .input("BienBanId", sql.Int, id)
                 .execute("sp_BienBan_GetDetail");
+            const defectResult = await pool.request()
+                .input("BienBanId", sql.Int, id)
+                .execute("sp_BienBan_GetDefects");
 
             const rs = result.recordsets;
             const assignRows = await getBienBanAssignRows(pool, id);
@@ -349,14 +318,16 @@ router.get(
                 };
             });
 
-            const defects = await enrichDefectCodes(pool, (rs[1] || []).map(d => ({
-                ...d,
-                ImageUrls: parseJsonArray(d.ImageUrls)
-            })));
-
             let phieuKiemXacNhan = [];
             const bienBanXacNhanResult = await pool.request().input("BienBanId", sql.Int, id).query(`
-                SELECT xn.*, COALESCE(xn.BoPhanId,u.BoPhanId) AS BoPhanId, u.FullName,
+                SELECT
+                    xn.Id,
+                    xn.BienBanId,
+                    xn.NguoiXacNhanId,
+                    COALESCE(xn.BoPhanId, u.BoPhanId) AS BoPhanId,
+                    xn.ThoiGian,
+                    xn.VaiTro,
+                    u.FullName,
                     bp.MaBoPhan, bp.TenBoPhan
                 FROM dbo.BIEN_BAN_XAC_NHAN xn
                 LEFT JOIN dbo.USERS u ON u.Id=xn.NguoiXacNhanId
@@ -397,7 +368,7 @@ router.get(
                     IsAdmin: isAdmin(req.user),
                     canEditKphCustomFields: customFieldAccess.canEdit
                 } : null,
-                defects,
+                defects: defectResult.recordset || [],
                 assigns: mergedAssigns,
                 xuLy: proposalResult.recordset || [],
                 chiPhi: rs[4] || [],
@@ -955,6 +926,14 @@ router.post(
 
 router.post(
     "/xac-nhan",
+    (req, res, next) => {
+        console.log("[POST /bien-ban/xac-nhan] Request received", {
+            bienBanId: req.body?.bienBanId,
+            requestedBoPhanId: req.body?.boPhanId,
+            hasAuthorization: Boolean(req.headers.authorization)
+        });
+        next();
+    },
     authenticateToken,
     authorize("DUYET_Y_KIEN"),
     async (req, res) => {
@@ -1011,8 +990,39 @@ router.post(
 
         } catch (err) {
 
+            console.error("[POST /bien-ban/xac-nhan] Xác nhận thất bại", {
+                bienBanId: req.body?.bienBanId,
+                userId: req.user?.userId,
+                userBoPhanId: req.user?.boPhanId,
+                requestedBoPhanId: req.body?.boPhanId,
+                error: {
+                    name: err?.name,
+                    message: err?.message,
+                    code: err?.code,
+                    number: err?.number,
+                    state: err?.state,
+                    class: err?.class,
+                    lineNumber: err?.lineNumber,
+                    serverName: err?.serverName,
+                    procName: err?.procName,
+                    originalError: err?.originalError?.message,
+                    precedingErrors: err?.precedingErrors?.map((item) => ({
+                        message: item?.message,
+                        number: item?.number,
+                        state: item?.state,
+                        class: item?.class,
+                        lineNumber: item?.lineNumber,
+                        procName: item?.procName
+                    })),
+                    stack: err?.stack
+                }
+            });
+
             res.status(500).json({
-                message: "Không thể xác nhận"
+                message: "Không thể xác nhận",
+                ...(process.env.NODE_ENV !== "production" && {
+                    detail: err?.originalError?.message || err?.message
+                })
             })
 
         }

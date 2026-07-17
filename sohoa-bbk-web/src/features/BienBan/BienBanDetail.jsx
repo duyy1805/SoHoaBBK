@@ -85,6 +85,7 @@ import { BienBanTrenChuyenPrintTemplate } from "./components/BienBanTrenChuyenPr
 import { PhieuXuLyKhongPhuHopPrintTemplate } from "./components/PhieuXuLyKhongPhuHopPrintTemplate";
 import KphV01WorkflowSections from "./components/KphV01WorkflowSections";
 import BienBanWorkflowGuide from "./components/BienBanWorkflowGuide";
+import DefectImageGalleryDialog from "./components/DefectImageGalleryDialog";
 import {
     buildBienBanWorkflow,
     getBienBanStatusMeta
@@ -142,7 +143,7 @@ export default function BienBanDetail({ standalone = false }) {
     const [openChiPhiModal, setOpenChiPhiModal] = useState(false);
     const [openHanhDongModal, setOpenHanhDongModal] = useState(false);
     const [openPrintModal, setOpenPrintModal] = useState(false);
-    const [previewImage, setPreviewImage] = useState(null);
+    const [imagePreview, setImagePreview] = useState({ images: [], index: 0 });
 
     const [dynamicFields, setDynamicFields] = useState([]);
     const [canEditKphCustomFields, setCanEditKphCustomFields] = useState(false);
@@ -432,6 +433,14 @@ export default function BienBanDetail({ standalone = false }) {
     };
 
     const handleConfirmUser = (targetBoPhanId = null) => {
+        // Khi truyền trực tiếp cho onClick, React đưa SyntheticEvent vào tham số đầu.
+        // Chỉ admin xác nhận thay bộ phận mới được phép truyền một ID số.
+        const normalizedTargetBoPhanId = targetBoPhanId != null
+            && Number.isInteger(Number(targetBoPhanId))
+            && Number(targetBoPhanId) > 0
+            ? Number(targetBoPhanId)
+            : null;
+
         if (!isAdminUser && info?.MauPhieuVersion === "V01" && !currentDepartmentOpinionAnswered) {
             showToast("Vui lòng xác nhận ý kiến phòng ban chuyên môn trước", "warning");
             return;
@@ -443,11 +452,22 @@ export default function BienBanDetail({ standalone = false }) {
             type: 'info',
             onConfirm: async () => {
                 try {
-                    await confirmUser(bienBanId, targetBoPhanId);
+                    await confirmUser(bienBanId, normalizedTargetBoPhanId);
                     showToast("Xác nhận thông tin thành công", "success");
                     loadData();
                     setConfirmDialog(prev => ({ ...prev, open: false }));
                 } catch (err) {
+                    console.error("[BienBanDetail] Xác nhận tiến độ xử lý thất bại", {
+                        bienBanId,
+                        targetBoPhanId: normalizedTargetBoPhanId,
+                        requestUrl: err?.config?.baseURL
+                            ? `${err.config.baseURL}${err.config.url}`
+                            : err?.config?.url,
+                        status: err?.response?.status,
+                        response: err?.response?.data,
+                        message: err?.message,
+                        code: err?.code
+                    });
                     showToast(err?.response?.data?.message || "Lỗi xác nhận thông tin", "error");
                 }
             }
@@ -544,12 +564,14 @@ export default function BienBanDetail({ standalone = false }) {
     const isStandaloneBienBan = standalone || info?.LoaiBienBan === "STANDALONE";
     const isTrenChuyenBienBan = Number(info?.LoaiKiemId) === 6;
 
-    const isAssigned = assigns.some(a => a.BoPhanId === currentUserBoPhanId);
+    const isAssigned = assigns.some(a => Number(a.BoPhanId) === Number(currentUserBoPhanId));
     const b7Assign = assigns.find((a) => String(a.MaBoPhan || "").toUpperCase() === "B7");
     const canAddProposal = Boolean(b7Assign) && (isAdminUser || Number(currentUserBoPhanId) === Number(b7Assign.BoPhanId));
-    const hasXuLy = xuLy.some(x => x.BoPhanId === currentUserBoPhanId);
-    const isConfirmed = xacNhan.some(x => x.BoPhanId === currentUserBoPhanId);
-    const allConfirmed = assigns.length > 0 && assigns.every(a => xacNhan.some(x => x.BoPhanId === a.BoPhanId));
+    const hasXuLy = xuLy.some(x => Number(x.BoPhanId) === Number(currentUserBoPhanId));
+    const isConfirmed = xacNhan.some(x => Number(x.BoPhanId) === Number(currentUserBoPhanId));
+    const allConfirmed = assigns.length > 0 && assigns.every(a =>
+        xacNhan.some(x => Number(x.BoPhanId) === Number(a.BoPhanId))
+    );
     const hasSignedSpecialistOpinion = specialistOpinions.some(item => item.NguoiTraLoiId);
     const allOpinionsAnswered = specialistOpinions.length === assigns.length &&
         assigns.every(assign => specialistOpinions.some(item => Number(item.BoPhanId) === Number(assign.BoPhanId) && item.NguoiTraLoiId));
@@ -558,7 +580,10 @@ export default function BienBanDetail({ standalone = false }) {
     );
     const requiredSectionsReady = (!b7Assign || xuLy.some((x) => Number(x.BoPhanId) === Number(b7Assign.BoPhanId))) &&
         (!info?.YeuCauChiPhi || chiPhi.length > 0) && (!info?.YeuCauHanhDong || hanhDong.length > 0);
-    const canSubmitCompletion = allConfirmed && requiredSectionsReady &&
+    const hasCompletionPermission = isAdminUser ||
+        currentUserPermissions.includes("QUAN_TRI_DM") ||
+        currentUserPermissions.includes("KET_LUAN");
+    const canSubmitCompletion = hasCompletionPermission && allConfirmed && requiredSectionsReady &&
         (info?.MauPhieuVersion !== "V01" || allOpinionsAnswered) &&
         !["CHO_THEO_DOI", "HOAN_TAT"].includes(info?.TrangThai);
     const ownIsB7 = Number(currentUserBoPhanId) === Number(b7Assign?.BoPhanId);
@@ -1147,7 +1172,10 @@ export default function BienBanDetail({ standalone = false }) {
                                                                                         border: '1px solid #e0e0e0',
                                                                                         '&:hover': { opacity: 0.8 }
                                                                                     }}
-                                                                                    onClick={() => setPreviewImage(url.startsWith('http') ? url : `https://z76api.z76.vn${url}`)}
+                                                                                    onClick={() => setImagePreview({
+                                                                                        images: d.ImageUrls.map((item) => item.startsWith('http') ? item : `https://z76api.z76.vn${item}`),
+                                                                                        index: idx
+                                                                                    })}
                                                                                 />
                                                                             ))}
                                                                         </Stack>
@@ -1268,13 +1296,13 @@ export default function BienBanDetail({ standalone = false }) {
                                                     <AttachMoneyIcon color="success" /> Chi phí phát sinh
                                                 </Typography>
                                                 <Stack direction="row" spacing={1} alignItems="center">
-                                                <Chip size="small" color={info.YeuCauChiPhi ? "success" : "default"} label={info.YeuCauChiPhi ? "Yêu cầu" : "Không yêu cầu"} />
-                                                {info.CanConfigureRequirements && <Button size="small" onClick={() => updateRequirement("yeuCauChiPhi", !info.YeuCauChiPhi)}>{info.YeuCauChiPhi ? "Bỏ yêu cầu" : "Yêu cầu"}</Button>}
-                                                {info.YeuCauChiPhi && info.TrangThai !== "HOAN_TAT" && (
-                                                    <Button size="small" color="success" startIcon={<AddIcon />} onClick={() => setOpenChiPhiModal(true)}>
-                                                        Thêm chi phí
-                                                    </Button>
-                                                )}
+                                                    <Chip size="small" color={info.YeuCauChiPhi ? "success" : "default"} label={info.YeuCauChiPhi ? "Yêu cầu" : "Không yêu cầu"} />
+                                                    {info.CanConfigureRequirements && <Button size="small" onClick={() => updateRequirement("yeuCauChiPhi", !info.YeuCauChiPhi)}>{info.YeuCauChiPhi ? "Bỏ yêu cầu" : "Yêu cầu"}</Button>}
+                                                    {info.YeuCauChiPhi && info.TrangThai !== "HOAN_TAT" && (
+                                                        <Button size="small" color="success" startIcon={<AddIcon />} onClick={() => setOpenChiPhiModal(true)}>
+                                                            Thêm chi phí
+                                                        </Button>
+                                                    )}
                                                 </Stack>
                                             </Stack>
                                             <Divider sx={{ mb: 2 }} />
@@ -1296,13 +1324,13 @@ export default function BienBanDetail({ standalone = false }) {
                                                     <BuildCircleIcon color="info" /> Hành động khắc phục
                                                 </Typography>
                                                 <Stack direction="row" spacing={1} alignItems="center">
-                                                <Chip size="small" color={info.YeuCauHanhDong ? "success" : "default"} label={info.YeuCauHanhDong ? "Yêu cầu" : "Không yêu cầu"} />
-                                                {info.CanConfigureRequirements && <Button size="small" onClick={() => updateRequirement("yeuCauHanhDong", !info.YeuCauHanhDong)}>{info.YeuCauHanhDong ? "Bỏ yêu cầu" : "Yêu cầu"}</Button>}
-                                                {info.YeuCauHanhDong && info.TrangThai !== "HOAN_TAT" && (
-                                                    <Button size="small" color="info" startIcon={<AddIcon />} onClick={() => setOpenHanhDongModal(true)}>
-                                                        Thêm hành động
-                                                    </Button>
-                                                )}
+                                                    <Chip size="small" color={info.YeuCauHanhDong ? "success" : "default"} label={info.YeuCauHanhDong ? "Yêu cầu" : "Không yêu cầu"} />
+                                                    {info.CanConfigureRequirements && <Button size="small" onClick={() => updateRequirement("yeuCauHanhDong", !info.YeuCauHanhDong)}>{info.YeuCauHanhDong ? "Bỏ yêu cầu" : "Yêu cầu"}</Button>}
+                                                    {info.YeuCauHanhDong && info.TrangThai !== "HOAN_TAT" && (
+                                                        <Button size="small" color="info" startIcon={<AddIcon />} onClick={() => setOpenHanhDongModal(true)}>
+                                                            Thêm hành động
+                                                        </Button>
+                                                    )}
                                                 </Stack>
                                             </Stack>
                                             <Divider sx={{ mb: 2 }} />
@@ -1358,7 +1386,7 @@ export default function BienBanDetail({ standalone = false }) {
                         <Container maxWidth="xl">
                             <Stack direction="row" justifyContent="flex-end" spacing={2}>
                                 {canConfirmProcessing && (
-                                    <Button variant="contained" color="warning" size="large" onClick={handleConfirmUser} startIcon={<VerifiedIcon />}>
+                                    <Button variant="contained" color="warning" size="large" onClick={() => handleConfirmUser()} startIcon={<VerifiedIcon />}>
                                         Xác nhận tiến độ xử lý của bộ phận
                                     </Button>
                                 )}
@@ -1448,36 +1476,21 @@ export default function BienBanDetail({ standalone = false }) {
             <XuLyDialog open={openXuLyModal} onClose={() => setOpenXuLyModal(false)} bienBanId={bienBanId} currentUserId={currentUserId} reload={loadData} />
             <ChiPhiDialog open={openChiPhiModal} onClose={() => setOpenChiPhiModal(false)} bienBanId={bienBanId} reload={loadData} />
             <HanhDongDialog open={openHanhDongModal} onClose={() => setOpenHanhDongModal(false)} bienBanId={bienBanId} reload={loadData} />
-            
-            <AssignUserDialog 
-                open={openAssignUserModal} 
+
+            <AssignUserDialog
+                open={openAssignUserModal}
                 onClose={() => {
                     setOpenAssignUserModal(false);
                     setSelectedAssign(null);
-                }} 
-                bienBanId={bienBanId} 
+                }}
+                bienBanId={bienBanId}
                 boPhanId={selectedAssign?.BoPhanId}
                 tenBoPhan={selectedAssign?.TenBoPhan}
                 currentUserId={selectedAssign?.NguoiXuLyId}
-                reload={loadData} 
+                reload={loadData}
             />
 
-            {/* Image Preview Modal */}
-            <Dialog open={!!previewImage} onClose={() => setPreviewImage(null)} maxWidth="md">
-                <Box sx={{ position: 'relative', p: 1, bgcolor: '#000', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                    <img
-                        src={previewImage}
-                        alt="Preview"
-                        style={{ maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain' }}
-                    />
-                    <Button
-                        onClick={() => setPreviewImage(null)}
-                        sx={{ position: 'absolute', top: 8, right: 8, color: 'white', bgcolor: 'rgba(0,0,0,0.5)', minWidth: 40 }}
-                    >
-                        X
-                    </Button>
-                </Box>
-            </Dialog>
+            <DefectImageGalleryDialog images={imagePreview.images} index={imagePreview.index} onChangeIndex={(index) => setImagePreview((prev) => ({ ...prev, index }))} onClose={() => setImagePreview({ images: [], index: 0 })} />
 
             {/* Confirm Dialog */}
             <ConfirmDialog
@@ -1781,7 +1794,7 @@ function AssignUserDialog({ open, onClose, bienBanId, boPhanId, tenBoPhan, curre
         }
     };
 
-    const filteredUsers = users.filter(u => 
+    const filteredUsers = users.filter(u =>
         u.FullName?.toLowerCase().includes(search.toLowerCase()) ||
         u.Username?.toLowerCase().includes(search.toLowerCase())
     );
@@ -1796,10 +1809,10 @@ function AssignUserDialog({ open, onClose, bienBanId, boPhanId, tenBoPhan, curre
             </DialogTitle>
             <DialogContent dividers sx={{ p: 0 }}>
                 <Box sx={{ p: 2 }}>
-                    <TextField 
-                        placeholder="Tìm kiếm nhân viên..." 
-                        fullWidth 
-                        size="small" 
+                    <TextField
+                        placeholder="Tìm kiếm nhân viên..."
+                        fullWidth
+                        size="small"
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                     />
@@ -1813,9 +1826,9 @@ function AssignUserDialog({ open, onClose, bienBanId, boPhanId, tenBoPhan, curre
                         {filteredUsers.map((user) => (
                             <ListItem key={user.Id} disablePadding>
                                 <ListItemButton onClick={() => setSelectedUserId(user.Id)} selected={selectedUserId === user.Id}>
-                                    <ListItemText 
-                                        primary={user.FullName || user.Username} 
-                                        secondary={user.Username} 
+                                    <ListItemText
+                                        primary={user.FullName || user.Username}
+                                        secondary={user.Username}
                                     />
                                     {selectedUserId === user.Id && <CheckIcon color="primary" />}
                                 </ListItemButton>
