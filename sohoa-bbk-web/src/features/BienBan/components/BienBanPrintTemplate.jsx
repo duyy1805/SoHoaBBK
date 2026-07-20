@@ -722,18 +722,20 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                 )}
 
                                 {/* 8. Theo dõi */}
-                                <Box className="avoid-break" mt={2} pt={0}>
-                                    <div style={styles.sectionTitle}>8. Theo dõi đánh giá</div>
-                                    <div style={{ display: 'flex', marginTop: '8px' }}>
-                                        {renderCheckbox('Thỏa mãn', followUpEvaluation?.KetQua === 'THOA_MAN')}
-                                        {renderCheckbox('Không thỏa mãn', followUpEvaluation?.KetQua === 'KHONG_THOA_MAN')}
-                                        <span style={{ marginLeft: '40px' }}>Phiếu KPH mới số: {followUpEvaluation?.PhieuKphMoiSo || '................................'}</span>
-                                    </div>
-                                    <div style={{ marginTop: '16px', border: isV01 ? '1px solid #000' : 'none', minHeight: isV01 ? '100px' : 'auto', padding: isV01 ? '6px' : 0 }}>
-                                        <div style={styles.text}>Ghi chú: {followUpEvaluation?.GhiChu || '..........................................................................................................................................................'}</div>
+                                <Box mt={2} pt={0}>
+                                    <Box className="avoid-break">
+                                        <div style={styles.sectionTitle}>8. Theo dõi đánh giá</div>
+                                        <div style={{ display: 'flex', marginTop: '8px' }}>
+                                            {renderCheckbox('Thỏa mãn', followUpEvaluation?.KetQua === 'THOA_MAN')}
+                                            {renderCheckbox('Không thỏa mãn', followUpEvaluation?.KetQua === 'KHONG_THOA_MAN')}
+                                            <span style={{ marginLeft: '40px' }}>Phiếu KPH mới số: {followUpEvaluation?.PhieuKphMoiSo || '................................'}</span>
+                                        </div>
+                                        <div style={{ marginTop: '16px', border: isV01 ? '1px solid #000' : 'none', minHeight: isV01 ? '100px' : 'auto', padding: isV01 ? '6px' : 0 }}>
+                                            <div style={styles.text}>Ghi chú: {followUpEvaluation?.GhiChu || '..........................................................................................................................................................'}</div>
+                                        </div>
                                     </div>
 
-                                    <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                    <div className="avoid-break" style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                         <div style={{ paddingLeft: '16px' }}>
                                             <div style={styles.boldText}>Nơi nhận:</div>
                                             {receiveDepartmentRows.length > 0 ? receiveDepartmentRows.map((departmentCodes, index) => (

@@ -8,8 +8,7 @@ dist/
 build/
 
 *.sql
-# !server/sql/update_phieu_kiem_tbp_flow.sql
-# !server/sql/migrations/
-# !server/sql/migrations/*.sql
+!server/sql/update_phieu_kiem_tbp_flow.sql
+!server/sql/migrations/
+!server/sql/migrations/*.sql
 *.xlsx
-*.doc

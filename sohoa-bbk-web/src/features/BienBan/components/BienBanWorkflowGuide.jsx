@@ -29,7 +29,16 @@ export default function BienBanWorkflowGuide({ workflow, status }) {
                     <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={2}>
                         <Box>
                             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
-                                <Typography variant="overline" sx={{ color: palette.accent, fontWeight: 800, letterSpacing: 1 }}>
+                                <Typography
+                                    variant="subtitle2"
+                                    sx={{
+                                        color: palette.accent,
+                                        fontWeight: 700,
+                                        fontSize: "0.8rem",
+                                        lineHeight: 1.4,
+                                        letterSpacing: "0.025em"
+                                    }}
+                                >
                                     {guidance.eyebrow}
                                 </Typography>
                                 <Chip size="small" color={statusMeta.color} label={statusMeta.label} />

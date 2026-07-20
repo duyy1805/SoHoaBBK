@@ -38,7 +38,7 @@ const theme = createTheme({
         }
     },
     typography: {
-        fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif',
         h1: { fontWeight: 700 },
         h2: { fontWeight: 700 },
         h3: { fontWeight: 700 },

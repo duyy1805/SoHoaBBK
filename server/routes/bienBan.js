@@ -189,12 +189,53 @@ router.get(
                 .input("BienBanIds", sql.NVarChar(sql.MAX), bienBanIds.join(","))
                 .execute("sp_BienBan_GetListProgress");
 
+            // sp_BienBan_GetListProgress cũ đối chiếu bộ phận của người xác nhận,
+            // không tính BoPhanId đích được lưu trực tiếp trên bản ghi xác nhận.
+            // Lấy lại tiến độ biên bản thường theo dữ liệu hiện hành; SXBT vẫn dùng SP.
+            const normalProgressResult = await pool.request().query(`
+                SELECT
+                    a.BienBanId,
+                    a.Id AS AssignId,
+                    a.BoPhanId,
+                    bp.MaBoPhan,
+                    bp.TenBoPhan,
+                    CASE WHEN EXISTS (
+                        SELECT 1
+                        FROM dbo.BIEN_BAN_XAC_NHAN xn
+                        LEFT JOIN dbo.USERS u ON u.Id = xn.NguoiXacNhanId
+                        WHERE xn.BienBanId = a.BienBanId
+                          AND COALESCE(xn.BoPhanId, u.BoPhanId) = a.BoPhanId
+                    ) THEN 1 ELSE 0 END AS DaXacNhan
+                FROM dbo.BIEN_BAN_ASSIGN a
+                LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id = a.BoPhanId
+                WHERE a.BienBanId IN (${bienBanIds.join(",")})
+                ORDER BY a.BienBanId, a.Id
+            `);
+
+            const normalProgressByBienBanId = new Map();
+            for (const assign of normalProgressResult.recordset || []) {
+                const key = Number(assign.BienBanId);
+                const progress = normalProgressByBienBanId.get(key) || {
+                    total: 0,
+                    done: 0,
+                    pendingDepartments: []
+                };
+                progress.total += 1;
+                if (Number(assign.DaXacNhan) === 1) {
+                    progress.done += 1;
+                } else {
+                    const displayName = assign.TenBoPhan || assign.MaBoPhan;
+                    if (displayName) progress.pendingDepartments.push(displayName);
+                }
+                normalProgressByBienBanId.set(key, progress);
+            }
+
             const progressByBienBanId = new Map(
-                (progressResult.recordset || []).map((item) => [item.BienBanId, item])
+                (progressResult.recordset || []).map((item) => [Number(item.BienBanId), item])
             );
 
             const normalizedRows = rows.map((item) => {
-                const progress = progressByBienBanId.get(item.BienBanId);
+                const progress = progressByBienBanId.get(Number(item.BienBanId));
                 if (!progress) return item;
 
                 const isSxbt = progress.IsSxbt === true || progress.IsSxbt === 1 ||
@@ -202,9 +243,12 @@ router.get(
                     item.LoaiKiemId === 4 ||
                     String(item.TrangThai || "").startsWith("BB_SXBT");
 
-                const total = Number(progress.SoBoPhan) || 0;
-                const done = Number(progress.DaCoYKien) || 0;
-                const progressPercent = Number(progress.ProgressPercent);
+                const normalProgress = normalProgressByBienBanId.get(Number(item.BienBanId));
+                const total = isSxbt ? (Number(progress.SoBoPhan) || 0) : (normalProgress?.total || 0);
+                const done = isSxbt ? (Number(progress.DaCoYKien) || 0) : (normalProgress?.done || 0);
+                const progressPercent = isSxbt
+                    ? Number(progress.ProgressPercent)
+                    : (total > 0 ? Math.round((done / total) * 100) : 0);
 
                 return {
                     ...item,
@@ -216,7 +260,9 @@ router.get(
                         : (total > 0 ? Math.round((done / total) * 100) : 0),
                     MaBoPhanDangCho: progress?.MaBoPhanDangCho || null,
                     TenBoPhanDangCho: progress?.TenBoPhanDangCho || null,
-                    BoPhanChuaXacNhanText: progress?.BoPhanChuaXacNhanText || null
+                    BoPhanChuaXacNhanText: isSxbt
+                        ? (progress?.BoPhanChuaXacNhanText || null)
+                        : (normalProgress?.pendingDepartments.join(", ") || null)
                 };
             });
 

@@ -3004,7 +3004,7 @@ BEGIN
                     FROM dbo.BIEN_BAN_XAC_NHAN x
                     LEFT JOIN dbo.USERS u ON u.Id = x.NguoiXacNhanId
                     WHERE x.BienBanId = a.BienBanId
-                      AND u.BoPhanId = a.BoPhanId
+                      AND COALESCE(x.BoPhanId, u.BoPhanId) = a.BoPhanId
                 ) THEN 1
                 ELSE 0
             END AS DaXacNhan
