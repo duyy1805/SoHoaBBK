@@ -364,7 +364,8 @@ CREATE TABLE [dbo].[DM_CHECK_ITEM] (
   [ThuTu] int  NULL,
   [TrangThai] bit DEFAULT 1 NULL,
   [ThamChieu] nvarchar(255) COLLATE SQL_Latin1_General_CP1_CI_AS  NULL,
-  [PhuongPhapKiem] nvarchar(max) COLLATE SQL_Latin1_General_CP1_CI_AS  NULL
+  [PhuongPhapKiem] nvarchar(max) COLLATE SQL_Latin1_General_CP1_CI_AS  NULL,
+  [DiemTrongYeu] bit DEFAULT 0 NOT NULL
 )
 GO
 
@@ -638,7 +639,9 @@ CREATE TABLE [dbo].[PHIEU_KIEM_CHECK_ITEM] (
   [SoLuongLoi] int DEFAULT 0 NULL,
   [ThamChieu] nvarchar(255) COLLATE SQL_Latin1_General_CP1_CI_AS  NULL,
   [PhuongPhapKiem] nvarchar(max) COLLATE SQL_Latin1_General_CP1_CI_AS  NULL,
-  [GiaTriDo] nvarchar(max) COLLATE SQL_Latin1_General_CP1_CI_AS  NULL
+  [GiaTriDo] nvarchar(max) COLLATE SQL_Latin1_General_CP1_CI_AS  NULL,
+  [DanhMucCheckItemId] int NULL,
+  [DiemTrongYeu] bit DEFAULT 0 NOT NULL
 )
 GO
 
@@ -1299,7 +1302,8 @@ BEGIN
         PhuongPhapKiem,
         TieuChuan,
         ThuTu,
-        TrangThai
+        TrangThai,
+        DiemTrongYeu
     FROM DM_CHECK_ITEM
     WHERE TrangThai = 1
       AND (@NhomKiemId IS NULL OR NhomKiemId = @NhomKiemId)
@@ -1321,7 +1325,8 @@ CREATE PROCEDURE [dbo].[sp_DM_CreateCheckItem]
     @ThamChieu NVARCHAR(MAX),
     @PhuongPhapKiem NVARCHAR(MAX),
     @TieuChuan NVARCHAR(MAX),
-    @ThuTu INT
+    @ThuTu INT,
+    @DiemTrongYeu BIT = 0
 AS
 BEGIN
     INSERT INTO DM_CHECK_ITEM (
@@ -1331,7 +1336,8 @@ BEGIN
         PhuongPhapKiem,
         TieuChuan,
         ThuTu,
-        TrangThai
+        TrangThai,
+        DiemTrongYeu
     )
     VALUES (
         @NhomKiemId,
@@ -1340,8 +1346,11 @@ BEGIN
         @PhuongPhapKiem,
         @TieuChuan,
         @ThuTu,
-        1
+        1,
+        @DiemTrongYeu
     );
+
+    SELECT CONVERT(INT, SCOPE_IDENTITY()) AS Id;
 END
 GO
 
@@ -1358,11 +1367,15 @@ CREATE PROCEDURE [dbo].[sp_DM_UpdateCheckItem]
     @TenMucKiem NVARCHAR(255),
     @TieuChuan NVARCHAR(MAX),
     @ThamChieu NVARCHAR(MAX),
-    @PhuongPhapKiem NVARCHAR(MAX),    
+    @PhuongPhapKiem NVARCHAR(MAX),
     @ThuTu INT,
-    @TrangThai BIT
+    @TrangThai BIT,
+    @DiemTrongYeu BIT = 0
 AS
 BEGIN
+    SET XACT_ABORT ON;
+    BEGIN TRANSACTION;
+
     UPDATE DM_CHECK_ITEM
     SET
         TenMucKiem = @TenMucKiem,
@@ -1370,8 +1383,15 @@ BEGIN
         PhuongPhapKiem = @PhuongPhapKiem,
         TieuChuan = @TieuChuan,
         ThuTu = @ThuTu,
-        TrangThai = @TrangThai
+        TrangThai = @TrangThai,
+        DiemTrongYeu = @DiemTrongYeu
     WHERE Id = @Id;
+
+    UPDATE PHIEU_KIEM_CHECK_ITEM
+    SET DiemTrongYeu = @DiemTrongYeu
+    WHERE DanhMucCheckItemId = @Id;
+
+    COMMIT TRANSACTION;
 END
 GO
 
@@ -5156,7 +5176,8 @@ BEGIN
         PhuongPhapKiem,
         TieuChuan,
         ThuTu,
-        TrangThai
+        TrangThai,
+        DiemTrongYeu
     FROM DM_CHECK_ITEM
     WHERE NhomKiemId = @NhomKiemId
       AND TrangThai = 1
@@ -7359,13 +7380,17 @@ BEGIN
     -- 2. Clone checklist
     INSERT INTO PHIEU_KIEM_CHECK_ITEM (
         SectionId,
+        DanhMucCheckItemId,
         TenMucKiem,
-        TieuChuan
+        TieuChuan,
+        DiemTrongYeu
     )
     SELECT
         @SectionId,
+        Id,
         TenMucKiem,
-        TieuChuan
+        TieuChuan,
+        DiemTrongYeu
     FROM DM_CHECK_ITEM
     WHERE NhomKiemId = @NhomKiemId
       AND TrangThai = 1;
@@ -7567,13 +7592,17 @@ BEGIN
     -- 3. CLONE CHECKLIST
     INSERT INTO PHIEU_KIEM_CHECK_ITEM (
         SectionId,
+        DanhMucCheckItemId,
         TenMucKiem,
-        TieuChuan
+        TieuChuan,
+        DiemTrongYeu
     )
     SELECT
         @SectionId,
+        Id,
         TenMucKiem,
-        TieuChuan
+        TieuChuan,
+        DiemTrongYeu
     FROM DM_CHECK_ITEM
     WHERE NhomKiemId = @NhomKiemId
       AND TrangThai = 1;
@@ -8095,17 +8124,21 @@ BEGIN
         INSERT INTO PHIEU_KIEM_CHECK_ITEM
         (
             SectionId,
+            DanhMucCheckItemId,
             ThamChieu,
             PhuongPhapKiem,
             TenMucKiem,
-            TieuChuan
+            TieuChuan,
+            DiemTrongYeu
         )
         SELECT
             @SectionId,
+            Id,
             ThamChieu,
             PhuongPhapKiem,
             TenMucKiem,
-            TieuChuan
+            TieuChuan,
+            DiemTrongYeu
         FROM DM_CHECK_ITEM
         WHERE NhomKiemId = @NhomKiemId
         AND TrangThai = 1;
@@ -9130,6 +9163,12 @@ GO
 -- Foreign Keys structure for table PHIEU_KIEM_CHECK_ITEM
 -- ----------------------------
 ALTER TABLE [dbo].[PHIEU_KIEM_CHECK_ITEM] ADD CONSTRAINT [FK__PHIEU_KIE__Secti__373B3228] FOREIGN KEY ([SectionId]) REFERENCES [dbo].[PHIEU_KIEM_SECTION] ([Id]) ON DELETE NO ACTION ON UPDATE NO ACTION
+GO
+
+ALTER TABLE [dbo].[PHIEU_KIEM_CHECK_ITEM] ADD CONSTRAINT [FK_PHIEU_KIEM_CHECK_ITEM_DM_CHECK_ITEM] FOREIGN KEY ([DanhMucCheckItemId]) REFERENCES [dbo].[DM_CHECK_ITEM] ([Id]) ON DELETE NO ACTION ON UPDATE NO ACTION
+GO
+
+CREATE NONCLUSTERED INDEX [IX_PHIEU_KIEM_CHECK_ITEM_DanhMucCheckItemId] ON [dbo].[PHIEU_KIEM_CHECK_ITEM] ([DanhMucCheckItemId] ASC)
 GO
 
 

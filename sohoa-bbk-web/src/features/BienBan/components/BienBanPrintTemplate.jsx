@@ -733,7 +733,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                         <div style={{ marginTop: '16px', border: isV01 ? '1px solid #000' : 'none', minHeight: isV01 ? '100px' : 'auto', padding: isV01 ? '6px' : 0 }}>
                                             <div style={styles.text}>Ghi chú: {followUpEvaluation?.GhiChu || '..........................................................................................................................................................'}</div>
                                         </div>
-                                    </div>
+                                    </Box>
 
                                     <div className="avoid-break" style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                         <div style={{ paddingLeft: '16px' }}>

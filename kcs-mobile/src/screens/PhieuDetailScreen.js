@@ -31,6 +31,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import SectionConfigModal from "../components/SectionConfigModal";
 
 const KIEM_DONG_CONT_LOAI_KIEM_ID = 5;
+const DAU_VAO_LOAI_KIEM_ID = 1;
 const KIEM_DONG_CONT_DEFAULT_THAM_CHIEU = "PDOC, TCKT, TCBG";
 
 export default function PhieuDetailScreen({ route, navigation }) {
@@ -712,7 +713,11 @@ export default function PhieuDetailScreen({ route, navigation }) {
                                         (!(isKCS || isLeader) || section.KetLuan) && styles.itemDisabled
                                     ]}
                                     disabled={!(isKCS || isLeader) || !!section.KetLuan}
-                                    onPress={() => navigation.navigate("CheckItem", { item })}
+                                    onPress={() => navigation.navigate("CheckItem", {
+                                        item,
+                                        canEditDiemTrongYeu: [DAU_VAO_LOAI_KIEM_ID, KIEM_DONG_CONT_LOAI_KIEM_ID]
+                                            .includes(Number(phieu?.LoaiKiemId))
+                                    })}
                                 >
 
                                     <Text style={styles.itemName}>

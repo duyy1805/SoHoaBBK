@@ -66,6 +66,7 @@ Sheet bắt buộc: `DanhMucKiem`
 | `TieuChuan` | Không | Tiêu chuẩn chấp nhận. |
 | `ThuTuMuc` | Không | Thứ tự của mục kiểm trong nhóm. Nếu để trống, hệ thống lấy thứ tự theo dòng import. |
 | `ThuTuGanNhom` | Không | Thứ tự nhóm kiểm khi gán vào sản phẩm. Nếu để trống, hệ thống lấy thứ tự theo dòng import. |
+| `DiemTrongYeu` | Không | Nhận `Có/Không`, `true/false` hoặc `1/0`. Để trống sẽ giữ nguyên giá trị của mục đã có; mục mới mặc định là `Không`. |
 
 ### 2.6. Khóa Cập Nhật
 
@@ -79,9 +80,9 @@ Vì vậy, nếu muốn cập nhật đúng nhóm cũ, cần giữ nguyên `TenN
 
 ### 2.7. Ví Dụ
 
-| MaSanPham | TenNhom | MoTaNhom | ThuTuNhom | TenMucKiem | ThamChieu | PhuongPhapKiem | TieuChuan | ThuTuMuc | ThuTuGanNhom |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| SP001 | Ngoại quan | Kiểm ngoại quan của balo | 1 | Bề mặt vải | Bản vẽ/tiêu chuẩn | Quan sát bằng mắt thường | Không trầy xước, móp méo | 1 | 1 |
+| MaSanPham | TenNhom | MoTaNhom | ThuTuNhom | TenMucKiem | ThamChieu | PhuongPhapKiem | TieuChuan | ThuTuMuc | ThuTuGanNhom | DiemTrongYeu |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| SP001 | Ngoại quan | Kiểm ngoại quan của balo | 1 | Bề mặt vải | Bản vẽ/tiêu chuẩn | Quan sát bằng mắt thường | Không trầy xước, móp méo | 1 | 1 | Có |
 
 ## 3. Import Thông Số Đặc Biệt
 
@@ -157,6 +158,7 @@ Nếu trùng bộ khóa này, import sẽ cập nhật thông số cũ. Nếu kh
 | `Thiếu TenNhom` | Dòng danh mục kiểm chưa có tên nhóm. | Điền `TenNhom`. |
 | `Thiếu MoTaNhom để phân biệt nhóm kiểm` | Dòng danh mục kiểm chưa có mô tả nhóm. | Điền `MoTaNhom`. |
 | `Thiếu TenMucKiem` | Dòng danh mục kiểm chưa có mục kiểm. | Điền `TenMucKiem`. |
+| `DiemTrongYeu chỉ nhận Có/Không, true/false hoặc 1/0` | Giá trị điểm trọng yếu không hợp lệ. | Sửa về một trong các giá trị được hỗ trợ hoặc để trống. |
 | `Thiếu NhomThongSo` | Dòng thông số đặc biệt chưa có nhóm thông số. | Điền `NhomThongSo`. |
 | `Thiếu GiaTriChuan` | Dòng thông số đặc biệt chưa có giá trị chuẩn. | Điền `GiaTriChuan`. |
 | `Chỉ hỗ trợ file .xlsx` | File không đúng định dạng. | Lưu lại thành Excel `.xlsx`. |

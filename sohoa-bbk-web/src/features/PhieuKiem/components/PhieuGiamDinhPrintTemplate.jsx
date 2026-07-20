@@ -381,6 +381,9 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                                     {/* Các mục kiểm tra */}
                                                     {sectionItems.map((item, iIndex) => {
                                                         const itemDefects = defects.filter(d => d.CheckItemId === item.Id);
+                                                        const criticalContentStyle = item.DiemTrongYeu
+                                                            ? { fontStyle: 'italic' }
+                                                            : {};
                                                         const sumDefects = (type) => itemDefects
                                                             .filter(d => d.DefectType === type)
                                                             .reduce((sum, d) => sum + (d.SoLuong || 0), 0);
@@ -392,8 +395,8 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                                         return (
                                                             <tr key={item.Id} className="avoid-break">
                                                                 <td style={styles.tdCenter}>{iIndex + 1}</td>
-                                                                <td style={styles.td}>{item.TenMucKiem}</td>
-                                                                <td style={styles.td}>{item.TieuChuan}</td>
+                                                                <td style={{ ...styles.td, ...criticalContentStyle }}>{item.TenMucKiem}</td>
+                                                                <td style={{ ...styles.td, ...criticalContentStyle }}>{item.TieuChuan}</td>
                                                                 <td style={{ ...styles.td, padding: 0 }}>
                                                                     {renderMeasurementGrid(item.GiaTriDo)}
                                                                 </td>

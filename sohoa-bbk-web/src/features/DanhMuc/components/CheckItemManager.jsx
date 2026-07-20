@@ -7,7 +7,7 @@ import {
     TextField, Stack, Alert,
     Box, Typography, CircularProgress,
     Autocomplete, TableContainer, Paper, Tooltip,
-    Chip
+    Chip, Checkbox, FormControlLabel
 } from "@mui/material";
 
 import EditIcon from "@mui/icons-material/Edit";
@@ -317,6 +317,7 @@ export default function CheckItemManager() {
                                     <TableCell sx={{ fontWeight: 600 }}>Tham chiếu</TableCell>
                                     <TableCell sx={{ fontWeight: 600 }}>Phương pháp kiểm</TableCell>
                                     <TableCell sx={{ fontWeight: 600 }}>Tiêu chuẩn</TableCell>
+                                    <TableCell sx={{ fontWeight: 600, width: 140 }} align="center">Điểm trọng yếu</TableCell>
                                     <TableCell sx={{ fontWeight: 600, width: 120 }} align="right">Thao tác</TableCell>
                                 </TableRow>
                             </TableHead>
@@ -324,7 +325,7 @@ export default function CheckItemManager() {
                             <TableBody>
                                 {data.length === 0 && !loading ? (
                                     <TableRow>
-                                        <TableCell colSpan={6} align="center" sx={{ py: 5 }}>
+                                        <TableCell colSpan={7} align="center" sx={{ py: 5 }}>
                                             <ChecklistRtlIcon sx={{ fontSize: 48, color: "text.disabled", mb: 1 }} />
                                             <Typography color="text.secondary">Nhóm này chưa có mục kiểm nào.</Typography>
                                         </TableCell>
@@ -343,6 +344,9 @@ export default function CheckItemManager() {
                                             </TableCell>
                                             <TableCell>{row.PhuongPhapKiem || "--"}</TableCell>
                                             <TableCell sx={{ color: "text.secondary" }}>{row.TieuChuan || "--"}</TableCell>
+                                            <TableCell align="center">
+                                                {row.DiemTrongYeu ? <Chip label="Trọng yếu" size="small" color="warning" /> : "--"}
+                                            </TableCell>
                                             <TableCell align="right">
                                                 <Stack direction="row" spacing={0.5} justifyContent="flex-end" sx={{ whiteSpace: "nowrap" }}>
                                                     <Tooltip title="Chỉnh sửa">
@@ -418,6 +422,16 @@ export default function CheckItemManager() {
                             onChange={(e) => setForm({ ...form, TieuChuan: e.target.value })}
                             placeholder="Mô tả tiêu chuẩn đạt..."
                         />
+
+                        <FormControlLabel
+                            control={(
+                                <Checkbox
+                                    checked={Boolean(form.DiemTrongYeu)}
+                                    onChange={(e) => setForm({ ...form, DiemTrongYeu: e.target.checked })}
+                                />
+                            )}
+                            label="Điểm trọng yếu"
+                        />
                     </Stack>
                 </DialogContent>
 
@@ -456,9 +470,11 @@ export default function CheckItemManager() {
                 <DialogContent dividers>
                     <Stack spacing={2.5}>
                         <Alert severity="info">
-                            File .xlsx cần có sheet <strong>DanhMucKiem</strong> với các cột: MaSanPham, TenNhom, MoTaNhom, ThuTuNhom, TenMucKiem, ThamChieu, PhuongPhapKiem, TieuChuan, ThuTuMuc, ThuTuGanNhom.
+                            File .xlsx cần có sheet <strong>DanhMucKiem</strong> với các cột: MaSanPham, TenNhom, MoTaNhom, ThuTuNhom, TenMucKiem, ThamChieu, PhuongPhapKiem, TieuChuan, ThuTuMuc, ThuTuGanNhom, DiemTrongYeu.
                             <br />
                             <strong>MoTaNhom</strong> là bắt buộc và dùng để phân biệt các nhóm kiểm trùng tên giữa từng sản phẩm/vật tư.
+                            <br />
+                            <strong>DiemTrongYeu</strong> là tùy chọn, nhận Có/Không, true/false hoặc 1/0.
                         </Alert>
 
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>

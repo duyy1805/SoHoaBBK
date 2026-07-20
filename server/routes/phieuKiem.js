@@ -2024,7 +2024,7 @@ router.post(
     authenticateToken,
     authorize("THUC_HIEN_KIEM"),
     async (req, res) => {
-        const { checkItemId, ketQua, defects, giaTriDo } = req.body;
+        const { checkItemId, ketQua, defects = [], giaTriDo, diemTrongYeu } = req.body;
 
         try {
             const pool = await poolPromise;
@@ -2056,36 +2056,93 @@ router.post(
             // Tìm những ảnh cũ KHÔNG CÒN nằm trong danh sách gửi lên (nghĩa là user đã bấm xoá trên App)
             const urlsToDelete = oldUrls.filter(url => !incomingUrls.includes(url));
 
-            // Xoá file vật lý trên server
+            const currentResult = await pool.request()
+                .input("CheckItemId", sql.Int, checkItemId)
+                .query(`
+                    SELECT
+                        pci.DanhMucCheckItemId,
+                        pci.DiemTrongYeu,
+                        pk.TrangThai,
+                        lk.MaLoai
+                    FROM dbo.PHIEU_KIEM_CHECK_ITEM pci
+                    JOIN dbo.PHIEU_KIEM_SECTION sectionRow ON sectionRow.Id = pci.SectionId
+                    JOIN dbo.PHIEU_KIEM pk ON pk.Id = sectionRow.PhieuKiemId
+                    JOIN dbo.DM_LOAI_KIEM lk ON lk.Id = pk.LoaiKiemId
+                    WHERE pci.Id = @CheckItemId
+                `);
+
+            const currentItem = currentResult.recordset?.[0];
+            if (!currentItem) {
+                return res.status(404).json({ message: "Không tìm thấy mục kiểm của phiếu" });
+            }
+
+            const shouldUpdateCritical = typeof diemTrongYeu === "boolean";
+            const maLoai = String(currentItem.MaLoai || "").trim().toUpperCase();
+
+            if (shouldUpdateCritical && !["DAU_VAO", "KIEM_DONG_CONT"].includes(maLoai)) {
+                return res.status(400).json({
+                    message: "Điểm trọng yếu chỉ áp dụng cho kiểm đầu vào và kiểm cuối đóng cont"
+                });
+            }
+
+            if (shouldUpdateCritical && !["DA_TAO_SECTION", "DANG_KIEM"].includes(currentItem.TrangThai)) {
+                return res.status(409).json({
+                    message: "Chỉ được thay đổi điểm trọng yếu khi phiếu đang kiểm"
+                });
+            }
+
+            if (shouldUpdateCritical && !currentItem.DanhMucCheckItemId) {
+                return res.status(409).json({
+                    message: "Mục kiểm chưa liên kết được với danh mục; vui lòng liên hệ quản trị để đối chiếu dữ liệu"
+                });
+            }
+
+            const transaction = new sql.Transaction(pool);
+            await transaction.begin();
+
+            try {
+                await transaction.request()
+                    .input("CheckItemId", sql.Int, checkItemId)
+                    .input("KetQua", sql.NVarChar, ketQua)
+                    .input("Defects", sql.NVarChar(sql.MAX), JSON.stringify(defects))
+                    .input("GiaTriDo", sql.NVarChar(sql.MAX), giaTriDo)
+                    .execute("sp_PhieuKiem_SaveCheckItem1");
+
+                if (shouldUpdateCritical) {
+                    await transaction.request()
+                        .input("DanhMucCheckItemId", sql.Int, currentItem.DanhMucCheckItemId)
+                        .input("DiemTrongYeu", sql.Bit, diemTrongYeu)
+                        .query(`
+                            UPDATE dbo.DM_CHECK_ITEM
+                            SET DiemTrongYeu = @DiemTrongYeu
+                            WHERE Id = @DanhMucCheckItemId;
+
+                            UPDATE dbo.PHIEU_KIEM_CHECK_ITEM
+                            SET DiemTrongYeu = @DiemTrongYeu
+                            WHERE DanhMucCheckItemId = @DanhMucCheckItemId;
+                        `);
+                }
+
+                await transaction.commit();
+            } catch (transactionError) {
+                await transaction.rollback();
+                throw transactionError;
+            }
+
+            // Chỉ xoá file vật lý sau khi transaction lưu dữ liệu đã thành công.
             urlsToDelete.forEach(fileUrl => {
                 try {
-                    // url có dạng '/uploads/filename.jpg'
-                    // Loại bỏ dấu / ở đầu nếu có để path.join hoạt động chính xác
                     const relativePath = fileUrl.startsWith('/') ? fileUrl.slice(1) : fileUrl;
                     const filePath = path.join(__dirname, '..', relativePath);
 
                     if (fs.existsSync(filePath)) {
-                        try {
-                            fs.unlinkSync(filePath); // Xoá file
-                            console.log(`Đã xoá file rác: ${filePath}`);
-                        } catch (unlinkErr) {
-                            console.error(`Không thể xoá file rác (EPERM?): ${filePath}`, unlinkErr.message);
-                        }
+                        fs.unlinkSync(filePath);
+                        console.log(`Đã xoá file rác: ${filePath}`);
                     }
                 } catch (unlinkError) {
                     console.error(`Lỗi khi xoá file ${fileUrl}:`, unlinkError);
                 }
             });
-
-            // --- BƯỚC 2: CHẠY STORED PROCEDURE NHƯ BÌNH THƯỜNG ---
-            // Truyền dữ liệu mới tinh (đã gồm mảng URL gộp) vào Stored Procedure
-            // SP sẽ làm việc Delete bản ghi cũ & Insert bản ghi mới
-            await pool.request()
-                .input("CheckItemId", sql.Int, checkItemId)
-                .input("KetQua", sql.NVarChar, ketQua)
-                .input("Defects", sql.NVarChar(sql.MAX), JSON.stringify(defects))
-                .input("GiaTriDo", sql.NVarChar(sql.MAX), giaTriDo)
-                .execute("sp_PhieuKiem_SaveCheckItem1");
 
             res.json({ success: true });
 

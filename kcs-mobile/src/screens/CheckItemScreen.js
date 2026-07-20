@@ -58,10 +58,11 @@ const createUploadFile = (asset, defectIndex, imageIndex, uriOverride = null) =>
 
 export default function CheckItemScreen({ route, navigation }) {
 
-    const { item } = route.params;
+    const { item, canEditDiemTrongYeu = false } = route.params;
 
     const [ketQua, setKetQua] = useState(item.KetQua || null);
     const [giaTriDo, setGiaTriDo] = useState(item.GiaTriDo || "");
+    const [diemTrongYeu, setDiemTrongYeu] = useState(Boolean(item.DiemTrongYeu));
 
     const [defects, setDefects] = useState([]);
     const [selectedDefects, setSelectedDefects] = useState([]);
@@ -371,7 +372,8 @@ export default function CheckItemScreen({ route, navigation }) {
                     soLuong: d.soLuong,
                     imageUrls: d.imageUrls
                 })),
-                giaTriDo: giaTriDo
+                giaTriDo: giaTriDo,
+                ...(canEditDiemTrongYeu ? { diemTrongYeu } : {})
             });
 
             Alert.alert("Thành công", "Đã lưu kết quả");
@@ -454,6 +456,25 @@ export default function CheckItemScreen({ route, navigation }) {
                         <Text style={styles.optionText}>N/A</Text>
                     </TouchableOpacity>
                 </View>
+
+                {canEditDiemTrongYeu && (
+                    <TouchableOpacity
+                        style={[styles.criticalToggle, diemTrongYeu && styles.criticalToggleActive]}
+                        onPress={() => setDiemTrongYeu((current) => !current)}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: diemTrongYeu }}
+                    >
+                        <Ionicons
+                            name={diemTrongYeu ? "checkbox" : "square-outline"}
+                            size={24}
+                            color={diemTrongYeu ? "#b45309" : "#64748b"}
+                        />
+                        <View style={styles.criticalToggleText}>
+                            <Text style={styles.criticalToggleTitle}>Điểm trọng yếu</Text>
+                            <Text style={styles.criticalToggleHint}>Nội dung mục kiểm sẽ được in nghiêng trên phiếu.</Text>
+                        </View>
+                    </TouchableOpacity>
+                )}
 
                 {/* defects */}
                 {ketQua === "KHONG_DAT" && (
@@ -785,6 +806,39 @@ const styles = StyleSheet.create({
 
     neutral: {
         backgroundColor: "#94a3b8"
+    },
+
+    criticalToggle: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        padding: 12,
+        marginBottom: 14,
+        borderWidth: 1,
+        borderColor: "#cbd5e1",
+        borderRadius: 12,
+        backgroundColor: "#fff"
+    },
+
+    criticalToggleActive: {
+        borderColor: "#f59e0b",
+        backgroundColor: "#fffbeb"
+    },
+
+    criticalToggleText: {
+        flex: 1
+    },
+
+    criticalToggleTitle: {
+        color: "#0f172a",
+        fontSize: 15,
+        fontWeight: "700"
+    },
+
+    criticalToggleHint: {
+        color: "#64748b",
+        fontSize: 12,
+        marginTop: 2
     },
 
     selectBox: {

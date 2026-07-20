@@ -401,8 +401,17 @@ const normalizeImportRow = (row, index) => ({
   PhuongPhapKiem: trimValue(row.PhuongPhapKiem),
   TieuChuan: trimValue(row.TieuChuan),
   ThuTuMuc: row.ThuTuMuc,
-  ThuTuGanNhom: row.ThuTuGanNhom
+  ThuTuGanNhom: row.ThuTuGanNhom,
+  DiemTrongYeuRaw: trimValue(row.DiemTrongYeu)
 });
+
+const parseOptionalDiemTrongYeu = (rawValue) => {
+  const normalized = normalizeKey(rawValue);
+  if (!normalized) return { valid: true, value: null };
+  if (["có", "co", "true", "1"].includes(normalized)) return { valid: true, value: true };
+  if (["không", "khong", "false", "0"].includes(normalized)) return { valid: true, value: false };
+  return { valid: false, value: null };
+};
 
 const normalizeThongSoImportRow = (row, index) => ({
   line: index + 2,
@@ -1226,7 +1235,7 @@ router.post(
   authenticateToken,
   authorize("QUAN_TRI_DM"),
   async (req, res) => {
-    const { NhomKiemId, TenMucKiem, ThamChieu, PhuongPhapKiem, TieuChuan, ThuTu } = req.body;
+    const { NhomKiemId, TenMucKiem, ThamChieu, PhuongPhapKiem, TieuChuan, ThuTu, DiemTrongYeu } = req.body;
 
     try {
       const pool = await poolPromise;
@@ -1238,6 +1247,7 @@ router.post(
         .input("PhuongPhapKiem", sql.NVarChar(sql.MAX), PhuongPhapKiem)
         .input("TieuChuan", sql.NVarChar(sql.MAX), TieuChuan)
         .input("ThuTu", sql.Int, ThuTu)
+        .input("DiemTrongYeu", sql.Bit, DiemTrongYeu === true)
         .execute("sp_DM_CreateCheckItem");
 
       res.json({ message: "Tạo mục kiểm thành công" });
@@ -1255,10 +1265,17 @@ router.put(
   authorize("QUAN_TRI_DM"),
   async (req, res) => {
     const { id } = req.params;
-    const { TenMucKiem, ThamChieu, PhuongPhapKiem, TieuChuan, ThuTu, TrangThai } = req.body;
+    const { TenMucKiem, ThamChieu, PhuongPhapKiem, TieuChuan, ThuTu, TrangThai, DiemTrongYeu } = req.body;
 
     try {
       const pool = await poolPromise;
+      let diemTrongYeu = DiemTrongYeu;
+      if (typeof diemTrongYeu !== "boolean") {
+        const current = await pool.request()
+          .input("Id", sql.Int, id)
+          .query("SELECT DiemTrongYeu FROM dbo.DM_CHECK_ITEM WHERE Id = @Id");
+        diemTrongYeu = current.recordset?.[0]?.DiemTrongYeu === true;
+      }
 
       await pool.request()
         .input("Id", sql.Int, id)
@@ -1268,6 +1285,7 @@ router.put(
         .input("TieuChuan", sql.NVarChar(sql.MAX), TieuChuan)
         .input("ThuTu", sql.Int, ThuTu)
         .input("TrangThai", sql.Bit, TrangThai)
+        .input("DiemTrongYeu", sql.Bit, diemTrongYeu)
         .execute("sp_DM_UpdateCheckItem");
 
       res.json({ message: "Cập nhật thành công" });
@@ -1862,7 +1880,8 @@ router.get(
         PhuongPhapKiem: "Quan sát bằng mắt thường",
         TieuChuan: "Không trầy xước, móp méo",
         ThuTuMuc: 1,
-        ThuTuGanNhom: 1
+        ThuTuGanNhom: 1,
+        DiemTrongYeu: "Không"
       },
       {
         MaSanPham: "SP002",
@@ -1874,7 +1893,8 @@ router.get(
         PhuongPhapKiem: "Quan sát bằng mắt thường",
         TieuChuan: "Đường may đều, không bung chỉ",
         ThuTuMuc: 1,
-        ThuTuGanNhom: 1
+        ThuTuGanNhom: 1,
+        DiemTrongYeu: "Có"
       }
     ];
 
@@ -1890,7 +1910,8 @@ router.get(
         "PhuongPhapKiem",
         "TieuChuan",
         "ThuTuMuc",
-        "ThuTuGanNhom"
+        "ThuTuGanNhom",
+        "DiemTrongYeu"
       ]
     });
 
@@ -1904,7 +1925,8 @@ router.get(
       { wch: 28 },
       { wch: 34 },
       { wch: 12 },
-      { wch: 16 }
+      { wch: 16 },
+      { wch: 18 }
     ];
 
     XLSX.utils.book_append_sheet(workbook, worksheet, "DanhMucKiem");
@@ -1973,7 +1995,8 @@ router.get(
             PhuongPhapKiem: "",
             TieuChuan: "",
             ThuTuMuc: "",
-            ThuTuGanNhom: nhom.ThuTu || ""
+            ThuTuGanNhom: nhom.ThuTu || "",
+            DiemTrongYeu: ""
           });
           continue;
         }
@@ -1991,7 +2014,8 @@ router.get(
               PhuongPhapKiem: item.PhuongPhapKiem || "",
               TieuChuan: item.TieuChuan || "",
               ThuTuMuc: item.ThuTu || "",
-              ThuTuGanNhom: nhom.ThuTu || ""
+              ThuTuGanNhom: nhom.ThuTu || "",
+              DiemTrongYeu: item.DiemTrongYeu ? "Có" : "Không"
             });
           });
       }
@@ -2008,7 +2032,8 @@ router.get(
           "PhuongPhapKiem",
           "TieuChuan",
           "ThuTuMuc",
-          "ThuTuGanNhom"
+          "ThuTuGanNhom",
+          "DiemTrongYeu"
         ]
       });
 
@@ -2022,7 +2047,8 @@ router.get(
         { wch: 28 },
         { wch: 34 },
         { wch: 12 },
-        { wch: 16 }
+        { wch: 16 },
+        { wch: 18 }
       ];
 
       XLSX.utils.book_append_sheet(workbook, worksheet, "DanhMucKiem");
@@ -2113,6 +2139,9 @@ router.post(
       const errors = [];
 
       rows.forEach((row) => {
+        const criticalValue = parseOptionalDiemTrongYeu(row.DiemTrongYeuRaw);
+        row.DiemTrongYeu = criticalValue.value;
+
         if (!row.MaSanPham) {
           errors.push({ line: row.line, message: "Thiếu MaSanPham" });
         } else if (!sanPhamByCode.has(normalizeKey(row.MaSanPham))) {
@@ -2129,6 +2158,13 @@ router.post(
 
         if (!row.TenMucKiem) {
           errors.push({ line: row.line, message: "Thiếu TenMucKiem" });
+        }
+
+        if (!criticalValue.valid) {
+          errors.push({
+            line: row.line,
+            message: "DiemTrongYeu chỉ nhận Có/Không, true/false hoặc 1/0"
+          });
         }
       });
 
@@ -2166,7 +2202,8 @@ router.post(
             ThamChieu: row.ThamChieu,
             PhuongPhapKiem: row.PhuongPhapKiem,
             TieuChuan: row.TieuChuan,
-            ThuTu: itemOrder
+            ThuTu: itemOrder,
+            DiemTrongYeu: row.DiemTrongYeu
           });
         }
 
@@ -2251,6 +2288,7 @@ router.post(
               .input("TieuChuan", sql.NVarChar(sql.MAX), item.TieuChuan)
               .input("ThuTu", sql.Int, item.ThuTu)
               .input("TrangThai", sql.Bit, existed.TrangThai)
+              .input("DiemTrongYeu", sql.Bit, item.DiemTrongYeu ?? existed.DiemTrongYeu ?? false)
               .execute("sp_DM_UpdateCheckItem");
             summary.updatedMuc += 1;
           } else {
@@ -2261,6 +2299,7 @@ router.post(
               .input("PhuongPhapKiem", sql.NVarChar(sql.MAX), item.PhuongPhapKiem)
               .input("TieuChuan", sql.NVarChar(sql.MAX), item.TieuChuan)
               .input("ThuTu", sql.Int, item.ThuTu)
+              .input("DiemTrongYeu", sql.Bit, item.DiemTrongYeu ?? false)
               .execute("sp_DM_CreateCheckItem");
             itemCache.delete(nhom.Id);
             summary.createdMuc += 1;
