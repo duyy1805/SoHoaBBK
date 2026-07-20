@@ -93,8 +93,6 @@ export default function PhieuKiemList() {
                 return <Chip label="Chờ Trưởng bộ phận" color="secondary" size="small" />;
             case "CHO_XUONG_XAC_NHAN":
                 return <Chip label="Chờ Trưởng bộ phận" color="info" size="small" />;
-            case "CHO_SXBT_XAC_NHAN":
-                return <Chip label="Chờ SXBT xác nhận" color="warning" size="small" />;
             case "CHO_KHO_XAC_NHAN":
                 return <Chip label="Chờ Kho xác nhận" color="info" size="small" />;
             case "CHO_KIEM_NGHIEM":
@@ -332,7 +330,6 @@ export default function PhieuKiemList() {
                         <MenuItem value="DA_TAO_SECTION">Chưa kiểm</MenuItem>
                         <MenuItem value="DANG_KIEM">Đang kiểm</MenuItem>
                         <MenuItem value="CHO_TRUONG_BO_PHAN">Chờ Trưởng bộ phận</MenuItem>
-                        <MenuItem value="CHO_SXBT_XAC_NHAN">Chờ SXBT xác nhận</MenuItem>
                         <MenuItem value="CHO_KHO_XAC_NHAN">Chờ Kho xác nhận</MenuItem>
                         <MenuItem value="HOAN_TAT">Hoàn tất</MenuItem>
                     </TextField>

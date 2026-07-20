@@ -212,7 +212,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
 
     const signatureLabels = {
         KCS: "KCS",
-        SXBT: "BỘ PHẬN SXBT",
+        SXBT: "ĐƠN VỊ SXBT",
         KHO: "KHO",
         B8: "PHÒNG KIỂM NGHIỆM",
         B7: "PHÒNG CHẤT LƯỢNG",
@@ -228,18 +228,18 @@ export const SxbtPrintTemplate = React.forwardRef(({
 
     const sxbtApprovalSignatures = [
         {
-            key: 'KHO',
-            title: signatureLabels.KHO,
-            userName: dynVal('SxbtKhoConfirmedByName'),
-            date: dynVal('SxbtKhoConfirmedAt'),
-            signed: !!dynVal('SxbtKhoConfirmedBy')
-        },
-        {
             key: 'SXBT',
             title: signatureLabels.SXBT,
             userName: dynVal('SxbtConfirmedByName'),
             date: dynVal('SxbtConfirmedAt'),
             signed: !!dynVal('SxbtConfirmedBy')
+        },
+        {
+            key: 'KHO',
+            title: signatureLabels.KHO,
+            userName: dynVal('SxbtKhoConfirmedByName'),
+            date: dynVal('SxbtKhoConfirmedAt'),
+            signed: !!dynVal('SxbtKhoConfirmedBy')
         },
         {
             key: 'KCS',

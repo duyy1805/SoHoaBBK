@@ -51,8 +51,11 @@ export default function PhieuListScreen({ navigation }) {
         switch (status) {
             case "TAO_MOI":
                 return { backgroundColor: "#e0f2fe", color: "#0369a1", text: "Chưa kiểm" };
+            case "HOAN_THANH":
+                return { backgroundColor: "#d1fae5", color: "#047857", text: "Hoàn thành" };
+
             case "HOAN_TAT":
-                return { backgroundColor: "#dcfce7", color: "#15803d", text: "Hoàn tất" };
+                return { backgroundColor: "#d1fae5", color: "#047857", text: "Hoàn tất" };
 
             case "DANG_KIEM":
                 return { backgroundColor: "#fef9c3", color: "#a16207", text: "Đang kiểm" };
@@ -69,9 +72,6 @@ export default function PhieuListScreen({ navigation }) {
                     color: "#b45309",
                     text: item?.LoaiKiemId === 4 ? "Chờ Kho" : "Chờ Trưởng bộ phận"
                 };
-
-            case "CHO_SXBT_XAC_NHAN":
-                return { backgroundColor: "#fef3c7", color: "#b45309", text: "Chờ SXBT" };
 
             case "CHO_KHO_XAC_NHAN":
                 return { backgroundColor: "#dbeafe", color: "#1d4ed8", text: "Chờ Kho" };

@@ -22,7 +22,6 @@ import {
     getDefectList,
     saveSxbtData,
     completeSxbt,
-    confirmSxbt,
     confirmKhoSxbt
 } from "../api/phieuKiem.api";
 import { getUser } from "../utils/auth";
@@ -66,7 +65,6 @@ export default function SxbtInspectionScreen({ route, navigation }) {
     // 2. Derived Variables
     const hasPermission = (p) => user?.permissions?.includes(p);
     const isKCS = hasPermission("THUC_HIEN_KIEM") || user?.Role === "KCS";
-    const isSXBTConfirm = hasPermission("XAC_NHAN_SXBT");
     const isKhoSXBT = hasPermission("XAC_NHAN_KHO_SXBT");
 
     const isCompleted = phieu?.TrangThai === "CHO_SXBT_XAC_NHAN" ||
@@ -83,7 +81,6 @@ export default function SxbtInspectionScreen({ route, navigation }) {
         switch (status) {
             case "CHUA_KIEM": return "#94a3b8";
             case "HOAN_THANH": return "#10b981";
-            case "CHO_SXBT_XAC_NHAN": return "#f59e0b";
             case "CHO_KHO_XAC_NHAN": return "#2563eb";
             case "CHO_XUONG_XAC_NHAN": return "#f59e0b";
             case "CHO_KIEM_NGHIEM": return "#3b82f6";
@@ -96,7 +93,6 @@ export default function SxbtInspectionScreen({ route, navigation }) {
             case "CHUA_KIEM": return "Chưa kiểm";
             case "HOAN_THANH": return "Hoàn thành";
             case "HOAN_TAT": return "Hoàn thành";
-            case "CHO_SXBT_XAC_NHAN": return "Chờ SXBT xác nhận";
             case "CHO_KHO_XAC_NHAN": return "Chờ Kho xác nhận";
             case "CHO_XUONG_XAC_NHAN": return "Chờ Kho xác nhận";
             case "CHO_KIEM_NGHIEM": return "Chờ TP_B8 xác nhận";
@@ -449,20 +445,6 @@ export default function SxbtInspectionScreen({ route, navigation }) {
     const tyLeCritical = totalSamples > 0 ? (criticalDefects / totalSamples) * 100 : 0;
     const tyLeMajorMinor = totalSamples > 0 ? (majorMinorDefects / totalSamples) * 100 : 0;
 
-    // Các hàm xác nhận
-    const handleConfirmSXBT = async () => {
-        try {
-            setSaving(true);
-            await confirmSxbt(id);
-            Alert.alert("Thành công", "SXBT đã xác nhận phiếu.");
-            navigation.goBack();
-        } catch (error) {
-            Alert.alert("Lỗi", error?.response?.data?.message || "Không thể xác nhận SXBT");
-        } finally {
-            setSaving(false);
-        }
-    };
-
     const handleConfirmKho = async () => {
         const lotRows = [];
         btpItems.forEach((item) => {
@@ -564,7 +546,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                             // Bước 2: Hoàn tất – gửi kết luận để SP Complete đổi TrangThai
                             await completeSxbt(id, ketLuan);
 
-                            Alert.alert("Đã hoàn tất", "Chờ SXBT xác nhận");
+                            Alert.alert("Đã hoàn tất", "Chờ Kho xác nhận số lượng");
                             navigation.goBack();
                         } catch (error) {
                             console.error(error);
@@ -937,19 +919,6 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                             disabled={saving}
                         >
                             {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Hoàn tất</Text>}
-                        </TouchableOpacity>
-                    </View>
-                )}
-
-                {/* SXBT xác nhận */}
-                {phieu?.TrangThai === "CHO_SXBT_XAC_NHAN" && isSXBTConfirm && (
-                    <View style={styles.actionRow}>
-                        <TouchableOpacity
-                            style={[styles.saveBtn, { flex: 1, backgroundColor: "#2563eb" }]}
-                            onPress={handleConfirmSXBT}
-                            disabled={saving}
-                        >
-                            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>SXBT xác nhận</Text>}
                         </TouchableOpacity>
                     </View>
                 )}

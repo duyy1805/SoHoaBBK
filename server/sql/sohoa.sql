@@ -3202,9 +3202,23 @@ BEGIN
 
         UPDATE dbo.PHIEU_KIEM
         SET KetLuan = @KetLuan,
-            TrangThai = 'CHO_KIEM_NGHIEM',
+            TrangThai = 'CHO_KHO_XAC_NHAN',
             NgayKiem = GETDATE()
         WHERE Id = @PhieuKiemId;
+
+        MERGE dbo.PhieuKiem_CustomFields AS target
+        USING (
+            SELECT @PhieuKiemId AS PhieuKiemId, N'SxbtKcsCompletedBy' AS FieldName, CONVERT(NVARCHAR(50), @UserId) AS FieldValue
+            UNION ALL
+            SELECT @PhieuKiemId, N'SxbtKcsCompletedAt', CONVERT(NVARCHAR(30), SYSDATETIME(), 126)
+        ) AS source
+        ON target.PhieuKiemId = source.PhieuKiemId
+           AND target.FieldName = source.FieldName
+        WHEN MATCHED THEN
+            UPDATE SET FieldValue = source.FieldValue
+        WHEN NOT MATCHED THEN
+            INSERT (PhieuKiemId, FieldName, FieldValue)
+            VALUES (source.PhieuKiemId, source.FieldName, source.FieldValue);
 
         IF @KetLuan = 'KHONG_DAT'
         BEGIN
@@ -3223,12 +3237,196 @@ BEGIN
         END
 
         COMMIT TRAN;
-        SELECT 1 AS Code, N'Hoàn tất phiếu kiểm SXBT thành công' AS Message;
+        SELECT 1 AS Code, N'Hoàn tất phiếu kiểm SXBT thành công. Chờ Kho xác nhận số lượng.' AS Message;
     END TRY
     BEGIN CATCH
         ROLLBACK TRAN;
         DECLARE @ErrMsg NVARCHAR(4000) = ERROR_MESSAGE();
         RAISERROR(@ErrMsg, 16, 1);
+    END CATCH
+END
+GO
+
+-- ----------------------------
+-- procedure structure for sp_PhieuKiem_SXBT_ConfirmKho
+-- ----------------------------
+CREATE OR ALTER PROCEDURE [dbo].[sp_PhieuKiem_SXBT_ConfirmKho]
+    @PhieuKiemId INT,
+    @UserId INT,
+    @LotRowsJson NVARCHAR(MAX)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        IF NOT EXISTS (
+            SELECT 1 FROM dbo.PHIEU_KIEM
+            WHERE Id = @PhieuKiemId
+              AND LoaiKiemId = 4
+              AND TrangThai = N'CHO_KHO_XAC_NHAN'
+        )
+        BEGIN
+            RAISERROR(N'Phiếu SXBT không ở trạng thái chờ Kho xác nhận.', 16, 1);
+            RETURN;
+        END
+
+        IF OBJECT_ID('tempdb..#KhoLotRows') IS NOT NULL DROP TABLE #KhoLotRows;
+
+        SELECT lotRowId AS LotRowId,
+               soLuongKhoXacNhan AS SoLuongKhoXacNhan
+        INTO #KhoLotRows
+        FROM OPENJSON(@LotRowsJson)
+        WITH (
+            lotRowId INT '$.lotRowId',
+            soLuongKhoXacNhan DECIMAL(18,2) '$.soLuongKhoXacNhan'
+        );
+
+        IF NOT EXISTS (SELECT 1 FROM #KhoLotRows)
+        BEGIN
+            RAISERROR(N'Chưa có dữ liệu số lượng Kho xác nhận.', 16, 1);
+            RETURN;
+        END
+
+        IF EXISTS (
+            SELECT 1 FROM #KhoLotRows
+            WHERE LotRowId IS NULL
+               OR SoLuongKhoXacNhan IS NULL
+               OR SoLuongKhoXacNhan < 0
+        )
+        BEGIN
+            RAISERROR(N'Số lượng Kho xác nhận không hợp lệ.', 16, 1);
+            RETURN;
+        END
+
+        IF EXISTS (
+            SELECT 1
+            FROM #KhoLotRows src
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM dbo.PHIEU_KIEM_BTP_ITEM_LOT lot
+                INNER JOIN dbo.PHIEU_KIEM_BTP_ITEM item ON item.Id = lot.BtpItemId
+                WHERE lot.Id = src.LotRowId
+                  AND item.PhieuKiemId = @PhieuKiemId
+            )
+        )
+        BEGIN
+            RAISERROR(N'Dữ liệu lot không thuộc phiếu SXBT hiện tại.', 16, 1);
+            RETURN;
+        END
+
+        IF (
+            SELECT COUNT(1)
+            FROM dbo.PHIEU_KIEM_BTP_ITEM_LOT lot
+            INNER JOIN dbo.PHIEU_KIEM_BTP_ITEM item ON item.Id = lot.BtpItemId
+            WHERE item.PhieuKiemId = @PhieuKiemId
+        ) <> (
+            SELECT COUNT(DISTINCT LotRowId) FROM #KhoLotRows
+        )
+        BEGIN
+            RAISERROR(N'Cần nhập đủ số lượng Kho xác nhận cho tất cả dòng lot.', 16, 1);
+            RETURN;
+        END
+
+        UPDATE lot
+        SET lot.SoLuongKhoXacNhan = src.SoLuongKhoXacNhan,
+            lot.KhoXacNhanBy = @UserId,
+            lot.KhoXacNhanAt = SYSDATETIME()
+        FROM dbo.PHIEU_KIEM_BTP_ITEM_LOT lot
+        INNER JOIN #KhoLotRows src ON src.LotRowId = lot.Id
+        INNER JOIN dbo.PHIEU_KIEM_BTP_ITEM item ON item.Id = lot.BtpItemId
+        WHERE item.PhieuKiemId = @PhieuKiemId;
+
+        UPDATE dbo.PHIEU_KIEM
+        SET TrangThai = N'HOAN_THANH'
+        WHERE Id = @PhieuKiemId;
+
+        MERGE dbo.PhieuKiem_CustomFields AS target
+        USING (
+            SELECT @PhieuKiemId AS PhieuKiemId, N'SxbtKhoConfirmedBy' AS FieldName, CONVERT(NVARCHAR(50), @UserId) AS FieldValue
+            UNION ALL
+            SELECT @PhieuKiemId, N'SxbtKhoConfirmedAt', CONVERT(NVARCHAR(30), SYSDATETIME(), 126)
+        ) AS source
+        ON target.PhieuKiemId = source.PhieuKiemId
+           AND target.FieldName = source.FieldName
+        WHEN MATCHED THEN
+            UPDATE SET FieldValue = source.FieldValue
+        WHEN NOT MATCHED THEN
+            INSERT (PhieuKiemId, FieldName, FieldValue)
+            VALUES (source.PhieuKiemId, source.FieldName, source.FieldValue);
+
+        COMMIT TRANSACTION;
+        SELECT 1 AS Code, N'Kho đã xác nhận số lượng nhập. Phiếu SXBT đã hoàn thành.' AS Message;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+-- ----------------------------
+-- procedure structure for sp_PhieuKiem_SXBT_ConfirmSXBT
+-- ----------------------------
+CREATE OR ALTER PROCEDURE [dbo].[sp_PhieuKiem_SXBT_ConfirmSXBT]
+    @PhieuKiemId INT,
+    @UserId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        IF NOT EXISTS (
+            SELECT 1 FROM dbo.PHIEU_KIEM
+            WHERE Id = @PhieuKiemId
+              AND LoaiKiemId = 4
+              AND TrangThai = N'CHO_SXBT_XAC_NHAN'
+        )
+        BEGIN
+            RAISERROR(N'Phiếu SXBT không ở trạng thái chờ SXBT xác nhận.', 16, 1);
+            RETURN;
+        END
+
+        IF NOT EXISTS (
+            SELECT 1 FROM dbo.PhieuKiem_CustomFields
+            WHERE PhieuKiemId = @PhieuKiemId
+              AND FieldName = N'SxbtKhoConfirmedBy'
+              AND NULLIF(LTRIM(RTRIM(FieldValue)), N'') IS NOT NULL
+        )
+        BEGIN
+            RAISERROR(N'Kho chưa xác nhận số lượng cho phiếu SXBT.', 16, 1);
+            RETURN;
+        END
+
+        UPDATE dbo.PHIEU_KIEM
+        SET TrangThai = N'HOAN_THANH'
+        WHERE Id = @PhieuKiemId;
+
+        MERGE dbo.PhieuKiem_CustomFields AS target
+        USING (
+            SELECT @PhieuKiemId AS PhieuKiemId, N'SxbtConfirmedBy' AS FieldName, CONVERT(NVARCHAR(50), @UserId) AS FieldValue
+            UNION ALL
+            SELECT @PhieuKiemId, N'SxbtConfirmedAt', CONVERT(NVARCHAR(30), SYSDATETIME(), 126)
+        ) AS source
+        ON target.PhieuKiemId = source.PhieuKiemId
+           AND target.FieldName = source.FieldName
+        WHEN MATCHED THEN
+            UPDATE SET FieldValue = source.FieldValue
+        WHEN NOT MATCHED THEN
+            INSERT (PhieuKiemId, FieldName, FieldValue)
+            VALUES (source.PhieuKiemId, source.FieldName, source.FieldValue);
+
+        COMMIT TRANSACTION;
+        SELECT 1 AS Code, N'SXBT đã xác nhận. Phiếu đã hoàn thành.' AS Message;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
     END CATCH
 END
 GO

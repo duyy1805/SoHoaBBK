@@ -25,7 +25,6 @@ import { SxbtPrintTemplate } from "../components/SxbtPrintTemplate";
 import {
     completeSxbt,
     confirmKhoSxbt,
-    confirmSxbt,
     getPhieuKiemDetail
 } from "../../../api/phieuKiem.api";
 import { getBienBanSxbtDetail } from "../../../api/bienBan.api";
@@ -36,7 +35,6 @@ import { hasPermission } from "../../../utils/auth";
 // ============================================================
 const STATUS_MAP = {
     CHUA_KIEM: { label: "Chưa kiểm", color: "default" },
-    CHO_SXBT_XAC_NHAN: { label: "Chờ SXBT xác nhận", color: "warning" },
     CHO_KHO_XAC_NHAN: { label: "Chờ Kho xác nhận", color: "info" },
     CHO_KIEM_NGHIEM: { label: "Chờ kiểm nghiệm", color: "info" },
     CHO_XUONG_XAC_NHAN: { label: "Chờ Kho xác nhận", color: "warning" },
@@ -244,7 +242,6 @@ export default function SxbtDetail() {
     };
 
     const isKCS = hasPermission("THUC_HIEN_KIEM");
-    const isSXBTConfirm = hasPermission("XAC_NHAN_SXBT");
     const isKhoSXBT = hasPermission("XAC_NHAN_KHO_SXBT");
     const isCompleted = ["CHO_SXBT_XAC_NHAN", "CHO_KHO_XAC_NHAN", "CHO_KIEM_NGHIEM", "CHO_XUONG_XAC_NHAN", "HOAN_THANH", "HOAN_TAT"].includes(phieu?.TrangThai);
     const canEditKhoQuantity = phieu?.TrangThai === "CHO_KHO_XAC_NHAN" && isKhoSXBT;
@@ -280,28 +277,11 @@ export default function SxbtDetail() {
             setActionNotice(null);
             await completeSxbt(id, inferredKetLuan);
             await loadData();
-            setActionNotice({ type: "success", message: "Hoàn tất phiếu SXBT thành công. Phiếu đã chuyển sang bước SXBT xác nhận." });
+            setActionNotice({ type: "success", message: "Hoàn tất phiếu SXBT thành công. Phiếu đã chuyển sang bước Kho xác nhận số lượng." });
         } catch (err) {
             setActionNotice({
                 type: "error",
                 message: err?.response?.data?.message || "Không thể hoàn tất phiếu SXBT"
-            });
-        } finally {
-            setLoadingAction(false);
-        }
-    };
-
-    const handleConfirmSXBT = async () => {
-        try {
-            setLoadingAction(true);
-            setActionNotice(null);
-            await confirmSxbt(id);
-            await loadData();
-            setActionNotice({ type: "success", message: "SXBT đã xác nhận phiếu thành công" });
-        } catch (err) {
-            setActionNotice({
-                type: "error",
-                message: err?.response?.data?.message || "Không thể xác nhận SXBT"
             });
         } finally {
             setLoadingAction(false);
@@ -480,14 +460,12 @@ export default function SxbtDetail() {
                                                 <TableCell sx={{ fontWeight: 700 }}>Tên sản phẩm</TableCell>
                                                 <TableCell align="right" sx={{ fontWeight: 700 }}>Số lượng</TableCell>
                                                 <TableCell sx={{ fontWeight: 700 }}>ĐVT</TableCell>
-                                                <TableCell align="right" sx={{ fontWeight: 700 }}>SL nhập</TableCell>
                                                 <TableCell sx={{ fontWeight: 700 }}>Dấu tuần/GS1</TableCell>
                                                 <TableCell sx={{ fontWeight: 700 }}>TT</TableCell>
                                                 <TableCell sx={{ fontWeight: 700 }}>LXVT/LOT</TableCell>
                                                 <TableCell sx={{ fontWeight: 700 }}>Số Lot SX</TableCell>
-                                                <TableCell align="right" sx={{ fontWeight: 700 }}>Tổng cái Kho xác nhận</TableCell>
-                                                <TableCell sx={{ fontWeight: 700 }}>Số bó hàng</TableCell>
-                                                <TableCell sx={{ fontWeight: 700 }}>Số cái/bó</TableCell>
+                                                <TableCell align="right" sx={{ fontWeight: 700 }}>SL nhập</TableCell>
+                                                <TableCell align="right" sx={{ fontWeight: 700 }}>Tổng số Kho xác nhận</TableCell>
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
@@ -497,15 +475,15 @@ export default function SxbtDetail() {
                                                         <TableCell sx={{ fontWeight: 600 }}>{item.TenSanPham}</TableCell>
                                                         <TableCell align="right">{item.SoLuong?.toLocaleString("vi-VN")}</TableCell>
                                                         <TableCell>{item.DonViTinh}</TableCell>
+                                                        <TableCell>{lotRow.DauTuanGS1 || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
+                                                        <TableCell>{lotRow.ThuTu || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
+                                                        <TableCell>{lotRow.LxvtLot || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
+                                                        <TableCell>{lotRow.SoLotSX || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
                                                         <TableCell align="right">
                                                             {lotRow.SoLuongNhap !== null && lotRow.SoLuongNhap !== undefined && lotRow.SoLuongNhap !== ""
                                                                 ? Number(lotRow.SoLuongNhap).toLocaleString("vi-VN")
                                                                 : <Typography variant="caption" color="text.disabled">—</Typography>}
                                                         </TableCell>
-                                                        <TableCell>{lotRow.DauTuanGS1 || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
-                                                        <TableCell>{lotRow.ThuTu || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
-                                                        <TableCell>{lotRow.LxvtLot || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
-                                                        <TableCell>{lotRow.SoLotSX || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
                                                         <TableCell align="right">
                                                             {canEditKhoQuantity ? (
                                                                 <TextField
@@ -525,8 +503,6 @@ export default function SxbtDetail() {
                                                                 <Typography variant="caption" color="text.disabled">—</Typography>
                                                             )}
                                                         </TableCell>
-                                                        <TableCell>{item.SoBoHang || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
-                                                        <TableCell>{item.SoCaiBo || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
                                                     </TableRow>
                                                 ))
                                             )}
@@ -715,20 +691,6 @@ export default function SxbtDetail() {
                         </Paper>
                     )}
 
-                    {phieu?.TrangThai === "CHO_SXBT_XAC_NHAN" && isSXBTConfirm && (
-                        <Paper sx={{ position: "sticky", bottom: 0, zIndex: 9, mt: 2, mb: 3, p: 2, borderTop: "1px solid #e0e0e0" }}>
-                            <Stack direction="row" justifyContent="flex-end">
-                                <Button
-                                    variant="contained"
-                                    onClick={handleConfirmSXBT}
-                                    disabled={loadingAction}
-                                >
-                                    {loadingAction ? "Đang xử lý..." : "SXBT xác nhận"}
-                                </Button>
-                            </Stack>
-                        </Paper>
-                    )}
-
                     {phieu?.TrangThai === "CHO_KHO_XAC_NHAN" && isKhoSXBT && (
                         <Paper sx={{ position: "sticky", bottom: 0, zIndex: 9, mt: 2, mb: 3, p: 2, borderTop: "1px solid #e0e0e0" }}>
                             <Stack direction="row" justifyContent="flex-end">
@@ -743,6 +705,7 @@ export default function SxbtDetail() {
                             </Stack>
                         </Paper>
                     )}
+
                 </Container>
 
                 {/* ===== DIALOG IN PHIẾU ===== */}

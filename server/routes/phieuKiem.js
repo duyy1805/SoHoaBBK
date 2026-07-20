@@ -1776,7 +1776,7 @@ router.post(
 );
 
 /* =========================================================
-   POST /phieu-kiem/sxbt/confirm-sxbt (SXBT xác nhận)
+   POST /phieu-kiem/sxbt/confirm-sxbt (legacy/dự phòng, tạm ẩn khỏi UI)
 ========================================================= */
 router.post(
     '/sxbt/confirm-sxbt',
@@ -1833,7 +1833,7 @@ router.post(
 
             res.json({
                 success: true,
-                message: result.recordset?.[0]?.Message || 'Kho đã xác nhận số lượng nhập thành công'
+                message: result.recordset?.[0]?.Message || 'Kho đã xác nhận số lượng nhập. Phiếu SXBT đã hoàn thành.'
             });
         } catch (err) {
             console.error('SXBT Confirm Kho error:', err);
@@ -1896,7 +1896,7 @@ router.post(
                 .input('UserId', sql.Int, userId)
                 .execute('sp_PhieuKiem_SXBT_Complete');
 
-            res.json({ success: true, message: 'Hoàn tất phiếu kiểm SXBT thành công' });
+            res.json({ success: true, message: 'Hoàn tất phiếu kiểm SXBT thành công. Chờ Kho xác nhận số lượng.' });
 
         } catch (err) {
             console.error('SXBT Complete error:', err);

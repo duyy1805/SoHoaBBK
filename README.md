@@ -189,9 +189,12 @@ SXBT là luồng riêng tại `SxbtInspectionScreen` (khi `LoaiKiemId === 4`):
    - Bước 1: gọi `sxbt-save` để chốt dữ liệu mới nhất.
    - Bước 2: gọi `POST /phieu-kiem/sxbt-complete` với `ketLuan` để chuyển trạng thái.
 5. Xác nhận sau hoàn tất:
-   - SXBT giữ luồng riêng theo quyền `XAC_NHAN_SXBT` và `XAC_NHAN_KHO_SXBT`.
+   - KCS hoàn tất sẽ chuyển thẳng sang `CHO_KHO_XAC_NHAN`.
+   - Kho nhập đủ số lượng xác nhận cho các dòng lot và xác nhận bằng quyền `XAC_NHAN_KHO_SXBT`.
+   - Sau khi Kho xác nhận, phiếu chuyển thẳng sang `HOAN_THANH`; bộ phận SXBT ký xác nhận trên bản cứng.
+   - Endpoint/quyền `XAC_NHAN_SXBT` được giữ làm chức năng dự phòng nhưng tạm thời không hiển thị trong luồng Mobile/Web.
 6. Trạng thái đã khóa sửa trong UI SXBT:
-   - `CHO_XUONG_XAC_NHAN`, `CHO_KIEM_NGHIEM`, `HOAN_THANH`, `HOAN_TAT`.
+   - `CHO_KHO_XAC_NHAN`, `CHO_SXBT_XAC_NHAN`, `CHO_XUONG_XAC_NHAN`, `CHO_KIEM_NGHIEM`, `HOAN_THANH`, `HOAN_TAT`.
 
 ### 7) Luồng kiểm đặc biệt (áp dụng bổ sung)
 

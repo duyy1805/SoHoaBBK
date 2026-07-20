@@ -158,8 +158,10 @@ Luồng chung cho phiếu không phải SXBT, hiện dùng màn `PhieuKiemDetail
 - Dữ liệu SXBT gồm điều kiện vận chuyển, danh sách BTP, tỷ lệ kiểm, lỗi, kết luận.
 - Mobile/Web lưu tạm SXBT qua `POST /phieu-kiem/sxbt-save` với `dynamicFields`, `btpItems`, `summary`, `defects`, `ketLuan`.
 - Hoàn tất SXBT gọi `POST /phieu-kiem/sxbt-complete`.
-- Sau hoàn tất vẫn đi qua xác nhận Kho/PX và kiểm nghiệm bằng endpoint phiếu kiểm chung.
-- UI SXBT khóa sửa khi `CHO_XUONG_XAC_NHAN`, `CHO_KIEM_NGHIEM`, `HOAN_THANH`, `HOAN_TAT`.
+- Sau khi KCS hoàn tất, phiếu chuyển sang `CHO_KHO_XAC_NHAN`.
+- Kho nhập đủ số lượng cho từng dòng lot và gọi `POST /phieu-kiem/sxbt/confirm-kho` với quyền `XAC_NHAN_KHO_SXBT`; phiếu chuyển `HOAN_THANH`.
+- Bộ phận SXBT ký xác nhận trên bản cứng. Endpoint `POST /phieu-kiem/sxbt/confirm-sxbt` và quyền `XAC_NHAN_SXBT` được giữ dự phòng nhưng tạm ẩn khỏi Mobile/Web.
+- UI SXBT khóa phần dữ liệu KCS khi `CHO_KHO_XAC_NHAN`, `CHO_SXBT_XAC_NHAN`, `CHO_XUONG_XAC_NHAN`, `CHO_KIEM_NGHIEM`, `HOAN_THANH`, `HOAN_TAT`.
 - Nếu SXBT có biên bản, mở sang `/bien-ban/sxbt/:id` hoặc mobile `BienBanSxbtDetail`.
 
 ### 7.5 Kiểm Cuối/Đầu Ra
