@@ -116,6 +116,10 @@ export const completeSxbt = (phieuKiemId, ketLuan) => {
     return axiosClient.post("/phieu-kiem/sxbt-complete", { phieuKiemId, ketLuan });
 };
 
+export const splitCompleteSxbt = (phieuKiemId, lotRows) => {
+    return axiosClient.post("/phieu-kiem/sxbt/split-complete", { phieuKiemId, lotRows });
+};
+
 export const confirmSxbt = (phieuKiemId) => {
     return axiosClient.post("/phieu-kiem/sxbt/confirm-sxbt", { phieuKiemId });
 };

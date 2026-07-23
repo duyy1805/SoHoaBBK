@@ -28,7 +28,7 @@ import PrintIcon from "@mui/icons-material/Print";
 import { useReactToPrint } from "react-to-print";
 import { Dialog, DialogTitle, DialogContent, DialogActions } from "@mui/material";
 import { useRef } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
@@ -52,6 +52,9 @@ export default function PhieuKiemDetail() {
 
     const { id } = useParams();
     const navigate = useNavigate();
+    const location = useLocation();
+    const returnTo = location.state?.returnTo || "/phieu-kiem";
+    const returnToList = () => navigate(returnTo);
 
     const [phieu, setPhieu] = useState(null);
     const [sections, setSections] = useState([]);
@@ -338,7 +341,7 @@ export default function PhieuKiemDetail() {
             setLoadingAction(true);
             setActionNotice(null);
             await deletePhieuKiem(id);
-            navigate("/phieu-kiem");
+            returnToList();
         } catch (err) {
             setActionNotice({
                 type: "error",
@@ -369,7 +372,7 @@ export default function PhieuKiemDetail() {
                         <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems="center" spacing={2}>
                             <Button
                                 startIcon={<ArrowBackIcon />}
-                                onClick={() => navigate(-1)}
+                                onClick={returnToList}
                                 color="inherit"
                             >
                                 Danh sách phiếu kiểm

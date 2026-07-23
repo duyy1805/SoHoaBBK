@@ -37,6 +37,7 @@
       }
     },
     "android": {
+      "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "CAMERA",
         "READ_MEDIA_IMAGES",

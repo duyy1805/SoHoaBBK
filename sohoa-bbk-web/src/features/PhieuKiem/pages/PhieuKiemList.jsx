@@ -1,6 +1,6 @@
 // src/features/phieuKiem/pages/PhieuKiemList.jsx
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import {
     Box,
     Typography,
@@ -30,25 +30,62 @@ import {
     Search as SearchIcon,
     Visibility as VisibilityIcon
 } from "@mui/icons-material";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { getPhieuKiem } from "../../../api/phieuKiem.api";
 import { hasPermission } from "../../../utils/auth";
 
+const VALID_PAGE_SIZES = [5, 10, 25, 50];
+const parsePageParam = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed - 1 : 0;
+};
+
 export default function PhieuKiemList() {
+    const [searchParams, setSearchParams] = useSearchParams();
+    const location = useLocation();
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
 
     // Filter & Pagination states
-    const [filterStatus, setFilterStatus] = useState("");
-    const [filterLoaiKiem, setFilterLoaiKiem] = useState("");
-    const [filterNguoiKiem, setFilterNguoiKiem] = useState("");
-    const [filterKetLuan, setFilterKetLuan] = useState("");
+    const [filterStatus, setFilterStatus] = useState(() => searchParams.get("status") || "");
+    const [filterLoaiKiem, setFilterLoaiKiem] = useState(() => searchParams.get("type") || "");
+    const [filterNguoiKiem, setFilterNguoiKiem] = useState(() => searchParams.get("inspector") || "");
+    const [filterKetLuan, setFilterKetLuan] = useState(() => searchParams.get("result") || "");
     const [filterPopover, setFilterPopover] = useState({ field: "", anchorEl: null });
-    const [searchText, setSearchText] = useState("");
-    const [page, setPage] = useState(0);
-    const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [searchText, setSearchText] = useState(() => searchParams.get("q") || "");
+    const [page, setPage] = useState(() => parsePageParam(searchParams.get("page")));
+    const [rowsPerPage, setRowsPerPage] = useState(() => {
+        const value = Number(searchParams.get("pageSize"));
+        return VALID_PAGE_SIZES.includes(value) ? value : 50;
+    });
+    const tableContainerRef = useRef(null);
+    const restoredScrollKeyRef = useRef("");
 
     const navigate = useNavigate();
+    const listUrl = `${location.pathname}${location.search}`;
+    const scrollStorageKey = `phieu-kiem:list-scroll:${listUrl}`;
+
+    const updateQuery = useCallback((updates) => {
+        setSearchParams((current) => {
+            const next = new URLSearchParams(current);
+            Object.entries(updates).forEach(([key, value]) => {
+                if (value === "" || value === null || value === undefined) next.delete(key);
+                else next.set(key, String(value));
+            });
+            return next;
+        }, { replace: true });
+    }, [setSearchParams]);
+
+    useEffect(() => {
+        setFilterStatus(searchParams.get("status") || "");
+        setFilterLoaiKiem(searchParams.get("type") || "");
+        setFilterNguoiKiem(searchParams.get("inspector") || "");
+        setFilterKetLuan(searchParams.get("result") || "");
+        setSearchText(searchParams.get("q") || "");
+        setPage(parsePageParam(searchParams.get("page")));
+        const pageSize = Number(searchParams.get("pageSize"));
+        setRowsPerPage(VALID_PAGE_SIZES.includes(pageSize) ? pageSize : 50);
+    }, [searchParams]);
 
     const getDetailPath = (item) => {
         if (item.LoaiKiemId === 3) return `/phieu-kiem/cuoi-chuyen/${item.Id}`;
@@ -155,13 +192,50 @@ export default function PhieuKiemList() {
         return filteredData.slice(start, start + rowsPerPage);
     }, [filteredData, page, rowsPerPage]);
 
+    useEffect(() => {
+        if (loading) return;
+        const maxPage = Math.max(0, Math.ceil(filteredData.length / rowsPerPage) - 1);
+        if (page > maxPage) {
+            setPage(maxPage);
+            updateQuery({ page: maxPage + 1 });
+        }
+    }, [filteredData.length, loading, page, rowsPerPage, updateQuery]);
+
+    useEffect(() => {
+        if (loading || restoredScrollKeyRef.current === scrollStorageKey) return;
+        const savedScrollTop = Number(sessionStorage.getItem(scrollStorageKey));
+        const frame = window.requestAnimationFrame(() => {
+            if (tableContainerRef.current && Number.isFinite(savedScrollTop)) {
+                tableContainerRef.current.scrollTop = savedScrollTop;
+            }
+            restoredScrollKeyRef.current = scrollStorageKey;
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [loading, paginatedData.length, scrollStorageKey]);
+
     const handleChangePage = (event, newPage) => {
         setPage(newPage);
+        updateQuery({ page: newPage + 1 });
     };
 
     const handleChangeRowsPerPage = (event) => {
-        setRowsPerPage(parseInt(event.target.value, 10));
+        const nextPageSize = parseInt(event.target.value, 10);
+        setRowsPerPage(nextPageSize);
         setPage(0);
+        updateQuery({ pageSize: nextPageSize, page: 1 });
+    };
+
+    const updateFilter = (setter, queryKey, value) => {
+        setter(value);
+        setPage(0);
+        updateQuery({ [queryKey]: value, page: 1 });
+    };
+
+    const openDetail = (item) => {
+        if (tableContainerRef.current) {
+            sessionStorage.setItem(scrollStorageKey, String(tableContainerRef.current.scrollTop));
+        }
+        navigate(getDetailPath(item), { state: { returnTo: listUrl } });
     };
 
     const closeFilterPopover = () => {
@@ -220,7 +294,6 @@ export default function PhieuKiemList() {
                             value={value}
                             onChange={(e) => {
                                 onChange(e.target.value);
-                                setPage(0);
                             }}
                             onKeyDown={(e) => {
                                 if (e.key === "Escape") closeFilterPopover();
@@ -238,7 +311,6 @@ export default function PhieuKiemList() {
                                 size="small"
                                 onClick={() => {
                                     onChange("");
-                                    setPage(0);
                                 }}
                             >
                                 Bỏ lọc
@@ -303,8 +375,7 @@ export default function PhieuKiemList() {
                         placeholder="Tìm Số phiếu, Sản phẩm, Lot..."
                         value={searchText}
                         onChange={(e) => {
-                            setSearchText(e.target.value);
-                            setPage(0); // Reset page khi tìm kiếm
+                            updateFilter(setSearchText, "q", e.target.value);
                         }}
                         InputProps={{
                             startAdornment: (
@@ -321,8 +392,7 @@ export default function PhieuKiemList() {
                         label="Lọc theo trạng thái"
                         value={filterStatus}
                         onChange={(e) => {
-                            setFilterStatus(e.target.value);
-                            setPage(0); // Reset page khi tìm kiếm
+                            updateFilter(setFilterStatus, "status", e.target.value);
                         }}
                         sx={{ minWidth: { xs: "100%", sm: 200 }, bgcolor: "background.paper", borderRadius: 1 }}
                     >
@@ -337,7 +407,7 @@ export default function PhieuKiemList() {
 
                 {/* Table Data Section */}
                 <Card sx={{ borderRadius: 2, boxShadow: "0 4px 20px rgba(0,0,0,0.05)" }}>
-                    <TableContainer sx={{ maxHeight: 'calc(100vh - 280px)' }}>
+                    <TableContainer ref={tableContainerRef} sx={{ maxHeight: 'calc(100vh - 280px)' }}>
                         <Table stickyHeader >
                             <TableHead>
                                 <TableRow hover>
@@ -347,7 +417,7 @@ export default function PhieuKiemList() {
                                             field: "loaiKiem",
                                             label: "Loại kiểm",
                                             value: filterLoaiKiem,
-                                            onChange: setFilterLoaiKiem,
+                                            onChange: (value) => updateFilter(setFilterLoaiKiem, "type", value),
                                             placeholder: "Nhập loại kiểm"
                                         })}
                                     </TableCell>
@@ -359,7 +429,7 @@ export default function PhieuKiemList() {
                                             field: "nguoiKiem",
                                             label: "Người kiểm",
                                             value: filterNguoiKiem,
-                                            onChange: setFilterNguoiKiem,
+                                            onChange: (value) => updateFilter(setFilterNguoiKiem, "inspector", value),
                                             placeholder: "Nhập người kiểm"
                                         })}
                                     </TableCell>
@@ -368,7 +438,7 @@ export default function PhieuKiemList() {
                                             field: "ketLuan",
                                             label: "Kết luận",
                                             value: filterKetLuan,
-                                            onChange: setFilterKetLuan,
+                                            onChange: (value) => updateFilter(setFilterKetLuan, "result", value),
                                             placeholder: "Chọn kết luận",
                                             options: [
                                                 { value: "", label: "Tất cả" },
@@ -395,7 +465,7 @@ export default function PhieuKiemList() {
                                         <TableRow
                                             key={item.Id}
                                             hover
-                                            onClick={() => navigate(getDetailPath(item))}
+                                            onClick={() => openDetail(item)}
                                             sx={{ cursor: "pointer", transition: "0.2s" }}
                                         >
                                             <TableCell sx={{ fontWeight: 600, color: 'primary.main' }}>
@@ -432,7 +502,7 @@ export default function PhieuKiemList() {
                                                         size="small"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            navigate(getDetailPath(item));
+                                                            openDetail(item);
                                                         }}
                                                     >
                                                         <VisibilityIcon fontSize="small" />

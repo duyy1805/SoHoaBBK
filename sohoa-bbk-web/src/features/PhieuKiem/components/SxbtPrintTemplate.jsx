@@ -22,7 +22,8 @@ export const SxbtPrintTemplate = React.forwardRef(({
     summary = null,
     defects = [],
     dynamicFields = [],
-    confirmSteps = []
+    confirmSteps = [],
+    splitInfo = null
 }, ref) => {
     if (!phieu) return null;
 
@@ -423,6 +424,15 @@ export const SxbtPrintTemplate = React.forwardRef(({
                                 Số phiếu:&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '90px' }}>{phieu.SoPhieu || ''}</span>;
                             </td>
                         </tr>
+                        {splitInfo && (
+                            <tr>
+                                <td colSpan={3} style={{ border: 'none', padding: '1px 0', fontStyle: 'italic' }}>
+                                    {splitInfo.CurrentRole === 'PASSED'
+                                        ? `Phiếu không đạt được tách: ${splitInfo.RejectedSoPhieu}`
+                                        : `Phiếu gốc: ${splitInfo.OriginalSoPhieu}`}
+                                </td>
+                            </tr>
+                        )}
                         <tr>
                             <td style={{ border: 'none', padding: '1px 0' }}>
                                 Số lượng nhập (KH):&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '50px' }}>{phieu.SoLuong ?? ''}</span>
@@ -842,6 +852,15 @@ export const SxbtPrintTemplate = React.forwardRef(({
                                             Số phiếu:&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '90px' }}>{phieu.SoPhieu || ''}</span>;
                                         </td>
                                     </tr>
+                                    {splitInfo && (
+                                        <tr>
+                                            <td colSpan={3} style={{ border: 'none', padding: '1px 0', fontStyle: 'italic' }}>
+                                                {splitInfo.CurrentRole === 'PASSED'
+                                                    ? `Phiếu không đạt được tách: ${splitInfo.RejectedSoPhieu}`
+                                                    : `Phiếu gốc: ${splitInfo.OriginalSoPhieu}`}
+                                            </td>
+                                        </tr>
+                                    )}
                                     <tr>
                                         <td style={{ border: 'none', padding: '1px 0' }}>
                                             Số lượng nhập (KH):&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '50px' }}>{groupRatio.sampleQty > 0 ? formatQuantity(groupRatio.sampleQty) : ''}</span>

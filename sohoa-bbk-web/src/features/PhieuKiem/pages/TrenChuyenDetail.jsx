@@ -19,7 +19,7 @@ import {
     Stack,
     Typography
 } from "@mui/material";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useReactToPrint } from "react-to-print";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PrintIcon from "@mui/icons-material/Print";
@@ -115,8 +115,10 @@ function StatCard({ icon, label, value, accent = "#2563eb" }) {
 }
 
 export default function TrenChuyenDetail() {
+    const location = useLocation();
     const { id } = useParams();
     const navigate = useNavigate();
+    const returnToList = () => navigate(location.state?.returnTo || "/phieu-kiem");
     const printRef = useRef();
     const productImageInputRef = useRef(null);
 
@@ -267,7 +269,7 @@ export default function TrenChuyenDetail() {
                 <Paper elevation={0} sx={{ p: 2, mb: 3, borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, zIndex: 10 }}>
                     <Container maxWidth="xl">
                         <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems="center" spacing={2}>
-                            <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(-1)} color="inherit">
+                            <Button startIcon={<ArrowBackIcon />} onClick={returnToList} color="inherit">
                                 Danh sách phiếu kiểm
                             </Button>
                             <Stack direction="row" spacing={2}>

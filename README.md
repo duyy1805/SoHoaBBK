@@ -188,6 +188,8 @@ SXBT là luồng riêng tại `SxbtInspectionScreen` (khi `LoaiKiemId === 4`):
 4. Hoàn tất SXBT:
    - Bước 1: gọi `sxbt-save` để chốt dữ liệu mới nhất.
    - Bước 2: gọi `POST /phieu-kiem/sxbt-complete` với `ketLuan` để chuyển trạng thái.
+   - Nếu cần tách phần không đạt, gọi `POST /phieu-kiem/sxbt/split-complete` với số lượng KĐ theo từng dòng lot. Phiếu gốc trở thành `DAT`, phiếu hậu tố `-KĐ` trở thành `KHONG_DAT`; cả hai chờ Kho xác nhận.
+   - Lỗi của dòng có số lượng tách lớn hơn `0` chuyển sang phiếu `-KĐ`; lỗi dòng nhập `0` và lỗi chưa gắn lot giữ ở phiếu gốc.
 5. Xác nhận sau hoàn tất:
    - KCS hoàn tất sẽ chuyển thẳng sang `CHO_KHO_XAC_NHAN`.
    - Kho nhập đủ số lượng xác nhận cho các dòng lot và xác nhận bằng quyền `XAC_NHAN_KHO_SXBT`.

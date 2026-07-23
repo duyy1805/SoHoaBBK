@@ -22,6 +22,7 @@ import {
     getDefectList,
     saveSxbtData,
     completeSxbt,
+    splitCompleteSxbt,
     confirmKhoSxbt
 } from "../api/phieuKiem.api";
 import { getUser } from "../utils/auth";
@@ -47,6 +48,9 @@ export default function SxbtInspectionScreen({ route, navigation }) {
     const [selectedBtp, setSelectedBtp] = useState(null);
     const [btpModalVisible, setBtpModalVisible] = useState(false);
     const [khoLotQuantities, setKhoLotQuantities] = useState({});
+    const [splitInfo, setSplitInfo] = useState(null);
+    const [splitModalVisible, setSplitModalVisible] = useState(false);
+    const [splitQuantities, setSplitQuantities] = useState({});
 
     // Mục III: Tỷ lệ
     const [loaiMau, setLoaiMau] = useState("LAN_1_2");
@@ -242,6 +246,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
 
             setPhieu(phieuInfo);
             setUser(userData);
+            setSplitInfo(data.splitInfo || null);
 
             // 1. Mục I: Điều kiện VC (từ dynamicFields)
             const fields = data.dynamicFields || [];
@@ -445,6 +450,56 @@ export default function SxbtInspectionScreen({ route, navigation }) {
     const tyLeCritical = totalSamples > 0 ? (criticalDefects / totalSamples) * 100 : 0;
     const tyLeMajorMinor = totalSamples > 0 ? (majorMinorDefects / totalSamples) * 100 : 0;
 
+    const splitLotRows = btpItems.flatMap((item) =>
+        getBtpLotRows(item).map((lotRow, lotIndex) => ({ item, lotRow, lotIndex }))
+    );
+    const splitRejectedTotal = splitLotRows.reduce(
+        (sum, { lotRow }) => sum + (Number(splitQuantities[String(lotRow.Id)]) || 0),
+        0
+    );
+    const splitCurrentTotal = splitLotRows.reduce(
+        (sum, { lotRow }) => sum + (Number(lotRow.SoLuongNhap) || 0),
+        0
+    );
+    const splitPassedTotal = splitCurrentTotal - splitRejectedTotal;
+    const splitMovedDefects = defectList.filter(
+        (defect) => (Number(splitQuantities[String(defect.BtpLotRowId)]) || 0) > 0
+    );
+    const splitMovedDefectQuantity = splitMovedDefects.reduce((sum, defect) => sum + Number(defect.SoLuong || 0), 0);
+    const splitPassedDefectQuantity = totalDefects - splitMovedDefectQuantity;
+    const splitSampleRate = tyLe > 0 ? tyLe : 100;
+    const splitPassedSamples = Math.ceil(splitPassedTotal * splitSampleRate / 100);
+    const splitRejectedSamples = Math.ceil(splitRejectedTotal * splitSampleRate / 100);
+    const calculateSplitPassRate = (defectQuantity, sampleQuantity) =>
+        sampleQuantity > 0 ? 100 - (defectQuantity / sampleQuantity) * 100 : 0;
+
+    const getSplitValidationError = () => {
+        if (splitLotRows.length === 0 || splitLotRows.some(({ lotRow }) => !lotRow.Id)) {
+            return "Phiếu chưa có đầy đủ dòng lô để tách.";
+        }
+        for (const { lotRow } of splitLotRows) {
+            const rawValue = splitQuantities[String(lotRow.Id)] ?? "0";
+            const value = Number(rawValue);
+            const currentQuantity = Number(lotRow.SoLuongNhap || 0);
+            if (rawValue === "" || !Number.isInteger(value) || value < 0 || value > currentQuantity) {
+                return "Số lượng KĐ phải là số nguyên từ 0 đến số lượng hiện tại.";
+            }
+        }
+        if (splitRejectedTotal <= 0) return "Tổng số lượng KĐ phải lớn hơn 0.";
+        if (splitPassedTotal <= 0) return "Phiếu gốc phải còn ít nhất một sản phẩm đạt.";
+        if (splitMovedDefectQuantity <= 0) return "Phiếu KĐ phải nhận ít nhất một lỗi từ các dòng được tách.";
+        return "";
+    };
+
+    const openSplitModal = () => {
+        const initialQuantities = {};
+        splitLotRows.forEach(({ lotRow }) => {
+            if (lotRow.Id) initialQuantities[String(lotRow.Id)] = "0";
+        });
+        setSplitQuantities(initialQuantities);
+        setSplitModalVisible(true);
+    };
+
     const handleConfirmKho = async () => {
         const lotRows = [];
         btpItems.forEach((item) => {
@@ -501,10 +556,51 @@ export default function SxbtInspectionScreen({ route, navigation }) {
             if (showSuccessAlert) {
                 Alert.alert("Đã lưu nháp", "Đã lưu nháp phiếu kiểm.");
             }
-            loadData();
+            if (showSuccessAlert) loadData();
+            return true;
         } catch (error) {
             console.error(error);
             Alert.alert("Lỗi", "Không thể lưu dữ liệu.");
+            return false;
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleSplitComplete = async () => {
+        const validationError = getSplitValidationError();
+        if (validationError) {
+            Alert.alert("Chưa thể tách phiếu", validationError);
+            return;
+        }
+
+        try {
+            setSaving(true);
+            const saved = await handleSave(false);
+            if (!saved) return;
+
+            setSaving(true);
+            const response = await splitCompleteSxbt(id, splitLotRows.map(({ lotRow }) => ({
+                lotRowId: lotRow.Id,
+                rejectQuantity: Number(splitQuantities[String(lotRow.Id)] || 0)
+            })));
+            const passedPhieu = response.data?.passedPhieu;
+            const rejectedPhieu = response.data?.rejectedPhieu;
+            setSplitModalVisible(false);
+
+            Alert.alert(
+                "Đã tách phiếu SXBT",
+                `Phiếu đạt: ${passedPhieu?.soPhieu || "---"}\nPhiếu không đạt: ${rejectedPhieu?.soPhieu || "---"}`,
+                [
+                    { text: "Ở lại phiếu đạt", onPress: loadData },
+                    {
+                        text: "Mở phiếu KĐ",
+                        onPress: () => navigation.replace("SxbtInspection", { id: rejectedPhieu.id })
+                    }
+                ]
+            );
+        } catch (error) {
+            Alert.alert("Không thể tách phiếu", error?.response?.data?.message || "Vui lòng thử lại.");
         } finally {
             setSaving(false);
         }
@@ -572,7 +668,18 @@ export default function SxbtInspectionScreen({ route, navigation }) {
 
     return (
         <SafeAreaView style={styles.container} edges={['bottom']}>
-            <ScrollView style={styles.scroll}>
+            <KeyboardAvoidingView
+                style={styles.keyboardContainer}
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+            >
+                <ScrollView
+                    style={styles.scroll}
+                    contentContainerStyle={styles.scrollContent}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+                    automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+                >
                 <View style={styles.headerCard}>
                     <View style={styles.headerRow}>
                         <Text style={styles.title}>Phiếu: {phieu?.SoPhieu}</Text>
@@ -607,6 +714,23 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                         >
                             <MaterialCommunityIcons name="alert-circle" size={18} color="#ef4444" />
                             <Text style={styles.bienBanBadgeText}>Xem biên bản KPH</Text>
+                        </TouchableOpacity>
+                    )}
+                    {splitInfo && (
+                        <TouchableOpacity
+                            style={styles.splitLinkBadge}
+                            onPress={() => navigation.push("SxbtInspection", {
+                                id: splitInfo.CurrentRole === "PASSED"
+                                    ? splitInfo.RejectedPhieuKiemId
+                                    : splitInfo.OriginalPhieuKiemId
+                            })}
+                        >
+                            <MaterialCommunityIcons name="call-split" size={18} color="#7c3aed" />
+                            <Text style={styles.splitLinkText}>
+                                {splitInfo.CurrentRole === "PASSED"
+                                    ? `Phiếu KĐ đã tách: ${splitInfo.RejectedSoPhieu}`
+                                    : `Phiếu gốc: ${splitInfo.OriginalSoPhieu}`}
+                            </Text>
                         </TouchableOpacity>
                     )}
                 </View>
@@ -905,6 +1029,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                 </View>
 
                 {!isCompleted && isKCS && (
+                    <View>
                     <View style={styles.draftActionRow}>
                         <TouchableOpacity
                             style={[styles.saveBtn, styles.draftBtn]}
@@ -921,6 +1046,15 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                             {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Hoàn tất</Text>}
                         </TouchableOpacity>
                     </View>
+                    <TouchableOpacity
+                        style={styles.splitCompleteBtn}
+                        onPress={openSplitModal}
+                        disabled={saving}
+                    >
+                        <MaterialCommunityIcons name="call-split" size={20} color="#fff" />
+                        <Text style={styles.saveBtnText}>Tách & hoàn tất</Text>
+                    </TouchableOpacity>
+                    </View>
                 )}
 
                 {/* Kho xác nhận số lượng */}
@@ -935,16 +1069,18 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                         </TouchableOpacity>
                     </View>
                 )}
-
-            </ScrollView>
+                </ScrollView>
+            </KeyboardAvoidingView>
 
             {/* Defect Selection Modal */}
             <Modal visible={defectModalVisible} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
                     <KeyboardAvoidingView
                         behavior={Platform.OS === "ios" ? "padding" : "height"}
-                        style={styles.modalContent}
+                        style={styles.modalKeyboardContainer}
+                        keyboardVerticalOffset={0}
                     >
+                        <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>Chọn lỗi</Text>
 
                         <TextInput
@@ -954,7 +1090,13 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                             style={styles.searchInput}
                         />
 
-                        <ScrollView showsVerticalScrollIndicator={false}>
+                        <ScrollView
+                            style={styles.modalScroll}
+                            showsVerticalScrollIndicator={false}
+                            keyboardShouldPersistTaps="handled"
+                            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+                            automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+                        >
                             {filteredDefects.length === 0 ? (
                                 <View style={{ padding: 20, alignItems: 'center' }}>
                                     <Ionicons name="search-outline" size={40} color="#cbd5e1" />
@@ -1015,6 +1157,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                         <TouchableOpacity style={styles.closeBtn} onPress={() => setDefectModalVisible(false)}>
                             <Text style={styles.saveText}>Đóng</Text>
                         </TouchableOpacity>
+                        </View>
                     </KeyboardAvoidingView>
                 </View>
             </Modal>
@@ -1024,8 +1167,10 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                     <View style={styles.modalOverlay}>
                         <KeyboardAvoidingView
                             behavior={Platform.OS === "ios" ? "padding" : "height"}
-                            style={[styles.modalContent, styles.btpModalContent]}
+                            style={styles.modalKeyboardContainer}
+                            keyboardVerticalOffset={0}
                         >
+                            <View style={[styles.modalContent, styles.btpModalContent]}>
                             <Text style={styles.modalTitle}>Cập nhật thông tin BTP</Text>
                             {selectedBtp && (
                                 <>
@@ -1041,8 +1186,12 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                                     </View>
 
                                     <ScrollView
+                                        style={styles.modalScroll}
                                         showsVerticalScrollIndicator={false}
                                         contentContainerStyle={styles.btpModalScrollContent}
+                                        keyboardShouldPersistTaps="handled"
+                                        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+                                        automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
                                     >
                                         {getBtpLotRows(selectedBtp).map((row, rowIndex) => (
                                             <View key={`manual-lot-${rowIndex}`} style={styles.btpLotEditCard}>
@@ -1088,18 +1237,96 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                                     <Text style={styles.saveText}>Xong</Text>
                                 </TouchableOpacity>
                             </View>
+                            </View>
                         </KeyboardAvoidingView>
                     </View>
                 </Modal>
             )}
+
+            <Modal visible={splitModalVisible} transparent animationType="slide" onRequestClose={() => setSplitModalVisible(false)}>
+                <View style={styles.modalOverlay}>
+                    <KeyboardAvoidingView
+                        behavior={Platform.OS === "ios" ? "padding" : "height"}
+                        style={styles.modalKeyboardContainer}
+                    >
+                        <View style={[styles.modalContent, styles.splitModalContent]}>
+                            <Text style={styles.modalTitle}>Tách phiếu SXBT</Text>
+                            <Text style={styles.splitHint}>Nhập số lượng không đạt cho từng dòng lô. Dòng nhập 0 và lỗi của dòng đó vẫn ở phiếu đạt.</Text>
+
+                            <ScrollView
+                                style={styles.modalScroll}
+                                keyboardShouldPersistTaps="handled"
+                                contentContainerStyle={styles.btpModalScrollContent}
+                            >
+                                {splitLotRows.map(({ item, lotRow, lotIndex }) => {
+                                    const rejectedQuantity = Number(splitQuantities[String(lotRow.Id)] || 0);
+                                    const currentQuantity = Number(lotRow.SoLuongNhap || 0);
+                                    const rowDefectQuantity = defectList
+                                        .filter((defect) => Number(defect.BtpLotRowId) === Number(lotRow.Id))
+                                        .reduce((sum, defect) => sum + Number(defect.SoLuong || 0), 0);
+                                    return (
+                                        <View key={`split-${lotRow.Id || lotIndex}`} style={styles.splitRowCard}>
+                                            <Text style={styles.itemName}>{item.TenSanPham || "BTP"}</Text>
+                                            <Text style={styles.itemSub}>{getLotContextText(item, lotRow) || `Dòng lô ${lotIndex + 1}`}</Text>
+                                            <Text style={styles.splitDefectText}>Số lỗi của dòng: {rowDefectQuantity}</Text>
+                                            <View style={styles.splitInputRow}>
+                                                <View style={styles.splitQuantityBox}>
+                                                    <Text style={styles.inputLabel}>Hiện tại</Text>
+                                                    <Text style={styles.splitQuantityValue}>{formatQuantity(currentQuantity)}</Text>
+                                                </View>
+                                                <View style={styles.splitQuantityBox}>
+                                                    <Text style={styles.inputLabel}>Số lượng KĐ</Text>
+                                                    <TextInput
+                                                        style={styles.splitInput}
+                                                        keyboardType="number-pad"
+                                                        value={splitQuantities[String(lotRow.Id)] ?? "0"}
+                                                        selectTextOnFocus
+                                                        onChangeText={(value) => setSplitQuantities((current) => ({
+                                                            ...current,
+                                                            [String(lotRow.Id)]: value.replace(/[^0-9]/g, "")
+                                                        }))}
+                                                    />
+                                                </View>
+                                                <View style={styles.splitQuantityBox}>
+                                                    <Text style={styles.inputLabel}>Còn đạt</Text>
+                                                    <Text style={styles.splitQuantityValue}>{formatQuantity(currentQuantity - rejectedQuantity)}</Text>
+                                                </View>
+                                            </View>
+                                        </View>
+                                    );
+                                })}
+
+                                <View style={styles.splitPreviewCard}>
+                                    <Text style={styles.splitPreviewTitle}>Xem trước sau khi tách</Text>
+                                    <Text>Phiếu đạt: {formatQuantity(splitPassedTotal)} cái · {splitPassedSamples} mẫu · Đạt {calculateSplitPassRate(splitPassedDefectQuantity, splitPassedSamples).toFixed(1)}%</Text>
+                                    <Text>Phiếu KĐ: {formatQuantity(splitRejectedTotal)} cái · {splitRejectedSamples} mẫu · Đạt {calculateSplitPassRate(splitMovedDefectQuantity, splitRejectedSamples).toFixed(1)}%</Text>
+                                    <Text>Lỗi chuyển sang phiếu KĐ: {splitMovedDefectQuantity}</Text>
+                                    {!!getSplitValidationError() && <Text style={styles.splitValidationText}>{getSplitValidationError()}</Text>}
+                                </View>
+                            </ScrollView>
+
+                            <View style={styles.modalActionRow}>
+                                <TouchableOpacity style={[styles.closeBtn, styles.splitCancelBtn]} onPress={() => setSplitModalVisible(false)} disabled={saving}>
+                                    <Text style={[styles.saveText, { color: "#111827" }]}>Hủy</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={[styles.closeBtn, styles.splitConfirmBtn, !!getSplitValidationError() && styles.disabledBtn]} onPress={handleSplitComplete} disabled={saving || !!getSplitValidationError()}>
+                                    {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Tách & hoàn tất</Text>}
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </KeyboardAvoidingView>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: "#f3f4f6" },
+    keyboardContainer: { flex: 1 },
     center: { flex: 1, justifyContent: "center", alignItems: "center" },
-    scroll: { padding: 12 },
+    scroll: { flex: 1 },
+    scrollContent: { padding: 12, paddingBottom: 32 },
     headerCard: { backgroundColor: "#fff", padding: 16, borderRadius: 8, marginBottom: 12 },
     headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
     title: { fontSize: 18, fontWeight: "bold", color: "#1f2937" },
@@ -1111,6 +1338,8 @@ const styles = StyleSheet.create({
     infoValue: { fontSize: 13, fontWeight: "bold", color: "#1f2937" },
     bienBanBadge: { backgroundColor: "#fee2e2", padding: 8, borderRadius: 6, marginTop: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
     bienBanBadgeText: { color: "#ef4444", fontWeight: "bold" },
+    splitLinkBadge: { backgroundColor: "#f3e8ff", padding: 9, borderRadius: 6, marginTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+    splitLinkText: { color: "#7c3aed", fontWeight: "700" },
     card: { backgroundColor: "#fff", padding: 16, borderRadius: 8, marginBottom: 12 },
     sectionTitle: { fontSize: 16, fontWeight: "bold", marginBottom: 12, color: "#0052cc" },
     row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
@@ -1128,7 +1357,7 @@ const styles = StyleSheet.create({
     btpLotReadonlyTitle: { fontSize: 12, fontWeight: "700", color: "#0f172a", marginBottom: 4 },
     btpLotReadonlyText: { fontSize: 12, color: "#475569", marginBottom: 2 },
     btpModalContent: { paddingBottom: Platform.OS === "ios" ? 36 : 24 },
-    btpModalScrollContent: { paddingBottom: 12 },
+    btpModalScrollContent: { paddingBottom: 32 },
     btpModalHeader: { backgroundColor: "#fff", padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "#e2e8f0", marginBottom: 12 },
     btpLotEditCard: { backgroundColor: "#fff", padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "#e2e8f0", marginBottom: 12 },
     btpLotEditHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
@@ -1173,6 +1402,7 @@ const styles = StyleSheet.create({
     draftBtn: { flex: 0.9, backgroundColor: "#fff", borderWidth: 1, borderColor: "#cbd5e1" },
     draftBtnText: { color: "#334155", fontWeight: "800", fontSize: 16 },
     completeBtn: { flex: 1.1, backgroundColor: "#0052cc" },
+    splitCompleteBtn: { padding: 15, borderRadius: 8, backgroundColor: "#7c3aed", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16 },
     formGroup: { marginBottom: 2 },
     inputLabel: { fontSize: 13, fontWeight: "600", color: "#334155", marginBottom: 6 },
     actionRow: { flexDirection: "row", justifyContent: "space-between", marginVertical: 16 },
@@ -1181,7 +1411,23 @@ const styles = StyleSheet.create({
 
     // Defect Modal Styles (matched with CheckItemScreen)
     modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+    modalKeyboardContainer: { flex: 1, justifyContent: "flex-end" },
     modalContent: { backgroundColor: "#f8fafc", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: "90%", minHeight: "60%" },
+    modalScroll: { flex: 1 },
+    splitModalContent: { height: "94%" },
+    splitHint: { color: "#64748b", fontSize: 13, lineHeight: 18, marginBottom: 12 },
+    splitRowCard: { backgroundColor: "#fff", padding: 12, borderRadius: 12, borderWidth: 1, borderColor: "#e2e8f0", marginBottom: 10 },
+    splitDefectText: { marginTop: 5, color: "#b45309", fontWeight: "700", fontSize: 12 },
+    splitInputRow: { flexDirection: "row", gap: 8, marginTop: 10 },
+    splitQuantityBox: { flex: 1 },
+    splitQuantityValue: { minHeight: 42, paddingVertical: 11, fontWeight: "800", color: "#0f172a" },
+    splitInput: { borderWidth: 1, borderColor: "#c4b5fd", backgroundColor: "#faf5ff", borderRadius: 8, padding: 9, textAlign: "center", fontWeight: "800" },
+    splitPreviewCard: { padding: 13, borderRadius: 12, backgroundColor: "#eef2ff", borderWidth: 1, borderColor: "#c7d2fe", gap: 5 },
+    splitPreviewTitle: { color: "#3730a3", fontWeight: "800", marginBottom: 3 },
+    splitValidationText: { color: "#dc2626", fontWeight: "700", marginTop: 4 },
+    splitCancelBtn: { flex: 0.8, backgroundColor: "#e5e7eb" },
+    splitConfirmBtn: { flex: 1.2, backgroundColor: "#7c3aed" },
+    disabledBtn: { opacity: 0.5 },
     modalTitle: { fontSize: 20, fontWeight: "bold", color: "#0f172a", marginBottom: 15, textAlign: "center" },
     searchInput: { backgroundColor: "#fff", padding: 12, borderRadius: 12, borderWidth: 1, borderColor: "#e2e8f0", marginBottom: 15, fontSize: 15 },
     defectItem: { backgroundColor: "#fff", padding: 16, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: "#e2e8f0", shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },

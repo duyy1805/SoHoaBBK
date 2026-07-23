@@ -158,6 +158,8 @@ Luồng chung cho phiếu không phải SXBT, hiện dùng màn `PhieuKiemDetail
 - Dữ liệu SXBT gồm điều kiện vận chuyển, danh sách BTP, tỷ lệ kiểm, lỗi, kết luận.
 - Mobile/Web lưu tạm SXBT qua `POST /phieu-kiem/sxbt-save` với `dynamicFields`, `btpItems`, `summary`, `defects`, `ketLuan`.
 - Hoàn tất SXBT gọi `POST /phieu-kiem/sxbt-complete`.
+- Tách và hoàn tất SXBT gọi `POST /phieu-kiem/sxbt/split-complete` với số lượng KĐ nguyên theo từng `lotRowId`. Phiếu gốc `DAT`, phiếu mới hậu tố `-KĐ` và `KHONG_DAT`; cả hai chuyển `CHO_KHO_XAC_NHAN`.
+- Khi tách, lỗi của dòng có số lượng KĐ lớn hơn `0` chuyển sang phiếu `-KĐ`; lỗi dòng `0` hoặc chưa gắn lot giữ ở phiếu gốc. Một phiếu chỉ tách một lần và phiếu KĐ phải nhận ít nhất một lỗi.
 - Sau khi KCS hoàn tất, phiếu chuyển sang `CHO_KHO_XAC_NHAN`.
 - Kho nhập đủ số lượng cho từng dòng lot và gọi `POST /phieu-kiem/sxbt/confirm-kho` với quyền `XAC_NHAN_KHO_SXBT`; phiếu chuyển `HOAN_THANH`.
 - Bộ phận SXBT ký xác nhận trên bản cứng. Endpoint `POST /phieu-kiem/sxbt/confirm-sxbt` và quyền `XAC_NHAN_SXBT` được giữ dự phòng nhưng tạm ẩn khỏi Mobile/Web.

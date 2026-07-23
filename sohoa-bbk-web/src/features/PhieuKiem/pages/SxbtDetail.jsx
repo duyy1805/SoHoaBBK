@@ -2,7 +2,7 @@
 // Trang chi tiết phiếu kiểm Sản Xuất Bổ Trợ (LoaiKiemId = 4)
 
 import { useEffect, useState, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useLocation, useParams, useNavigate } from "react-router-dom";
 import {
     Box, Typography, Card, CardContent, Grid, Chip, Stack,
     CircularProgress, Button, Fade, Paper, Container,
@@ -20,10 +20,12 @@ import AssignmentIcon from "@mui/icons-material/Assignment";
 import InventoryIcon from "@mui/icons-material/Inventory";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import BugReportIcon from "@mui/icons-material/BugReport";
+import CallSplitIcon from "@mui/icons-material/CallSplit";
 
 import { SxbtPrintTemplate } from "../components/SxbtPrintTemplate";
 import {
     completeSxbt,
+    splitCompleteSxbt,
     confirmKhoSxbt,
     getPhieuKiemDetail
 } from "../../../api/phieuKiem.api";
@@ -132,8 +134,10 @@ const DEFECT_TYPE_COLOR = {
 
 // ============================================================
 export default function SxbtDetail() {
+    const location = useLocation();
     const { id } = useParams();
     const navigate = useNavigate();
+    const returnToList = () => navigate(location.state?.returnTo || "/phieu-kiem");
     const printRef = useRef();
 
     const [loading, setLoading] = useState(true);
@@ -148,6 +152,9 @@ export default function SxbtDetail() {
     const [actionNotice, setActionNotice] = useState(null);
     const [loadingAction, setLoadingAction] = useState(false);
     const [openPrint, setOpenPrint] = useState(false);
+    const [splitInfo, setSplitInfo] = useState(null);
+    const [openSplit, setOpenSplit] = useState(false);
+    const [splitQuantities, setSplitQuantities] = useState({});
     const triggerPrint = useReactToPrint({
         contentRef: printRef,
         documentTitle: phieu ? `SXBT_${phieu.SoPhieu}` : 'PhieuKiemSXBT',
@@ -170,6 +177,7 @@ export default function SxbtDetail() {
             setSummary(data.summary || null);
             setDefects((data.defects || []).filter(d => d.SoLuong > 0));
             setDynamicFields(data.dynamicFields || []);
+            setSplitInfo(data.splitInfo || null);
 
             if (data.phieu?.BienBanId) {
                 try {
@@ -217,7 +225,7 @@ export default function SxbtDetail() {
         return (
             <Box sx={{ p: 3 }}>
                 <Alert severity="error">{error}</Alert>
-                <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(-1)} sx={{ mt: 2 }}>
+                <Button startIcon={<ArrowBackIcon />} onClick={returnToList} sx={{ mt: 2 }}>
                     Quay lại
                 </Button>
             </Box>
@@ -267,6 +275,79 @@ export default function SxbtDetail() {
 
     const inferredKetLuan = phieu?.KetLuan ||
         (dkThungSanXe === "KHONG_DAT" || dkNgoaiQuan === "KHONG_DAT" || defects.length > 0 ? "KHONG_DAT" : "DAT");
+    const splitLotRows = btpItems.flatMap((item) =>
+        getBtpLotRows(item).map((lotRow, lotIndex) => ({ item, lotRow, lotIndex }))
+    );
+    const totalDefectQuantity = defects.reduce((sum, defect) => sum + Number(defect.SoLuong || 0), 0);
+    const splitRejectedTotal = splitLotRows.reduce(
+        (sum, { lotRow }) => sum + (Number(splitQuantities[String(lotRow.Id)]) || 0),
+        0
+    );
+    const splitCurrentTotal = splitLotRows.reduce(
+        (sum, { lotRow }) => sum + (Number(lotRow.SoLuongNhap) || 0),
+        0
+    );
+    const splitPassedTotal = splitCurrentTotal - splitRejectedTotal;
+    const splitMovedDefectQuantity = defects
+        .filter((defect) => (Number(splitQuantities[String(defect.BtpLotRowId)]) || 0) > 0)
+        .reduce((sum, defect) => sum + Number(defect.SoLuong || 0), 0);
+    const splitPassedDefectQuantity = totalDefectQuantity - splitMovedDefectQuantity;
+    const splitSampleRate = Number(tyLe) > 0 ? Number(tyLe) : 100;
+    const splitPassedSamples = Math.ceil(splitPassedTotal * splitSampleRate / 100);
+    const splitRejectedSamples = Math.ceil(splitRejectedTotal * splitSampleRate / 100);
+    const calculateSplitPassRate = (defectQuantity, sampleQuantity) =>
+        sampleQuantity > 0 ? 100 - (defectQuantity / sampleQuantity) * 100 : 0;
+
+    const getSplitValidationError = () => {
+        if (splitLotRows.length === 0 || splitLotRows.some(({ lotRow }) => !lotRow.Id)) {
+            return "Phiếu chưa có đầy đủ dòng lô để tách.";
+        }
+        for (const { lotRow } of splitLotRows) {
+            const rawValue = splitQuantities[String(lotRow.Id)] ?? "0";
+            const value = Number(rawValue);
+            if (rawValue === "" || !Number.isInteger(value) || value < 0 || value > Number(lotRow.SoLuongNhap || 0)) {
+                return "Số lượng KĐ phải là số nguyên từ 0 đến số lượng hiện tại.";
+            }
+        }
+        if (splitRejectedTotal <= 0) return "Tổng số lượng KĐ phải lớn hơn 0.";
+        if (splitPassedTotal <= 0) return "Phiếu gốc phải còn ít nhất một sản phẩm đạt.";
+        if (splitMovedDefectQuantity <= 0) return "Phiếu KĐ phải nhận ít nhất một lỗi từ các dòng được tách.";
+        return "";
+    };
+
+    const handleOpenSplit = () => {
+        setSplitQuantities(Object.fromEntries(
+            splitLotRows.filter(({ lotRow }) => lotRow.Id).map(({ lotRow }) => [String(lotRow.Id), "0"])
+        ));
+        setOpenSplit(true);
+    };
+
+    const handleSplitComplete = async () => {
+        const validationError = getSplitValidationError();
+        if (validationError) {
+            setActionNotice({ type: "error", message: validationError });
+            return;
+        }
+
+        try {
+            setLoadingAction(true);
+            setActionNotice(null);
+            const response = await splitCompleteSxbt(id, splitLotRows.map(({ lotRow }) => ({
+                lotRowId: lotRow.Id,
+                rejectQuantity: Number(splitQuantities[String(lotRow.Id)] || 0)
+            })));
+            setOpenSplit(false);
+            await loadData();
+            setActionNotice({
+                type: "success",
+                message: `Đã tạo phiếu KĐ ${response.data?.rejectedPhieu?.soPhieu || ""}.`
+            });
+        } catch (err) {
+            setActionNotice({ type: "error", message: err?.response?.data?.message || "Không thể tách phiếu SXBT." });
+        } finally {
+            setLoadingAction(false);
+        }
+    };
 
     const handleComplete = async () => {
         const label = inferredKetLuan === "DAT" ? "Đạt" : "Không đạt";
@@ -334,7 +415,7 @@ export default function SxbtDetail() {
                 <Paper elevation={0} sx={{ p: 2, mb: 3, borderBottom: "1px solid #e0e0e0", position: "sticky", top: 0, zIndex: 10, bgcolor: "background.paper" }}>
                     <Container maxWidth="xl">
                         <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems="center" spacing={2}>
-                            <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(-1)} color="inherit">
+                            <Button startIcon={<ArrowBackIcon />} onClick={returnToList} color="inherit">
                                 Danh sách phiếu kiểm
                             </Button>
                             {/* <Stack direction="row" spacing={1} alignItems="center">
@@ -345,6 +426,23 @@ export default function SxbtDetail() {
                                 <KetLuanChip value={phieu?.KetLuan} />
                             </Stack> */}
                             <Stack direction="row" spacing={1}>
+                                {splitInfo && (
+                                    <Button
+                                        variant="outlined"
+                                        color="secondary"
+                                        size="small"
+                                        startIcon={<CallSplitIcon />}
+                                        onClick={() => navigate(`/phieu-kiem/sxbt/${
+                                            splitInfo.CurrentRole === "PASSED"
+                                                ? splitInfo.RejectedPhieuKiemId
+                                                : splitInfo.OriginalPhieuKiemId
+                                        }`)}
+                                    >
+                                        {splitInfo.CurrentRole === "PASSED"
+                                            ? `Phiếu KĐ: ${splitInfo.RejectedSoPhieu}`
+                                            : `Phiếu gốc: ${splitInfo.OriginalSoPhieu}`}
+                                    </Button>
+                                )}
                                 {phieu?.BienBanId && (
                                     <Button
                                         variant="outlined"
@@ -678,7 +776,16 @@ export default function SxbtDetail() {
 
                     {!isCompleted && isKCS && (
                         <Paper sx={{ position: "sticky", bottom: 0, zIndex: 9, mt: 2, mb: 3, p: 2, borderTop: "1px solid #e0e0e0" }}>
-                            <Stack direction="row" justifyContent="flex-end">
+                            <Stack direction="row" justifyContent="flex-end" spacing={1.5}>
+                                <Button
+                                    variant="contained"
+                                    color="secondary"
+                                    startIcon={<CallSplitIcon />}
+                                    onClick={handleOpenSplit}
+                                    disabled={loadingAction}
+                                >
+                                    Tách & hoàn tất
+                                </Button>
                                 <Button
                                     variant="contained"
                                     color={inferredKetLuan === "DAT" ? "success" : "error"}
@@ -720,6 +827,7 @@ export default function SxbtDetail() {
                             defects={defects}
                             dynamicFields={dynamicFields}
                             confirmSteps={confirmSteps}
+                            splitInfo={splitInfo}
                         />
                     </DialogContent>
                     <DialogActions>
@@ -730,6 +838,87 @@ export default function SxbtDetail() {
                             onClick={() => triggerPrint()}
                         >
                             In / Lưu PDF
+                        </Button>
+                    </DialogActions>
+                </Dialog>
+
+                <Dialog open={openSplit} onClose={() => !loadingAction && setOpenSplit(false)} maxWidth="lg" fullWidth>
+                    <DialogTitle>Tách & hoàn tất phiếu SXBT</DialogTitle>
+                    <DialogContent dividers>
+                        <Alert severity="info" sx={{ mb: 2 }}>
+                            Nhập số lượng không đạt theo từng dòng lô. Dòng nhập 0 và lỗi của dòng đó vẫn ở phiếu đạt.
+                        </Alert>
+                        <TableContainer component={Paper} variant="outlined">
+                            <Table size="small">
+                                <TableHead>
+                                    <TableRow>
+                                        <TableCell>Sản phẩm / dòng lô</TableCell>
+                                        <TableCell align="right">Hiện tại</TableCell>
+                                        <TableCell align="center">Số lỗi</TableCell>
+                                        <TableCell align="center" sx={{ width: 150 }}>Số lượng KĐ</TableCell>
+                                        <TableCell align="right">Còn đạt</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {splitLotRows.map(({ item, lotRow, lotIndex }) => {
+                                        const currentQuantity = Number(lotRow.SoLuongNhap || 0);
+                                        const rejectedQuantity = Number(splitQuantities[String(lotRow.Id)] || 0);
+                                        const rowDefectQuantity = defects
+                                            .filter((defect) => Number(defect.BtpLotRowId) === Number(lotRow.Id))
+                                            .reduce((sum, defect) => sum + Number(defect.SoLuong || 0), 0);
+                                        return (
+                                            <TableRow key={`split-${lotRow.Id || lotIndex}`}>
+                                                <TableCell>
+                                                    <Typography fontWeight={700}>{item.TenSanPham || "BTP"}</Typography>
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {getLotContextText(item, lotRow) || `Dòng lô ${lotIndex + 1}`}
+                                                    </Typography>
+                                                </TableCell>
+                                                <TableCell align="right">{formatQuantity(currentQuantity)}</TableCell>
+                                                <TableCell align="center">{rowDefectQuantity}</TableCell>
+                                                <TableCell align="center">
+                                                    <TextField
+                                                        size="small"
+                                                        type="number"
+                                                        value={splitQuantities[String(lotRow.Id)] ?? "0"}
+                                                        onChange={(event) => setSplitQuantities((current) => ({
+                                                            ...current,
+                                                            [String(lotRow.Id)]: event.target.value
+                                                        }))}
+                                                        inputProps={{ min: 0, max: currentQuantity, step: 1, style: { textAlign: "right" } }}
+                                                    />
+                                                </TableCell>
+                                                <TableCell align="right">{formatQuantity(currentQuantity - rejectedQuantity)}</TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+
+                        <Grid container spacing={2} sx={{ mt: 1 }}>
+                            <Grid size={{ xs: 12, md: 6 }}>
+                                <Alert severity="success">
+                                    Phiếu đạt: {formatQuantity(splitPassedTotal)} cái · {splitPassedSamples} mẫu · Đạt {calculateSplitPassRate(splitPassedDefectQuantity, splitPassedSamples).toFixed(1)}%
+                                </Alert>
+                            </Grid>
+                            <Grid size={{ xs: 12, md: 6 }}>
+                                <Alert severity="error">
+                                    Phiếu KĐ: {formatQuantity(splitRejectedTotal)} cái · {splitRejectedSamples} mẫu · Đạt {calculateSplitPassRate(splitMovedDefectQuantity, splitRejectedSamples).toFixed(1)}% · {splitMovedDefectQuantity} lỗi
+                                </Alert>
+                            </Grid>
+                        </Grid>
+                        {getSplitValidationError() && <Alert severity="warning" sx={{ mt: 2 }}>{getSplitValidationError()}</Alert>}
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setOpenSplit(false)} disabled={loadingAction}>Hủy</Button>
+                        <Button
+                            variant="contained"
+                            color="secondary"
+                            onClick={handleSplitComplete}
+                            disabled={loadingAction || !!getSplitValidationError()}
+                        >
+                            {loadingAction ? "Đang tách..." : "Tách & hoàn tất"}
                         </Button>
                     </DialogActions>
                 </Dialog>

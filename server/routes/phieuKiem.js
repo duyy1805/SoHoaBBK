@@ -636,13 +636,38 @@ router.get(
                 dynamicFields = await enrichSxbtSignatureFields(pool, dynamicFields, phieu);
 
                 const btpItems = attachBtpLotRows(result.recordsets[1] || [], result.recordsets[4] || []);
+                const splitResult = await pool.request()
+                    .input('PhieuKiemId', sql.Int, id)
+                    .query(`
+                        IF OBJECT_ID(N'dbo.PHIEU_KIEM_SXBT_SPLIT', N'U') IS NOT NULL
+                        BEGIN
+                            SELECT TOP 1
+                                split.Id AS SplitId,
+                                split.OriginalPhieuKiemId,
+                                original.SoPhieu AS OriginalSoPhieu,
+                                split.RejectedPhieuKiemId,
+                                rejected.SoPhieu AS RejectedSoPhieu,
+                                split.PerformedBy,
+                                split.CreatedAt,
+                                CASE
+                                    WHEN split.OriginalPhieuKiemId = @PhieuKiemId THEN N'PASSED'
+                                    ELSE N'REJECTED'
+                                END AS CurrentRole
+                            FROM dbo.PHIEU_KIEM_SXBT_SPLIT split
+                            INNER JOIN dbo.PHIEU_KIEM original ON original.Id = split.OriginalPhieuKiemId
+                            INNER JOIN dbo.PHIEU_KIEM rejected ON rejected.Id = split.RejectedPhieuKiemId
+                            WHERE split.OriginalPhieuKiemId = @PhieuKiemId
+                               OR split.RejectedPhieuKiemId = @PhieuKiemId;
+                        END
+                    `);
 
                 return res.json({
                     phieu,
                     btpItems,
                     summary: result.recordsets[2][0] || null,
                     defects: result.recordsets[3] || [],
-                    dynamicFields
+                    dynamicFields,
+                    splitInfo: splitResult.recordset?.[0] || null
                 });
             }
 
@@ -1901,6 +1926,50 @@ router.post(
         } catch (err) {
             console.error('SXBT Complete error:', err);
             res.status(500).json({ message: 'Hoàn tất phiếu kiểm SXBT thất bại' });
+        }
+    }
+);
+
+/* =========================================================
+   POST /phieu-kiem/sxbt/split-complete
+   Tách phiếu SXBT thành phần đạt/không đạt và hoàn tất cả hai
+========================================================= */
+router.post(
+    '/sxbt/split-complete',
+    authenticateToken,
+    authorize('THUC_HIEN_KIEM'),
+    async (req, res) => {
+        const { phieuKiemId, lotRows } = req.body;
+
+        if (!phieuKiemId || !Array.isArray(lotRows) || lotRows.length === 0) {
+            return res.status(400).json({ message: 'Thiếu phieuKiemId hoặc dữ liệu dòng lô.' });
+        }
+
+        try {
+            const pool = await poolPromise;
+            const result = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('UserId', sql.Int, req.user.userId)
+                .input('LotRowsJson', sql.NVarChar(sql.MAX), JSON.stringify(lotRows))
+                .execute('sp_PhieuKiem_SXBT_SplitComplete');
+
+            const row = result.recordset?.[0];
+            return res.json({
+                success: true,
+                passedPhieu: {
+                    id: row?.PassedPhieuKiemId,
+                    soPhieu: row?.PassedSoPhieu
+                },
+                rejectedPhieu: {
+                    id: row?.RejectedPhieuKiemId,
+                    soPhieu: row?.RejectedSoPhieu
+                }
+            });
+        } catch (err) {
+            console.error('SXBT Split Complete error:', err);
+            return res.status(400).json({
+                message: err?.originalError?.info?.message || err.message || 'Không thể tách phiếu SXBT.'
+            });
         }
     }
 );

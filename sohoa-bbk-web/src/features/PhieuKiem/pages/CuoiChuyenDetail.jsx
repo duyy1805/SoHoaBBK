@@ -18,7 +18,7 @@ import {
     Stack,
     Typography
 } from "@mui/material";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useReactToPrint } from "react-to-print";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PrintIcon from "@mui/icons-material/Print";
@@ -97,8 +97,10 @@ function InfoLine({ label, value }) {
 }
 
 export default function CuoiChuyenDetail() {
+    const location = useLocation();
     const { id } = useParams();
     const navigate = useNavigate();
+    const returnToList = () => navigate(location.state?.returnTo || "/phieu-kiem");
     const printRef = useRef();
 
     const [loading, setLoading] = useState(true);
@@ -218,7 +220,7 @@ export default function CuoiChuyenDetail() {
         <Container maxWidth="xl" sx={{ py: 3 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
                 <Stack direction="row" spacing={1.5} alignItems="center">
-                    <Button startIcon={<ArrowBackIcon />} onClick={() => navigate("/phieu-kiem")} color="inherit">
+                    <Button startIcon={<ArrowBackIcon />} onClick={returnToList} color="inherit">
                         Quay lại
                     </Button>
                     <Box>
