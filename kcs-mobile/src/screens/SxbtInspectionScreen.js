@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
     View,
     Text,
@@ -11,7 +11,8 @@ import {
     Modal,
     KeyboardAvoidingView,
     Platform,
-    Image
+    Image,
+    Keyboard
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
@@ -48,6 +49,10 @@ export default function SxbtInspectionScreen({ route, navigation }) {
     const [selectedBtp, setSelectedBtp] = useState(null);
     const [btpModalVisible, setBtpModalVisible] = useState(false);
     const [khoLotQuantities, setKhoLotQuantities] = useState({});
+    const btpModalScrollRef = useRef(null);
+    const btpModalInputRefs = useRef({});
+    const focusedBtpInputRef = useRef(null);
+    const btpModalScrollOffsetRef = useRef(0);
     const [splitInfo, setSplitInfo] = useState(null);
     const [splitModalVisible, setSplitModalVisible] = useState(false);
     const [splitQuantities, setSplitQuantities] = useState({});
@@ -118,6 +123,64 @@ export default function SxbtInspectionScreen({ route, navigation }) {
         !!row.ThuTu ||
         !!row.LxvtLot ||
         !!row.SoLotSX;
+
+    const ensureFocusedBtpInputVisible = useCallback(() => {
+        const input = focusedBtpInputRef.current;
+        const scrollView = btpModalScrollRef.current;
+        if (!input?.measureInWindow || !scrollView?.measureInWindow) return;
+
+        scrollView.measureInWindow((_scrollX, scrollY, _scrollWidth, scrollHeight) => {
+            input.measureInWindow((_inputX, inputY, _inputWidth, inputHeight) => {
+                if (!Number.isFinite(scrollY) || !Number.isFinite(inputY)) return;
+
+                const safeTop = scrollY + 16;
+                const safeBottom = scrollY + scrollHeight - 20;
+                const inputBottom = inputY + inputHeight;
+                let delta = 0;
+
+                if (inputBottom > safeBottom) {
+                    delta = inputBottom - safeBottom;
+                } else if (inputY < safeTop) {
+                    delta = inputY - safeTop;
+                }
+
+                if (Math.abs(delta) > 1) {
+                    scrollView.scrollTo({
+                        y: Math.max(0, btpModalScrollOffsetRef.current + delta),
+                        animated: true
+                    });
+                }
+            });
+        });
+    }, []);
+
+    const keepBtpInputVisible = (inputKey) => {
+        focusedBtpInputRef.current = btpModalInputRefs.current[inputKey] || null;
+
+        // Lần đầu xử lý focus hiện tại; lần sau xử lý kích thước mới khi
+        // Gboard/Samsung Keyboard và thanh gợi ý đã mở hoàn toàn.
+        setTimeout(ensureFocusedBtpInputVisible, 50);
+        setTimeout(ensureFocusedBtpInputVisible, Platform.OS === "android" ? 320 : 220);
+    };
+
+    useEffect(() => {
+        const keyboardShowEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+        const keyboardChangeEvent = Platform.OS === "ios" ? "keyboardWillChangeFrame" : "keyboardDidShow";
+        const showSubscription = Keyboard.addListener(keyboardShowEvent, () => {
+            setTimeout(ensureFocusedBtpInputVisible, 30);
+            setTimeout(ensureFocusedBtpInputVisible, 220);
+        });
+        const changeSubscription = keyboardChangeEvent === keyboardShowEvent
+            ? null
+            : Keyboard.addListener(keyboardChangeEvent, () => {
+                setTimeout(ensureFocusedBtpInputVisible, 30);
+            });
+
+        return () => {
+            showSubscription.remove();
+            changeSubscription?.remove();
+        };
+    }, [ensureFocusedBtpInputVisible]);
 
     const legacyLotRowFromItem = (item = {}) => {
         item = item || {};
@@ -1163,10 +1226,17 @@ export default function SxbtInspectionScreen({ route, navigation }) {
             </Modal>
 
             {SHOW_MANUAL_BTP_LOT_EDITOR && (
-                <Modal visible={btpModalVisible} transparent animationType="slide">
+                <Modal
+                    visible={btpModalVisible}
+                    transparent
+                    animationType="slide"
+                    statusBarTranslucent={Platform.OS === "android"}
+                    onRequestClose={() => setBtpModalVisible(false)}
+                >
                     <View style={styles.modalOverlay}>
                         <KeyboardAvoidingView
-                            behavior={Platform.OS === "ios" ? "padding" : "height"}
+                            behavior={Platform.OS === "ios" ? "padding" : undefined}
+                            enabled={Platform.OS === "ios"}
                             style={styles.modalKeyboardContainer}
                             keyboardVerticalOffset={0}
                         >
@@ -1174,25 +1244,30 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                             <Text style={styles.modalTitle}>Cập nhật thông tin BTP</Text>
                             {selectedBtp && (
                                 <>
-                                    <View style={styles.btpModalHeader}>
-                                        <Text style={styles.itemName}>{selectedBtp.TenSanPham}</Text>
-                                        <Text style={styles.itemSub}>Đơn vị tính: {selectedBtp.DonViTinh || "---"}</Text>
-                                        <Text style={styles.itemSub}>
-                                            Kế hoạch sản xuất: {selectedBtp.SourceID_KeHoachSanXuat ? `KH #${selectedBtp.SourceID_KeHoachSanXuat}` : "---"}
-                                        </Text>
-                                        {selectedBtp.MaDonHang ? (
-                                            <Text style={styles.itemSub}>Đơn hàng: {selectedBtp.MaDonHang}</Text>
-                                        ) : null}
-                                    </View>
-
                                     <ScrollView
+                                        ref={btpModalScrollRef}
                                         style={styles.modalScroll}
                                         showsVerticalScrollIndicator={false}
                                         contentContainerStyle={styles.btpModalScrollContent}
                                         keyboardShouldPersistTaps="handled"
                                         keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
                                         automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+                                        scrollEventThrottle={16}
+                                        onScroll={(event) => {
+                                            btpModalScrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+                                        }}
                                     >
+                                        <View style={styles.btpModalHeader}>
+                                            <Text style={styles.itemName}>{selectedBtp.TenSanPham}</Text>
+                                            <Text style={styles.itemSub}>Đơn vị tính: {selectedBtp.DonViTinh || "---"}</Text>
+                                            <Text style={styles.itemSub}>
+                                                Kế hoạch sản xuất: {selectedBtp.SourceID_KeHoachSanXuat ? `KH #${selectedBtp.SourceID_KeHoachSanXuat}` : "---"}
+                                            </Text>
+                                            {selectedBtp.MaDonHang ? (
+                                                <Text style={styles.itemSub}>Đơn hàng: {selectedBtp.MaDonHang}</Text>
+                                            ) : null}
+                                        </View>
+
                                         {getBtpLotRows(selectedBtp).map((row, rowIndex) => (
                                             <View key={`manual-lot-${rowIndex}`} style={styles.btpLotEditCard}>
                                                 <View style={styles.btpLotEditHeader}>
@@ -1205,18 +1280,30 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                                                     ["DauTuanGS1", "Dấu tuần/GS1", "Nhập dấu tuần/GS1", "default"],
                                                     ["ThuTu", "TT", "Nhập TT", "default"],
                                                     ["LxvtLot", "LXVT/LOT", "Nhập LXVT/LOT", "default"]
-                                                ].map(([field, label, placeholder, keyboardType]) => (
-                                                    <View key={field} style={styles.formGroup}>
-                                                        <Text style={styles.inputLabel}>{label}</Text>
-                                                        <TextInput
-                                                            style={styles.input}
-                                                            placeholder={placeholder}
-                                                            keyboardType={keyboardType}
-                                                            value={inputValue(row[field])}
-                                                            onChangeText={(value) => handleBtpLotChange(rowIndex, field, value)}
-                                                        />
-                                                    </View>
-                                                ))}
+                                                ].map(([field, label, placeholder, keyboardType], fieldIndex) => {
+                                                    const inputKey = `${rowIndex}-${field}`;
+                                                    return (
+                                                        <View key={field} style={styles.formGroup}>
+                                                            <Text style={styles.inputLabel}>{label}</Text>
+                                                            <TextInput
+                                                                ref={(input) => {
+                                                                    if (input) {
+                                                                        btpModalInputRefs.current[inputKey] = input;
+                                                                    } else {
+                                                                        delete btpModalInputRefs.current[inputKey];
+                                                                    }
+                                                                }}
+                                                                style={styles.input}
+                                                                placeholder={placeholder}
+                                                                keyboardType={keyboardType}
+                                                                value={inputValue(row[field])}
+                                                                onChangeText={(value) => handleBtpLotChange(rowIndex, field, value)}
+                                                                onFocus={() => keepBtpInputVisible(inputKey)}
+                                                                returnKeyType={fieldIndex === 2 ? "done" : "next"}
+                                                            />
+                                                        </View>
+                                                    );
+                                                })}
                                             </View>
                                         ))}
 
@@ -1356,8 +1443,13 @@ const styles = StyleSheet.create({
     btpLotReadonlyRow: { marginTop: 8, padding: 10, backgroundColor: "#fff", borderRadius: 6, borderWidth: 1, borderColor: "#e5e7eb" },
     btpLotReadonlyTitle: { fontSize: 12, fontWeight: "700", color: "#0f172a", marginBottom: 4 },
     btpLotReadonlyText: { fontSize: 12, color: "#475569", marginBottom: 2 },
-    btpModalContent: { paddingBottom: Platform.OS === "ios" ? 36 : 24 },
-    btpModalScrollContent: { paddingBottom: 32 },
+    btpModalContent: {
+        height: Platform.OS === "android" ? "96%" : "92%",
+        maxHeight: Platform.OS === "android" ? "96%" : "92%",
+        minHeight: 0,
+        paddingBottom: Platform.OS === "ios" ? 36 : 12
+    },
+    btpModalScrollContent: { paddingBottom: 48 },
     btpModalHeader: { backgroundColor: "#fff", padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "#e2e8f0", marginBottom: 12 },
     btpLotEditCard: { backgroundColor: "#fff", padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "#e2e8f0", marginBottom: 12 },
     btpLotEditHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
