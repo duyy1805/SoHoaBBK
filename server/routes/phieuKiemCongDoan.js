@@ -124,7 +124,7 @@ router.post(
     async (req, res) => {
         const { ngayKiem, toMay, phanXuongId } = req.body || {};
         if (!isDate(ngayKiem) || !Number(phanXuongId)) {
-            return res.status(400).json({ message: 'Ngày kiểm và phân xưởng sản xuất là bắt buộc' });
+            return res.status(400).json({ message: 'Ngày kiểm và bộ phận sản xuất là bắt buộc' });
         }
         try {
             const pool = await poolPromise;
@@ -133,22 +133,12 @@ router.post(
                 Number(item.Id || item.ID_BoPhan) === Number(phanXuongId)
             );
             if (!department) {
-                return res.status(400).json({ message: 'Phân xưởng sản xuất không hợp lệ' });
+                return res.status(400).json({ message: 'Bộ phận sản xuất không hợp lệ' });
             }
             const phanXuong = department.TenBoPhan
                 || department.Ten_BoPhan
                 || department.TenBoPhanDayDu
                 || null;
-            const productionUnitResult = await pool.request()
-                .input('PhanXuong', sql.NVarChar(255), phanXuong)
-                .query(`
-                    SELECT TOP 1 ID_DonVi
-                    FROM TAG_System.dbo.DM_DonVi
-                    WHERE LTRIM(RTRIM(Ten_DonVi)) = LTRIM(RTRIM(@PhanXuong))
-                `);
-            if (!productionUnitResult.recordset[0]) {
-                return res.status(400).json({ message: 'Bộ phận đã chọn không phải phân xưởng sản xuất hợp lệ' });
-            }
             const result = await pool.request()
                 .input('NgayKiem', sql.Date, ngayKiem)
                 .input('PhanXuong', sql.NVarChar(255), phanXuong)

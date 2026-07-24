@@ -8,7 +8,8 @@ export default function DefectEntryCard({
   onChange,
   onRemove,
   onPickImages,
-  resolveAssetUrl
+  resolveAssetUrl,
+  onInputFocus
 }) {
   const removeSavedImage = (index) => onChange({
     imageUrls: (defect.imageUrls || []).filter((_, current) => current !== index)
@@ -33,6 +34,8 @@ export default function DefectEntryCard({
             keyboardType="numeric"
             value={defect.soLuong}
             editable={editable}
+            placeholderTextColor="#64748b"
+            onFocus={onInputFocus}
             onChangeText={(value) => onChange({ soLuong: value.replace(/\D/g, "") })}
           />
           {editable ? (
@@ -54,6 +57,8 @@ export default function DefectEntryCard({
         value={defect.tenCongNhan}
         editable={editable}
         placeholder="Có thể để trống"
+        placeholderTextColor="#64748b"
+        onFocus={onInputFocus}
         onChangeText={(value) => onChange({ tenCongNhan: value })}
       />
 
@@ -62,17 +67,17 @@ export default function DefectEntryCard({
         <View style={styles.repairRow}>
           <View style={styles.repairGroup}>
             <Text style={styles.label}>Đạt</Text>
-            <TextInput style={styles.repairInput} placeholder="0" keyboardType="numeric" value={defect.soLuongDatSauSua} editable={editable} onChangeText={(value) => onChange({ soLuongDatSauSua: value.replace(/\D/g, "") })} />
+            <TextInput style={styles.repairInput} placeholder="0" placeholderTextColor="#64748b" keyboardType="numeric" value={defect.soLuongDatSauSua} editable={editable} onFocus={onInputFocus} onChangeText={(value) => onChange({ soLuongDatSauSua: value.replace(/\D/g, "") })} />
           </View>
           <View style={styles.repairGroup}>
             <Text style={styles.label}>Không đạt</Text>
-            <TextInput style={styles.repairInput} placeholder="0" keyboardType="numeric" value={defect.soLuongKhongDatSauSua} editable={editable} onChangeText={(value) => onChange({ soLuongKhongDatSauSua: value.replace(/\D/g, "") })} />
+            <TextInput style={styles.repairInput} placeholder="0" placeholderTextColor="#64748b" keyboardType="numeric" value={defect.soLuongKhongDatSauSua} editable={editable} onFocus={onInputFocus} onChangeText={(value) => onChange({ soLuongKhongDatSauSua: value.replace(/\D/g, "") })} />
           </View>
         </View>
       </View>
 
       <Text style={styles.fieldLabel}>Ghi chú</Text>
-      <TextInput style={[styles.noteInput, !editable && styles.readOnly]} multiline value={defect.ghiChu} editable={editable} onChangeText={(value) => onChange({ ghiChu: value })} />
+      <TextInput style={[styles.noteInput, !editable && styles.readOnly]} multiline value={defect.ghiChu} editable={editable} onFocus={onInputFocus} onChangeText={(value) => onChange({ ghiChu: value })} />
 
       <View style={styles.images}>
         {(defect.imageUrls || []).map((uri, index) => (

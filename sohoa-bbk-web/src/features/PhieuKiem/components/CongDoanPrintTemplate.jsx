@@ -20,7 +20,15 @@ const weekNumber = (value) => {
     return Math.ceil((((date - firstDay) / 86400000) + firstDay.getDay() + 1) / 7);
 };
 
-const CongDoanPrintTemplate = forwardRef(function CongDoanPrintTemplate({ phieu, plans = [] }, ref) {
+const signerByRole = (xacNhans, role) => [...(xacNhans || [])]
+    .reverse()
+    .find((item) => String(item?.VaiTro || "").toUpperCase() === role)
+    ?.TenNguoiXacNhan || "";
+
+const CongDoanPrintTemplate = forwardRef(function CongDoanPrintTemplate(
+    { phieu, plans = [], xacNhans = [] },
+    ref
+) {
     const defectColumns = useMemo(() => {
         const map = new Map();
         plans.forEach((plan) => (plan.Defects || []).forEach((defect) => {
@@ -66,6 +74,8 @@ const CongDoanPrintTemplate = forwardRef(function CongDoanPrintTemplate({ phieu,
 
     const totalColumns = 16 + defectColumns.length;
     const tableFontSize = totalColumns > 22 ? 6.3 : totalColumns > 19 ? 7 : 7.8;
+    const kcsSignerName = signerByRole(xacNhans, "KCS_CONG_DOAN");
+    const departmentHeadSignerName = signerByRole(xacNhans, "TBP_CONG_DOAN");
 
     return (
         <div
@@ -187,6 +197,51 @@ const CongDoanPrintTemplate = forwardRef(function CongDoanPrintTemplate({ phieu,
                     ))}
                 </tbody>
             </table>
+
+            <div style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 40,
+                marginTop: 16,
+                fontSize: 12
+            }}>
+                {[
+                    ["KCS", kcsSignerName],
+                    ["TRƯỞNG BỘ PHẬN", departmentHeadSignerName]
+                ].map(([title, signerName]) => (
+                    <div key={title} style={{ textAlign: "center", minHeight: 118 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13 }}>{title}</div>
+                        <div style={{
+                            height: 72,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center"
+                        }}>
+                            {signerName ? (
+                                <span style={{
+                                    display: "inline-block",
+                                    padding: "8px 16px 7px",
+                                    border: "2px solid #f05a5a",
+                                    color: "#f05a5a",
+                                    fontWeight: 700,
+                                    fontSize: 17,
+                                    lineHeight: 1,
+                                    textTransform: "uppercase",
+                                    borderRadius: 4,
+                                    transform: "rotate(-9deg) translateY(4px)",
+                                    letterSpacing: "0.8px",
+                                    backgroundColor: "rgba(255,255,255,0.92)"
+                                }}>
+                                    Đã ký
+                                </span>
+                            ) : null}
+                        </div>
+                        <div style={{ minHeight: 20, marginTop: 4, fontWeight: 700, fontSize: 12 }}>
+                            {signerName}
+                        </div>
+                    </div>
+                ))}
+            </div>
         </div>
     );
 });

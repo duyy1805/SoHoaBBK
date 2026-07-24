@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator, Alert, KeyboardAvoidingView,
   Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View
@@ -34,6 +34,21 @@ export default function CongDoanPlanDetailScreen({ route, navigation }) {
   const [modalVisible, setModalVisible] = useState(false);
   const [search, setSearch] = useState("");
   const [currentWorkerName, setCurrentWorkerName] = useState("");
+  const scrollRef = useRef(null);
+
+  const revealFocusedInput = useCallback((event) => {
+    const target = event?.nativeEvent?.target;
+    if (!target) return;
+    setTimeout(() => {
+      scrollRef.current
+        ?.getScrollResponder()
+        ?.scrollResponderScrollNativeHandleToKeyboard(
+          target,
+          Platform.OS === "ios" ? 120 : 96,
+          true
+        );
+    }, Platform.OS === "ios" ? 180 : 120);
+  }, []);
 
   const load = async () => {
     try {
@@ -198,7 +213,13 @@ export default function CongDoanPlanDetailScreen({ route, navigation }) {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.summary}>
           <Text style={styles.planId}>Kế hoạch #{plan.ID_KeHoachSanXuat}</Text>
           <Text style={styles.code}>{plan.MaSanPham || "---"}</Text>
@@ -227,6 +248,8 @@ export default function CongDoanPlanDetailScreen({ route, navigation }) {
               style={[styles.input, !editable && styles.readOnly]}
               value={plan[field]} editable={editable}
               multiline={field === "ghiChu"}
+              onFocus={revealFocusedInput}
+              placeholderTextColor="#64748b"
               onChangeText={(value) => setPlan((current) => ({ ...current, [field]: value }))}
             />
           </View>
@@ -239,6 +262,8 @@ export default function CongDoanPlanDetailScreen({ route, navigation }) {
               style={styles.input}
               value={currentWorkerName}
               placeholder="Có thể để trống"
+              placeholderTextColor="#64748b"
+              onFocus={revealFocusedInput}
               onChangeText={setCurrentWorkerName}
             />
           </View>
@@ -260,6 +285,8 @@ export default function CongDoanPlanDetailScreen({ route, navigation }) {
               editable={editable}
               keyboardType="numeric"
               placeholder="0"
+              placeholderTextColor="#64748b"
+              onFocus={revealFocusedInput}
               onChangeText={(value) => setPlan((current) => ({
                 ...current, soLoiBuiBan: value.replace(/\D/g, "")
               }))}
@@ -273,6 +300,8 @@ export default function CongDoanPlanDetailScreen({ route, navigation }) {
               editable={editable}
               keyboardType="numeric"
               placeholder="0"
+              placeholderTextColor="#64748b"
+              onFocus={revealFocusedInput}
               onChangeText={(value) => setPlan((current) => ({
                 ...current, soLoiConTrung: value.replace(/\D/g, "")
               }))}
@@ -288,6 +317,7 @@ export default function CongDoanPlanDetailScreen({ route, navigation }) {
             onRemove={() => removeDefect(index)}
             onPickImages={() => pickImages(index)}
             resolveAssetUrl={getAssetUrl}
+            onInputFocus={revealFocusedInput}
           />
         ))}
         {editable && (
@@ -312,7 +342,7 @@ export default function CongDoanPlanDetailScreen({ route, navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f8fafc" }, center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { padding: 14, paddingBottom: 36 }, summary: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#dbe3ec", borderRadius: 7, padding: 16 },
+  content: { padding: 14, paddingBottom: 120 }, summary: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#dbe3ec", borderRadius: 7, padding: 16 },
   planId: { color: "#64748b", fontSize: 12, fontWeight: "700", marginBottom: 5 },
   code: { fontSize: 17, fontWeight: "800", color: "#1d4ed8" }, name: { fontSize: 16, fontWeight: "700", color: "#0f172a", marginTop: 5 },
   processName: { color: "#1d4ed8", fontWeight: "600", marginTop: 6 },
