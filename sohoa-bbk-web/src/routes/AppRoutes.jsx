@@ -15,6 +15,8 @@ import BienBanList from '../features/BienBan/BienBanList';
 import BienBanSxbtDetail from '../features/BienBan/BienBanSxbtDetail';
 import PhieuXuLyKhongPhuHopList from '../features/BienBan/PhieuXuLyKhongPhuHopList';
 import PhieuXuLyKhongPhuHopDetail from '../features/BienBan/PhieuXuLyKhongPhuHopDetail';
+import CongDoanList from '../features/PhieuKiem/pages/CongDoanList';
+import CongDoanDetail from '../features/PhieuKiem/pages/CongDoanDetail';
 
 export default function AppRoutes() {
     return (
@@ -27,6 +29,8 @@ export default function AppRoutes() {
                 <Route element={<AppLayout />}>
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/phieu-kiem" element={<PhieuKiemList />} />
+                    <Route path="/phieu-kiem/cong-doan" element={<CongDoanList />} />
+                    <Route path="/phieu-kiem/cong-doan/:id" element={<CongDoanDetail />} />
                     <Route path="/phieu-kiem/sxbt/:id" element={<SxbtDetail />} />
                     <Route path="/phieu-kiem/cuoi-chuyen/:id" element={<CuoiChuyenDetail />} />
                     <Route path="/phieu-kiem/tren-chuyen/:id" element={<TrenChuyenDetail />} />

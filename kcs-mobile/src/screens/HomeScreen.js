@@ -12,6 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { getUser, logout } from "../utils/auth";
 import { getNotifications } from '../api/notification.api';
+const CONG_DOAN_ENABLED = process.env.EXPO_PUBLIC_ENABLE_CONG_DOAN !== "false";
 export default function HomeScreen({ navigation }) {
     const [user, setUser] = useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
@@ -145,6 +146,28 @@ export default function HomeScreen({ navigation }) {
 
                     <Ionicons name="chevron-forward" size={22} color="#94a3b8" />
                 </TouchableOpacity>
+
+                {CONG_DOAN_ENABLED && user?.permissions?.includes("THUC_HIEN_KIEM") && (
+                    <TouchableOpacity
+                        style={styles.card}
+                        onPress={() => navigation.navigate("CongDoanList")}
+                    >
+                        <View style={styles.cardLeft}>
+                            <View style={[styles.iconWrap, { backgroundColor: "#dbeafe" }]}>
+                                <Ionicons name="checkmark-done-outline" size={26} color="#2563eb" />
+                            </View>
+
+                            <View style={styles.cardText}>
+                                <Text style={styles.cardTitle}>Theo dõi, kiểm tra nghiệm thu công đoạn</Text>
+                                <Text style={styles.cardSub}>
+                                    Phiếu dùng chung theo kế hoạch trong ngày
+                                </Text>
+                            </View>
+                        </View>
+
+                        <Ionicons name="chevron-forward" size={22} color="#94a3b8" />
+                    </TouchableOpacity>
+                )}
             </View>
         </View>
     );
@@ -199,8 +222,14 @@ const styles = StyleSheet.create({
         elevation: 5
     },
     cardLeft: {
+        flex: 1,
         flexDirection: "row",
         alignItems: "center"
+    },
+    cardText: {
+        flex: 1,
+        marginLeft: 15,
+        paddingRight: 8
     },
     iconWrap: {
         width: 48,

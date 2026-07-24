@@ -296,11 +296,26 @@ router.get(
             const result = await pool.request()
                 .input("BienBanId", sql.Int, id)
                 .execute("sp_BienBan_GetDetail");
+            const rs = result.recordsets;
+            const baseInfo = rs[0]?.[0] || null;
+            const subtypeResult = baseInfo?.PhieuKiemId
+                ? await pool.request()
+                    .input("PhieuKiemId", sql.Int, Number(baseInfo.PhieuKiemId))
+                    .query(`
+                        SELECT CASE WHEN EXISTS (
+                            SELECT 1
+                            FROM dbo.PHIEU_KIEM_CONG_DOAN_HEADER
+                            WHERE PhieuKiemId = @PhieuKiemId
+                        ) THEN 1 ELSE 0 END AS IsCongDoan
+                    `)
+                : null;
+            const isCongDoan = Boolean(subtypeResult?.recordset?.[0]?.IsCongDoan);
             const defectResult = await pool.request()
                 .input("BienBanId", sql.Int, id)
-                .execute("sp_BienBan_GetDefects");
+                .execute(isCongDoan
+                    ? "sp_BienBan_CongDoan_GetDefects"
+                    : "sp_BienBan_GetDefects");
 
-            const rs = result.recordsets;
             const assignRows = await getBienBanAssignRows(pool, id);
             const v01Data = await getKphV01Data(pool, id);
             const customFieldAccess = await getKphCustomFieldAccess(pool, id, req.user);
@@ -322,7 +337,7 @@ router.get(
             // Gộp custom fields của biên bản và phiếu kiểm.
             // Ưu tiên field trên biên bản nếu trùng tên.
             let dynamicFields = [];
-            const info = rs[0]?.[0] || null;
+            const info = baseInfo;
             if (info) {
                 let bienBanDynamicFields = [];
                 let phieuKiemDynamicFields = [];
@@ -405,6 +420,7 @@ router.get(
             res.json({
                 info: info ? {
                     ...info,
+                    IsCongDoan: isCongDoan,
                     MauPhieuVersion: v01Data.meta.MauPhieuVersion,
                     MaDonViTaoPhieu: v01Data.meta.MaDonViTaoPhieu,
                     DonViTaoPhieu: v01Data.meta.DonViTaoPhieu,

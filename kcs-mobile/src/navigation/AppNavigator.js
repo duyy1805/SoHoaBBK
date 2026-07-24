@@ -19,6 +19,9 @@ import TrenChuyenInspectionScreen from "../screens/TrenChuyenInspectionScreen";
 import TrenChuyenSlotDetailScreen from "../screens/TrenChuyenSlotDetailScreen";
 import CuoiChuyenInspectionScreen from "../screens/CuoiChuyenInspectionScreen";
 import CuoiChuyenPlanDetailScreen from "../screens/CuoiChuyenPlanDetailScreen";
+import CongDoanListScreen from "../screens/CongDoanListScreen";
+import CongDoanDetailScreen from "../screens/CongDoanDetailScreen";
+import CongDoanPlanDetailScreen from "../screens/CongDoanPlanDetailScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -122,6 +125,21 @@ export default function AppNavigator() {
                 name="TrenChuyenSlotDetail"
                 component={TrenChuyenSlotDetailScreen}
                 options={{ title: "Chi tiết khung giờ" }}
+            />
+            <Stack.Screen
+                name="CongDoanList"
+                component={CongDoanListScreen}
+                options={{ title: "Theo dõi công đoạn" }}
+            />
+            <Stack.Screen
+                name="CongDoanDetail"
+                component={CongDoanDetailScreen}
+                options={{ title: "Phiếu kiểm công đoạn" }}
+            />
+            <Stack.Screen
+                name="CongDoanPlanDetail"
+                component={CongDoanPlanDetailScreen}
+                options={{ title: "Kiểm tra kế hoạch" }}
             />
             <Stack.Screen
                 name="Notifications"

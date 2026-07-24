@@ -100,6 +100,11 @@ export default function BienBanDetailScreen({ route, navigation }) {
     const navigateToPhieuKiem = () => {
         if (!info?.PhieuKiemId) return;
 
+        if (info.IsCongDoan) {
+            navigation.navigate("CongDoanDetail", { id: info.PhieuKiemId });
+            return;
+        }
+
         const loaiKiemId = Number(info.LoaiKiemId || 0);
         if (loaiKiemId === 3) {
             navigation.navigate("CuoiChuyenInspection", { id: info.PhieuKiemId });

@@ -78,6 +78,19 @@ const getUserDisplayName = async (pool, userId, fallback = '') => {
 };
 const canManageTrenChuyenAll = (permissions = []) =>
     Array.isArray(permissions) && (permissions.includes('PHAN_BO_KIEM') || permissions.includes('KET_LUAN') || permissions.includes('QUAN_TRI_DM'));
+const excludeCongDoanRows = async (pool, rows = []) => {
+    if (!Array.isArray(rows) || rows.length === 0) return [];
+
+    const result = await pool.request().query(`
+        SELECT PhieuKiemId
+        FROM dbo.PHIEU_KIEM_CONG_DOAN_HEADER
+    `);
+    const congDoanIds = new Set(
+        (result.recordset || []).map((item) => Number(item.PhieuKiemId))
+    );
+
+    return rows.filter((item) => !congDoanIds.has(Number(item.Id)));
+};
 
 const attachProductImageToPhieu = async (pool, phieu = null) => {
     if (!phieu || !phieu.SanPhamId) {
@@ -270,7 +283,7 @@ router.get(
 
             const result = await request.execute('sp_PhieuKiem_GetList_ByRole');
 
-            res.json(result.recordset);
+            res.json(await excludeCongDoanRows(pool, result.recordset));
         } catch (err) {
             console.error('GetPhieuKiem error:', err);
             res.status(500).json({ message: 'Lỗi tải danh sách phiếu kiểm' });
@@ -578,7 +591,7 @@ router.get(
                 .input('Mode', sql.NVarChar, mode)
                 .execute('SP_PhieuKiem_My');
 
-            res.json(result.recordset);
+            res.json(await excludeCongDoanRows(pool, result.recordset));
 
         } catch (error) {
 

@@ -161,6 +161,46 @@ export const approveCuoiChuyen = (phieuKiemId) => {
 };
 
 /* =========================================================
+   PHIẾU KIỂM CÔNG ĐOẠN
+========================================================= */
+
+export const getCongDoanPhieuList = (params) =>
+    axiosClient.get("/phieu-kiem/cong-doan", { params });
+
+export const createCongDoanPhieu = (data) =>
+    axiosClient.post("/phieu-kiem/cong-doan", data);
+
+export const getCongDoanPhieuDetail = (id) =>
+    axiosClient.get(`/phieu-kiem/cong-doan/${id}`);
+
+export const getCongDoanPlans = (date, phieuKiemId) =>
+    axiosClient.get("/phieu-kiem/cong-doan/plans", { params: { date, phieuKiemId } });
+
+export const addCongDoanPlan = (id, idKeHoachSanXuat) =>
+    axiosClient.post(`/phieu-kiem/cong-doan/${id}/plans`, { idKeHoachSanXuat });
+
+export const updateCongDoanPlan = (id, planId, data) =>
+    axiosClient.put(`/phieu-kiem/cong-doan/${id}/plans/${planId}`, data);
+
+export const saveCongDoanDefects = (id, planId, data) =>
+    axiosClient.put(`/phieu-kiem/cong-doan/${id}/plans/${planId}/defects`, data);
+
+export const deleteCongDoanPlan = (id, planId) =>
+    axiosClient.delete(`/phieu-kiem/cong-doan/${id}/plans/${planId}`);
+
+export const completeCongDoanPhieu = (id, ketLuan) =>
+    axiosClient.post(`/phieu-kiem/cong-doan/${id}/complete`, { ketLuan });
+
+export const approveCongDoanPhieu = (id) =>
+    axiosClient.post(`/phieu-kiem/cong-doan/${id}/approve`);
+
+export const createCongDoanBienBan = (id) =>
+    axiosClient.post(`/phieu-kiem/cong-doan/${id}/create-bien-ban`);
+
+export const deleteCongDoanPhieu = (id) =>
+    axiosClient.delete(`/phieu-kiem/cong-doan/${id}`);
+
+/* =========================================================
    KẾT LUẬN (TP_B8 / LANH_DAO)
 ========================================================= */
 

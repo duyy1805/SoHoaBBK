@@ -562,7 +562,7 @@ export default function BienBanDetail({ standalone = false }) {
         currentUserPermissions.includes("KET_LUAN") ||
         currentUserPermissions.includes("QUAN_TRI_DM");
     const isStandaloneBienBan = standalone || info?.LoaiBienBan === "STANDALONE";
-    const isTrenChuyenBienBan = Number(info?.LoaiKiemId) === 6;
+    const isTrenChuyenBienBan = Number(info?.LoaiKiemId) === 6 && !info?.IsCongDoan;
 
     const isAssigned = assigns.some(a => Number(a.BoPhanId) === Number(currentUserBoPhanId));
     const b7Assign = assigns.find((a) => String(a.MaBoPhan || "").toUpperCase() === "B7");
@@ -666,7 +666,9 @@ export default function BienBanDetail({ standalone = false }) {
                                 <Button
                                     variant="outlined"
                                     startIcon={<AssignmentTurnedInIcon />}
-                                    onClick={() => navigate(`/phieu-kiem/${info.PhieuKiemId}`)}
+                                    onClick={() => navigate(info.IsCongDoan
+                                        ? `/phieu-kiem/cong-doan/${info.PhieuKiemId}`
+                                        : `/phieu-kiem/${info.PhieuKiemId}`)}
                                 >
                                     Xem phiếu kiểm
                                 </Button>

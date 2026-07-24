@@ -356,16 +356,23 @@ export default function PhieuKiemList() {
                         Danh sách Phiếu kiểm
                     </Typography>
 
-                    {hasPermission("PHAN_BO_KIEM") && (
-                        <Button
-                            variant="contained"
-                            startIcon={<AddIcon />}
-                            onClick={() => navigate("/phieu-kiem/create")}
-                            sx={{ boxShadow: "0 4px 14px rgba(99, 102, 241, 0.3)" }}
-                        >
-                            Phân bổ kiểm
-                        </Button>
-                    )}
+                    <Stack direction="row" spacing={1}>
+                        {hasPermission("THUC_HIEN_KIEM") && (
+                            <Button variant="outlined" onClick={() => navigate("/phieu-kiem/cong-doan")}>
+                                Phiếu công đoạn
+                            </Button>
+                        )}
+                        {hasPermission("PHAN_BO_KIEM") && (
+                            <Button
+                                variant="contained"
+                                startIcon={<AddIcon />}
+                                onClick={() => navigate("/phieu-kiem/create")}
+                                sx={{ boxShadow: "0 4px 14px rgba(99, 102, 241, 0.3)" }}
+                            >
+                                Phân bổ kiểm
+                            </Button>
+                        )}
+                    </Stack>
                 </Stack>
 
                 {/* Filters Section */}
