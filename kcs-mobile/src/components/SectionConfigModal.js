@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { getSanPhamNhomKiem, getInspectionLevels } from "../api/lookup.api";
 import { createAllSection } from "../api/phieuKiem.api";
+import KeyboardFormScrollView from "./KeyboardFormScrollView";
 
 export default function SectionConfigModal({ visible, onClose, phieuId, sanPhamId, initialLotSize, onSuccess }) {
   const [loading, setLoading] = useState(true);
@@ -101,7 +102,7 @@ export default function SectionConfigModal({ visible, onClose, phieuId, sanPhamI
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.modalContent}
           keyboardVerticalOffset={Platform.OS === "ios" ? 20 : 0}
         >
@@ -115,7 +116,12 @@ export default function SectionConfigModal({ visible, onClose, phieuId, sanPhamI
           {loading ? (
             <ActivityIndicator size="large" color="#2563eb" style={{ marginVertical: 40 }} />
           ) : (
-            <ScrollView style={styles.configList} showsVerticalScrollIndicator={false}>
+            <KeyboardFormScrollView
+              style={styles.configList}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.configListContent}
+            >
               {nhomConfigs.map((n, index) => (
                 <View key={n.nhomKiemId} style={styles.configItem}>
                   <Text style={styles.nhomName}>{n.tenNhom}</Text>
@@ -155,7 +161,7 @@ export default function SectionConfigModal({ visible, onClose, phieuId, sanPhamI
                   </View>
                 </View>
               ))}
-            </ScrollView>
+            </KeyboardFormScrollView>
           )}
 
           <View style={styles.footer}>
@@ -212,6 +218,9 @@ const styles = StyleSheet.create({
   },
   configList: {
     marginBottom: 20,
+  },
+  configListContent: {
+    paddingBottom: 24,
   },
   configItem: {
     marginBottom: 20,

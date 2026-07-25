@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import KeyboardFormScrollView from "../components/KeyboardFormScrollView";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
@@ -379,7 +380,10 @@ export default function CuoiChuyenPlanDetailScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
-      <ScrollView contentContainerStyle={[styles.content, canEdit ? styles.contentWithBottomBar : null]}>
+      <KeyboardFormScrollView
+        contentContainerStyle={[styles.content, canEdit ? styles.contentWithBottomBar : null]}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.headerCard}>
           <View style={styles.headerRow}>
             <View style={{ flex: 1 }}>
@@ -522,7 +526,7 @@ export default function CuoiChuyenPlanDetailScreen({ route, navigation }) {
             </View>
           </View>
         ))}
-      </ScrollView>
+      </KeyboardFormScrollView>
 
       {canEdit ? (
         <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
@@ -539,7 +543,7 @@ export default function CuoiChuyenPlanDetailScreen({ route, navigation }) {
       <Modal visible={defectModalVisible} transparent animationType="slide" onRequestClose={() => setDefectModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
             style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 16) }]}
           >
             <Text style={styles.modalTitle}>Chọn lỗi</Text>
@@ -552,7 +556,11 @@ export default function CuoiChuyenPlanDetailScreen({ route, navigation }) {
               onChangeText={setDefectSearch}
             />
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
+            <KeyboardFormScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 24 }}
+              keyboardShouldPersistTaps="handled"
+            >
               {filteredDefects.length === 0 ? (
                 <View style={styles.modalEmptyState}>
                   <Ionicons name="search-outline" size={40} color="#cbd5e1" />
@@ -596,7 +604,7 @@ export default function CuoiChuyenPlanDetailScreen({ route, navigation }) {
                   </TouchableOpacity>
                 );
               })}
-            </ScrollView>
+            </KeyboardFormScrollView>
 
             <TouchableOpacity style={styles.closeBtn} onPress={() => setDefectModalVisible(false)}>
               <Text style={styles.closeBtnText}>Đóng</Text>

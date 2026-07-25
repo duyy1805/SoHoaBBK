@@ -9,8 +9,11 @@ import {
     TouchableOpacity,
     StyleSheet,
     Alert,
-    FlatList
+    FlatList,
+    KeyboardAvoidingView,
+    Platform
 } from "react-native";
+import KeyboardFormScrollView from "./KeyboardFormScrollView";
 
 import DateTimePicker from "@react-native-community/datetimepicker";
 
@@ -145,7 +148,10 @@ export default function XuLyModal({
 
         <Modal visible={visible} animationType="none">
 
-            <View style={styles.container}>
+            <KeyboardAvoidingView
+                style={styles.container}
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+            >
 
                 {/* HEADER */}
 
@@ -165,7 +171,11 @@ export default function XuLyModal({
 
                 {/* FORM */}
 
-                <View style={styles.form}>
+                <KeyboardFormScrollView
+                    style={styles.form}
+                    contentContainerStyle={styles.formContent}
+                    keyboardShouldPersistTaps="handled"
+                >
 
                     {/* NỘI DUNG */}
 
@@ -175,6 +185,7 @@ export default function XuLyModal({
 
                     <TextInput
                         style={styles.textarea}
+                        placeholderTextColor="#64748b"
                         placeholder="Mô tả nội dung xử lý..."
                         multiline
                         value={noiDung}
@@ -228,7 +239,7 @@ export default function XuLyModal({
 
                     )}
 
-                </View>
+                </KeyboardFormScrollView>
 
                 {/* FOOTER */}
 
@@ -248,7 +259,7 @@ export default function XuLyModal({
 
                 </View>
 
-            </View>
+            </KeyboardAvoidingView>
 
             {/* MODAL CHỌN ĐỀ NGHỊ */}
 
@@ -334,7 +345,12 @@ const styles = StyleSheet.create({
     },
 
     form: {
-        padding: 16
+        flex: 1
+    },
+
+    formContent: {
+        padding: 16,
+        paddingBottom: 24
     },
 
     label: {

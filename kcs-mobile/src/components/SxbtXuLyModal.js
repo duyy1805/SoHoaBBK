@@ -7,8 +7,11 @@ import {
     TouchableOpacity,
     StyleSheet,
     Alert,
-    FlatList
+    FlatList,
+    KeyboardAvoidingView,
+    Platform
 } from "react-native";
+import KeyboardFormScrollView from "./KeyboardFormScrollView";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { addBienBanSxbtXuLyRow, getBoPhan } from "../api/bienBan.api";
 
@@ -72,7 +75,10 @@ export default function SxbtXuLyModal({
 
     return (
         <Modal visible={visible} animationType="none">
-            <View style={styles.container}>
+            <KeyboardAvoidingView
+                style={styles.container}
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+            >
                 <View style={styles.header}>
                     <TouchableOpacity onPress={onClose}>
                         <Text style={styles.back}>←</Text>
@@ -81,10 +87,15 @@ export default function SxbtXuLyModal({
                     <View style={{ width: 30 }} />
                 </View>
 
-                <View style={styles.form}>
+                <KeyboardFormScrollView
+                    style={styles.form}
+                    contentContainerStyle={styles.formContent}
+                    keyboardShouldPersistTaps="handled"
+                >
                     <Text style={styles.label}>Chi phí</Text>
                     <TextInput
                         style={styles.input}
+                        placeholderTextColor="#64748b"
                         placeholder="Nhập chi phí"
                         value={chiPhi}
                         onChangeText={setChiPhi}
@@ -93,6 +104,7 @@ export default function SxbtXuLyModal({
                     <Text style={styles.label}>Nội dung</Text>
                     <TextInput
                         style={styles.textarea}
+                        placeholderTextColor="#64748b"
                         placeholder="Nhập nội dung xử lý"
                         multiline
                         value={noiDung}
@@ -122,14 +134,14 @@ export default function SxbtXuLyModal({
                             }}
                         />
                     )}
-                </View>
+                </KeyboardFormScrollView>
 
                 <View style={styles.footer}>
                     <TouchableOpacity style={styles.btn} onPress={handleSubmit} disabled={loading}>
                         <Text style={styles.btnText}>Lưu phương án xử lý</Text>
                     </TouchableOpacity>
                 </View>
-            </View>
+            </KeyboardAvoidingView>
 
             <Modal visible={showBoPhanModal} transparent animationType="fade">
                 <View style={styles.overlay}>
@@ -184,7 +196,11 @@ const styles = StyleSheet.create({
         fontWeight: "600"
     },
     form: {
-        padding: 16
+        flex: 1
+    },
+    formContent: {
+        padding: 16,
+        paddingBottom: 24
     },
     label: {
         fontWeight: "600",

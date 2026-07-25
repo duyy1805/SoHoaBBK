@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { getBoPhan } from "../api/bienBan.api";
 import { createCongDoanPhieu, getCongDoanPhieuList } from "../api/phieuKiem.api";
 import MobileSelect from "../components/MobileSelect";
+import KeyboardFormScrollView from "../components/KeyboardFormScrollView";
 
 const localDate = (date = new Date()) => {
   const offset = date.getTimezoneOffset() * 60000;
@@ -128,7 +129,7 @@ export default function CongDoanListScreen({ navigation }) {
               <Text style={styles.modalTitle}>Tạo phiếu công đoạn</Text>
               <TouchableOpacity onPress={closeCreateModal}><Ionicons name="close" size={24} color="#334155" /></TouchableOpacity>
             </View>
-            <ScrollView
+            <KeyboardFormScrollView
               ref={modalScrollRef}
               style={styles.modalScroll}
               contentContainerStyle={styles.modalContent}
@@ -160,7 +161,7 @@ export default function CongDoanListScreen({ navigation }) {
               <TouchableOpacity style={[styles.createButton, creating && styles.disabled]} disabled={creating} onPress={create}>
                 {creating ? <ActivityIndicator color="#fff" /> : <Text style={styles.createText}>Tạo phiếu</Text>}
               </TouchableOpacity>
-            </ScrollView>
+            </KeyboardFormScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>

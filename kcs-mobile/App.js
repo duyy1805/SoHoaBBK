@@ -10,6 +10,7 @@ import { navigationRef } from "./src/navigation/navigationRef";
 import Toast from "react-native-toast-message";
 import { savePushToken } from "./src/api/notification.api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -55,12 +56,14 @@ export default function App() {
   if (!ready) return null;
 
   return (
-    <SafeAreaProvider>
-      <NavigationContainer ref={navigationRef}>
-        <AppNavigator />
-        <Toast />
-      </NavigationContainer>
-    </SafeAreaProvider>
+    <KeyboardProvider>
+      <SafeAreaProvider>
+        <NavigationContainer ref={navigationRef}>
+          <AppNavigator />
+          <Toast />
+        </NavigationContainer>
+      </SafeAreaProvider>
+    </KeyboardProvider>
   );
 }
 

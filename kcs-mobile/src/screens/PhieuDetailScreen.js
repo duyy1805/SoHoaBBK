@@ -14,6 +14,7 @@ import {
     Modal,
     Platform
 } from "react-native";
+import KeyboardFormScrollView from "../components/KeyboardFormScrollView";
 
 import {
     getPhieuKiemDetail,
@@ -405,7 +406,11 @@ export default function PhieuDetailScreen({ route, navigation }) {
                 </View>
             )}
 
-            <ScrollView style={styles.container}>
+            <KeyboardFormScrollView
+                style={styles.container}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingBottom: 32 }}
+            >
 
                 <View style={styles.infoCard}>
 
@@ -800,7 +805,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
 
                 })}
 
-            </ScrollView>
+            </KeyboardFormScrollView>
 
             {/* KCS hoàn tất */}
 

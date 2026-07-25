@@ -9,6 +9,7 @@ import {
     Alert,
     ActivityIndicator
 } from "react-native";
+import KeyboardFormScrollView from "../components/KeyboardFormScrollView";
 import { getThongSoKq, saveThongSoKq } from "../api/phieuKiem.api";
 
 export default function KiemDacBietScreen({ route, navigation }) {
@@ -190,9 +191,13 @@ export default function KiemDacBietScreen({ route, navigation }) {
             </View>
 
             {/* Scroll ngang để xem nhiều cột thông số */}
-            <ScrollView horizontal style={styles.tableContainer}>
+            <ScrollView horizontal style={styles.tableContainer} keyboardShouldPersistTaps="handled">
                 {/* Scroll dọc để xem 13 hàng mẫu */}
-                <ScrollView style={{ flex: 1 }} nestedScrollEnabled>
+                <KeyboardFormScrollView
+                    style={{ flex: 1 }}
+                    nestedScrollEnabled
+                    keyboardShouldPersistTaps="handled"
+                >
                     {/* Header Row */}
                     <View style={styles.row}>
                         <View style={[styles.cell, styles.headerCell, { width: 60 }]}>
@@ -244,7 +249,7 @@ export default function KiemDacBietScreen({ route, navigation }) {
                             })}
                         </View>
                     ))}
-                </ScrollView>
+                </KeyboardFormScrollView>
             </ScrollView>
 
             {isReadOnly ? (

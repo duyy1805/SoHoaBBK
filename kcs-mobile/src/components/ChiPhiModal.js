@@ -7,8 +7,11 @@ import {
     TouchableOpacity,
     StyleSheet,
     Alert,
-    FlatList
+    FlatList,
+    KeyboardAvoidingView,
+    Platform
 } from "react-native";
+import KeyboardFormScrollView from "./KeyboardFormScrollView";
 
 import DateTimePicker from "@react-native-community/datetimepicker";
 
@@ -147,7 +150,10 @@ export default function ChiPhiModal({
 
         <Modal visible={visible} animationType="none">
 
-            <View style={styles.container}>
+            <KeyboardAvoidingView
+                style={styles.container}
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+            >
 
 
                 {/* HEADER */}
@@ -169,7 +175,11 @@ export default function ChiPhiModal({
 
                 {/* FORM */}
 
-                <View style={styles.form}>
+                <KeyboardFormScrollView
+                    style={styles.form}
+                    contentContainerStyle={styles.formContent}
+                    keyboardShouldPersistTaps="handled"
+                >
 
 
                     {/* LOẠI CHI PHÍ */}
@@ -180,6 +190,7 @@ export default function ChiPhiModal({
 
                     <TextInput
                         style={styles.input}
+                        placeholderTextColor="#64748b"
                         placeholder="Ví dụ: Vật tư/BTP/TP"
                         value={loaiChiPhi}
                         onChangeText={setLoaiChiPhi}
@@ -194,6 +205,7 @@ export default function ChiPhiModal({
 
                     <TextInput
                         style={styles.input}
+                        placeholderTextColor="#64748b"
                         placeholder="Nhập số tiền"
                         // keyboardType="numeric"
                         value={giaTri}
@@ -251,7 +263,7 @@ export default function ChiPhiModal({
 
                     )}
 
-                </View>
+                </KeyboardFormScrollView>
 
 
                 {/* FOOTER */}
@@ -272,7 +284,7 @@ export default function ChiPhiModal({
 
                 </View>
 
-            </View>
+            </KeyboardAvoidingView>
 
 
             {/* MODAL CHỌN BỘ PHẬN */}
@@ -367,7 +379,12 @@ const styles = StyleSheet.create({
     },
 
     form: {
-        padding: 16
+        flex: 1
+    },
+
+    formContent: {
+        padding: 16,
+        paddingBottom: 24
     },
 
     label: {

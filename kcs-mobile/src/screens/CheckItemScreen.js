@@ -22,6 +22,7 @@ import {
     uploadImagesWithXhr
 } from "../api/phieuKiem.api";
 import * as FileSystem from 'expo-file-system/legacy';
+import KeyboardFormScrollView from "../components/KeyboardFormScrollView";
 import {
     getAssetUri,
     getExtensionFromMime,
@@ -391,10 +392,10 @@ export default function CheckItemScreen({ route, navigation }) {
     return (
         <KeyboardAvoidingView
             style={{ flex: 1, backgroundColor: "#f1f5f9" }}
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
             keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
         >
-            <ScrollView
+            <KeyboardFormScrollView
                 style={styles.scrollContainer}
                 contentContainerStyle={styles.container}
                 keyboardShouldPersistTaps="handled"
@@ -605,13 +606,13 @@ export default function CheckItemScreen({ route, navigation }) {
                         : <Text style={styles.saveText}>Lưu kết quả</Text>
                     }
                 </TouchableOpacity>
-            </ScrollView>
+            </KeyboardFormScrollView>
 
             {/* modal chọn lỗi */}
             <Modal visible={showModal} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
                     <KeyboardAvoidingView
-                        behavior={Platform.OS === "ios" ? "padding" : "height"}
+                        behavior={Platform.OS === "ios" ? "padding" : undefined}
                         style={styles.modalContent}
                     >
                         <Text style={styles.modalTitle}>Chọn lỗi</Text>
@@ -623,7 +624,7 @@ export default function CheckItemScreen({ route, navigation }) {
                             style={styles.searchInput}
                         />
 
-                        <ScrollView showsVerticalScrollIndicator={false}>
+                        <KeyboardFormScrollView showsVerticalScrollIndicator={false} bottomOffset={32}>
                             {filteredDefects.length === 0 ? (
                                 <View style={{ padding: 20, alignItems: 'center' }}>
                                     <Ionicons name="search-outline" size={40} color="#cbd5e1" />
@@ -665,7 +666,7 @@ export default function CheckItemScreen({ route, navigation }) {
                                     );
                                 })
                             )}
-                        </ScrollView>
+                        </KeyboardFormScrollView>
 
                         <TouchableOpacity
                             style={styles.closeBtn}

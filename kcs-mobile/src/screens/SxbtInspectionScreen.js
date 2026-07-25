@@ -27,6 +27,7 @@ import {
     confirmKhoSxbt
 } from "../api/phieuKiem.api";
 import { getUser } from "../utils/auth";
+import KeyboardFormScrollView from "../components/KeyboardFormScrollView";
 
 const SHOW_MANUAL_BTP_LOT_EDITOR = true;
 const SHOW_MANUAL_BTP_LOT_ADD_ROW = false;
@@ -733,15 +734,14 @@ export default function SxbtInspectionScreen({ route, navigation }) {
         <SafeAreaView style={styles.container} edges={['bottom']}>
             <KeyboardAvoidingView
                 style={styles.keyboardContainer}
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
                 keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
             >
-                <ScrollView
+                <KeyboardFormScrollView
                     style={styles.scroll}
                     contentContainerStyle={styles.scrollContent}
                     keyboardShouldPersistTaps="handled"
                     keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
-                    automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
                 >
                 <View style={styles.headerCard}>
                     <View style={styles.headerRow}>
@@ -1132,14 +1132,14 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                         </TouchableOpacity>
                     </View>
                 )}
-                </ScrollView>
+                </KeyboardFormScrollView>
             </KeyboardAvoidingView>
 
             {/* Defect Selection Modal */}
             <Modal visible={defectModalVisible} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
                     <KeyboardAvoidingView
-                        behavior={Platform.OS === "ios" ? "padding" : "height"}
+                        behavior={Platform.OS === "ios" ? "padding" : undefined}
                         style={styles.modalKeyboardContainer}
                         keyboardVerticalOffset={0}
                     >
@@ -1153,12 +1153,11 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                             style={styles.searchInput}
                         />
 
-                        <ScrollView
+                        <KeyboardFormScrollView
                             style={styles.modalScroll}
                             showsVerticalScrollIndicator={false}
                             keyboardShouldPersistTaps="handled"
                             keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
-                            automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
                         >
                             {filteredDefects.length === 0 ? (
                                 <View style={{ padding: 20, alignItems: 'center' }}>
@@ -1215,7 +1214,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                                     );
                                 })
                             )}
-                        </ScrollView>
+                        </KeyboardFormScrollView>
 
                         <TouchableOpacity style={styles.closeBtn} onPress={() => setDefectModalVisible(false)}>
                             <Text style={styles.saveText}>Đóng</Text>
@@ -1244,14 +1243,13 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                             <Text style={styles.modalTitle}>Cập nhật thông tin BTP</Text>
                             {selectedBtp && (
                                 <>
-                                    <ScrollView
+                                    <KeyboardFormScrollView
                                         ref={btpModalScrollRef}
                                         style={styles.modalScroll}
                                         showsVerticalScrollIndicator={false}
                                         contentContainerStyle={styles.btpModalScrollContent}
                                         keyboardShouldPersistTaps="handled"
                                         keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
-                                        automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
                                         scrollEventThrottle={16}
                                         onScroll={(event) => {
                                             btpModalScrollOffsetRef.current = event.nativeEvent.contentOffset.y;
@@ -1312,7 +1310,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                                                 <Text style={styles.addLotBtnText}>+ Thêm dấu tuần/lô</Text>
                                             </TouchableOpacity>
                                         )}
-                                    </ScrollView>
+                                    </KeyboardFormScrollView>
                                 </>
                             )}
 
@@ -1333,14 +1331,14 @@ export default function SxbtInspectionScreen({ route, navigation }) {
             <Modal visible={splitModalVisible} transparent animationType="slide" onRequestClose={() => setSplitModalVisible(false)}>
                 <View style={styles.modalOverlay}>
                     <KeyboardAvoidingView
-                        behavior={Platform.OS === "ios" ? "padding" : "height"}
+                        behavior={Platform.OS === "ios" ? "padding" : undefined}
                         style={styles.modalKeyboardContainer}
                     >
                         <View style={[styles.modalContent, styles.splitModalContent]}>
                             <Text style={styles.modalTitle}>Tách phiếu SXBT</Text>
                             <Text style={styles.splitHint}>Nhập số lượng không đạt cho từng dòng lô. Dòng nhập 0 và lỗi của dòng đó vẫn ở phiếu đạt.</Text>
 
-                            <ScrollView
+                            <KeyboardFormScrollView
                                 style={styles.modalScroll}
                                 keyboardShouldPersistTaps="handled"
                                 contentContainerStyle={styles.btpModalScrollContent}
@@ -1390,7 +1388,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                                     <Text>Lỗi chuyển sang phiếu KĐ: {splitMovedDefectQuantity}</Text>
                                     {!!getSplitValidationError() && <Text style={styles.splitValidationText}>{getSplitValidationError()}</Text>}
                                 </View>
-                            </ScrollView>
+                            </KeyboardFormScrollView>
 
                             <View style={styles.modalActionRow}>
                                 <TouchableOpacity style={[styles.closeBtn, styles.splitCancelBtn]} onPress={() => setSplitModalVisible(false)} disabled={saving}>

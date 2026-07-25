@@ -8,8 +8,11 @@ import {
     TouchableOpacity,
     StyleSheet,
     Alert,
-    ActivityIndicator
+    ActivityIndicator,
+    KeyboardAvoidingView,
+    Platform
 } from "react-native";
+import KeyboardFormScrollView from "../components/KeyboardFormScrollView";
 import { Checkbox } from "react-native-paper";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -62,10 +65,19 @@ export default function LoginScreen({ navigation }) {
     };
 
     return (
-        <View style={styles.container}>
+        <KeyboardAvoidingView
+            style={styles.container}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+            <KeyboardFormScrollView
+                bottomOffset={32}
+                contentContainerStyle={styles.content}
+                keyboardShouldPersistTaps="handled"
+            >
             <Text style={styles.title}>AQL CHECK</Text>
 
             <TextInput
+                placeholderTextColor="#64748b"
                 placeholder="Tên đăng nhập"
                 style={styles.input}
                 value={username}
@@ -73,6 +85,7 @@ export default function LoginScreen({ navigation }) {
             />
 
             <TextInput
+                placeholderTextColor="#64748b"
                 placeholder="Mật khẩu"
                 secureTextEntry
                 style={styles.input}
@@ -102,15 +115,21 @@ export default function LoginScreen({ navigation }) {
                     <Text style={styles.buttonText}>Đăng nhập</Text>
                 )}
             </TouchableOpacity>
-        </View>
+            </KeyboardFormScrollView>
+        </KeyboardAvoidingView>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
+        backgroundColor: "#f3f4f6"
+    },
+    content: {
+        flexGrow: 1,
         justifyContent: "center",
         padding: 24,
+        paddingBottom: 40,
         backgroundColor: "#f3f4f6"
     },
     title: {

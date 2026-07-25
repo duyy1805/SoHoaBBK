@@ -12,6 +12,7 @@ import {
 import { getUser } from "../utils/auth";
 import DefectEntryCard from "../components/inspection/DefectEntryCard";
 import DefectPickerModal from "../components/inspection/DefectPickerModal";
+import KeyboardFormScrollView from "../components/KeyboardFormScrollView";
 
 const openStates = ["TAO_MOI", "DANG_KIEM", "CHUA_KIEM"];
 const normalizeWorker = (value) => String(value || "").trim().toLocaleLowerCase("vi");
@@ -213,7 +214,7 @@ export default function CongDoanPlanDetailScreen({ route, navigation }) {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView
+      <KeyboardFormScrollView
         ref={scrollRef}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
@@ -325,7 +326,7 @@ export default function CongDoanPlanDetailScreen({ route, navigation }) {
             {saving ? <ActivityIndicator color="#fff" /> : <><Ionicons name="save-outline" size={20} color="#fff" /><Text style={styles.saveText}>Lưu kế hoạch</Text></>}
           </TouchableOpacity>
         )}
-      </ScrollView>
+      </KeyboardFormScrollView>
 
       <DefectPickerModal
         visible={modalVisible}

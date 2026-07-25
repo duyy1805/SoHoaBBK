@@ -7,8 +7,11 @@ import {
     TouchableOpacity,
     StyleSheet,
     Alert,
-    FlatList
+    FlatList,
+    KeyboardAvoidingView,
+    Platform
 } from "react-native";
+import KeyboardFormScrollView from "./KeyboardFormScrollView";
 
 import DateTimePicker from "@react-native-community/datetimepicker";
 
@@ -119,7 +122,10 @@ export default function HanhDongModal({
 
         <Modal visible={visible} animationType="none">
 
-            <View style={styles.container}>
+            <KeyboardAvoidingView
+                style={styles.container}
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+            >
 
 
                 {/* HEADER */}
@@ -141,7 +147,11 @@ export default function HanhDongModal({
 
                 {/* FORM */}
 
-                <View style={styles.form}>
+                <KeyboardFormScrollView
+                    style={styles.form}
+                    contentContainerStyle={styles.formContent}
+                    keyboardShouldPersistTaps="handled"
+                >
 
 
                     {/* NỘI DUNG */}
@@ -152,6 +162,7 @@ export default function HanhDongModal({
 
                     <TextInput
                         style={[styles.input, { height: 90 }]}
+                        placeholderTextColor="#64748b"
                         placeholder="Nhập nội dung hành động"
                         multiline
                         value={noiDung}
@@ -207,7 +218,7 @@ export default function HanhDongModal({
 
                     )}
 
-                </View>
+                </KeyboardFormScrollView>
 
 
                 {/* FOOTER */}
@@ -228,7 +239,7 @@ export default function HanhDongModal({
 
                 </View>
 
-            </View>
+            </KeyboardAvoidingView>
 
 
             {/* MODAL CHỌN BỘ PHẬN */}
@@ -323,7 +334,12 @@ const styles = StyleSheet.create({
     },
 
     form: {
-        padding: 16
+        flex: 1
+    },
+
+    formContent: {
+        padding: 16,
+        paddingBottom: 24
     },
 
     label: {

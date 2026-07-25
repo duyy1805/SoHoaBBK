@@ -9,6 +9,7 @@ import {
     Alert,
     StyleSheet
 } from "react-native";
+import KeyboardFormScrollView from "../components/KeyboardFormScrollView";
 import { useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
@@ -186,7 +187,11 @@ export default function BienBanSxbtDetailScreen({ route, navigation }) {
     }
 
     return (
-        <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 24 }}>
+        <KeyboardFormScrollView
+            style={styles.container}
+            contentContainerStyle={{ paddingBottom: 32 }}
+            keyboardShouldPersistTaps="handled"
+        >
             <View style={styles.card}>
                 <Text style={styles.title}>Biên bản SXBT</Text>
                 <Text style={styles.meta}>Số phiếu: {info?.SoPhieu || "---"}</Text>
@@ -286,7 +291,7 @@ export default function BienBanSxbtDetailScreen({ route, navigation }) {
                     {hanhDongRows.length === 0 ? (
                         <Text style={styles.emptyText}>Chưa có hành động cụ thể.</Text>
                     ) : (
-                        <ScrollView style={styles.table}>
+                        <ScrollView style={styles.table} keyboardShouldPersistTaps="handled">
                             {hanhDongRows.map((item, idx) => (
                                 <View key={item.Id || idx} style={styles.xuLyRow}>
                                     <Text style={styles.noiDung}>{item.NoiDung || "---"}</Text>
@@ -355,7 +360,7 @@ export default function BienBanSxbtDetailScreen({ route, navigation }) {
                 onClose={() => setShowHanhDongModal(false)}
                 onSave={handleAddHanhDong}
             />
-        </ScrollView>
+        </KeyboardFormScrollView>
     );
 }
 

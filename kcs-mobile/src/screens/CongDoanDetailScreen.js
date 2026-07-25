@@ -3,6 +3,7 @@ import {
   ActivityIndicator, Alert, FlatList, Modal, RefreshControl, StyleSheet,
   ScrollView, Text, TextInput, TouchableOpacity, View
 } from "react-native";
+import KeyboardFormScrollView from "../components/KeyboardFormScrollView";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -299,7 +300,8 @@ export default function CongDoanDetailScreen({ route, navigation }) {
             <Ionicons name="filter-outline" size={16} color="#475569" />
             <Text style={styles.filterLabel}>Quy trình sản xuất</Text>
           </View>
-          <ScrollView
+          <KeyboardFormScrollView
+            keyboardShouldPersistTaps="handled"
             horizontal
             style={styles.processTabsScroll}
             showsHorizontalScrollIndicator={false}
@@ -320,7 +322,7 @@ export default function CongDoanDetailScreen({ route, navigation }) {
                 </TouchableOpacity>
               );
             })}
-          </ScrollView>
+          </KeyboardFormScrollView>
           <FlatList
             style={styles.candidateList}
             data={candidates}

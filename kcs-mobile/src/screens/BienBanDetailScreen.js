@@ -9,6 +9,7 @@ import {
     ActivityIndicator,
     Alert
 } from "react-native";
+import KeyboardFormScrollView from "../components/KeyboardFormScrollView";
 
 import {
     getBienBanDetail,
@@ -282,7 +283,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
 
     return (
 
-        <ScrollView style={styles.container}>
+        <KeyboardFormScrollView style={styles.container} keyboardShouldPersistTaps="handled">
 
             {/* HEADER */}
 
@@ -552,7 +553,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
             <Text style={styles.section}>
                 Hành động khắc phục
             </Text>
-            <ScrollView style={styles.table}>
+            <ScrollView style={styles.table} keyboardShouldPersistTaps="handled">
                 {hanhDong.map((h, i) => (
 
                     <View key={i} style={styles.xuLyRow}>
@@ -664,7 +665,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
                 reload={loadData}
                 onClose={() => setShowHanhDongModal(false)}
             />
-        </ScrollView>
+        </KeyboardFormScrollView>
 
     );
 
