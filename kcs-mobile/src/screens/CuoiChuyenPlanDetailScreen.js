@@ -98,6 +98,7 @@ export default function CuoiChuyenPlanDetailScreen({ route, navigation }) {
         tenBoPhan: item.TenBoPhan || "",
         ngayKeHoach: item.NgayKeHoach || "",
         soLuongKeHoach: item.SoLuongKeHoach,
+        soLuongThucTe: item.SoLuongThucTe == null ? "" : String(item.SoLuongThucTe),
         nangSuatDuKien: item.NangSuatDuKien,
         daSanXuat: item.DaSanXuat,
         sortOrder: item.SortOrder || planIndex + 1,
@@ -303,9 +304,18 @@ export default function CuoiChuyenPlanDetailScreen({ route, navigation }) {
   };
 
   const validatePlan = () => {
+    if (plan.soLuongThucTe !== ""
+      && (!Number.isInteger(Number(plan.soLuongThucTe)) || Number(plan.soLuongThucTe) < 0)) {
+      return "Số lượng thực tế phải là số nguyên không âm hoặc để trống.";
+    }
     const validDefects = (plan?.defects || []).filter((defect) => Number(defect.defectId) > 0 && Number(defect.soLuong) > 0);
     if (validDefects.length === 0) {
       return "Cần có ít nhất một lỗi để lưu kế hoạch.";
+    }
+    const effective = plan.soLuongThucTe === "" ? Number(plan.soLuongKeHoach || 0) : Number(plan.soLuongThucTe);
+    const totalDefects = validDefects.reduce((sum, defect) => sum + Number(defect.soLuong || 0), 0);
+    if (totalDefects > effective) {
+      return `Tổng lỗi (${totalDefects}) vượt số lượng hiệu lực (${effective}).`;
     }
     return "";
   };
@@ -313,6 +323,7 @@ export default function CuoiChuyenPlanDetailScreen({ route, navigation }) {
   const buildPayloadPlans = (sourcePlans) => sourcePlans.map((item) => ({
     planId: item.id,
     sortOrder: item.sortOrder,
+    soLuongThucTe: item.soLuongThucTe === "" ? null : Number(item.soLuongThucTe),
     defects: (item.defects || [])
       .filter((defect) => Number(defect.defectId) > 0 && Number(defect.soLuong) > 0)
       .map((defect, defectIndex) => ({
@@ -380,6 +391,7 @@ export default function CuoiChuyenPlanDetailScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <KeyboardFormScrollView
         contentContainerStyle={[styles.content, canEdit ? styles.contentWithBottomBar : null]}
         keyboardShouldPersistTaps="handled"
@@ -409,6 +421,25 @@ export default function CuoiChuyenPlanDetailScreen({ route, navigation }) {
           </View>
 
           <Text style={styles.metaText}>{plan.tenDonVi || "---"} / {plan.tenBoPhan || "---"} • {formatDate(plan.ngayKeHoach)}</Text>
+        </View>
+
+        <View style={styles.actualQuantityCard}>
+          <Text style={styles.actualQuantityLabel}>Số lượng thực tế (không bắt buộc)</Text>
+          <TextInput
+            style={styles.actualQuantityInput}
+            value={plan.soLuongThucTe}
+            editable={canEdit}
+            keyboardType="numeric"
+            placeholder="Chưa nhập — dùng kế hoạch"
+            placeholderTextColor="#64748b"
+            onChangeText={(value) => setPlan((current) => ({
+              ...current, soLuongThucTe: value.replace(/\D/g, "")
+            }))}
+          />
+          <Text style={styles.actualQuantityHint}>
+            Kế hoạch: {plan.soLuongKeHoach ?? 0} · Hiệu lực: {plan.soLuongThucTe === "" ? plan.soLuongKeHoach ?? 0 : plan.soLuongThucTe}
+            {" · "}Chênh lệch: {plan.soLuongThucTe === "" ? "Chưa nhập" : Number(plan.soLuongThucTe) - Number(plan.soLuongKeHoach || 0)}
+          </Text>
         </View>
 
         {(plan.defects || []).length === 0 ? (
@@ -539,6 +570,7 @@ export default function CuoiChuyenPlanDetailScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
       ) : null}
+      </KeyboardAvoidingView>
 
       <Modal visible={defectModalVisible} transparent animationType="slide" onRequestClose={() => setDefectModalVisible(false)}>
         <View style={styles.modalOverlay}>
@@ -761,6 +793,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     textAlign: "center"
   },
+  actualQuantityCard: { marginTop: 12, padding: 14, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dbe3ec", borderRadius: 14 },
+  actualQuantityLabel: { color: "#334155", fontWeight: "700", marginBottom: 7 },
+  actualQuantityInput: { minHeight: 46, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10, paddingHorizontal: 12, backgroundColor: "#fff", color: "#0f172a", fontSize: 16 },
+  actualQuantityHint: { color: "#64748b", fontSize: 12, marginTop: 7 },
   imageList: { flexDirection: "row", flexWrap: "wrap", marginBottom: 10 },
   imageThumbWrap: { marginRight: 12, marginBottom: 12, position: "relative" },
   imageThumb: { width: 76, height: 76, borderRadius: 12, borderWidth: 1, borderColor: "#cbd5e1" },

@@ -16,7 +16,9 @@ import {
     updateMoTaChung,
     completeBienBan,
     confirmAssign,
-    confirmUser
+    confirmUser,
+    confirmKphByCreatorDepartment,
+    updateKphRequirements
 } from "../api/bienBan.api";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -25,6 +27,7 @@ import AssignDepartmentModal from "../components/AssignDepartmentModal";
 import XuLyModal from "../components/XuLyModal";
 import ChiPhiModal from "../components/ChiPhiModal";
 import HanhDongModal from "../components/HanhDongModal";
+import OpinionResponseModal from "../components/OpinionResponseModal";
 export default function BienBanDetailScreen({ route, navigation }) {
 
     const { bienBanId } = route.params;
@@ -38,6 +41,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
     const [chiPhi, setChiPhi] = useState([]);
     const [xacNhan, setXacNhan] = useState([]);
     const [hanhDong, setHanhDong] = useState([]);
+    const [specialistOpinions, setSpecialistOpinions] = useState([]);
 
     const [loading, setLoading] = useState(true);
     const [showAssignDeptModal, setShowAssignDeptModal] = useState(false);
@@ -45,6 +49,8 @@ export default function BienBanDetailScreen({ route, navigation }) {
     const [showXuLyModal, setShowXuLyModal] = useState(false);
     const [showChiPhiModal, setShowChiPhiModal] = useState(false);
     const [showHanhDongModal, setShowHanhDongModal] = useState(false);
+    const [showOpinionModal, setShowOpinionModal] = useState(false);
+    const [selectedOpinionDepartment, setSelectedOpinionDepartment] = useState(null);
     const [currentUserId, setCurrentUserId] = useState(null);
     const [currentUserBoPhanId, setCurrentUserBoPhanId] = useState(null);
     const [currentUserPermissions, setCurrentUserPermissions] = useState([]);
@@ -79,6 +85,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
             setChiPhi(res.data.chiPhi || []);
             setXacNhan(res.data.xacNhan || []);
             setHanhDong(res.data.hanhDong || []);
+            setSpecialistOpinions(res.data.specialistOpinions || []);
             const moTa = res.data.info?.MoTaChung || "";
 
             setMoTaChung(moTa);
@@ -195,11 +202,15 @@ export default function BienBanDetailScreen({ route, navigation }) {
 
         try {
 
-            await completeBienBan(bienBanId);
-
-            Alert.alert("Thành công", "Biên bản đã hoàn thành");
-
-            navigation.goBack();
+            if (info?.MauPhieuVersion === "V01") {
+                await confirmKphByCreatorDepartment(bienBanId);
+                Alert.alert("Thành công", "Đã xác nhận và chuyển biên bản sang theo dõi");
+                loadData();
+            } else {
+                await completeBienBan(bienBanId);
+                Alert.alert("Thành công", "Biên bản đã hoàn thành");
+                navigation.goBack();
+            }
 
         } catch (err) {
             if (err.status === 403) {
@@ -221,10 +232,14 @@ export default function BienBanDetailScreen({ route, navigation }) {
         return done ? "✓" : "Chờ";
     };
 
+    const isAdmin = currentUserRoles.some((role) => String(role || "").toUpperCase() === "ADMIN");
+    const isDepartmentLead = currentUserRoles.some((role) => String(role || "").toUpperCase().startsWith("TP_"));
+    const isV01 = info?.MauPhieuVersion === "V01";
     const isManagerOrQA = currentUserPermissions.includes("XAC_NHAN_NGUOI_XU_LY") ||
         currentUserPermissions.includes("KET_LUAN") ||
         currentUserPermissions.includes("QUAN_TRI_DM");
-    const isAssigned = assigns.some(a => a.BoPhanId === currentUserBoPhanId);
+    const workflowDepartments = isV01 ? specialistOpinions : assigns;
+    const isAssigned = workflowDepartments.some(a => Number(a.BoPhanId) === Number(currentUserBoPhanId));
     const hasXuLy = xuLy.some(x => x.BoPhanId === currentUserBoPhanId);
     const hasChiPhi = chiPhi.some(c => c.BoPhanId === currentUserBoPhanId);
     const hasHanhDong = hanhDong.some(h => h.BoPhanId === currentUserBoPhanId);
@@ -251,6 +266,14 @@ export default function BienBanDetailScreen({ route, navigation }) {
         assigns.every(a =>
             xacNhan.some(x => x.BoPhanId === a.BoPhanId)
         );
+    const allOpinionsAnswered = specialistOpinions.length > 0 &&
+        specialistOpinions.every((item) => Boolean(item.HasResponded));
+    const requiredSectionsReady = xuLy.length > 0 &&
+        (!info?.YeuCauChiPhi || chiPhi.length > 0) &&
+        (!info?.YeuCauHanhDong || hanhDong.length > 0);
+    const canCreatorConfirm = isV01 && info?.CanManageKphFlow &&
+        info?.OpinionDepartmentsConfirmed && allOpinionsAnswered &&
+        requiredSectionsReady && !["CHO_THEO_DOI", "HOAN_TAT"].includes(info?.TrangThai);
     const handleConfirmUser = async () => {
 
         try {
@@ -270,6 +293,15 @@ export default function BienBanDetailScreen({ route, navigation }) {
 
         }
 
+    };
+
+    const toggleRequirement = async (field, value) => {
+        try {
+            await updateKphRequirements(bienBanId, { [field]: value });
+            loadData();
+        } catch (error) {
+            Alert.alert("Lỗi", error?.response?.data?.message || "Không thể cập nhật yêu cầu");
+        }
     };
 
     /* LOADING */
@@ -393,32 +425,34 @@ export default function BienBanDetailScreen({ route, navigation }) {
 
             {/* ASSIGN */}
 
-            <Text style={styles.section}>Bộ phận xử lý</Text>
+            <Text style={styles.section}>{isV01 ? "Bộ phận cần lấy ý kiến" : "Bộ phận xử lý"}</Text>
 
             <View style={styles.card}>
 
-                {assigns.map((a, i) => (
+                {workflowDepartments.map((a, i) => (
                     <View key={i} style={styles.assignRow}>
 
                         <View style={styles.assignInfo}>
                             <Text style={styles.assignName}>{a.MaBoPhan}</Text>
                             <Text style={styles.assignRole}>{a.TenBoPhan}</Text>
                             <Text style={styles.assignPerson}>
-                                Phụ trách: {a.NguoiXuLy || "Chưa phân cá nhân"}
+                                {isV01
+                                    ? (a.HasResponded ? "Đã phản hồi" : "Đang chờ phản hồi")
+                                    : `Phụ trách: ${a.NguoiXuLy || "Chưa phân cá nhân"}`}
                             </Text>
                         </View>
 
                         <View style={styles.assignActionGroup}>
                             <Text style={[
                                 styles.assignStatus,
-                                getStatusText(a.BoPhanId) === "✓"
+                                (isV01 ? a.HasResponded : getStatusText(a.BoPhanId) === "✓")
                                     ? styles.done
                                     : styles.pending
                             ]}>
-                                {getStatusText(a.BoPhanId)}
+                                {isV01 ? (a.HasResponded ? "✓" : "Chờ") : getStatusText(a.BoPhanId)}
                             </Text>
 
-                            {canAssignUserForDepartment(a) && (
+                            {!isV01 && canAssignUserForDepartment(a) && (
                                 <TouchableOpacity
                                     style={styles.assignMiniBtn}
                                     onPress={() => openAssignUserModal(a)}
@@ -437,7 +471,19 @@ export default function BienBanDetailScreen({ route, navigation }) {
 
             {/* BUTTONS */}
 
-            {!info.AssignConfirmed && moTaConfirmed && isManagerOrQA && (
+            {isV01 && moTaConfirmed && info.CanManageKphFlow &&
+                !["CHO_THEO_DOI", "HOAN_TAT"].includes(info.TrangThai) && (
+                <TouchableOpacity
+                    style={styles.assignDeptBtn}
+                    onPress={() => setShowAssignDeptModal(true)}
+                >
+                    <Text style={styles.btnText}>
+                        {specialistOpinions.length ? "Bổ sung / cập nhật bộ phận" : "Chọn bộ phận cần ý kiến"}
+                    </Text>
+                </TouchableOpacity>
+            )}
+
+            {!isV01 && !info.AssignConfirmed && moTaConfirmed && isManagerOrQA && (
 
                 <>
 
@@ -492,7 +538,8 @@ export default function BienBanDetailScreen({ route, navigation }) {
                 ))}
 
             </View>
-            {info.AssignConfirmed && isAssigned && !isConfirmed && (
+            {((isV01 && info.CanManageKphFlow) || (!isV01 && info.AssignConfirmed && isAssigned && !isConfirmed)) &&
+                !["CHO_THEO_DOI", "HOAN_TAT"].includes(info.TrangThai) && (
 
                 <TouchableOpacity
                     style={styles.commentBtn}
@@ -507,6 +554,16 @@ export default function BienBanDetailScreen({ route, navigation }) {
             {/* CHI PHI */}
 
             <Text style={styles.section}>Chi phí phát sinh</Text>
+            {isV01 && info.CanManageKphFlow && !["CHO_THEO_DOI", "HOAN_TAT"].includes(info.TrangThai) && (
+                <TouchableOpacity
+                    style={styles.requirementButton}
+                    onPress={() => toggleRequirement("yeuCauChiPhi", !info.YeuCauChiPhi)}
+                >
+                    <Text style={styles.requirementText}>
+                        {info.YeuCauChiPhi ? "Đang yêu cầu · Bấm để bỏ yêu cầu" : "Không yêu cầu · Bấm để yêu cầu"}
+                    </Text>
+                </TouchableOpacity>
+            )}
 
             {chiPhi.map((c, i) => (
                 // Ưu tiên dùng c.id nếu có, nếu không thì dùng index i
@@ -538,7 +595,9 @@ export default function BienBanDetailScreen({ route, navigation }) {
                 </View>
             ))}
 
-            {info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy && (
+            {((isV01 && info.CanManageKphFlow && info.YeuCauChiPhi) ||
+                (!isV01 && info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy)) &&
+                !["CHO_THEO_DOI", "HOAN_TAT"].includes(info.TrangThai) && (
 
                 <TouchableOpacity
                     style={styles.costBtn}
@@ -553,6 +612,16 @@ export default function BienBanDetailScreen({ route, navigation }) {
             <Text style={styles.section}>
                 Hành động khắc phục
             </Text>
+            {isV01 && info.CanManageKphFlow && !["CHO_THEO_DOI", "HOAN_TAT"].includes(info.TrangThai) && (
+                <TouchableOpacity
+                    style={styles.requirementButton}
+                    onPress={() => toggleRequirement("yeuCauHanhDong", !info.YeuCauHanhDong)}
+                >
+                    <Text style={styles.requirementText}>
+                        {info.YeuCauHanhDong ? "Đang yêu cầu · Bấm để bỏ yêu cầu" : "Không yêu cầu · Bấm để yêu cầu"}
+                    </Text>
+                </TouchableOpacity>
+            )}
             <ScrollView style={styles.table} keyboardShouldPersistTaps="handled">
                 {hanhDong.map((h, i) => (
 
@@ -574,7 +643,9 @@ export default function BienBanDetailScreen({ route, navigation }) {
 
                 ))}
             </ScrollView>
-            {info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy && (
+            {((isV01 && info.CanManageKphFlow && info.YeuCauHanhDong) ||
+                (!isV01 && info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy)) &&
+                !["CHO_THEO_DOI", "HOAN_TAT"].includes(info.TrangThai) && (
 
                 <TouchableOpacity
                     style={styles.costBtn}
@@ -586,11 +657,47 @@ export default function BienBanDetailScreen({ route, navigation }) {
                 </TouchableOpacity>
 
             )}
+            {isV01 && (
+                <>
+                    <Text style={styles.section}>Ý kiến phòng ban chuyên môn</Text>
+                    {specialistOpinions.map((opinion) => (
+                        <View key={opinion.Id} style={styles.opinionCard}>
+                            <View style={styles.rowBetween}>
+                                <Text style={styles.assignName}>{opinion.TenBoPhan || opinion.MaBoPhan}</Text>
+                                <Text style={opinion.HasResponded ? styles.done : styles.pending}>
+                                    {opinion.HasResponded ? "Đã phản hồi" : "Chưa phản hồi"}
+                                </Text>
+                            </View>
+                            {opinion.HasResponded && (
+                                <View style={styles.responseBatch}>
+                                    <Text style={styles.responseText}>{opinion.NoiDung}</Text>
+                                    <Text style={styles.meta}>
+                                        {opinion.NguoiTraLoi} · {opinion.ThoiGian ? new Date(opinion.ThoiGian).toLocaleString("vi-VN") : ""}
+                                    </Text>
+                                </View>
+                            )}
+                            {info.OpinionDepartmentsConfirmed && !info.CreatorConfirmedAt &&
+                                !opinion.HasResponded &&
+                                (isAdmin || (isDepartmentLead && Number(opinion.BoPhanId) === Number(currentUserBoPhanId))) && (
+                                <TouchableOpacity
+                                    style={styles.commentBtn}
+                                    onPress={() => {
+                                        setSelectedOpinionDepartment(opinion);
+                                        setShowOpinionModal(true);
+                                    }}
+                                >
+                                    <Text style={styles.btnText}>Nhập ý kiến</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    ))}
+                </>
+            )}
             {/* XAC NHAN */}
 
-            <Text style={styles.section}>Xác nhận</Text>
+            {!isV01 && <Text style={styles.section}>Xác nhận</Text>}
 
-            {xacNhan.map((x, i) => (
+            {!isV01 && xacNhan.map((x, i) => (
                 <View key={i} style={styles.cardRow}>
                     <Text>{x.FullName}</Text>
                     <Text style={styles.meta}>{x.ThoiGian}</Text>
@@ -598,7 +705,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
             ))}
 
             {/* COMPLETE */}
-            {info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy && hasChiPhi && hasHanhDong && (
+            {!isV01 && info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy && hasChiPhi && hasHanhDong && (
 
                 <TouchableOpacity
                     style={styles.confirmUserBtn}
@@ -610,14 +717,14 @@ export default function BienBanDetailScreen({ route, navigation }) {
                 </TouchableOpacity>
 
             )}
-            {allConfirmed && (
+            {(isV01 ? canCreatorConfirm : allConfirmed) && (
 
                 <TouchableOpacity
                     style={styles.completeBtn}
                     onPress={handleComplete}
                 >
                     <Text style={styles.btnText}>
-                        Hoàn thành biên bản
+                        {isV01 ? "Xác nhận và chuyển theo dõi" : "Hoàn thành biên bản"}
                     </Text>
                 </TouchableOpacity>
 
@@ -628,7 +735,8 @@ export default function BienBanDetailScreen({ route, navigation }) {
             <AssignDepartmentModal
                 visible={showAssignDeptModal}
                 bienBanId={bienBanId}
-                assignedDepartments={assigns}
+                assignedDepartments={workflowDepartments}
+                opinionFlow={isV01}
                 onClose={() => setShowAssignDeptModal(false)}
                 reload={loadData}
             />
@@ -665,6 +773,16 @@ export default function BienBanDetailScreen({ route, navigation }) {
                 reload={loadData}
                 onClose={() => setShowHanhDongModal(false)}
             />
+            <OpinionResponseModal
+                visible={showOpinionModal}
+                bienBanId={bienBanId}
+                department={selectedOpinionDepartment}
+                reload={loadData}
+                onClose={() => {
+                    setShowOpinionModal(false);
+                    setSelectedOpinionDepartment(null);
+                }}
+            />
         </KeyboardFormScrollView>
 
     );
@@ -677,6 +795,38 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: "#f4f6fa",
         padding: 16
+    },
+    opinionCard: {
+        backgroundColor: "#fff",
+        borderRadius: 12,
+        padding: 14,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: "#e2e8f0"
+    },
+    responseBatch: {
+        marginTop: 10,
+        padding: 10,
+        borderRadius: 8,
+        backgroundColor: "#f8fafc"
+    },
+    responseText: {
+        color: "#1e293b",
+        lineHeight: 20,
+        marginBottom: 4
+    },
+    requirementButton: {
+        marginBottom: 10,
+        padding: 10,
+        borderRadius: 8,
+        backgroundColor: "#eff6ff",
+        borderWidth: 1,
+        borderColor: "#bfdbfe"
+    },
+    requirementText: {
+        color: "#1d4ed8",
+        fontWeight: "700",
+        textAlign: "center"
     },
 
     headerCard: {

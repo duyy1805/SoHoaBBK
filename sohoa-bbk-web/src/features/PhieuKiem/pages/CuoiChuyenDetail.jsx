@@ -327,6 +327,9 @@ export default function CuoiChuyenDetail() {
                                     </Box>
                                     <Stack direction="row" spacing={1} flexWrap="wrap">
                                         <Chip label={`KH: ${plan.SoLuongKeHoach ?? "---"}`} size="small" />
+                                        <Chip label={`TT: ${plan.SoLuongThucTe ?? "Chưa nhập"}`} size="small" color={plan.SoLuongThucTe == null ? "default" : "primary"} />
+                                        <Chip label={`Hiệu lực: ${plan.SoLuongHieuLuc ?? plan.SoLuongKeHoach ?? "---"}`} size="small" color="success" variant="outlined" />
+                                        <Chip label={`Chênh: ${plan.ChenhLechSoLuong ?? "—"}`} size="small" variant="outlined" />
                                         <Chip label={`NSDK: ${plan.NangSuatDuKien ?? "---"}`} size="small" />
                                         <Chip label={`Đã SX: ${plan.DaSanXuat ?? "---"}`} size="small" />
                                         <Chip label={`Lỗi: ${defectQty}`} size="small" color={defectQty > 0 ? "error" : "default"} />

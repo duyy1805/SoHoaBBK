@@ -484,6 +484,11 @@ export default function SxbtDetail() {
                                     </InfoItem>
                                 </Grid>
                                 <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                                    <InfoItem label="Mã đơn vị">
+                                        <Typography fontWeight={600}>{phieu?.MaDonVi || phieu?.Ma_NhaThau || "—"}</Typography>
+                                    </InfoItem>
+                                </Grid>
+                                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                     <InfoItem label="Số lượng KH">
                                         <Typography fontWeight={600}>{phieu?.SoLuong?.toLocaleString("vi-VN") || "—"}</Typography>
                                     </InfoItem>

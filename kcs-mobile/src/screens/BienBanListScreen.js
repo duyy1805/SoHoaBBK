@@ -100,7 +100,7 @@ export default function BienBanListScreen({ navigation }) {
                             ? item.SoBoPhan > 0
                                 ? `Xác nhận ${item.DaCoYKien}/${item.SoBoPhan}`
                                 : "Chưa mở luồng"
-                            : `Ý kiến ${item.DaCoYKien}/${item.SoBoPhan}`}
+                            : `Phản hồi ${item.DaCoYKien}/${item.SoBoPhan}`}
                     </Text>
 
                     <Text style={styles.status}>

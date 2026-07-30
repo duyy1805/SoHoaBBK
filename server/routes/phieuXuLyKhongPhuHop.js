@@ -13,14 +13,16 @@ const isAdmin = (user) => hasRole(user, "ADMIN");
 const getHeaderAccess = async (pool, bienBanId, user) => {
     const result = await pool.request().input("BienBanId", sql.Int, bienBanId).query(`
         SELECT TOP 1 bb.NguoiLapId, bb.TrangThai, ISNULL(bb.MauPhieuVersion, 'V00') AS MauPhieuVersion,
-            creator.BoPhanId AS CreatorBoPhanId
+            COALESCE(bb.BoPhanTaoId, creator.BoPhanId) AS CreatorBoPhanId,
+            bb.OpinionDepartmentsConfirmedAt, bb.CreatorConfirmedAt
         FROM dbo.BIEN_BAN_KIEM bb
         LEFT JOIN dbo.USERS creator ON creator.Id = bb.NguoiLapId
         WHERE bb.Id = @BienBanId
     `);
     const record = result.recordset?.[0];
     if (!record) return { exists: false, canEdit: false, record: null };
-    const canEdit = record.MauPhieuVersion === "V01" && record.TrangThai !== "HOAN_TAT" && (
+    const canEdit = record.MauPhieuVersion === "V01" &&
+        !record.CreatorConfirmedAt && !["CHO_THEO_DOI", "HOAN_TAT"].includes(record.TrangThai) && (
         Number(record.NguoiLapId) === Number(user?.userId) ||
         (Number(record.CreatorBoPhanId) === Number(user?.boPhanId) && hasStrictLeadRole(user)) ||
         isAdmin(user)
@@ -121,11 +123,16 @@ router.get("/:id", authenticateToken, async (req, res) => {
                     ISNULL(bb.MauPhieuVersion, 'V00') AS MauPhieuVersion,
                     ISNULL(bb.YeuCauChiPhi, 0) AS YeuCauChiPhi,
                     ISNULL(bb.YeuCauHanhDong, 0) AS YeuCauHanhDong,
+                    COALESCE(bb.BoPhanTaoId, u.BoPhanId) AS BoPhanTaoId,
+                    CAST(CASE WHEN bb.OpinionDepartmentsConfirmedAt IS NULL THEN 0 ELSE 1 END AS bit)
+                        AS OpinionDepartmentsConfirmed,
+                    bb.OpinionDepartmentsConfirmedAt,
+                    bb.CreatorConfirmedAt,
                     bp.MaBoPhan AS MaDonViTaoPhieu,
                     bp.TenBoPhan AS DonViTaoPhieu
                 FROM dbo.BIEN_BAN_KIEM bb
                 LEFT JOIN dbo.USERS u ON u.Id = bb.NguoiLapId
-                LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id = u.BoPhanId
+                LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id = COALESCE(bb.BoPhanTaoId, u.BoPhanId)
                 WHERE bb.Id = @BienBanId;
 
                 SELECT
@@ -133,17 +140,21 @@ router.get("/:id", authenticateToken, async (req, res) => {
                     COALESCE(bp.MaBoPhan, yk.BoPhan) AS MaBoPhan,
                     COALESCE(bp.TenBoPhan, yk.BoPhan) AS TenBoPhan,
                     yk.TrangThai, yk.ThuTu,
+                    CAST(ISNULL(yk.IsActive, 1) AS bit) AS IsActive,
                     tl.LuaChon, tl.NoiDung, tl.NguoiTraLoiId,
-                    u.FullName AS NguoiTraLoi, tl.ThoiGian
+                    u.FullName AS NguoiTraLoi, tl.ThoiGian,
+                    CAST(CASE WHEN tl.Id IS NULL THEN 0 ELSE 1 END AS bit) AS HasResponded
                 FROM dbo.XIN_Y_KIEN yk
                 LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id = yk.BoPhanId
                 OUTER APPLY (
-                    SELECT TOP 1 * FROM dbo.TRA_LOI_Y_KIEN response
+                    SELECT TOP 1 response.*
+                    FROM dbo.TRA_LOI_Y_KIEN response
                     WHERE response.XinYKienId = yk.Id
                     ORDER BY response.ThoiGian DESC, response.Id DESC
                 ) tl
                 LEFT JOIN dbo.USERS u ON u.Id = tl.NguoiTraLoiId
                 WHERE yk.BienBanId = @BienBanId
+                  AND ISNULL(yk.IsActive, 1) = 1
                 ORDER BY yk.ThuTu, yk.Id;
 
                 SELECT TOP 1 td.*, u.FullName AS NguoiTheoDoi
@@ -172,7 +183,12 @@ router.get("/:id", authenticateToken, async (req, res) => {
         if (info) {
             info.YeuCauChiPhi = Boolean(printMeta.YeuCauChiPhi);
             info.YeuCauHanhDong = Boolean(printMeta.YeuCauHanhDong);
-            info.CanConfigureRequirements = hasRole(req.user, "TP_B8") || isAdmin(req.user);
+            info.BoPhanTaoId = printMeta.BoPhanTaoId;
+            info.OpinionDepartmentsConfirmed = Boolean(printMeta.OpinionDepartmentsConfirmed);
+            info.OpinionDepartmentsConfirmedAt = printMeta.OpinionDepartmentsConfirmedAt;
+            info.CreatorConfirmedAt = printMeta.CreatorConfirmedAt;
+            info.CanManageKphFlow = headerAccess.canEdit;
+            info.CanConfigureRequirements = headerAccess.canEdit;
             info.IsAdmin = isAdmin(req.user);
         }
 

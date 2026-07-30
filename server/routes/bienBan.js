@@ -12,7 +12,6 @@ const hasPermission = (user, permissionCode) =>
 const hasRole = (user, roleCode) => Array.isArray(user?.roles) &&
     user.roles.some((role) => String(role || "").toUpperCase() === roleCode);
 const isAdmin = (user) => hasRole(user, "ADMIN");
-const isTpB8 = (user) => hasRole(user, "TP_B8");
 const isDepartmentLead = (user) => Array.isArray(user?.roles) && user.roles.some((role) => String(role || "").toUpperCase().startsWith("TP_"));
 
 const KPH_V01_CUSTOM_FIELDS = new Set([
@@ -23,13 +22,39 @@ const KPH_V01_CUSTOM_FIELDS = new Set([
 const hasStrictLeadRole = (user) => Array.isArray(user?.roles) &&
     user.roles.some((role) => String(role || "").toUpperCase().startsWith("TP_"));
 
+const getKphV01FlowAccess = async (pool, bienBanId, user) => {
+    const result = await pool.request()
+        .input("BienBanId", sql.Int, bienBanId)
+        .query(`
+            SELECT TOP 1 bb.Id, bb.NguoiLapId, bb.TrangThai,
+                ISNULL(bb.MauPhieuVersion, 'V00') AS MauPhieuVersion,
+                COALESCE(bb.BoPhanTaoId, creator.BoPhanId) AS BoPhanTaoId,
+                bb.OpinionDepartmentsConfirmedAt,
+                bb.CreatorConfirmedAt
+            FROM dbo.BIEN_BAN_KIEM bb
+            LEFT JOIN dbo.USERS creator ON creator.Id = bb.NguoiLapId
+            WHERE bb.Id = @BienBanId
+        `);
+    const record = result.recordset?.[0];
+    if (!record) return { exists: false, canManage: false, record: null };
+
+    const isCreator = Number(record.NguoiLapId) === Number(user?.userId);
+    const isCreatorDepartmentLead = Number(record.BoPhanTaoId) === Number(user?.boPhanId) &&
+        hasStrictLeadRole(user);
+    return {
+        exists: true,
+        canManage: isCreator || isCreatorDepartmentLead || isAdmin(user),
+        record
+    };
+};
+
 const getKphCustomFieldAccess = async (pool, bienBanId, user) => {
     const result = await pool.request()
         .input("BienBanId", sql.Int, bienBanId)
         .query(`
             SELECT TOP 1 bb.Id, bb.NguoiLapId, bb.TrangThai,
                 ISNULL(bb.MauPhieuVersion, 'V00') AS MauPhieuVersion,
-                creator.BoPhanId AS CreatorBoPhanId
+                COALESCE(bb.BoPhanTaoId, creator.BoPhanId) AS CreatorBoPhanId
             FROM dbo.BIEN_BAN_KIEM bb
             LEFT JOIN dbo.USERS creator ON creator.Id = bb.NguoiLapId
             WHERE bb.Id = @BienBanId
@@ -38,7 +63,8 @@ const getKphCustomFieldAccess = async (pool, bienBanId, user) => {
     if (!record) return { exists: false, canEdit: false, record: null };
     const isCreator = Number(record.NguoiLapId) === Number(user?.userId);
     const isCreatorDepartmentLead = Number(record.CreatorBoPhanId) === Number(user?.boPhanId) && hasStrictLeadRole(user);
-    const canEdit = record.MauPhieuVersion === "V01" && record.TrangThai !== "HOAN_TAT" &&
+    const canEdit = record.MauPhieuVersion === "V01" &&
+        !["CHO_THEO_DOI", "HOAN_TAT"].includes(record.TrangThai) &&
         (isCreator || isCreatorDepartmentLead || isAdmin(user));
     return { exists: true, canEdit, record };
 };
@@ -90,11 +116,16 @@ const getKphV01Data = async (pool, bienBanId) => {
                 ISNULL(bb.MauPhieuVersion, 'V00') AS MauPhieuVersion,
                 ISNULL(bb.YeuCauChiPhi, 0) AS YeuCauChiPhi,
                 ISNULL(bb.YeuCauHanhDong, 0) AS YeuCauHanhDong,
+                COALESCE(bb.BoPhanTaoId, u.BoPhanId) AS BoPhanTaoId,
+                CAST(CASE WHEN bb.OpinionDepartmentsConfirmedAt IS NULL THEN 0 ELSE 1 END AS bit)
+                    AS OpinionDepartmentsConfirmed,
+                bb.OpinionDepartmentsConfirmedAt,
+                bb.CreatorConfirmedAt,
                 bp.MaBoPhan AS MaDonViTaoPhieu,
                 bp.TenBoPhan AS DonViTaoPhieu
             FROM dbo.BIEN_BAN_KIEM bb
             LEFT JOIN dbo.USERS u ON u.Id = bb.NguoiLapId
-            LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id = u.BoPhanId
+            LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id = COALESCE(bb.BoPhanTaoId, u.BoPhanId)
             WHERE bb.Id = @BienBanId;
 
             SELECT
@@ -104,21 +135,28 @@ const getKphV01Data = async (pool, bienBanId) => {
                 COALESCE(bp.TenBoPhan, yk.BoPhan) AS TenBoPhan,
                 yk.TrangThai,
                 yk.ThuTu,
+                CAST(ISNULL(yk.IsActive, 1) AS bit) AS IsActive,
+                yk.CreatedBy,
+                yk.CreatedAt,
+                yk.RemovedBy,
+                yk.RemovedAt,
                 tl.LuaChon,
                 tl.NoiDung,
                 tl.NguoiTraLoiId,
-                u.FullName AS NguoiTraLoi,
-                tl.ThoiGian
+                responder.FullName AS NguoiTraLoi,
+                tl.ThoiGian,
+                CAST(CASE WHEN tl.Id IS NULL THEN 0 ELSE 1 END AS bit) AS HasResponded
             FROM dbo.XIN_Y_KIEN yk
             LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id = yk.BoPhanId
             OUTER APPLY (
-                SELECT TOP 1 *
+                SELECT TOP 1 response.*
                 FROM dbo.TRA_LOI_Y_KIEN response
                 WHERE response.XinYKienId = yk.Id
                 ORDER BY response.ThoiGian DESC, response.Id DESC
             ) tl
-            LEFT JOIN dbo.USERS u ON u.Id = tl.NguoiTraLoiId
+            LEFT JOIN dbo.USERS responder ON responder.Id = tl.NguoiTraLoiId
             WHERE yk.BienBanId = @BienBanId
+              AND ISNULL(yk.IsActive, 1) = 1
             ORDER BY yk.ThuTu, yk.Id;
 
             SELECT TOP 1
@@ -207,9 +245,30 @@ router.get(
                           AND COALESCE(xn.BoPhanId, u.BoPhanId) = a.BoPhanId
                     ) THEN 1 ELSE 0 END AS DaXacNhan
                 FROM dbo.BIEN_BAN_ASSIGN a
+                JOIN dbo.BIEN_BAN_KIEM bb ON bb.Id = a.BienBanId
                 LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id = a.BoPhanId
                 WHERE a.BienBanId IN (${bienBanIds.join(",")})
-                ORDER BY a.BienBanId, a.Id
+                  AND ISNULL(bb.MauPhieuVersion, 'V00') <> 'V01'
+
+                UNION ALL
+
+                SELECT
+                    yk.BienBanId,
+                    yk.Id AS AssignId,
+                    yk.BoPhanId,
+                    bp.MaBoPhan,
+                    bp.TenBoPhan,
+                    CASE WHEN EXISTS (
+                        SELECT 1
+                        FROM dbo.TRA_LOI_Y_KIEN tl
+                        WHERE tl.XinYKienId = yk.Id
+                    ) THEN 1 ELSE 0 END AS DaXacNhan
+                FROM dbo.XIN_Y_KIEN yk
+                JOIN dbo.BIEN_BAN_KIEM bb ON bb.Id = yk.BienBanId
+                LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id = yk.BoPhanId
+                WHERE yk.BienBanId IN (${bienBanIds.join(",")})
+                  AND ISNULL(bb.MauPhieuVersion, 'V00') = 'V01'
+                  AND ISNULL(yk.IsActive, 1) = 1
             `);
 
             const normalProgressByBienBanId = new Map();
@@ -319,6 +378,7 @@ router.get(
             const assignRows = await getBienBanAssignRows(pool, id);
             const v01Data = await getKphV01Data(pool, id);
             const customFieldAccess = await getKphCustomFieldAccess(pool, id, req.user);
+            const flowAccess = await getKphV01FlowAccess(pool, id, req.user);
             const proposalResult = await pool.request()
                 .input("BienBanId", sql.Int, id)
                 .query(`
@@ -424,9 +484,14 @@ router.get(
                     MauPhieuVersion: v01Data.meta.MauPhieuVersion,
                     MaDonViTaoPhieu: v01Data.meta.MaDonViTaoPhieu,
                     DonViTaoPhieu: v01Data.meta.DonViTaoPhieu,
+                    BoPhanTaoId: v01Data.meta.BoPhanTaoId,
+                    OpinionDepartmentsConfirmed: Boolean(v01Data.meta.OpinionDepartmentsConfirmed),
+                    OpinionDepartmentsConfirmedAt: v01Data.meta.OpinionDepartmentsConfirmedAt,
+                    CreatorConfirmedAt: v01Data.meta.CreatorConfirmedAt,
                     YeuCauChiPhi: Boolean(v01Data.meta.YeuCauChiPhi),
                     YeuCauHanhDong: Boolean(v01Data.meta.YeuCauHanhDong),
-                    CanConfigureRequirements: isTpB8(req.user) || isAdmin(req.user),
+                    CanManageKphFlow: flowAccess.canManage,
+                    CanConfigureRequirements: flowAccess.canManage,
                     IsAdmin: isAdmin(req.user),
                     canEditKphCustomFields: customFieldAccess.canEdit
                 } : null,
@@ -466,6 +531,16 @@ router.post(
         try {
 
             const pool = await poolPromise;
+            const flowAccess = await getKphV01FlowAccess(pool, Number(bienBanId), req.user);
+            if (!flowAccess.exists) return res.status(404).json({ message: "Không tìm thấy biên bản" });
+            if (flowAccess.record.MauPhieuVersion === "V01") {
+                if (!flowAccess.canManage) {
+                    return res.status(403).json({ message: "Chỉ bộ phận tạo phiếu được cập nhật mô tả" });
+                }
+                if (flowAccess.record.CreatorConfirmedAt || ["CHO_THEO_DOI", "HOAN_TAT"].includes(flowAccess.record.TrangThai)) {
+                    return res.status(409).json({ message: "Biên bản đã được xác nhận và khóa nội dung" });
+                }
+            }
             await pool.request()
                 .input("BienBanId", sql.Int, bienBanId)
                 .input("MoTaChung", sql.NVarChar(sql.MAX), moTaChung)
@@ -496,52 +571,59 @@ router.post(
 
         try {
 
-            const {
-                bienBanId,
-                noiDung,
-                deNghiXuLyId,
-                thoiHan,
-                trachNhiem,
-                theoDoi
-            } = req.body;
-
+            const { bienBanId } = req.body;
+            const items = (Array.isArray(req.body?.items) ? req.body.items : [req.body])
+                .map((item) => ({
+                    noiDung: String(item?.noiDung || "").trim(),
+                    deNghiXuLyId: Number(item?.deNghiXuLyId) || null,
+                    thoiHan: item?.thoiHan || null,
+                    trachNhiem: String(item?.trachNhiem || "").trim(),
+                    theoDoi: String(item?.theoDoi || "").trim()
+                }));
             const pool = await poolPromise;
-            const normalizedNoiDung = String(noiDung || "").trim();
-            const normalizedTrachNhiem = String(trachNhiem || "").trim();
-            const normalizedTheoDoi = String(theoDoi || "").trim();
-            if (!normalizedNoiDung || !thoiHan || !normalizedTrachNhiem || !normalizedTheoDoi) {
+            if (items.length === 0 || items.some((item) =>
+                !item.noiDung || !item.thoiHan || !item.trachNhiem || !item.theoDoi
+            )) {
                 return res.status(400).json({ message: "Vui lòng nhập đầy đủ nội dung, thời hạn, trách nhiệm và theo dõi" });
             }
-            const b7 = await pool.request().input("BienBanId", sql.Int, bienBanId).query(`
-                SELECT TOP 1 a.BoPhanId
-                FROM dbo.BIEN_BAN_ASSIGN a
-                JOIN dbo.DM_BO_PHAN bp ON bp.Id = a.BoPhanId
-                JOIN dbo.BIEN_BAN_KIEM bb ON bb.Id=a.BienBanId
-                WHERE a.BienBanId = @BienBanId AND UPPER(bp.MaBoPhan) = 'B7'
-                  AND ISNULL(bb.AssignConfirmed,0)=1 AND ISNULL(bb.MauPhieuVersion,'V00')='V01'
-                  AND bb.TrangThai <> 'HOAN_TAT'
-            `);
-            const b7BoPhanId = b7.recordset?.[0]?.BoPhanId;
-            if (!b7BoPhanId) return res.status(409).json({ message: "B7 chưa được phân xử lý" });
-            if (!isAdmin(req.user) && Number(req.user.boPhanId) !== Number(b7BoPhanId)) {
-                return res.status(403).json({ message: "Chỉ bộ phận B7 hoặc ADMIN được nhập mục 5" });
+            const access = await getKphV01FlowAccess(pool, Number(bienBanId), req.user);
+            if (!access.exists) return res.status(404).json({ message: "Không tìm thấy biên bản" });
+            if (access.record.MauPhieuVersion !== "V01") {
+                return res.status(409).json({ message: "Biên bản không sử dụng luồng KPH V01" });
             }
-            await pool.request()
-                .input("BienBanId", sql.Int, bienBanId)
-                .input("NoiDung", sql.NVarChar(sql.MAX), normalizedNoiDung)
-                .input("DeNghiXuLyId", sql.Int, deNghiXuLyId)
-                .input("ThoiHan", sql.Date, thoiHan)
-                .input("UserId", sql.Int, req.user.userId)
-                .input("BoPhanId", sql.Int, b7BoPhanId)
-                .input("TrachNhiem", sql.NVarChar(255), normalizedTrachNhiem)
-                .input("TheoDoi", sql.NVarChar(255), normalizedTheoDoi)
-                .query(`
-                    INSERT INTO dbo.BIEN_BAN_XU_LY
-                        (BienBanId, NoiDung, DeNghiXuLyId, BoPhanId, ThoiHan, TrachNhiem, TheoDoi, CreatedBy, CreatedAt)
-                    VALUES (@BienBanId, @NoiDung, @DeNghiXuLyId, @BoPhanId, @ThoiHan, @TrachNhiem, @TheoDoi, @UserId, SYSDATETIME())
-                `);
+            if (!access.canManage) {
+                return res.status(403).json({ message: "Chỉ người lập hoặc Trưởng bộ phận tạo phiếu được nhập mục 5" });
+            }
+            if (access.record.CreatorConfirmedAt || ["CHO_THEO_DOI", "HOAN_TAT"].includes(access.record.TrangThai)) {
+                return res.status(409).json({ message: "Biên bản đã được xác nhận và khóa nội dung" });
+            }
+            const creatorBoPhanId = Number(access.record.BoPhanTaoId);
+            const transaction = new sql.Transaction(pool);
+            await transaction.begin();
+            try {
+                for (const item of items) {
+                    await new sql.Request(transaction)
+                        .input("BienBanId", sql.Int, bienBanId)
+                        .input("NoiDung", sql.NVarChar(sql.MAX), item.noiDung)
+                        .input("DeNghiXuLyId", sql.Int, item.deNghiXuLyId)
+                        .input("ThoiHan", sql.Date, item.thoiHan)
+                        .input("UserId", sql.Int, req.user.userId)
+                        .input("BoPhanId", sql.Int, creatorBoPhanId)
+                        .input("TrachNhiem", sql.NVarChar(255), item.trachNhiem)
+                        .input("TheoDoi", sql.NVarChar(255), item.theoDoi)
+                        .query(`
+                            INSERT INTO dbo.BIEN_BAN_XU_LY
+                                (BienBanId, NoiDung, DeNghiXuLyId, BoPhanId, ThoiHan, TrachNhiem, TheoDoi, CreatedBy, CreatedAt)
+                            VALUES (@BienBanId, @NoiDung, @DeNghiXuLyId, @BoPhanId, @ThoiHan, @TrachNhiem, @TheoDoi, @UserId, SYSDATETIME())
+                        `);
+                }
+                await transaction.commit();
+            } catch (error) {
+                await transaction.rollback();
+                throw error;
+            }
 
-            res.json({ success: true });
+            res.json({ success: true, inserted: items.length });
 
         } catch (err) {
 
@@ -558,9 +640,11 @@ router.post(
 
 router.patch("/:id/requirements", authenticateToken, async (req, res) => {
     try {
-        if (!isTpB8(req.user) && !isAdmin(req.user)) return res.status(403).json({ message: "Chỉ TP_B8 hoặc ADMIN được cấu hình yêu cầu" });
         const bienBanId = Number(req.params.id);
         const pool = await poolPromise;
+        const access = await getKphV01FlowAccess(pool, bienBanId, req.user);
+        if (!access.exists) return res.status(404).json({ message: "Không tìm thấy biên bản" });
+        if (!access.canManage) return res.status(403).json({ message: "Chỉ bộ phận tạo phiếu được cấu hình yêu cầu" });
         const current = await pool.request().input("BienBanId", sql.Int, bienBanId).query(`
             SELECT TOP 1 TrangThai, ISNULL(MauPhieuVersion, 'V00') MauPhieuVersion,
                 ISNULL(YeuCauChiPhi, 0) YeuCauChiPhi, ISNULL(YeuCauHanhDong, 0) YeuCauHanhDong
@@ -568,7 +652,10 @@ router.patch("/:id/requirements", authenticateToken, async (req, res) => {
         `);
         const row = current.recordset?.[0];
         if (!row) return res.status(404).json({ message: "Không tìm thấy biên bản" });
-        if (row.MauPhieuVersion !== "V01" || row.TrangThai === "HOAN_TAT") return res.status(409).json({ message: "Không thể thay đổi yêu cầu ở trạng thái hiện tại" });
+        if (row.MauPhieuVersion !== "V01" || access.record.CreatorConfirmedAt ||
+            ["CHO_THEO_DOI", "HOAN_TAT"].includes(row.TrangThai)) {
+            return res.status(409).json({ message: "Không thể thay đổi yêu cầu ở trạng thái hiện tại" });
+        }
         const yeuCauChiPhi = req.body.yeuCauChiPhi === undefined ? Boolean(row.YeuCauChiPhi) : Boolean(req.body.yeuCauChiPhi);
         const yeuCauHanhDong = req.body.yeuCauHanhDong === undefined ? Boolean(row.YeuCauHanhDong) : Boolean(req.body.yeuCauHanhDong);
         if (!yeuCauChiPhi) {
@@ -610,77 +697,15 @@ router.post(
             const templateVersion = versionResult.recordset?.[0]?.MauPhieuVersion || "V00";
 
             if (templateVersion === "V01") {
-                const pendingResult = await pool.request()
-                    .input("BienBanId", sql.Int, bienBanId)
-                    .query(`
-                        SELECT
-                            (SELECT COUNT(*) FROM dbo.BIEN_BAN_ASSIGN WHERE BienBanId = @BienBanId) AS TotalAssigns,
-                            (SELECT COUNT(DISTINCT COALESCE(xn.BoPhanId, u.BoPhanId))
-                             FROM dbo.BIEN_BAN_XAC_NHAN xn
-                             JOIN dbo.USERS u ON u.Id = xn.NguoiXacNhanId
-                             JOIN dbo.BIEN_BAN_ASSIGN a
-                               ON a.BienBanId = xn.BienBanId AND a.BoPhanId = COALESCE(xn.BoPhanId, u.BoPhanId)
-                             WHERE xn.BienBanId = @BienBanId) AS ConfirmedAssigns,
-                            (SELECT COUNT(*) FROM dbo.XIN_Y_KIEN WHERE BienBanId = @BienBanId) AS TotalOpinions,
-                            (SELECT COUNT(*)
-                             FROM dbo.XIN_Y_KIEN yk
-                             WHERE yk.BienBanId = @BienBanId
-                               AND EXISTS (SELECT 1 FROM dbo.TRA_LOI_Y_KIEN tl WHERE tl.XinYKienId = yk.Id)) AS AnsweredOpinions,
-                            (SELECT ISNULL(YeuCauChiPhi,0) FROM dbo.BIEN_BAN_KIEM WHERE Id=@BienBanId) AS YeuCauChiPhi,
-                            (SELECT ISNULL(YeuCauHanhDong,0) FROM dbo.BIEN_BAN_KIEM WHERE Id=@BienBanId) AS YeuCauHanhDong,
-                            CASE WHEN EXISTS (
-                                SELECT 1 FROM dbo.BIEN_BAN_ASSIGN a JOIN dbo.DM_BO_PHAN bp ON bp.Id=a.BoPhanId
-                                WHERE a.BienBanId=@BienBanId AND UPPER(bp.MaBoPhan)='B7'
-                            ) AND NOT EXISTS (
-                                SELECT 1 FROM dbo.BIEN_BAN_XU_LY xl JOIN dbo.DM_BO_PHAN bp ON bp.Id=xl.BoPhanId
-                                WHERE xl.BienBanId=@BienBanId AND UPPER(bp.MaBoPhan)='B7'
-                            ) THEN 1 ELSE 0 END AS MissingB7Proposal,
-                            (SELECT COUNT(*) FROM dbo.BIEN_BAN_CHI_PHI WHERE BienBanId=@BienBanId) AS CostCount,
-                            (SELECT COUNT(*) FROM dbo.BIEN_BAN_HANH_DONG WHERE BienBanId=@BienBanId) AS ActionCount,
-                            CASE WHEN
-                                EXISTS (
-                                    SELECT a.BoPhanId FROM dbo.BIEN_BAN_ASSIGN a WHERE a.BienBanId = @BienBanId
-                                    EXCEPT
-                                    SELECT yk.BoPhanId FROM dbo.XIN_Y_KIEN yk WHERE yk.BienBanId = @BienBanId
-                                )
-                                OR EXISTS (
-                                    SELECT yk.BoPhanId FROM dbo.XIN_Y_KIEN yk WHERE yk.BienBanId = @BienBanId
-                                    EXCEPT
-                                    SELECT a.BoPhanId FROM dbo.BIEN_BAN_ASSIGN a WHERE a.BienBanId = @BienBanId
-                                )
-                            THEN 1 ELSE 0 END AS HasOpinionMismatch
-                    `);
-                const progress = pendingResult.recordset?.[0] || {};
-                if (Number(progress.TotalAssigns) === 0 || Number(progress.ConfirmedAssigns) < Number(progress.TotalAssigns)) {
-                    return res.status(409).json({ message: "Chưa đủ xác nhận của các bộ phận xử lý" });
-                }
-                if (Number(progress.AnsweredOpinions) < Number(progress.TotalOpinions)) {
-                    return res.status(409).json({ message: "Chưa đủ ý kiến chuyên môn" });
-                }
-                if (Number(progress.HasOpinionMismatch) === 1 || Number(progress.TotalOpinions) !== Number(progress.TotalAssigns)) {
-                    return res.status(409).json({ message: "Danh sách ý kiến chuyên môn chưa khớp phân công xử lý" });
-                }
-                if (Number(progress.MissingB7Proposal) === 1) return res.status(409).json({ message: "B7 chưa nhập đề xuất xử lý" });
-                if (progress.YeuCauChiPhi && Number(progress.CostCount) === 0) return res.status(409).json({ message: "Mục chi phí được yêu cầu nhưng chưa có dữ liệu" });
-                if (progress.YeuCauHanhDong && Number(progress.ActionCount) === 0) return res.status(409).json({ message: "Mục hành động được yêu cầu nhưng chưa có dữ liệu" });
-
-                await pool.request()
-                    .input("BienBanId", sql.Int, bienBanId)
-                    .query(`
-                        UPDATE dbo.BIEN_BAN_KIEM
-                        SET TrangThai = N'CHO_THEO_DOI'
-                        WHERE Id = @BienBanId
-                          AND NOT EXISTS (
-                              SELECT 1 FROM dbo.BIEN_BAN_THEO_DOI_DANH_GIA
-                              WHERE BienBanId = @BienBanId
-                          )
-                    `);
-            } else {
-                await pool.request()
-                    .input("BienBanId", sql.Int, bienBanId)
-                    .input("NguoiXacNhanId", sql.Int, req.user.userId)
-                    .execute("sp_BienBan_Complete");
+                return res.status(409).json({
+                    message: "KPH V01 phải được xác nhận cuối bởi bộ phận tạo phiếu"
+                });
             }
+
+            await pool.request()
+                .input("BienBanId", sql.Int, bienBanId)
+                .input("NguoiXacNhanId", sql.Int, req.user.userId)
+                .execute("sp_BienBan_Complete");
 
             res.json({ success: true });
 
@@ -728,6 +753,12 @@ router.post(
             }
 
             const pool = await poolPromise;
+            const version = await pool.request()
+                .input("BienBanId", sql.Int, bienBanId)
+                .query("SELECT TOP 1 ISNULL(MauPhieuVersion,'V00') AS MauPhieuVersion FROM dbo.BIEN_BAN_KIEM WHERE Id=@BienBanId");
+            if (version.recordset?.[0]?.MauPhieuVersion === "V01") {
+                return res.status(409).json({ message: "KPH V01 sử dụng danh sách bộ phận cần lấy ý kiến" });
+            }
             await pool.request()
                 .input("BienBanId", sql.Int, bienBanId)
                 .input("BoPhanIds", sql.NVarChar, normalizedBoPhanIds.join(","))
@@ -830,6 +861,12 @@ router.post(
             }
 
             const pool = await poolPromise;
+            const version = await pool.request()
+                .input("BienBanId", sql.Int, bienBanId)
+                .query("SELECT TOP 1 ISNULL(MauPhieuVersion,'V00') AS MauPhieuVersion FROM dbo.BIEN_BAN_KIEM WHERE Id=@BienBanId");
+            if (version.recordset?.[0]?.MauPhieuVersion === "V01") {
+                return res.status(409).json({ message: "KPH V01 không phân công cá nhân xử lý" });
+            }
             await pool.request()
                 .input("BienBanId", sql.Int, bienBanId)
                 .input("BoPhanId", sql.Int, boPhanId)
@@ -856,6 +893,12 @@ router.post(
         try {
             const bienBanId = parseInt(req.params.id, 10);
             const pool = await poolPromise;
+            const version = await pool.request()
+                .input("BienBanId", sql.Int, bienBanId)
+                .query("SELECT TOP 1 ISNULL(MauPhieuVersion,'V00') AS MauPhieuVersion FROM dbo.BIEN_BAN_KIEM WHERE Id=@BienBanId");
+            if (version.recordset?.[0]?.MauPhieuVersion === "V01") {
+                return res.status(409).json({ message: "KPH V01 không sử dụng bước chốt phân công xử lý" });
+            }
             await pool.request()
                 .input("BienBanId", sql.Int, bienBanId)
                 .execute("sp_BienBan_ConfirmAssign");
@@ -876,44 +919,62 @@ router.post(
 
         try {
 
-            const {
-                bienBanId,
-                loaiChiPhi,
-                giaTri,
-                thoiHan
-            } = req.body;
-            const normalizedLoaiChiPhi = String(loaiChiPhi || "").trim();
-            if (!normalizedLoaiChiPhi) {
+            const { bienBanId } = req.body;
+            const items = (Array.isArray(req.body?.items) ? req.body.items : [req.body])
+                .map((item) => ({
+                    loaiChiPhi: String(item?.loaiChiPhi || "").trim(),
+                    giaTri: Number(item?.giaTri) || 0,
+                    thoiHan: item?.thoiHan || null
+                }));
+            if (items.length === 0 || items.some((item) => !item.loaiChiPhi)) {
                 return res.status(400).json({ message: "Vui lòng nhập tên chi phí" });
             }
             const pool = await poolPromise;
 
-            const requirement = await pool.request().input("BienBanId", sql.Int, bienBanId).query("SELECT TOP 1 ISNULL(YeuCauChiPhi,0) AS Required, TrangThai FROM dbo.BIEN_BAN_KIEM WHERE Id=@BienBanId");
-            if (!requirement.recordset?.[0]?.Required || requirement.recordset?.[0]?.TrangThai === "HOAN_TAT") return res.status(409).json({ message: "Mục chi phí không được yêu cầu hoặc phiếu đã hoàn tất" });
+            const access = await getKphV01FlowAccess(pool, Number(bienBanId), req.user);
+            if (!access.exists) return res.status(404).json({ message: "Không tìm thấy biên bản" });
+            if (access.record.MauPhieuVersion === "V01" && !access.canManage) {
+                return res.status(403).json({ message: "Chỉ bộ phận tạo phiếu được nhập mục 6" });
+            }
+            const requirement = await pool.request().input("BienBanId", sql.Int, bienBanId).query("SELECT TOP 1 ISNULL(YeuCauChiPhi,0) AS Required, TrangThai, CreatorConfirmedAt FROM dbo.BIEN_BAN_KIEM WHERE Id=@BienBanId");
+            if (!requirement.recordset?.[0]?.Required || requirement.recordset?.[0]?.CreatorConfirmedAt ||
+                ["CHO_THEO_DOI", "HOAN_TAT"].includes(requirement.recordset?.[0]?.TrangThai)) {
+                return res.status(409).json({ message: "Mục chi phí không được yêu cầu hoặc phiếu đã hoàn tất" });
+            }
 
-            await pool.request()
-                .input("BienBanId", bienBanId)
-                .input("LoaiChiPhi", normalizedLoaiChiPhi)
-                .input("GiaTri", giaTri)
-                .input("BoPhanId", req.user.boPhanId)
-                .input("ThoiHan", thoiHan)
-                .input("CreatedBy", req.user.userId)
-                .execute("sp_BienBan_AddChiPhi");
+            const targetBoPhanId = access.record.MauPhieuVersion === "V01"
+                ? Number(access.record.BoPhanTaoId)
+                : req.user.boPhanId;
+            const transaction = new sql.Transaction(pool);
+            await transaction.begin();
+            try {
+                for (const item of items) {
+                    await new sql.Request(transaction)
+                        .input("BienBanId", sql.Int, bienBanId)
+                        .input("LoaiChiPhi", sql.NVarChar(255), item.loaiChiPhi)
+                        .input("GiaTri", sql.Decimal(18, 2), item.giaTri)
+                        .input("BoPhanId", sql.Int, targetBoPhanId)
+                        .input("ThoiHan", sql.Date, item.thoiHan)
+                        .input("CreatedBy", sql.Int, req.user.userId)
+                        .execute("sp_BienBan_AddChiPhi");
+                }
+                await new sql.Request(transaction)
+                    .input("BienBanId", sql.Int, bienBanId)
+                    .input("UserId", sql.Int, req.user.userId)
+                    .query(`
+                        UPDATE dbo.BIEN_BAN_CHI_PHI
+                        SET TheoDoiBy = @UserId
+                        WHERE BienBanId = @BienBanId
+                          AND CreatedBy = @UserId
+                          AND TheoDoiBy IS NULL
+                    `);
+                await transaction.commit();
+            } catch (error) {
+                await transaction.rollback();
+                throw error;
+            }
 
-            await pool.request()
-                .input("BienBanId", sql.Int, bienBanId)
-                .input("UserId", sql.Int, req.user.userId)
-                .query(`
-                    UPDATE dbo.BIEN_BAN_CHI_PHI
-                    SET TheoDoiBy = @UserId
-                    WHERE Id = (
-                        SELECT TOP 1 Id FROM dbo.BIEN_BAN_CHI_PHI
-                        WHERE BienBanId = @BienBanId AND CreatedBy = @UserId
-                        ORDER BY CreatedAt DESC, Id DESC
-                    )
-                `);
-
-            res.json({ success: true });
+            res.json({ success: true, inserted: items.length });
 
         } catch (err) {
 
@@ -934,45 +995,69 @@ router.post(
 
         try {
 
-            const {
-                bienBanId,
-                noiDung,
-                boPhanId,
-                thoiHan,
-                theoDoi
-            } = req.body;
+            const { bienBanId } = req.body;
+            const items = (Array.isArray(req.body?.items) ? req.body.items : [req.body])
+                .map((item) => ({
+                    noiDung: String(item?.noiDung || "").trim(),
+                    thoiHan: item?.thoiHan || null,
+                    theoDoi: String(item?.theoDoi || "").trim()
+                }));
+            if (items.length === 0 || items.some((item) =>
+                !item.noiDung || !item.thoiHan || !item.theoDoi
+            )) {
+                return res.status(400).json({ message: "Vui lòng nhập đầy đủ nội dung, thời hạn và theo dõi" });
+            }
 
             const userId = req.user.userId;
 
             const pool = await poolPromise;
 
-            const requirement = await pool.request().input("BienBanId", sql.Int, bienBanId).query("SELECT TOP 1 ISNULL(YeuCauHanhDong,0) AS Required, TrangThai FROM dbo.BIEN_BAN_KIEM WHERE Id=@BienBanId");
-            if (!requirement.recordset?.[0]?.Required || requirement.recordset?.[0]?.TrangThai === "HOAN_TAT") return res.status(409).json({ message: "Mục hành động không được yêu cầu hoặc phiếu đã hoàn tất" });
+            const access = await getKphV01FlowAccess(pool, Number(bienBanId), req.user);
+            if (!access.exists) return res.status(404).json({ message: "Không tìm thấy biên bản" });
+            if (access.record.MauPhieuVersion === "V01" && !access.canManage) {
+                return res.status(403).json({ message: "Chỉ bộ phận tạo phiếu được nhập mục 7" });
+            }
+            const requirement = await pool.request().input("BienBanId", sql.Int, bienBanId).query("SELECT TOP 1 ISNULL(YeuCauHanhDong,0) AS Required, TrangThai, CreatorConfirmedAt FROM dbo.BIEN_BAN_KIEM WHERE Id=@BienBanId");
+            if (!requirement.recordset?.[0]?.Required || requirement.recordset?.[0]?.CreatorConfirmedAt ||
+                ["CHO_THEO_DOI", "HOAN_TAT"].includes(requirement.recordset?.[0]?.TrangThai)) {
+                return res.status(409).json({ message: "Mục hành động không được yêu cầu hoặc phiếu đã hoàn tất" });
+            }
 
-            await pool.request()
-                .input("BienBanId", sql.Int, bienBanId)
-                .input("NoiDung", sql.NVarChar, noiDung)
-                .input("BoPhanId", sql.Int, req.user.boPhanId)
-                .input("ThoiHan", sql.Date, thoiHan)
-                .input("TheoDoi", sql.NVarChar, theoDoi)
-                .input("CreatedBy", sql.Int, userId)
-                .execute("sp_BienBan_HanhDong_Add");
-
-            await pool.request()
-                .input("BienBanId", sql.Int, bienBanId)
-                .input("UserId", sql.Int, userId)
-                .query(`
-                    UPDATE dbo.BIEN_BAN_HANH_DONG
-                    SET TheoDoiBy = @UserId
-                    WHERE Id = (
-                        SELECT TOP 1 Id FROM dbo.BIEN_BAN_HANH_DONG
-                        WHERE BienBanId = @BienBanId AND CreatedBy = @UserId
-                        ORDER BY CreatedAt DESC, Id DESC
-                    )
-                `);
+            const targetBoPhanId = access.record.MauPhieuVersion === "V01"
+                ? Number(access.record.BoPhanTaoId)
+                : req.user.boPhanId;
+            const transaction = new sql.Transaction(pool);
+            await transaction.begin();
+            try {
+                for (const item of items) {
+                    await new sql.Request(transaction)
+                        .input("BienBanId", sql.Int, bienBanId)
+                        .input("NoiDung", sql.NVarChar(sql.MAX), item.noiDung)
+                        .input("BoPhanId", sql.Int, targetBoPhanId)
+                        .input("ThoiHan", sql.Date, item.thoiHan)
+                        .input("TheoDoi", sql.NVarChar(255), item.theoDoi)
+                        .input("CreatedBy", sql.Int, userId)
+                        .execute("sp_BienBan_HanhDong_Add");
+                }
+                await new sql.Request(transaction)
+                    .input("BienBanId", sql.Int, bienBanId)
+                    .input("UserId", sql.Int, userId)
+                    .query(`
+                        UPDATE dbo.BIEN_BAN_HANH_DONG
+                        SET TheoDoiBy = @UserId
+                        WHERE BienBanId = @BienBanId
+                          AND CreatedBy = @UserId
+                          AND TheoDoiBy IS NULL
+                    `);
+                await transaction.commit();
+            } catch (error) {
+                await transaction.rollback();
+                throw error;
+            }
 
             res.json({
-                message: "Đã thêm hành động"
+                message: "Đã thêm hành động",
+                inserted: items.length
             });
 
         } catch (err) {
@@ -1005,6 +1090,12 @@ router.post(
             const { bienBanId } = req.body
             const userId = req.user.userId
             const pool = await poolPromise
+            const version = await pool.request()
+                .input("BienBanId", sql.Int, bienBanId)
+                .query("SELECT TOP 1 ISNULL(MauPhieuVersion,'V00') AS MauPhieuVersion FROM dbo.BIEN_BAN_KIEM WHERE Id=@BienBanId");
+            if (version.recordset?.[0]?.MauPhieuVersion === "V01") {
+                return res.status(409).json({ message: "KPH V01 không sử dụng xác nhận tiến độ theo bộ phận" });
+            }
             const targetBoPhanId = isAdmin(req.user) && req.body.boPhanId ? Number(req.body.boPhanId) : Number(req.user.boPhanId)
 
             const pendingOpinion = await pool.request()
@@ -1093,12 +1184,202 @@ router.post(
 )
 
 router.post(
+    "/:id/opinion-departments/confirm",
+    authenticateToken,
+    async (req, res) => {
+        const bienBanId = Number(req.params.id);
+        const boPhanIds = [...new Set((Array.isArray(req.body?.boPhanIds) ? req.body.boPhanIds : [])
+            .map(Number)
+            .filter((id) => Number.isInteger(id) && id > 0))];
+        if (boPhanIds.length === 0) {
+            return res.status(400).json({ message: "Vui lòng chọn ít nhất một bộ phận cần lấy ý kiến" });
+        }
+
+        const pool = await poolPromise;
+        const transaction = new sql.Transaction(pool);
+        let transactionStarted = false;
+        try {
+            const access = await getKphV01FlowAccess(pool, bienBanId, req.user);
+            if (!access.exists) return res.status(404).json({ message: "Không tìm thấy biên bản" });
+            if (access.record.MauPhieuVersion !== "V01") {
+                return res.status(409).json({ message: "Biên bản không sử dụng luồng KPH V01" });
+            }
+            if (!access.canManage) {
+                return res.status(403).json({ message: "Chỉ bộ phận tạo phiếu được xác nhận danh sách cần ý kiến" });
+            }
+            if (access.record.CreatorConfirmedAt || ["CHO_THEO_DOI", "HOAN_TAT"].includes(access.record.TrangThai)) {
+                return res.status(409).json({ message: "Biên bản đã được xác nhận và khóa nội dung" });
+            }
+
+            await transaction.begin();
+            transactionStarted = true;
+            const existingResult = await new sql.Request(transaction)
+                .input("BienBanId", sql.Int, bienBanId)
+                .query(`
+                    SELECT yk.Id, yk.BoPhanId, ISNULL(yk.IsActive, 1) AS IsActive,
+                        CASE WHEN EXISTS (
+                            SELECT 1
+                            FROM dbo.TRA_LOI_Y_KIEN tl
+                            WHERE tl.XinYKienId = yk.Id
+                        ) THEN 1 ELSE 0 END AS HasResponded
+                    FROM dbo.XIN_Y_KIEN yk WITH (UPDLOCK, HOLDLOCK)
+                    WHERE yk.BienBanId = @BienBanId
+                `);
+            const existing = existingResult.recordset || [];
+            const selectedSet = new Set(boPhanIds);
+            const invalidRemoval = existing.find((item) =>
+                item.IsActive && !selectedSet.has(Number(item.BoPhanId)) && item.HasResponded
+            );
+            if (invalidRemoval) {
+                await transaction.rollback();
+                transactionStarted = false;
+                return res.status(409).json({ message: "Không thể bỏ bộ phận đã có phản hồi" });
+            }
+
+            await new sql.Request(transaction)
+                .input("BienBanId", sql.Int, bienBanId)
+                .input("SelectedIds", sql.NVarChar(sql.MAX), boPhanIds.join(","))
+                .input("UserId", sql.Int, req.user.userId)
+                .query(`
+                    UPDATE dbo.XIN_Y_KIEN
+                    SET IsActive = 0, TrangThai = N'DA_HUY',
+                        RemovedBy = @UserId, RemovedAt = SYSDATETIME()
+                    WHERE BienBanId = @BienBanId
+                      AND ISNULL(IsActive, 1) = 1
+                      AND BoPhanId NOT IN (
+                          SELECT TRY_CAST(value AS int) FROM STRING_SPLIT(@SelectedIds, ',')
+                      );
+
+                    UPDATE dbo.XIN_Y_KIEN
+                    SET IsActive = 1, TrangThai = N'CHO_Y_KIEN',
+                        RemovedBy = NULL, RemovedAt = NULL
+                    WHERE BienBanId = @BienBanId
+                      AND BoPhanId IN (
+                          SELECT TRY_CAST(value AS int) FROM STRING_SPLIT(@SelectedIds, ',')
+                      );
+
+                    INSERT INTO dbo.XIN_Y_KIEN
+                        (BienBanId, BoPhanId, BoPhan, TrangThai, ThuTu, IsActive, CreatedBy, CreatedAt)
+                    SELECT @BienBanId, bp.Id, bp.MaBoPhan, N'CHO_Y_KIEN',
+                        ROW_NUMBER() OVER (ORDER BY bp.Id) +
+                            ISNULL((SELECT MAX(ThuTu) FROM dbo.XIN_Y_KIEN WHERE BienBanId = @BienBanId), 0),
+                        1, @UserId, SYSDATETIME()
+                    FROM dbo.DM_BO_PHAN bp
+                    JOIN (
+                        SELECT DISTINCT TRY_CAST(value AS int) AS BoPhanId
+                        FROM STRING_SPLIT(@SelectedIds, ',')
+                    ) selected ON selected.BoPhanId = bp.Id
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM dbo.XIN_Y_KIEN yk
+                        WHERE yk.BienBanId = @BienBanId AND yk.BoPhanId = bp.Id
+                    );
+
+                    UPDATE dbo.BIEN_BAN_KIEM
+                    SET OpinionDepartmentsConfirmedAt = SYSDATETIME(),
+                        OpinionDepartmentsConfirmedBy = @UserId,
+                        TrangThai = CASE
+                            WHEN TrangThai IN (N'BB_MOI', N'CHO_PHAN_BO_XY_LY', N'CHO_PHAN_BO_XU_LY')
+                                THEN N'CHO_XAC_NHAN'
+                            ELSE TrangThai
+                        END
+                    WHERE Id = @BienBanId;
+                `);
+            await transaction.commit();
+            transactionStarted = false;
+            res.json({ success: true });
+        } catch (error) {
+            if (transactionStarted) {
+                try { await transaction.rollback(); } catch (_) { /* no-op */ }
+            }
+            console.error("ConfirmOpinionDepartments error:", error);
+            res.status(500).json({ message: error?.originalError?.info?.message || "Không thể cập nhật danh sách cần ý kiến" });
+        }
+    }
+);
+
+router.post(
+    "/:id/creator-confirm",
+    authenticateToken,
+    async (req, res) => {
+        const bienBanId = Number(req.params.id);
+        const pool = await poolPromise;
+        try {
+            const access = await getKphV01FlowAccess(pool, bienBanId, req.user);
+            if (!access.exists) return res.status(404).json({ message: "Không tìm thấy biên bản" });
+            if (access.record.MauPhieuVersion !== "V01") {
+                return res.status(409).json({ message: "Biên bản không sử dụng luồng KPH V01" });
+            }
+            if (!access.canManage) {
+                return res.status(403).json({ message: "Chỉ bộ phận tạo phiếu được xác nhận cuối" });
+            }
+            if (!access.record.OpinionDepartmentsConfirmedAt) {
+                return res.status(409).json({ message: "Danh sách bộ phận cần ý kiến chưa được xác nhận" });
+            }
+            if (access.record.CreatorConfirmedAt || ["CHO_THEO_DOI", "HOAN_TAT"].includes(access.record.TrangThai)) {
+                return res.status(409).json({ message: "Biên bản đã được xác nhận" });
+            }
+
+            const readiness = await pool.request()
+                .input("BienBanId", sql.Int, bienBanId)
+                .query(`
+                    SELECT
+                        (SELECT COUNT(*) FROM dbo.XIN_Y_KIEN
+                         WHERE BienBanId=@BienBanId AND ISNULL(IsActive,1)=1) AS TotalOpinions,
+                        (SELECT COUNT(*) FROM dbo.XIN_Y_KIEN yk
+                         WHERE yk.BienBanId=@BienBanId AND ISNULL(yk.IsActive,1)=1
+                           AND EXISTS (
+                               SELECT 1
+                               FROM dbo.TRA_LOI_Y_KIEN tl
+                               WHERE tl.XinYKienId=yk.Id
+                           )) AS AnsweredOpinions,
+                        (SELECT COUNT(*) FROM dbo.BIEN_BAN_XU_LY WHERE BienBanId=@BienBanId) AS ProposalCount,
+                        (SELECT ISNULL(YeuCauChiPhi,0) FROM dbo.BIEN_BAN_KIEM WHERE Id=@BienBanId) AS YeuCauChiPhi,
+                        (SELECT COUNT(*) FROM dbo.BIEN_BAN_CHI_PHI WHERE BienBanId=@BienBanId) AS CostCount,
+                        (SELECT ISNULL(YeuCauHanhDong,0) FROM dbo.BIEN_BAN_KIEM WHERE Id=@BienBanId) AS YeuCauHanhDong,
+                        (SELECT COUNT(*) FROM dbo.BIEN_BAN_HANH_DONG WHERE BienBanId=@BienBanId) AS ActionCount
+                `);
+            const state = readiness.recordset?.[0] || {};
+            if (Number(state.TotalOpinions) === 0) {
+                return res.status(409).json({ message: "Chưa có bộ phận cần lấy ý kiến" });
+            }
+            if (Number(state.AnsweredOpinions) < Number(state.TotalOpinions)) {
+                return res.status(409).json({ message: "Chưa đủ phản hồi của các bộ phận" });
+            }
+            if (Number(state.ProposalCount) === 0) {
+                return res.status(409).json({ message: "Mục 5 chưa có đề xuất xử lý" });
+            }
+            if (state.YeuCauChiPhi && Number(state.CostCount) === 0) {
+                return res.status(409).json({ message: "Mục 6 được yêu cầu nhưng chưa có dữ liệu" });
+            }
+            if (state.YeuCauHanhDong && Number(state.ActionCount) === 0) {
+                return res.status(409).json({ message: "Mục 7 được yêu cầu nhưng chưa có dữ liệu" });
+            }
+
+            await pool.request()
+                .input("BienBanId", sql.Int, bienBanId)
+                .input("UserId", sql.Int, req.user.userId)
+                .query(`
+                    UPDATE dbo.BIEN_BAN_KIEM
+                    SET CreatorConfirmedAt = SYSDATETIME(),
+                        CreatorConfirmedBy = @UserId,
+                        TrangThai = N'CHO_THEO_DOI'
+                    WHERE Id = @BienBanId AND CreatorConfirmedAt IS NULL
+                `);
+            res.json({ success: true });
+        } catch (error) {
+            console.error("CreatorConfirmKph error:", error);
+            res.status(500).json({ message: "Không thể xác nhận cuối biên bản" });
+        }
+    }
+);
+
+router.post(
     "/:id/specialist-opinions",
     authenticateToken,
     authorize("XAC_NHAN_NGUOI_XU_LY"),
     async (_req, res) => {
         res.status(409).json({
-            message: "Ý kiến chuyên môn được đồng bộ tự động từ danh sách bộ phận xử lý"
+            message: "Vui lòng sử dụng danh sách bộ phận cần lấy ý kiến"
         });
     }
 );
@@ -1111,6 +1392,9 @@ router.post(
         const opinionId = Number(req.params.opinionId);
         const luaChon = "CO";
         const noiDung = String(req.body?.noiDung || "").trim();
+        if (!noiDung) {
+            return res.status(400).json({ message: "Vui lòng nhập nội dung ý kiến" });
+        }
 
         const pool = await poolPromise;
         try {
@@ -1123,28 +1407,14 @@ router.post(
                     JOIN dbo.BIEN_BAN_KIEM bb ON bb.Id = yk.BienBanId
                     WHERE yk.Id = @OpinionId
                       AND yk.BienBanId = @BienBanId
-                      AND ISNULL(bb.AssignConfirmed, 0) = 1
-                      AND EXISTS (
-                          SELECT 1
-                          FROM dbo.BIEN_BAN_ASSIGN a
-                          WHERE a.BienBanId = yk.BienBanId
-                            AND a.BoPhanId = yk.BoPhanId
-                      )
+                      AND ISNULL(bb.MauPhieuVersion, 'V00') = 'V01'
+                      AND bb.OpinionDepartmentsConfirmedAt IS NOT NULL
+                      AND bb.CreatorConfirmedAt IS NULL
+                      AND bb.TrangThai NOT IN ('CHO_THEO_DOI', 'HOAN_TAT')
+                      AND ISNULL(yk.IsActive, 1) = 1
             `);
             const row = opinion.recordset?.[0];
-            console.log("[KPH_V01_SPECIALIST_OPINION_DEBUG]", {
-                bienBanId,
-                opinionId,
-                userId: req.user.userId,
-                username: req.user.username,
-                userBoPhanId: req.user.boPhanId,
-                roles: req.user.roles,
-                opinionBoPhanId: row?.BoPhanId,
-                opinionFound: Boolean(row),
-                isAdmin: isAdmin(req.user),
-                isDepartmentLead: isDepartmentLead(req.user)
-            });
-            if (!row) return res.status(409).json({ message: "Phân công chưa được xác nhận hoặc yêu cầu ý kiến không còn hiệu lực" });
+            if (!row) return res.status(409).json({ message: "Yêu cầu ý kiến chưa được xác nhận hoặc không còn hiệu lực" });
             if (!isAdmin(req.user) && Number(row.BoPhanId) !== Number(req.user.boPhanId)) {
                 return res.status(403).json({ message: "Bạn không thuộc phòng ban được yêu cầu ý kiến" });
             }

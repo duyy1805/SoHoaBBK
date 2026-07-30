@@ -401,9 +401,9 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                         rows={2}
                                     />
                                 </td>
-                                <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>Số lượng</td>
+                                <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>SL KH / TT / hiệu lực</td>
                                 <td style={styles.infoTableCell}>
-                                    <input name="SoLuong" className="custom-field" type="text" defaultValue={customData.SoLuong || phieu.SoLuong || ''} style={styles.inputField} />
+                                    <span>{phieu.SoLuong ?? ""} / {phieu.SoLuongThucTe == null ? "Chưa nhập" : phieu.SoLuongThucTe} / {phieu.SoLuongHieuLuc ?? phieu.SoLuong ?? ""}</span>
                                 </td>
                                 <td style={styles.infoTableUnitCell}>cái</td>
                                 {/* <td style={styles.infoTableUnitCell}>hộp</td> */}

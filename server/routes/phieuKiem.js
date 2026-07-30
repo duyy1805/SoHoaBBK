@@ -110,6 +110,82 @@ const attachProductImageToPhieu = async (pool, phieu = null) => {
     return phieu;
 };
 
+const optionalNonNegativeInteger = (value) => {
+    if (value === '' || value === null || value === undefined) return null;
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : Number.NaN;
+};
+
+const applyQuantityFields = (row, plannedField = 'SoLuong') => {
+    if (!row) return row;
+    const planned = Number(row[plannedField] || 0);
+    const actual = row.SoLuongThucTe === null || row.SoLuongThucTe === undefined
+        ? null
+        : Number(row.SoLuongThucTe);
+    return {
+        ...row,
+        SoLuongKeHoach: plannedField === 'SoLuongKeHoach' ? row.SoLuongKeHoach : planned,
+        SoLuongThucTe: actual,
+        SoLuongHieuLuc: actual ?? planned,
+        ChenhLechSoLuong: actual === null ? null : actual - planned
+    };
+};
+
+const attachPhieuQuantity = async (pool, phieu = null) => {
+    if (!phieu?.Id) return phieu;
+    const result = await pool.request()
+        .input('PhieuKiemId', sql.Int, Number(phieu.Id))
+        .query(`
+            SELECT SoLuong, SoLuongThucTe
+            FROM dbo.PHIEU_KIEM
+            WHERE Id = @PhieuKiemId
+        `);
+    Object.assign(phieu, applyQuantityFields({
+        ...phieu,
+        ...(result.recordset[0] || {})
+    }));
+    return phieu;
+};
+
+const attachListQuantities = async (pool, rows = []) => {
+    if (!Array.isArray(rows) || !rows.length) return [];
+    const ids = rows.map((row) => Number(row.Id)).filter(Boolean);
+    const result = await pool.request()
+        .input('IdsJson', sql.NVarChar(sql.MAX), JSON.stringify(ids))
+        .input('CuoiChuyenLoaiKiemId', sql.Int, CUOI_CHUYEN_LOAI_KIEM_ID)
+        .query(`
+            SELECT pk.Id,
+                CASE WHEN pk.LoaiKiemId = @CuoiChuyenLoaiKiemId
+                    THEN ISNULL(planTotals.TongKeHoach, 0) ELSE ISNULL(pk.SoLuong, 0) END AS SoLuongKeHoach,
+                CASE WHEN pk.LoaiKiemId = @CuoiChuyenLoaiKiemId
+                    THEN CASE WHEN planTotals.SoDongThucTe > 0 THEN planTotals.TongThucTe ELSE NULL END
+                    ELSE pk.SoLuongThucTe END AS SoLuongThucTe,
+                CASE WHEN pk.LoaiKiemId = @CuoiChuyenLoaiKiemId
+                    THEN ISNULL(planTotals.TongHieuLuc, 0) ELSE COALESCE(pk.SoLuongThucTe, pk.SoLuong, 0) END AS SoLuongHieuLuc
+            FROM dbo.PHIEU_KIEM pk
+            OUTER APPLY (
+                SELECT SUM(ISNULL(planRow.SoLuongKeHoach, 0)) AS TongKeHoach,
+                    SUM(ISNULL(planRow.SoLuongThucTe, 0)) AS TongThucTe,
+                    SUM(COALESCE(planRow.SoLuongThucTe, planRow.SoLuongKeHoach, 0)) AS TongHieuLuc,
+                    SUM(CASE WHEN planRow.SoLuongThucTe IS NOT NULL THEN 1 ELSE 0 END) AS SoDongThucTe
+                FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN planRow
+                WHERE planRow.PhieuKiemId = pk.Id
+            ) planTotals
+            WHERE pk.Id IN (SELECT TRY_CONVERT(int, [value]) FROM OPENJSON(@IdsJson))
+        `);
+    const quantitiesById = new Map(result.recordset.map((row) => [Number(row.Id), row]));
+    return rows.map((row) => {
+        const quantity = quantitiesById.get(Number(row.Id));
+        return quantity ? {
+            ...row,
+            ...quantity,
+            ChenhLechSoLuong: quantity.SoLuongThucTe == null
+                ? null
+                : Number(quantity.SoLuongHieuLuc || 0) - Number(quantity.SoLuongKeHoach || 0)
+        } : row;
+    });
+};
+
 const upsertPhieuKiemCustomFields = async (pool, phieuKiemId, fields) => {
     if (!phieuKiemId || !fields || typeof fields !== 'object' || Array.isArray(fields)) {
         return;
@@ -188,6 +264,7 @@ const normalizeCuoiChuyenPlans = (plans = []) => plans.map((plan, planIndex) => 
     soLuongKeHoach: plan?.soLuongKeHoach === '' || plan?.soLuongKeHoach == null
         ? null
         : Number(plan.soLuongKeHoach),
+    soLuongThucTe: optionalNonNegativeInteger(plan?.soLuongThucTe ?? plan?.SoLuongThucTe),
     nangSuatDuKien: plan?.nangSuatDuKien === '' || plan?.nangSuatDuKien == null
         ? null
         : Number(plan.nangSuatDuKien),
@@ -283,7 +360,8 @@ router.get(
 
             const result = await request.execute('sp_PhieuKiem_GetList_ByRole');
 
-            res.json(await excludeCongDoanRows(pool, result.recordset));
+            const visibleRows = await excludeCongDoanRows(pool, result.recordset);
+            res.json(await attachListQuantities(pool, visibleRows));
         } catch (err) {
             console.error('GetPhieuKiem error:', err);
             res.status(500).json({ message: 'Lỗi tải danh sách phiếu kiểm' });
@@ -586,12 +664,17 @@ router.get(
                 mode = 'TO_TRUONG_KCS';   // ưu tiên cao hơn KCS
             if (permissions.includes('QUAN_TRI_DM'))
                 mode = 'VIEW';
+            if ((req.user.roles || []).some(role =>
+                String(role || '').toUpperCase() === 'TP_B8'
+            ))
+                mode = 'VIEW';
             const result = await pool.request()
                 .input('UserId', sql.Int, req.user.userId)
                 .input('Mode', sql.NVarChar, mode)
                 .execute('SP_PhieuKiem_My');
 
-            res.json(await excludeCongDoanRows(pool, result.recordset));
+            const visibleRows = await excludeCongDoanRows(pool, result.recordset);
+            res.json(await attachListQuantities(pool, visibleRows));
 
         } catch (error) {
 
@@ -603,6 +686,55 @@ router.get(
 
         }
 
+    }
+);
+
+router.patch(
+    '/:id/actual-quantity',
+    authenticateToken,
+    authorize('THUC_HIEN_KIEM'),
+    async (req, res) => {
+        const phieuKiemId = Number(req.params.id);
+        const soLuongThucTe = optionalNonNegativeInteger(req.body?.soLuongThucTe);
+        if (!Number.isInteger(phieuKiemId) || phieuKiemId <= 0 || Number.isNaN(soLuongThucTe)) {
+            return res.status(400).json({ message: 'Số lượng thực tế phải là số nguyên không âm hoặc để trống' });
+        }
+        try {
+            const pool = await poolPromise;
+            const result = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .query(`
+                    SELECT pk.Id, pk.SoLuong, pk.SoLuongThucTe, pk.TrangThai, pk.LoaiKiemId,
+                        CASE WHEN cd.PhieuKiemId IS NULL THEN 0 ELSE 1 END AS LaPhieuCongDoan
+                    FROM dbo.PHIEU_KIEM pk
+                    LEFT JOIN dbo.PHIEU_KIEM_CONG_DOAN_HEADER cd ON cd.PhieuKiemId = pk.Id
+                    WHERE pk.Id = @PhieuKiemId
+                `);
+            const phieu = result.recordset[0];
+            if (!phieu) return res.status(404).json({ message: 'Không tìm thấy phiếu kiểm' });
+            if (!['TAO_MOI', 'DANG_KIEM', 'CHUA_KIEM', 'DA_TAO_SECTION'].includes(String(phieu.TrangThai || '').toUpperCase())) {
+                return res.status(409).json({ message: 'Phiếu đã hoàn thành nên không thể sửa số lượng thực tế' });
+            }
+            if (Number(phieu.LoaiKiemId) === CUOI_CHUYEN_LOAI_KIEM_ID || phieu.LaPhieuCongDoan) {
+                return res.status(400).json({ message: 'Phiếu nhiều kế hoạch phải nhập số lượng thực tế trên từng kế hoạch' });
+            }
+            if (Number(phieu.LoaiKiemId) === 4) {
+                return res.status(400).json({ message: 'Phiếu SXBT sử dụng số lượng nhập theo từng dòng BTP/Lot' });
+            }
+
+            await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('SoLuongThucTe', sql.Int, soLuongThucTe)
+                .query(`
+                    UPDATE dbo.PHIEU_KIEM
+                    SET SoLuongThucTe = @SoLuongThucTe
+                    WHERE Id = @PhieuKiemId
+                `);
+            res.json(applyQuantityFields({ ...phieu, SoLuongThucTe: soLuongThucTe }));
+        } catch (error) {
+            console.error('Update actual quantity error:', error);
+            res.status(500).json({ message: error.message || 'Không cập nhật được số lượng thực tế' });
+        }
     }
 );
 
@@ -639,6 +771,7 @@ router.get(
 
                 const phieu = result.recordsets[0][0] || null;
                 await attachProductImageToPhieu(pool, phieu);
+                await attachPhieuQuantity(pool, phieu);
                 let dynamicFields = [];
                 if (phieu && phieu.DynamicFieldsJSON) {
                     try {
@@ -691,6 +824,7 @@ router.get(
 
                 const phieu = result.recordsets?.[0]?.[0] || null;
                 await attachProductImageToPhieu(pool, phieu);
+                await attachPhieuQuantity(pool, phieu);
                 let dynamicFields = [];
                 if (phieu && phieu.DynamicFieldsJSON) {
                     try {
@@ -720,6 +854,16 @@ router.get(
                 const defectRecords = result.recordsets?.[2] || [];
                 const summary = result.recordsets?.[3]?.[0] || null;
                 const xacNhans = result.recordsets?.[4] || [];
+                const actualQuantityResult = await pool.request()
+                    .input('PhieuKiemId', sql.Int, Number(id))
+                    .query(`
+                        SELECT Id, SoLuongThucTe
+                        FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN
+                        WHERE PhieuKiemId = @PhieuKiemId
+                    `);
+                const actualQuantityByPlan = new Map(
+                    actualQuantityResult.recordset.map((row) => [Number(row.Id), row.SoLuongThucTe])
+                );
 
                 const defectsByPlanId = {};
                 defectRecords.forEach((record) => {
@@ -759,15 +903,32 @@ router.get(
                 });
 
                 const plans = planRecords.map((plan) => ({
-                    ...plan,
+                    ...applyQuantityFields({
+                        ...plan,
+                        SoLuongThucTe: actualQuantityByPlan.get(Number(plan.Id)) ?? null
+                    }, 'SoLuongKeHoach'),
                     Defects: [...(defectsByPlanId[plan.Id] || [])]
                         .sort((a, b) => (a.SortOrder || 0) - (b.SortOrder || 0))
                 }));
+                const quantitySummary = plans.reduce((totals, plan) => ({
+                    TongSoLuongKeHoach: totals.TongSoLuongKeHoach + Number(plan.SoLuongKeHoach || 0),
+                    TongSoLuongThucTe: totals.TongSoLuongThucTe + Number(plan.SoLuongThucTe || 0),
+                    SoKeHoachDaNhapThucTe: totals.SoKeHoachDaNhapThucTe + (plan.SoLuongThucTe == null ? 0 : 1),
+                    TongSoLuongHieuLuc: totals.TongSoLuongHieuLuc + Number(plan.SoLuongHieuLuc || 0)
+                }), {
+                    TongSoLuongKeHoach: 0,
+                    TongSoLuongThucTe: 0,
+                    SoKeHoachDaNhapThucTe: 0,
+                    TongSoLuongHieuLuc: 0
+                });
+                quantitySummary.ChenhLechSoLuong = quantitySummary.SoKeHoachDaNhapThucTe
+                    ? quantitySummary.TongSoLuongHieuLuc - quantitySummary.TongSoLuongKeHoach
+                    : null;
 
                 return res.json({
                     phieu,
                     plans,
-                    summary,
+                    summary: { ...(summary || {}), ...quantitySummary },
                     dynamicFields,
                     xacNhans
                 });
@@ -780,6 +941,7 @@ router.get(
 
                 const phieu = result.recordsets?.[0]?.[0] || null;
                 await attachProductImageToPhieu(pool, phieu);
+                await attachPhieuQuantity(pool, phieu);
                 let dynamicFields = [];
                 if (phieu && phieu.DynamicFieldsJSON) {
                     try {
@@ -881,6 +1043,7 @@ router.get(
 
             const phieu = result.recordsets[0][0] || null;
             await attachProductImageToPhieu(pool, phieu);
+            await attachPhieuQuantity(pool, phieu);
             let dynamicFields = [];
             if (phieu && phieu.DynamicFieldsJSON) {
                 try {
@@ -1198,21 +1361,44 @@ router.post(
 
         try {
             const normalizedPlans = normalizeCuoiChuyenPlans(plans);
+            if (normalizedPlans.some((plan) => Number.isNaN(plan.soLuongThucTe))) {
+                return res.status(400).json({ message: 'Số lượng thực tế phải là số nguyên không âm hoặc để trống' });
+            }
 
             const pool = await poolPromise;
-            await pool.request()
+            const transaction = new sql.Transaction(pool);
+            await transaction.begin();
+            try {
+                await new sql.Request(transaction)
                 .input('PhieuKiemId', sql.Int, phieuKiemId)
                 .input('UserId', sql.Int, userId)
                 .input('PlansJson', sql.NVarChar(sql.MAX), JSON.stringify(normalizedPlans))
                 .execute('sp_PhieuKiem_CuoiChuyen_SaveDefects');
 
-            await pool.request()
+                for (const plan of normalizedPlans.filter((item) => item.planId)) {
+                    await new sql.Request(transaction)
+                        .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+                        .input('PlanId', sql.Int, plan.planId)
+                        .input('SoLuongThucTe', sql.Int, plan.soLuongThucTe)
+                        .query(`
+                            UPDATE dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN
+                            SET SoLuongThucTe = @SoLuongThucTe
+                            WHERE Id = @PlanId AND PhieuKiemId = @PhieuKiemId
+                        `);
+                }
+
+                await new sql.Request(transaction)
                 .input('PhieuKiemId', sql.Int, phieuKiemId)
                 .query(`
                     UPDATE dbo.PHIEU_KIEM
                     SET TrangThai = CASE WHEN TrangThai = 'TAO_MOI' THEN 'DANG_KIEM' ELSE TrangThai END
                     WHERE Id = @PhieuKiemId;
                 `);
+                await transaction.commit();
+            } catch (error) {
+                await transaction.rollback();
+                throw error;
+            }
 
             res.json({ success: true });
         } catch (err) {
@@ -1244,6 +1430,25 @@ router.post(
 
         try {
             const pool = await poolPromise;
+            const quantityValidation = await pool.request()
+                .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+                .query(`
+                    SELECT planRow.Id,
+                        COALESCE(planRow.SoLuongThucTe, planRow.SoLuongKeHoach, 0) AS SoLuongHieuLuc,
+                        ISNULL(SUM(defect.SoLuong), 0) AS TongLoi
+                    FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN planRow
+                    LEFT JOIN dbo.PHIEU_KIEM_CUOI_CHUYEN_DEFECT defect ON defect.PlanId = planRow.Id
+                    WHERE planRow.PhieuKiemId = @PhieuKiemId
+                    GROUP BY planRow.Id, planRow.SoLuongThucTe, planRow.SoLuongKeHoach
+                `);
+            const invalidPlan = quantityValidation.recordset.find((plan) =>
+                Number(plan.TongLoi || 0) > Number(plan.SoLuongHieuLuc || 0)
+            );
+            if (invalidPlan) {
+                return res.status(409).json({
+                    message: `Kế hoạch #${invalidPlan.Id} có tổng lỗi vượt số lượng hiệu lực`
+                });
+            }
             const completedByName = await getUserDisplayName(pool, userId, completedByNameFallback);
             await upsertPhieuKiemCustomFields(pool, phieuKiemId, {
                 [CUOI_CHUYEN_APPROVE_BOPHAN_FIELD]: String(boPhanId),
@@ -1469,6 +1674,22 @@ router.post(
 
         try {
             const pool = await poolPromise;
+            const quantityValidation = await pool.request()
+                .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+                .query(`
+                    SELECT COALESCE(pk.SoLuongThucTe, pk.SoLuong, 0) AS SoLuongHieuLuc,
+                        ISNULL(SUM(defect.SoLuong), 0) AS TongLoi
+                    FROM dbo.PHIEU_KIEM pk
+                    LEFT JOIN dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT slotRow ON slotRow.PhieuKiemId = pk.Id
+                    LEFT JOIN dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY entryRow ON entryRow.SlotId = slotRow.Id
+                    LEFT JOIN dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY_DEFECT defect ON defect.EntryId = entryRow.Id
+                    WHERE pk.Id = @PhieuKiemId
+                    GROUP BY pk.SoLuongThucTe, pk.SoLuong
+                `);
+            const quantityInfo = quantityValidation.recordset[0];
+            if (quantityInfo && Number(quantityInfo.TongLoi || 0) > Number(quantityInfo.SoLuongHieuLuc || 0)) {
+                return res.status(409).json({ message: 'Tổng số lượng lỗi vượt số lượng hiệu lực của phiếu' });
+            }
             await upsertPhieuKiemCustomFields(pool, phieuKiemId, {
                 [TREN_CHUYEN_APPROVE_BOPHAN_FIELD]: String(boPhanId),
                 [TREN_CHUYEN_COMPLETED_BY_FIELD]: String(userId || ''),
@@ -2294,6 +2515,22 @@ router.post(
         }
         try {
             const pool = await poolPromise;
+            const quantityValidation = await pool.request()
+                .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+                .query(`
+                    SELECT COALESCE(pk.SoLuongThucTe, pk.SoLuong, 0) AS SoLuongHieuLuc,
+                        ISNULL(MAX(sectionRow.SoLuongKiem), 0) AS SoLuongMauLonNhat
+                    FROM dbo.PHIEU_KIEM pk
+                    LEFT JOIN dbo.PHIEU_KIEM_SECTION sectionRow ON sectionRow.PhieuKiemId = pk.Id
+                    WHERE pk.Id = @PhieuKiemId
+                    GROUP BY pk.SoLuongThucTe, pk.SoLuong
+                `);
+            const quantityInfo = quantityValidation.recordset[0];
+            if (quantityInfo && Number(quantityInfo.SoLuongMauLonNhat || 0) > Number(quantityInfo.SoLuongHieuLuc || 0)) {
+                return res.status(409).json({
+                    message: 'Cỡ mẫu hiện tại vượt số lượng hiệu lực. Hãy cấu hình lại cỡ mẫu trước khi hoàn tất.'
+                });
+            }
 
             await pool.request()
                 .input('PhieuKiemId', sql.Int, phieuKiemId)

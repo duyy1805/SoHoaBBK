@@ -690,7 +690,6 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                                         <td style={{ ...styles.td, minHeight: '58px', verticalAlign: 'top' }}>
                                                             <div style={{ fontWeight: 'bold' }}>
                                                                 {opinion ? `- ${opinion.MaBoPhan || opinion.TenBoPhan || ''}` : '\u00a0'}
-                                                                {' '}({renderCheckbox('Có', true)}{renderCheckbox('Không', false)})
                                                                 {opinion?.ThoiGian ? ` ${new Date(opinion.ThoiGian).toLocaleDateString('vi-VN')}` : ' …/…/20…'}
                                                             </div>
                                                             <div style={{ whiteSpace: 'pre-wrap', minHeight: '34px' }}>{opinion?.NoiDung || ''}</div>

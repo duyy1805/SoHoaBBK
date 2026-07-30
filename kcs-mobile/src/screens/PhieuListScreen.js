@@ -247,9 +247,9 @@ export default function PhieuListScreen({ navigation }) {
                     </View>
                 )}
                 <View style={styles.infoRow}>
-                    <Text style={styles.label}>Số lượng</Text>
+                    <Text style={styles.label}>KH / TT / Hiệu lực</Text>
                     <Text style={styles.value}>
-                        {item.SoLuong}
+                        {item.SoLuongKeHoach ?? item.SoLuong ?? 0} / {item.SoLuongThucTe == null ? "Chưa nhập" : item.SoLuongThucTe} / {item.SoLuongHieuLuc ?? item.SoLuong ?? 0}
                     </Text>
                 </View>
                 <View style={styles.infoRow}>

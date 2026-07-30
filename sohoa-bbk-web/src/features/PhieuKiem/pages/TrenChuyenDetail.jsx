@@ -17,7 +17,8 @@ import {
     Paper,
     Divider,
     Stack,
-    Typography
+    Typography,
+    TextField
 } from "@mui/material";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useReactToPrint } from "react-to-print";
@@ -31,7 +32,7 @@ import StairsOutlinedIcon from "@mui/icons-material/StairsOutlined";
 import ReportProblemOutlinedIcon from "@mui/icons-material/ReportProblemOutlined";
 import ErrorOutlineOutlinedIcon from "@mui/icons-material/ErrorOutlineOutlined";
 import CheckCircleOutlineOutlinedIcon from "@mui/icons-material/CheckCircleOutlineOutlined";
-import { approveTrenChuyen, createTrenChuyenBienBan, getPhieuKiemDetail } from "../../../api/phieuKiem.api";
+import { approveTrenChuyen, createTrenChuyenBienBan, getPhieuKiemDetail, updatePhieuKiemActualQuantity } from "../../../api/phieuKiem.api";
 import { updateSanPhamImage, uploadSanPhamImage } from "../../../api/lookup.api";
 import { getCurrentUser } from "../../../utils/auth";
 import TrenChuyenPrintTemplate from "../components/TrenChuyenPrintTemplate";
@@ -131,6 +132,8 @@ export default function TrenChuyenDetail() {
     const [xacNhans, setXacNhans] = useState([]);
     const [openPrint, setOpenPrint] = useState(false);
     const [approving, setApproving] = useState(false);
+    const [actualQuantity, setActualQuantity] = useState("");
+    const [savingActual, setSavingActual] = useState(false);
     const [currentUser] = useState(() => getCurrentUser());
 
     const handlePrint = useReactToPrint({
@@ -152,6 +155,7 @@ export default function TrenChuyenDetail() {
                 return;
             }
             setPhieu(data.phieu || null);
+            setActualQuantity(data.phieu?.SoLuongThucTe == null ? "" : String(data.phieu.SoLuongThucTe));
             setSlots(data.slots || []);
             setSummary(data.summary || null);
             setDynamicFields(data.dynamicFields || []);
@@ -160,6 +164,18 @@ export default function TrenChuyenDetail() {
             console.error(error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const saveActualQuantity = async () => {
+        try {
+            setSavingActual(true);
+            const response = await updatePhieuKiemActualQuantity(id, actualQuantity === "" ? null : Number(actualQuantity));
+            setPhieu((current) => ({ ...current, ...(response.data || {}) }));
+        } catch (error) {
+            window.alert(error.response?.data?.message || "Không cập nhật được số lượng thực tế.");
+        } finally {
+            setSavingActual(false);
         }
     };
 
@@ -369,6 +385,17 @@ export default function TrenChuyenDetail() {
                                         </Grid>
                                         <Grid item xs={12} md={6} lg={2}>
                                             <InfoLine label="Kế hoạch" value={soLuongKeHoach} />
+                                        </Grid>
+                                        <Grid item xs={12} md={6} lg={3}>
+                                            <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 700 }}>THỰC TẾ / HIỆU LỰC / CHÊNH</Typography>
+                                            {currentUser?.permissions?.includes("THUC_HIEN_KIEM") && !["HOAN_TAT", "CHO_TBP_DUYET"].includes(phieu?.TrangThai) ? (
+                                                <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+                                                    <TextField size="small" type="number" value={actualQuantity} placeholder="Chưa nhập" inputProps={{ min: 0, step: 1 }} onChange={(event) => setActualQuantity(event.target.value.replace(/\D/g, ""))} />
+                                                    <Button size="small" variant="outlined" disabled={savingActual} onClick={saveActualQuantity}>Lưu</Button>
+                                                </Stack>
+                                            ) : (
+                                                <Typography fontWeight={600}>{phieu?.SoLuongThucTe ?? "Chưa nhập"} / {phieu?.SoLuongHieuLuc ?? phieu?.SoLuong ?? 0} / {phieu?.ChenhLechSoLuong ?? "—"}</Typography>
+                                            )}
                                         </Grid>
                                         <Grid item xs={12} md={6} lg={2}>
                                             <InfoLine label="NS dự kiến / Đã SX" value={`${nangSuatDuKien} / ${daSanXuat}`} />

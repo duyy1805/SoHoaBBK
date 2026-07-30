@@ -75,7 +75,9 @@ import {
     getAssignableUsers,
     assignUser,
     deleteStandaloneBienBan,
-    updateKphRequirements
+    updateKphRequirements,
+    confirmOpinionDepartments,
+    confirmKphByCreatorDepartment
 } from "../../api/bienBan.api";
 import { getDefectList } from "../../api/lookup.api";
 import { decodeToken } from "../../utils/auth";
@@ -112,6 +114,15 @@ export default function BienBanDetail({ standalone = false }) {
     const { id: bienBanId } = useParams();
     const navigate = useNavigate();
     const componentRef = useRef();
+    const latestLoadRequestRef = useRef(0);
+    const hasLoadedRef = useRef(false);
+    const serverDraftSnapshotRef = useRef(null);
+    const confirmSavingRef = useRef(false);
+    const requirementVersionRef = useRef(0);
+    const requirementPendingRef = useRef({
+        yeuCauChiPhi: false,
+        yeuCauHanhDong: false
+    });
     const { showToast } = useToast();
 
     const [info, setInfo] = useState(null);
@@ -129,8 +140,17 @@ export default function BienBanDetail({ standalone = false }) {
     const [followUpEvaluation, setFollowUpEvaluation] = useState(null);
 
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState("");
+    const [requirementSaving, setRequirementSaving] = useState({
+        yeuCauChiPhi: false,
+        yeuCauHanhDong: false
+    });
+    const [actionSaving, setActionSaving] = useState({
+        header: false,
+        description: false,
+        defects: false
+    });
 
-    const [currentUserId, setCurrentUserId] = useState(null);
     const [currentUserBoPhanId, setCurrentUserBoPhanId] = useState(null);
     const [currentUserPermissions, setCurrentUserPermissions] = useState([]);
     const [currentUserRoles, setCurrentUserRoles] = useState([]);
@@ -171,16 +191,18 @@ export default function BienBanDetail({ standalone = false }) {
         type: 'info',
         onConfirm: null
     });
+    const [confirmSaving, setConfirmSaving] = useState(false);
 
     useEffect(() => {
+        hasLoadedRef.current = false;
+        serverDraftSnapshotRef.current = null;
         const decoded = decodeToken();
         if (decoded) {
-            setCurrentUserId(decoded.userId);
             setCurrentUserBoPhanId(decoded.boPhanId);
             setCurrentUserPermissions(decoded.permissions || []);
             setCurrentUserRoles(decoded.roles || []);
         }
-        loadData();
+        loadData({ background: false });
     }, [bienBanId]);
 
     useEffect(() => {
@@ -198,14 +220,32 @@ export default function BienBanDetail({ standalone = false }) {
         loadDefects();
     }, [standalone]);
 
-    const loadData = async () => {
+    const loadData = async ({ background = hasLoadedRef.current } = {}) => {
+        const requestId = ++latestLoadRequestRef.current;
+        const requirementVersion = requirementVersionRef.current;
         try {
-            setLoading(true);
+            if (!background) {
+                setLoading(true);
+                setLoadError("");
+            }
             const res = standalone
                 ? await getStandaloneBienBanDetail(bienBanId)
                 : await getBienBanDetail(bienBanId);
+            if (requestId !== latestLoadRequestRef.current) return;
 
-            setInfo(res.data.info);
+            setInfo((current) => {
+                const shouldPreserveRequirements = background && (
+                    requirementVersion !== requirementVersionRef.current ||
+                    requirementPendingRef.current.yeuCauChiPhi ||
+                    requirementPendingRef.current.yeuCauHanhDong
+                );
+                if (!shouldPreserveRequirements || !current) return res.data.info;
+                return {
+                    ...res.data.info,
+                    YeuCauChiPhi: current.YeuCauChiPhi,
+                    YeuCauHanhDong: current.YeuCauHanhDong
+                };
+            });
             const parsedDefects = (res.data.defects || []).map(d => {
                 let images = [];
                 if (d.ImageUrls) {
@@ -221,7 +261,9 @@ export default function BienBanDetail({ standalone = false }) {
                 }
                 return { ...d, ImageUrls: images };
             });
-            setDefects(parsedDefects);
+            if (!background || !isEditingStandaloneDefects) {
+                setDefects(parsedDefects);
+            }
             setAssigns(res.data.assigns || []);
             setXuLy(res.data.xuLy || []);
             setChiPhi(res.data.chiPhi || []);
@@ -232,14 +274,13 @@ export default function BienBanDetail({ standalone = false }) {
             setFollowUpEvaluation(res.data.followUpEvaluation || null);
             setDynamicFields(res.data.dynamicFields || []);
             setCanEditKphCustomFields(Boolean(res.data.canEditKphCustomFields ?? res.data.info?.canEditKphCustomFields));
-            setIsEditingStandaloneDefects((res.data.defects || []).length === 0);
             const fieldsMap = (res.data.dynamicFields || []).reduce((acc, field) => {
                 if (field?.FieldName) {
                     acc[field.FieldName] = field.FieldValue || "";
                 }
                 return acc;
             }, {});
-            setHeaderFields({
+            const nextHeaderFields = {
                 TenBoPhan: fieldsMap.TenBoPhan || res.data.info?.DonViTaoPhieu || res.data.info?.TenBoPhan || "",
                 MaBoPhan: fieldsMap.MaBoPhan || res.data.info?.MaDonViTaoPhieu || res.data.info?.MaBoPhan || "",
                 TenSanPham: fieldsMap.TenSanPham || res.data.info?.TenSanPham || "",
@@ -251,16 +292,52 @@ export default function BienBanDetail({ standalone = false }) {
                 DauTuan: fieldsMap.DauTuan || "",
                 PhatHienTu: fieldsMap.PhatHienTu || "",
                 MucDo: fieldsMap.MucDo || ""
-            });
+            };
             const moTa = res.data.info?.MoTaChung || "";
-            setMoTaChung(moTa);
-            setMoTaConfirmed(!!moTa);
+            serverDraftSnapshotRef.current = {
+                headerFields: nextHeaderFields,
+                defects: parsedDefects,
+                moTaChung: moTa,
+                moTaConfirmed: Boolean(moTa)
+            };
+            if (!background || !isEditingKphHeader) {
+                setHeaderFields(nextHeaderFields);
+            }
+            if (!background || moTaConfirmed) {
+                setMoTaChung(moTa);
+                setMoTaConfirmed(Boolean(moTa));
+            }
+            if (!background) {
+                setIsEditingStandaloneDefects((res.data.defects || []).length === 0);
+            }
+            hasLoadedRef.current = true;
+            setLoadError("");
 
         } catch (err) {
+            if (requestId !== latestLoadRequestRef.current) return;
             console.error("Lỗi tải biên bản:", err);
-            showToast(err?.response?.data?.message || "Không tải được biên bản", "error");
+            const message = err?.response?.data?.message || "Không tải được biên bản";
+            if (!background) setLoadError(message);
+            showToast(message, "error");
         } finally {
-            setLoading(false);
+            if (requestId === latestLoadRequestRef.current && !background) {
+                setLoading(false);
+            }
+        }
+    };
+
+    const refreshData = () => loadData({ background: true });
+
+    const restoreServerDrafts = ({ header = false, defects: restoreDefects = false } = {}) => {
+        const snapshot = serverDraftSnapshotRef.current;
+        if (!snapshot) return;
+        if (header) {
+            setHeaderFields(snapshot.headerFields);
+            setIsEditingKphHeader(false);
+        }
+        if (restoreDefects) {
+            setDefects(snapshot.defects);
+            setIsEditingStandaloneDefects(false);
         }
     };
 
@@ -269,13 +346,17 @@ export default function BienBanDetail({ standalone = false }) {
     };
 
     const handleSaveKphCustomFields = async () => {
+        if (actionSaving.header) return;
         try {
+            setActionSaving((current) => ({ ...current, header: true }));
             await saveBienBanCustomFields({ bienBanId: info?.BienBanId || bienBanId, fields: headerFields });
             setIsEditingKphHeader(false);
             showToast("Đã lưu thông tin mẫu KPH", "success");
-            await loadData();
+            await refreshData();
         } catch (err) {
             showToast(err?.response?.data?.message || "Không thể lưu thông tin mẫu KPH", "error");
+        } finally {
+            setActionSaving((current) => ({ ...current, header: false }));
         }
     };
 
@@ -294,36 +375,44 @@ export default function BienBanDetail({ standalone = false }) {
             await handleSaveStandaloneHeader();
             return;
         }
+        if (actionSaving.description) return;
         if (!moTaChung.trim()) {
             showToast("Vui lòng nhập mô tả chung!", "warning");
             return;
         }
         try {
+            setActionSaving((current) => ({ ...current, description: true }));
             await updateMoTaChung({ bienBanId, moTaChung });
             setMoTaConfirmed(true);
             showToast("Đã lưu mô tả chung", "success");
-            loadData();
+            await refreshData();
         } catch (err) {
             showToast(err?.response?.data?.message || "Không thể lưu mô tả", "error");
+        } finally {
+            setActionSaving((current) => ({ ...current, description: false }));
         }
     };
 
     const handleSaveStandaloneHeader = async () => {
+        if (actionSaving.description) return;
         if (!moTaChung.trim()) {
             showToast("Vui lòng nhập mô tả chung!", "warning");
             return;
         }
 
         try {
+            setActionSaving((current) => ({ ...current, description: true }));
             await saveStandaloneBienBanHeader(bienBanId, {
                 moTaChung,
                 fields: headerFields
             });
             setMoTaConfirmed(true);
             showToast("Đã lưu thông tin phiếu", "success");
-            loadData();
+            await refreshData();
         } catch (err) {
             showToast(err?.response?.data?.message || "Không thể lưu thông tin phiếu", "error");
+        } finally {
+            setActionSaving((current) => ({ ...current, description: false }));
         }
     };
 
@@ -389,6 +478,7 @@ export default function BienBanDetail({ standalone = false }) {
     };
 
     const handleSaveStandaloneDefects = async () => {
+        if (actionSaving.defects) return;
         const payload = defects
             .map((item, index) => ({
                 DefectId: item.DefectId ? Number(item.DefectId) : null,
@@ -404,12 +494,15 @@ export default function BienBanDetail({ standalone = false }) {
             .filter((item) => (item.DefectId || item.TenLoiTuNhap) && item.SoLuong > 0);
 
         try {
+            setActionSaving((current) => ({ ...current, defects: true }));
             await saveStandaloneBienBanDefects(bienBanId, payload);
             setIsEditingStandaloneDefects(false);
             showToast("Đã lưu danh sách lỗi", "success");
-            loadData();
+            await refreshData();
         } catch (err) {
             showToast(err?.response?.data?.message || "Không thể lưu danh sách lỗi", "error");
+        } finally {
+            setActionSaving((current) => ({ ...current, defects: false }));
         }
     };
 
@@ -420,13 +513,19 @@ export default function BienBanDetail({ standalone = false }) {
             message: 'Bạn có chắc chắn muốn xác nhận danh sách bộ phận xử lý này?',
             type: 'warning',
             onConfirm: async () => {
+                if (confirmSavingRef.current) return;
+                confirmSavingRef.current = true;
+                setConfirmSaving(true);
                 try {
                     await confirmAssign(bienBanId);
                     showToast("Đã chốt phân công xử lý", "success");
-                    loadData();
                     setConfirmDialog(prev => ({ ...prev, open: false }));
+                    await refreshData();
                 } catch (err) {
                     showToast(err?.response?.data?.message || "Lỗi xác nhận phân công", "error");
+                } finally {
+                    confirmSavingRef.current = false;
+                    setConfirmSaving(false);
                 }
             }
         });
@@ -441,21 +540,20 @@ export default function BienBanDetail({ standalone = false }) {
             ? Number(targetBoPhanId)
             : null;
 
-        if (!isAdminUser && info?.MauPhieuVersion === "V01" && !currentDepartmentOpinionAnswered) {
-            showToast("Vui lòng xác nhận ý kiến phòng ban chuyên môn trước", "warning");
-            return;
-        }
         setConfirmDialog({
             open: true,
             title: 'Xác nhận thông tin',
             message: 'Bạn xác nhận các thông tin xử lý của bộ phận là chính xác?',
             type: 'info',
             onConfirm: async () => {
+                if (confirmSavingRef.current) return;
+                confirmSavingRef.current = true;
+                setConfirmSaving(true);
                 try {
                     await confirmUser(bienBanId, normalizedTargetBoPhanId);
                     showToast("Xác nhận thông tin thành công", "success");
-                    loadData();
                     setConfirmDialog(prev => ({ ...prev, open: false }));
+                    await refreshData();
                 } catch (err) {
                     console.error("[BienBanDetail] Xác nhận tiến độ xử lý thất bại", {
                         bienBanId,
@@ -469,6 +567,9 @@ export default function BienBanDetail({ standalone = false }) {
                         code: err?.code
                     });
                     showToast(err?.response?.data?.message || "Lỗi xác nhận thông tin", "error");
+                } finally {
+                    confirmSavingRef.current = false;
+                    setConfirmSaving(false);
                 }
             }
         });
@@ -477,16 +578,31 @@ export default function BienBanDetail({ standalone = false }) {
     const handleComplete = () => {
         setConfirmDialog({
             open: true,
-            title: 'Hoàn thành biên bản',
-            message: 'Bạn có chắc chắn muốn hoàn thành biên bản này? Hành động này không thể hoàn tác.',
+            title: info?.MauPhieuVersion === "V01" ? 'Xác nhận cuối của bộ phận tạo phiếu' : 'Hoàn thành biên bản',
+            message: info?.MauPhieuVersion === "V01"
+                ? 'Sau khi xác nhận, mục 5/6/7 và các ý kiến sẽ bị khóa, biên bản chuyển sang theo dõi đánh giá.'
+                : 'Bạn có chắc chắn muốn hoàn thành biên bản này? Hành động này không thể hoàn tác.',
             type: 'success',
             onConfirm: async () => {
+                if (confirmSavingRef.current) return;
+                confirmSavingRef.current = true;
+                setConfirmSaving(true);
                 try {
-                    await completeBienBan(bienBanId);
-                    showToast("Đã hoàn thành biên bản", "success");
-                    navigate(-1);
+                    if (info?.MauPhieuVersion === "V01") {
+                        await confirmKphByCreatorDepartment(bienBanId);
+                        showToast("Đã xác nhận và chuyển biên bản sang theo dõi", "success");
+                        setConfirmDialog(prev => ({ ...prev, open: false }));
+                        await refreshData();
+                    } else {
+                        await completeBienBan(bienBanId);
+                        showToast("Đã hoàn thành biên bản", "success");
+                        navigate(-1);
+                    }
                 } catch (err) {
                     showToast(err?.response?.data?.message || "Lỗi hoàn thành biên bản", "error");
+                } finally {
+                    confirmSavingRef.current = false;
+                    setConfirmSaving(false);
                 }
             }
         });
@@ -564,35 +680,61 @@ export default function BienBanDetail({ standalone = false }) {
     const isStandaloneBienBan = standalone || info?.LoaiBienBan === "STANDALONE";
     const isTrenChuyenBienBan = Number(info?.LoaiKiemId) === 6 && !info?.IsCongDoan;
 
-    const isAssigned = assigns.some(a => Number(a.BoPhanId) === Number(currentUserBoPhanId));
-    const b7Assign = assigns.find((a) => String(a.MaBoPhan || "").toUpperCase() === "B7");
-    const canAddProposal = Boolean(b7Assign) && (isAdminUser || Number(currentUserBoPhanId) === Number(b7Assign.BoPhanId));
+    const isV01 = info?.MauPhieuVersion === "V01";
+    const workflowDepartments = isV01 ? specialistOpinions : assigns;
+    const isAssigned = workflowDepartments.some(a => Number(a.BoPhanId) === Number(currentUserBoPhanId));
+    const canAddProposal = isV01
+        ? Boolean(info?.CanManageKphFlow)
+        : isAssigned;
     const hasXuLy = xuLy.some(x => Number(x.BoPhanId) === Number(currentUserBoPhanId));
     const isConfirmed = xacNhan.some(x => Number(x.BoPhanId) === Number(currentUserBoPhanId));
     const allConfirmed = assigns.length > 0 && assigns.every(a =>
         xacNhan.some(x => Number(x.BoPhanId) === Number(a.BoPhanId))
     );
-    const hasSignedSpecialistOpinion = specialistOpinions.some(item => item.NguoiTraLoiId);
-    const allOpinionsAnswered = specialistOpinions.length === assigns.length &&
-        assigns.every(assign => specialistOpinions.some(item => Number(item.BoPhanId) === Number(assign.BoPhanId) && item.NguoiTraLoiId));
-    const currentDepartmentOpinionAnswered = specialistOpinions.some(item =>
-        Number(item.BoPhanId) === Number(currentUserBoPhanId) && item.NguoiTraLoiId
-    );
-    const requiredSectionsReady = (!b7Assign || xuLy.some((x) => Number(x.BoPhanId) === Number(b7Assign.BoPhanId))) &&
+    const allOpinionsAnswered = specialistOpinions.length > 0 &&
+        specialistOpinions.every(item => Boolean(item.HasResponded));
+    const requiredSectionsReady = xuLy.length > 0 &&
         (!info?.YeuCauChiPhi || chiPhi.length > 0) && (!info?.YeuCauHanhDong || hanhDong.length > 0);
     const hasCompletionPermission = isAdminUser ||
         currentUserPermissions.includes("QUAN_TRI_DM") ||
         currentUserPermissions.includes("KET_LUAN");
-    const canSubmitCompletion = hasCompletionPermission && allConfirmed && requiredSectionsReady &&
-        (info?.MauPhieuVersion !== "V01" || allOpinionsAnswered) &&
+    const canSubmitCompletion = (isV01
+        ? Boolean(info?.CanManageKphFlow) && Boolean(info?.OpinionDepartmentsConfirmed) && allOpinionsAnswered
+        : hasCompletionPermission && allConfirmed) && requiredSectionsReady &&
         !["CHO_THEO_DOI", "HOAN_TAT"].includes(info?.TrangThai);
-    const ownIsB7 = Number(currentUserBoPhanId) === Number(b7Assign?.BoPhanId);
-    const processingEntryReady = info?.MauPhieuVersion !== "V01" ? hasXuLy : (!ownIsB7 || hasXuLy);
-    const canConfirmProcessing = Boolean(info?.AssignConfirmed) && isAssigned && !isConfirmed && processingEntryReady &&
-        (info?.MauPhieuVersion !== "V01" || currentDepartmentOpinionAnswered);
+    const canConfirmProcessing = !isV01 && Boolean(info?.AssignConfirmed) &&
+        isAssigned && !isConfirmed && hasXuLy;
+    const isRequirementSaving = requirementSaving.yeuCauChiPhi || requirementSaving.yeuCauHanhDong;
     const updateRequirement = async (field, value) => {
-        try { await updateKphRequirements(bienBanId, { [field]: value }); await loadData(); }
-        catch (err) { showToast(err?.response?.data?.message || "Không thể cập nhật yêu cầu", "error"); }
+        if (requirementPendingRef.current.yeuCauChiPhi || requirementPendingRef.current.yeuCauHanhDong) return;
+        const infoField = field === "yeuCauChiPhi" ? "YeuCauChiPhi" : "YeuCauHanhDong";
+        const previousValue = Boolean(info?.[infoField]);
+        requirementVersionRef.current += 1;
+        requirementPendingRef.current[field] = true;
+        setInfo((current) => ({ ...current, [infoField]: value }));
+        setRequirementSaving((current) => ({ ...current, [field]: true }));
+        try {
+            const response = await updateKphRequirements(bienBanId, { [field]: value });
+            setInfo((current) => {
+                const next = {
+                    ...current,
+                    [infoField]: Boolean(response.data[field])
+                };
+                if (field !== "yeuCauChiPhi" && !requirementPendingRef.current.yeuCauChiPhi) {
+                    next.YeuCauChiPhi = Boolean(response.data.yeuCauChiPhi);
+                }
+                if (field !== "yeuCauHanhDong" && !requirementPendingRef.current.yeuCauHanhDong) {
+                    next.YeuCauHanhDong = Boolean(response.data.yeuCauHanhDong);
+                }
+                return next;
+            });
+        } catch (err) {
+            setInfo((current) => ({ ...current, [infoField]: previousValue }));
+            showToast(err?.response?.data?.message || "Không thể cập nhật yêu cầu", "error");
+        } finally {
+            requirementPendingRef.current[field] = false;
+            setRequirementSaving((current) => ({ ...current, [field]: false }));
+        }
     };
     const defectCount = defects.length;
     const totalDefectQty = defects.reduce((sum, item) => sum + (Number(item.SoLuong) || 0), 0);
@@ -602,13 +744,13 @@ export default function BienBanDetail({ standalone = false }) {
     const workflow = buildBienBanWorkflow({
         info,
         defects,
-        assigns,
+        assigns: workflowDepartments,
         xuLy,
         xacNhan,
         opinions: specialistOpinions,
         evaluation: followUpEvaluation,
         currentUserBoPhanId,
-        isManagerOrQA,
+        isManagerOrQA: isV01 ? Boolean(info?.CanManageKphFlow) : isManagerOrQA,
         basicInfoConfirmed: moTaConfirmed,
         canConfirmProcessing,
         canSubmitCompletion,
@@ -636,7 +778,18 @@ export default function BienBanDetail({ standalone = false }) {
         );
     }
 
-    if (!info) return <Typography align="center" mt={4}>Không tìm thấy thông tin biên bản</Typography>;
+    if (!info) {
+        return (
+            <Stack alignItems="center" spacing={2} sx={{ mt: 6 }}>
+                <Typography color="text.secondary">
+                    {loadError || "Không tìm thấy thông tin biên bản"}
+                </Typography>
+                <Button variant="outlined" onClick={() => loadData({ background: false })}>
+                    Thử tải lại
+                </Button>
+            </Stack>
+        );
+    }
 
     return (
         <Box sx={{ bgcolor: '#f4f6f8', minHeight: '100vh', pb: 5 }}>
@@ -724,7 +877,7 @@ export default function BienBanDetail({ standalone = false }) {
                                             <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                                                 <Chip size="small" variant="outlined" label={`Số dòng lỗi: ${defectCount}`} />
                                                 <Chip size="small" variant="outlined" label={`Tổng SL lỗi: ${totalDefectQty}`} />
-                                                <Chip size="small" variant="outlined" label={`Bộ phận xử lý: ${assigns.length}`} />
+                                                <Chip size="small" variant="outlined" label={`${isV01 ? "Bộ phận cần ý kiến" : "Bộ phận xử lý"}: ${workflowDepartments.length}`} />
                                             </Stack>
                                             <Typography variant="body2" color="text.secondary">
                                                 Nhập thông tin từ trên xuống, lưu phần đầu phiếu trước, sau đó bổ sung các dòng lỗi và tiếp tục các bước xử lý phía dưới.
@@ -763,7 +916,7 @@ export default function BienBanDetail({ standalone = false }) {
                                                 </Grid>
                                             ))}
                                         </Grid>
-                                        {isEditingKphHeader && <Stack direction="row" justifyContent="flex-end" spacing={1} mt={2}><Button onClick={() => { setIsEditingKphHeader(false); loadData(); }}>Hủy</Button><Button variant="contained" startIcon={<SaveIcon />} onClick={handleSaveKphCustomFields}>Lưu thông tin</Button></Stack>}
+                                        {isEditingKphHeader && <Stack direction="row" justifyContent="flex-end" spacing={1} mt={2}><Button disabled={actionSaving.header} onClick={() => restoreServerDrafts({ header: true })}>Hủy</Button><Button disabled={actionSaving.header} variant="contained" startIcon={<SaveIcon />} onClick={handleSaveKphCustomFields}>{actionSaving.header ? "Đang lưu..." : "Lưu thông tin"}</Button></Stack>}
                                     </CardContent>
                                 </Card>
                             )}
@@ -827,8 +980,8 @@ export default function BienBanDetail({ standalone = false }) {
                                             </Grid>
                                         </Grid>
                                         <Box sx={{ mt: 2, textAlign: 'right' }}>
-                                            <Button variant="contained" startIcon={<SaveIcon />} onClick={handleSaveStandaloneHeader}>
-                                                Lưu thông tin phiếu
+                                            <Button disabled={actionSaving.description} variant="contained" startIcon={<SaveIcon />} onClick={handleSaveStandaloneHeader}>
+                                                {actionSaving.description ? "Đang lưu..." : "Lưu thông tin phiếu"}
                                             </Button>
                                         </Box>
                                     </CardContent>
@@ -867,8 +1020,8 @@ export default function BienBanDetail({ standalone = false }) {
                                                     }}
                                                 />
                                                 <Box sx={{ mt: 2, textAlign: 'right' }}>
-                                                    <Button variant="contained" startIcon={<SaveIcon />} onClick={handleConfirmMoTa}>
-                                                        Lưu mô tả
+                                                    <Button disabled={actionSaving.description} variant="contained" startIcon={<SaveIcon />} onClick={handleConfirmMoTa}>
+                                                        {actionSaving.description ? "Đang lưu..." : "Lưu mô tả"}
                                                     </Button>
                                                 </Box>
                                             </>
@@ -1116,11 +1269,11 @@ export default function BienBanDetail({ standalone = false }) {
                                         )}
                                         {isEditingStandaloneDefects && (
                                             <Box sx={{ mt: 2, display: "flex", justifyContent: "flex-end", gap: 1 }}>
-                                                <Button variant="text" color="inherit" onClick={() => loadData()}>
+                                                <Button disabled={actionSaving.defects} variant="text" color="inherit" onClick={() => restoreServerDrafts({ defects: true })}>
                                                     Hủy
                                                 </Button>
-                                                <Button variant="contained" startIcon={<SaveIcon />} onClick={handleSaveStandaloneDefects}>
-                                                    Lưu danh sách lỗi
+                                                <Button disabled={actionSaving.defects} variant="contained" startIcon={<SaveIcon />} onClick={handleSaveStandaloneDefects}>
+                                                    {actionSaving.defects ? "Đang lưu..." : "Lưu danh sách lỗi"}
                                                 </Button>
                                             </Box>
                                         )}
@@ -1211,29 +1364,29 @@ export default function BienBanDetail({ standalone = false }) {
                                     <CardContent>
                                         <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
                                             <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                <GroupWorkIcon color="primary" /> Bộ phận phối hợp xử lý
+                                                <GroupWorkIcon color="primary" /> {isV01 ? "Bộ phận cần lấy ý kiến" : "Bộ phận phối hợp xử lý"}
                                             </Typography>
-                                            {!info.AssignConfirmed && !hasSignedSpecialistOpinion && isManagerOrQA && (
+                                            {isV01 && info.CanManageKphFlow && !info.CreatorConfirmedAt && (
                                                 <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => setOpenAssignModal(true)}>
-                                                    Cập nhật
+                                                    {specialistOpinions.length ? "Bổ sung / cập nhật" : "Chọn bộ phận"}
                                                 </Button>
                                             )}
                                         </Stack>
                                         <Divider sx={{ mb: 2 }} />
 
-                                        {assigns.length === 0 ? (
-                                            <Typography color="text.secondary" fontStyle="italic">Chưa có bộ phận được phân công.</Typography>
+                                        {workflowDepartments.length === 0 ? (
+                                            <Typography color="text.secondary" fontStyle="italic">Chưa có bộ phận được chọn.</Typography>
                                         ) : (
                                             <TableContainer sx={{ border: '1px solid #e5e7eb', borderRadius: 1 }}>
                                                 <Table size="small">
                                                     <TableHead sx={{ bgcolor: '#f8fafc' }}><TableRow><TableCell>Bộ phận</TableCell><TableCell>Mã bộ phận</TableCell><TableCell align="right">Trạng thái</TableCell></TableRow></TableHead>
-                                                    <TableBody>{assigns.map((a, i) => <TableRow key={i} hover><TableCell sx={{ fontWeight: 700 }}>{a.TenBoPhan || '—'}</TableCell><TableCell>{a.MaBoPhan || '—'}</TableCell><TableCell align="right"><Chip size="small" label={getStatusText(a.BoPhanId)} color={getStatusColor(a.BoPhanId)} /></TableCell></TableRow>)}</TableBody>
+                                                    <TableBody>{workflowDepartments.map((a, i) => <TableRow key={a.Id || i} hover><TableCell sx={{ fontWeight: 700 }}>{a.TenBoPhan || '—'}</TableCell><TableCell>{a.MaBoPhan || '—'}</TableCell><TableCell align="right"><Chip size="small" label={isV01 ? (a.HasResponded ? "Đã phản hồi" : "Chờ phản hồi") : getStatusText(a.BoPhanId)} color={isV01 ? (a.HasResponded ? "success" : "warning") : getStatusColor(a.BoPhanId)} /></TableCell></TableRow>)}</TableBody>
                                                 </Table>
                                             </TableContainer>
                                         )}
-                                        {isAdminUser && info.AssignConfirmed && <Stack direction="row" flexWrap="wrap" sx={{ mt: 2, gap: 1 }}>{assigns.filter((a) => !xacNhan.some((x) => Number(x.BoPhanId) === Number(a.BoPhanId))).map((a) => <Button key={a.BoPhanId} size="small" variant="outlined" onClick={() => handleConfirmUser(a.BoPhanId)}>Xác nhận thay {a.MaBoPhan}</Button>)}</Stack>}
+                                        {!isV01 && isAdminUser && info.AssignConfirmed && <Stack direction="row" flexWrap="wrap" sx={{ mt: 2, gap: 1 }}>{assigns.filter((a) => !xacNhan.some((x) => Number(x.BoPhanId) === Number(a.BoPhanId))).map((a) => <Button key={a.BoPhanId} size="small" variant="outlined" onClick={() => handleConfirmUser(a.BoPhanId)}>Xác nhận thay {a.MaBoPhan}</Button>)}</Stack>}
 
-                                        {!info.AssignConfirmed && !hasSignedSpecialistOpinion && assigns.length > 0 && isManagerOrQA && (
+                                        {!isV01 && !info.AssignConfirmed && assigns.length > 0 && isManagerOrQA && (
                                             <Box sx={{ mt: 3, textAlign: 'right' }}>
                                                 <Button variant="contained" color="warning" onClick={handleConfirmAssign} startIcon={<AssignmentTurnedInIcon />}>
                                                     Chốt phân công
@@ -1251,9 +1404,9 @@ export default function BienBanDetail({ standalone = false }) {
                                         <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                             <LightbulbCircleIcon color="warning" /> Ý kiến / Đề xuất xử lý
                                         </Typography>
-                                        {info.AssignConfirmed && canAddProposal && info.TrangThai !== "HOAN_TAT" && (
+                                        {canAddProposal && !["CHO_THEO_DOI", "HOAN_TAT"].includes(info.TrangThai) && (
                                             <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => setOpenXuLyModal(true)}>
-                                                Thêm ý kiến
+                                                Thêm đề xuất
                                             </Button>
                                         )}
                                     </Box>
@@ -1299,8 +1452,16 @@ export default function BienBanDetail({ standalone = false }) {
                                                 </Typography>
                                                 <Stack direction="row" spacing={1} alignItems="center">
                                                     <Chip size="small" color={info.YeuCauChiPhi ? "success" : "default"} label={info.YeuCauChiPhi ? "Yêu cầu" : "Không yêu cầu"} />
-                                                    {info.CanConfigureRequirements && <Button size="small" onClick={() => updateRequirement("yeuCauChiPhi", !info.YeuCauChiPhi)}>{info.YeuCauChiPhi ? "Bỏ yêu cầu" : "Yêu cầu"}</Button>}
-                                                    {info.YeuCauChiPhi && info.TrangThai !== "HOAN_TAT" && (
+                                                    {info.CanConfigureRequirements && (
+                                                        <Button
+                                                            size="small"
+                                                            disabled={isRequirementSaving}
+                                                            onClick={() => updateRequirement("yeuCauChiPhi", !info.YeuCauChiPhi)}
+                                                        >
+                                                            {requirementSaving.yeuCauChiPhi ? "Đang lưu..." : (info.YeuCauChiPhi ? "Bỏ yêu cầu" : "Yêu cầu")}
+                                                        </Button>
+                                                    )}
+                                                    {info.YeuCauChiPhi && info.CanManageKphFlow && !["CHO_THEO_DOI", "HOAN_TAT"].includes(info.TrangThai) && (
                                                         <Button size="small" color="success" startIcon={<AddIcon />} onClick={() => setOpenChiPhiModal(true)}>
                                                             Thêm chi phí
                                                         </Button>
@@ -1327,8 +1488,16 @@ export default function BienBanDetail({ standalone = false }) {
                                                 </Typography>
                                                 <Stack direction="row" spacing={1} alignItems="center">
                                                     <Chip size="small" color={info.YeuCauHanhDong ? "success" : "default"} label={info.YeuCauHanhDong ? "Yêu cầu" : "Không yêu cầu"} />
-                                                    {info.CanConfigureRequirements && <Button size="small" onClick={() => updateRequirement("yeuCauHanhDong", !info.YeuCauHanhDong)}>{info.YeuCauHanhDong ? "Bỏ yêu cầu" : "Yêu cầu"}</Button>}
-                                                    {info.YeuCauHanhDong && info.TrangThai !== "HOAN_TAT" && (
+                                                    {info.CanConfigureRequirements && (
+                                                        <Button
+                                                            size="small"
+                                                            disabled={isRequirementSaving}
+                                                            onClick={() => updateRequirement("yeuCauHanhDong", !info.YeuCauHanhDong)}
+                                                        >
+                                                            {requirementSaving.yeuCauHanhDong ? "Đang lưu..." : (info.YeuCauHanhDong ? "Bỏ yêu cầu" : "Yêu cầu")}
+                                                        </Button>
+                                                    )}
+                                                    {info.YeuCauHanhDong && info.CanManageKphFlow && !["CHO_THEO_DOI", "HOAN_TAT"].includes(info.TrangThai) && (
                                                         <Button size="small" color="info" startIcon={<AddIcon />} onClick={() => setOpenHanhDongModal(true)}>
                                                             Thêm hành động
                                                         </Button>
@@ -1354,7 +1523,7 @@ export default function BienBanDetail({ standalone = false }) {
                                     currentUserBoPhanId={currentUserBoPhanId} permissions={currentUserPermissions}
                                     roles={currentUserRoles}
                                     isAdmin={Boolean(info?.IsAdmin) || isAdminUser}
-                                    reload={loadData} showToast={showToast}
+                                    reload={refreshData} showToast={showToast}
                                 />
                             </Box>
 
@@ -1394,7 +1563,7 @@ export default function BienBanDetail({ standalone = false }) {
                                 )}
                                 {canSubmitCompletion && (
                                     <Button variant="contained" color="success" size="large" onClick={handleComplete} startIcon={<SaveIcon />}>
-                                        Hoàn tất Biên Bản
+                                        {isV01 ? "Xác nhận và chuyển theo dõi" : "Hoàn tất Biên Bản"}
                                     </Button>
                                 )}
                             </Stack>
@@ -1420,7 +1589,7 @@ export default function BienBanDetail({ standalone = false }) {
                                     chiPhi={chiPhi}
                                     hanhDong={hanhDong}
                                     xacNhan={xacNhan}
-                                    assigns={assigns}
+                                    assigns={workflowDepartments}
                                     dynamicFields={dynamicFields}
                                     specialistOpinions={specialistOpinions}
                                     followUpEvaluation={followUpEvaluation}
@@ -1435,7 +1604,7 @@ export default function BienBanDetail({ standalone = false }) {
                                     hanhDong={hanhDong}
                                     xacNhan={xacNhan}
                                     phieuKiemXacNhan={phieuKiemXacNhan}
-                                    assigns={assigns}
+                                    assigns={workflowDepartments}
                                     dynamicFields={dynamicFields}
                                     specialistOpinions={specialistOpinions}
                                     followUpEvaluation={followUpEvaluation}
@@ -1450,7 +1619,7 @@ export default function BienBanDetail({ standalone = false }) {
                                     chiPhi={chiPhi}
                                     hanhDong={hanhDong}
                                     xacNhan={xacNhan}
-                                    assigns={assigns}
+                                    assigns={workflowDepartments}
                                     dynamicFields={dynamicFields}
                                     specialistOpinions={specialistOpinions}
                                     followUpEvaluation={followUpEvaluation}
@@ -1472,12 +1641,13 @@ export default function BienBanDetail({ standalone = false }) {
                 open={openAssignModal}
                 onClose={() => setOpenAssignModal(false)}
                 bienBanId={bienBanId}
-                reload={loadData}
-                assignedIds={assigns.map(a => a.BoPhanId)}
+                reload={refreshData}
+                assignedIds={workflowDepartments.map(a => a.BoPhanId)}
+                isOpinionFlow={isV01}
             />
-            <XuLyDialog open={openXuLyModal} onClose={() => setOpenXuLyModal(false)} bienBanId={bienBanId} currentUserId={currentUserId} reload={loadData} />
-            <ChiPhiDialog open={openChiPhiModal} onClose={() => setOpenChiPhiModal(false)} bienBanId={bienBanId} reload={loadData} />
-            <HanhDongDialog open={openHanhDongModal} onClose={() => setOpenHanhDongModal(false)} bienBanId={bienBanId} reload={loadData} />
+            <XuLyDialog open={openXuLyModal} onClose={() => setOpenXuLyModal(false)} bienBanId={bienBanId} reload={refreshData} />
+            <ChiPhiDialog open={openChiPhiModal} onClose={() => setOpenChiPhiModal(false)} bienBanId={bienBanId} reload={refreshData} />
+            <HanhDongDialog open={openHanhDongModal} onClose={() => setOpenHanhDongModal(false)} bienBanId={bienBanId} reload={refreshData} />
 
             <AssignUserDialog
                 open={openAssignUserModal}
@@ -1489,7 +1659,7 @@ export default function BienBanDetail({ standalone = false }) {
                 boPhanId={selectedAssign?.BoPhanId}
                 tenBoPhan={selectedAssign?.TenBoPhan}
                 currentUserId={selectedAssign?.NguoiXuLyId}
-                reload={loadData}
+                reload={refreshData}
             />
 
             <DefectImageGalleryDialog images={imagePreview.images} index={imagePreview.index} onChangeIndex={(index) => setImagePreview((prev) => ({ ...prev, index }))} onClose={() => setImagePreview({ images: [], index: 0 })} />
@@ -1502,6 +1672,7 @@ export default function BienBanDetail({ standalone = false }) {
                 title={confirmDialog.title}
                 message={confirmDialog.message}
                 type={confirmDialog.type}
+                loading={confirmSaving}
             />
         </Box>
     );
@@ -1509,8 +1680,9 @@ export default function BienBanDetail({ standalone = false }) {
 
 // --- Sub-components (Dialogs) ---
 
-function AssignDepartmentDialog({ open, onClose, bienBanId, reload, assignedIds }) {
+function AssignDepartmentDialog({ open, onClose, bienBanId, reload, assignedIds, isOpinionFlow = false }) {
     const [departments, setDepartments] = useState([]);
+    const [saving, setSaving] = useState(false);
     // 1. Khởi tạo state với giá trị từ prop
     const [selected, setSelected] = useState(assignedIds || []);
 
@@ -1531,12 +1703,20 @@ function AssignDepartmentDialog({ open, onClose, bienBanId, reload, assignedIds 
     }, [open]);
 
     const handleSubmit = async () => {
+        if (saving) return;
         try {
-            await assignDepartments(bienBanId, selected);
-            reload();
+            setSaving(true);
+            if (isOpinionFlow) {
+                await confirmOpinionDepartments(bienBanId, selected);
+            } else {
+                await assignDepartments(bienBanId, selected);
+            }
             onClose();
+            await reload();
         } catch (err) {
             alert(err?.response?.data?.message || "Lỗi phân công");
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -1547,7 +1727,7 @@ function AssignDepartmentDialog({ open, onClose, bienBanId, reload, assignedIds 
 
     return (
         <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-            <DialogTitle fontWeight="bold">Chọn bộ phận xử lý</DialogTitle>
+            <DialogTitle fontWeight="bold">{isOpinionFlow ? "Chọn bộ phận cần lấy ý kiến" : "Chọn bộ phận xử lý"}</DialogTitle>
             <DialogContent dividers>
                 <FormControl fullWidth sx={{ mt: 1 }}>
                     <InputLabel>Danh sách bộ phận</InputLabel>
@@ -1568,16 +1748,23 @@ function AssignDepartmentDialog({ open, onClose, bienBanId, reload, assignedIds 
                 </FormControl>
             </DialogContent>
             <DialogActions sx={{ p: 2 }}>
-                <Button onClick={onClose} color="inherit">Hủy</Button>
-                <Button onClick={handleSubmit} variant="contained" color="primary">Lưu thay đổi</Button>
+                <Button onClick={onClose} color="inherit" disabled={saving}>Hủy</Button>
+                <Button onClick={handleSubmit} variant="contained" color="primary" disabled={saving}>
+                    {saving ? "Đang lưu..." : (isOpinionFlow ? "Xác nhận danh sách" : "Lưu thay đổi")}
+                </Button>
             </DialogActions>
         </Dialog>
     );
 }
 
-function XuLyDialog({ open, onClose, bienBanId, currentUserId, reload }) {
-    const [form, setForm] = useState({ NoiDung: '', DeNghiXuLyId: '', ThoiHan: '', TrachNhiem: '', TheoDoi: '' });
+const emptyXuLyRow = () => ({ NoiDung: '', DeNghiXuLyId: '', ThoiHan: '', TrachNhiem: '', TheoDoi: '' });
+const emptyChiPhiRow = () => ({ LoaiChiPhi: '', GiaTri: '', ThoiHan: '' });
+const emptyHanhDongRow = () => ({ NoiDung: '', ThoiHan: '', TheoDoi: '' });
+
+function XuLyDialog({ open, onClose, bienBanId, reload }) {
+    const [rows, setRows] = useState([emptyXuLyRow()]);
     const [deNghis, setDeNghis] = useState([]);
+    const [saving, setSaving] = useState(false);
 
     useEffect(() => {
         if (open) {
@@ -1585,173 +1772,254 @@ function XuLyDialog({ open, onClose, bienBanId, currentUserId, reload }) {
         }
     }, [open]);
 
+    const handleClose = () => {
+        setRows([emptyXuLyRow()]);
+        onClose();
+    };
+    const updateRow = (index, field, value) => {
+        setRows(current => current.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
+    };
+    const removeRow = (index) => setRows(current => current.length === 1
+        ? [emptyXuLyRow()]
+        : current.filter((_, rowIndex) => rowIndex !== index));
+
     const handleSubmit = async () => {
+        if (saving) return;
+        if (rows.some(row => !row.NoiDung.trim() || !row.ThoiHan || !row.TrachNhiem.trim() || !row.TheoDoi.trim())) {
+            alert("Vui lòng nhập đầy đủ nội dung, thời hạn, trách nhiệm và theo dõi cho tất cả các dòng");
+            return;
+        }
         try {
+            setSaving(true);
             await addXuLy({
                 bienBanId,
-                noiDung: form.NoiDung,
-                deNghiXuLyId: form.DeNghiXuLyId,
-                thoiHan: form.ThoiHan,
-                trachNhiem: form.TrachNhiem,
-                theoDoi: form.TheoDoi,
-                currentUserId
+                items: rows.map(row => ({
+                    noiDung: row.NoiDung.trim(),
+                    deNghiXuLyId: row.DeNghiXuLyId || null,
+                    thoiHan: row.ThoiHan,
+                    trachNhiem: row.TrachNhiem.trim(),
+                    theoDoi: row.TheoDoi.trim()
+                }))
             });
-            reload();
-            onClose();
+            handleClose();
+            await reload();
         } catch (err) {
             alert(err?.response?.data?.message || "Lỗi thêm xử lý");
+        } finally {
+            setSaving(false);
         }
     };
 
     return (
-        <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-            <DialogTitle fontWeight="bold">Nhập ý kiến xử lý</DialogTitle>
+        <Dialog open={open} onClose={handleClose} fullWidth maxWidth="xl">
+            <DialogTitle fontWeight="bold">Nhập đề xuất xử lý</DialogTitle>
             <DialogContent dividers>
-                <Stack spacing={3} sx={{ mt: 1 }}>
-                    <TextField
-                        label="Nội dung ý kiến"
-                        fullWidth
-                        multiline
-                        rows={3}
-                        value={form.NoiDung}
-                        onChange={e => setForm({ ...form, NoiDung: e.target.value })}
-                    />
-                    <FormControl fullWidth>
-                        <InputLabel>Hình thức đề nghị xử lý</InputLabel>
-                        <Select
-                            value={form.DeNghiXuLyId}
-                            label="Hình thức đề nghị xử lý"
-                            onChange={e => setForm({ ...form, DeNghiXuLyId: e.target.value })}
-                        >
-                            {deNghis.map(d => (
-                                <MenuItem key={d.Id} value={d.Id}>{d.Ten}</MenuItem>
+                <TableContainer>
+                    <Table size="small" sx={{ minWidth: 1050 }}>
+                        <TableHead>
+                            <TableRow>
+                                <TableCell sx={{ minWidth: 260 }}>Nội dung đề xuất</TableCell>
+                                <TableCell sx={{ minWidth: 210 }}>Hình thức xử lý</TableCell>
+                                <TableCell sx={{ minWidth: 150 }}>Trách nhiệm</TableCell>
+                                <TableCell sx={{ minWidth: 150 }}>Thời hạn</TableCell>
+                                <TableCell sx={{ minWidth: 150 }}>Theo dõi</TableCell>
+                                <TableCell width={52} />
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {rows.map((row, index) => (
+                                <TableRow key={index}>
+                                    <TableCell><TextField size="small" fullWidth multiline minRows={2} value={row.NoiDung} onChange={e => updateRow(index, "NoiDung", e.target.value)} /></TableCell>
+                                    <TableCell>
+                                        <TextField select size="small" fullWidth value={row.DeNghiXuLyId} onChange={e => updateRow(index, "DeNghiXuLyId", e.target.value)}>
+                                            <MenuItem value="">Không chọn</MenuItem>
+                                            {deNghis.map(d => <MenuItem key={d.Id} value={d.Id}>{d.Ten}</MenuItem>)}
+                                        </TextField>
+                                    </TableCell>
+                                    <TableCell><TextField size="small" fullWidth value={row.TrachNhiem} onChange={e => updateRow(index, "TrachNhiem", e.target.value)} /></TableCell>
+                                    <TableCell><TextField size="small" type="date" fullWidth value={row.ThoiHan} onChange={e => updateRow(index, "ThoiHan", e.target.value)} /></TableCell>
+                                    <TableCell><TextField size="small" fullWidth value={row.TheoDoi} onChange={e => updateRow(index, "TheoDoi", e.target.value)} /></TableCell>
+                                    <TableCell>
+                                        <Button color="error" onClick={() => removeRow(index)} aria-label={`Xóa dòng ${index + 1}`}><DeleteOutlineIcon /></Button>
+                                    </TableCell>
+                                </TableRow>
                             ))}
-                        </Select>
-                    </FormControl>
-                    <TextField
-                        label="Hạn hoàn thành"
-                        type="date"
-                        InputLabelProps={{ shrink: true }}
-                        fullWidth
-                        value={form.ThoiHan}
-                        onChange={e => setForm({ ...form, ThoiHan: e.target.value })}
-                    />
-                    <TextField label="Trách nhiệm" required fullWidth value={form.TrachNhiem} onChange={e => setForm({ ...form, TrachNhiem: e.target.value })} />
-                    <TextField label="Theo dõi" required fullWidth value={form.TheoDoi} onChange={e => setForm({ ...form, TheoDoi: e.target.value })} />
-                </Stack>
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+                <Button startIcon={<AddIcon />} sx={{ mt: 2 }} onClick={() => setRows(current => [...current, emptyXuLyRow()])}>
+                    Thêm dòng đề xuất
+                </Button>
             </DialogContent>
             <DialogActions sx={{ p: 2 }}>
-                <Button onClick={onClose} color="inherit">Hủy</Button>
-                <Button onClick={handleSubmit} variant="contained" color="primary">Ghi nhận</Button>
+                <Button onClick={handleClose} color="inherit" disabled={saving}>Hủy</Button>
+                <Button onClick={handleSubmit} variant="contained" color="primary" disabled={saving}>
+                    {saving ? "Đang lưu..." : `Lưu ${rows.length} dòng`}
+                </Button>
             </DialogActions>
         </Dialog>
     );
 }
 
 function ChiPhiDialog({ open, onClose, bienBanId, reload }) {
-    const [form, setForm] = useState({ LoaiChiPhi: '', GiaTri: '', ThoiHan: '' });
+    const [rows, setRows] = useState([emptyChiPhiRow()]);
+    const [saving, setSaving] = useState(false);
+
+    const handleClose = () => {
+        setRows([emptyChiPhiRow()]);
+        onClose();
+    };
+    const updateRow = (index, field, value) => {
+        setRows(current => current.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
+    };
+    const removeRow = (index) => setRows(current => current.length === 1
+        ? [emptyChiPhiRow()]
+        : current.filter((_, rowIndex) => rowIndex !== index));
 
     const handleSubmit = async () => {
-        if (!form.LoaiChiPhi.trim()) {
-            alert("Vui lòng nhập tên chi phí");
+        if (saving) return;
+        if (rows.some(row => !row.LoaiChiPhi.trim())) {
+            alert("Vui lòng nhập tên cho tất cả các dòng chi phí");
             return;
         }
         try {
+            setSaving(true);
             await addChiPhi({
                 bienBanId,
-                loaiChiPhi: form.LoaiChiPhi.trim(),
-                giaTri: Number(form.GiaTri),
-                thoiHan: form.ThoiHan
+                items: rows.map(row => ({
+                    loaiChiPhi: row.LoaiChiPhi.trim(),
+                    giaTri: Number(row.GiaTri) || 0,
+                    thoiHan: row.ThoiHan || null
+                }))
             });
-            reload();
-            onClose();
+            handleClose();
+            await reload();
         } catch (err) {
             alert(err?.response?.data?.message || "Lỗi thêm chi phí");
+        } finally {
+            setSaving(false);
         }
     };
 
     return (
-        <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+        <Dialog open={open} onClose={handleClose} fullWidth maxWidth="md">
             <DialogTitle fontWeight="bold">Ghi nhận chi phí phát sinh</DialogTitle>
             <DialogContent dividers>
-                <Stack spacing={3} sx={{ mt: 1 }}>
-                    <TextField
-                        label="Tên/Loại chi phí"
-                        fullWidth
-                        value={form.LoaiChiPhi}
-                        onChange={e => setForm({ ...form, LoaiChiPhi: e.target.value })}
-                        placeholder="Nhập chi phí thực tế của bộ phận"
-                    />
-                    <TextField
-                        label="Giá trị (VND)"
-                        type="number"
-                        fullWidth
-                        value={form.GiaTri}
-                        onChange={e => setForm({ ...form, GiaTri: e.target.value })}
-                    />
-                    <TextField
-                        label="Thời hạn dự kiến"
-                        type="date"
-                        InputLabelProps={{ shrink: true }}
-                        fullWidth
-                        value={form.ThoiHan}
-                        onChange={e => setForm({ ...form, ThoiHan: e.target.value })}
-                    />
-                </Stack>
+                <TableContainer>
+                    <Table size="small" sx={{ minWidth: 720 }}>
+                        <TableHead>
+                            <TableRow>
+                                <TableCell sx={{ minWidth: 300 }}>Tên/Loại chi phí</TableCell>
+                                <TableCell sx={{ minWidth: 180 }}>Giá trị (VND)</TableCell>
+                                <TableCell sx={{ minWidth: 170 }}>Thời hạn dự kiến</TableCell>
+                                <TableCell width={52} />
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {rows.map((row, index) => (
+                                <TableRow key={index}>
+                                    <TableCell><TextField size="small" fullWidth value={row.LoaiChiPhi} onChange={e => updateRow(index, "LoaiChiPhi", e.target.value)} placeholder="Ví dụ: Chi phí vật tư" /></TableCell>
+                                    <TableCell><TextField size="small" type="number" fullWidth value={row.GiaTri} onChange={e => updateRow(index, "GiaTri", e.target.value)} /></TableCell>
+                                    <TableCell><TextField size="small" type="date" fullWidth value={row.ThoiHan} onChange={e => updateRow(index, "ThoiHan", e.target.value)} /></TableCell>
+                                    <TableCell>
+                                        <Button color="error" onClick={() => removeRow(index)} aria-label={`Xóa dòng ${index + 1}`}><DeleteOutlineIcon /></Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+                <Button startIcon={<AddIcon />} sx={{ mt: 2 }} onClick={() => setRows(current => [...current, emptyChiPhiRow()])}>
+                    Thêm dòng chi phí
+                </Button>
             </DialogContent>
             <DialogActions sx={{ p: 2 }}>
-                <Button onClick={onClose} color="inherit">Hủy</Button>
-                <Button onClick={handleSubmit} variant="contained" color="primary">Lưu chi phí</Button>
+                <Button onClick={handleClose} color="inherit" disabled={saving}>Hủy</Button>
+                <Button onClick={handleSubmit} variant="contained" color="primary" disabled={saving}>
+                    {saving ? "Đang lưu..." : `Lưu ${rows.length} dòng`}
+                </Button>
             </DialogActions>
         </Dialog>
     );
 }
 
 function HanhDongDialog({ open, onClose, bienBanId, reload }) {
-    const [form, setForm] = useState({ NoiDung: '', ThoiHan: '', TheoDoi: '' });
+    const [rows, setRows] = useState([emptyHanhDongRow()]);
+    const [saving, setSaving] = useState(false);
+
+    const handleClose = () => {
+        setRows([emptyHanhDongRow()]);
+        onClose();
+    };
+    const updateRow = (index, field, value) => {
+        setRows(current => current.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
+    };
+    const removeRow = (index) => setRows(current => current.length === 1
+        ? [emptyHanhDongRow()]
+        : current.filter((_, rowIndex) => rowIndex !== index));
 
     const handleSubmit = async () => {
+        if (saving) return;
+        if (rows.some(row => !row.NoiDung.trim() || !row.ThoiHan || !row.TheoDoi.trim())) {
+            alert("Vui lòng nhập đầy đủ nội dung, thời hạn và theo dõi cho tất cả các dòng");
+            return;
+        }
         try {
+            setSaving(true);
             await addHanhDong({
                 bienBanId,
-                noiDung: form.NoiDung,
-                thoiHan: form.ThoiHan,
-                theoDoi: form.TheoDoi
+                items: rows.map(row => ({
+                    noiDung: row.NoiDung.trim(),
+                    thoiHan: row.ThoiHan,
+                    theoDoi: row.TheoDoi.trim()
+                }))
             });
-            reload();
-            onClose();
+            handleClose();
+            await reload();
         } catch (err) {
             alert(err?.response?.data?.message || "Lỗi thêm hành động");
+        } finally {
+            setSaving(false);
         }
     };
 
     return (
-        <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+        <Dialog open={open} onClose={handleClose} fullWidth maxWidth="lg">
             <DialogTitle fontWeight="bold">Thêm hành động khắc phục</DialogTitle>
             <DialogContent dividers>
-                <Stack spacing={3} sx={{ mt: 1 }}>
-                    <TextField
-                        label="Nội dung hành động"
-                        fullWidth
-                        multiline
-                        rows={3}
-                        value={form.NoiDung}
-                        onChange={e => setForm({ ...form, NoiDung: e.target.value })}
-                    />
-                    <TextField
-                        label="Thời hạn hoàn thành"
-                        type="date"
-                        InputLabelProps={{ shrink: true }}
-                        fullWidth
-                        value={form.ThoiHan}
-                        onChange={e => setForm({ ...form, ThoiHan: e.target.value })}
-                    />
-                    <TextField label="Theo dõi" fullWidth value={form.TheoDoi} onChange={e => setForm({ ...form, TheoDoi: e.target.value })} />
-                </Stack>
+                <TableContainer>
+                    <Table size="small" sx={{ minWidth: 800 }}>
+                        <TableHead>
+                            <TableRow>
+                                <TableCell sx={{ minWidth: 390 }}>Nội dung hành động</TableCell>
+                                <TableCell sx={{ minWidth: 180 }}>Thời hạn hoàn thành</TableCell>
+                                <TableCell sx={{ minWidth: 200 }}>Theo dõi</TableCell>
+                                <TableCell width={52} />
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {rows.map((row, index) => (
+                                <TableRow key={index}>
+                                    <TableCell><TextField size="small" fullWidth multiline minRows={2} value={row.NoiDung} onChange={e => updateRow(index, "NoiDung", e.target.value)} /></TableCell>
+                                    <TableCell><TextField size="small" type="date" fullWidth value={row.ThoiHan} onChange={e => updateRow(index, "ThoiHan", e.target.value)} /></TableCell>
+                                    <TableCell><TextField size="small" fullWidth value={row.TheoDoi} onChange={e => updateRow(index, "TheoDoi", e.target.value)} /></TableCell>
+                                    <TableCell>
+                                        <Button color="error" onClick={() => removeRow(index)} aria-label={`Xóa dòng ${index + 1}`}><DeleteOutlineIcon /></Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+                <Button startIcon={<AddIcon />} sx={{ mt: 2 }} onClick={() => setRows(current => [...current, emptyHanhDongRow()])}>
+                    Thêm dòng hành động
+                </Button>
             </DialogContent>
             <DialogActions sx={{ p: 2 }}>
-                <Button onClick={onClose} color="inherit">Hủy</Button>
-                <Button onClick={handleSubmit} variant="contained" color="primary">Cập nhật</Button>
+                <Button onClick={handleClose} color="inherit" disabled={saving}>Hủy</Button>
+                <Button onClick={handleSubmit} variant="contained" color="primary" disabled={saving}>
+                    {saving ? "Đang lưu..." : `Lưu ${rows.length} dòng`}
+                </Button>
             </DialogActions>
         </Dialog>
     );
@@ -1761,6 +2029,7 @@ function AssignUserDialog({ open, onClose, bienBanId, boPhanId, tenBoPhan, curre
     const [users, setUsers] = useState([]);
     const [selectedUserId, setSelectedUserId] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [assigning, setAssigning] = useState(false);
     const [search, setSearch] = useState("");
 
     useEffect(() => {
@@ -1783,16 +2052,19 @@ function AssignUserDialog({ open, onClose, bienBanId, boPhanId, tenBoPhan, curre
     };
 
     const handleAssign = async () => {
-        if (!selectedUserId) return;
+        if (!selectedUserId || assigning) return;
         try {
+            setAssigning(true);
             await assignUser(bienBanId, {
                 boPhanId,
                 nguoiXuLyId: selectedUserId
             });
-            reload();
             onClose();
+            await reload();
         } catch (err) {
             alert(err?.response?.data?.message || "Lỗi phân công");
+        } finally {
+            setAssigning(false);
         }
     };
 
@@ -1845,9 +2117,9 @@ function AssignUserDialog({ open, onClose, bienBanId, boPhanId, tenBoPhan, curre
                 )}
             </DialogContent>
             <DialogActions sx={{ p: 2 }}>
-                <Button onClick={onClose} color="inherit">Hủy</Button>
-                <Button onClick={handleAssign} variant="contained" color="primary" disabled={!selectedUserId}>
-                    Xác nhận
+                <Button onClick={onClose} color="inherit" disabled={assigning}>Hủy</Button>
+                <Button onClick={handleAssign} variant="contained" color="primary" disabled={!selectedUserId || assigning}>
+                    {assigning ? "Đang lưu..." : "Xác nhận"}
                 </Button>
             </DialogActions>
         </Dialog>

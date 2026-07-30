@@ -264,8 +264,15 @@ export default function CongDoanDetailScreen({ route, navigation }) {
             <Text style={styles.meta}>{item.TenDonVi || "---"} · {item.TenBoPhan || "---"}</Text>
             <Text style={styles.meta}>Quy trình: {item.TenQuyTrinhSanXuat || "---"}</Text>
             <Text style={styles.meta}>Đơn hàng: {item.MaDonHang || "---"}</Text>
+            {(item.Lots || []).length > 0 && (
+              <Text style={styles.meta}>
+                Phân bổ Lot: {(item.Lots || []).reduce((sum, lot) => sum + Number(lot.SoLuong || 0), 0)}/{item.SoLuongHieuLuc ?? item.SoLuongKeHoach ?? 0}
+              </Text>
+            )}
             <View style={styles.metrics}>
               <Text style={styles.metric}>Kế hoạch: <Text style={styles.metricStrong}>{item.SoLuongKeHoach || 0}</Text></Text>
+              <Text style={styles.metric}>Thực tế: <Text style={styles.metricStrong}>{item.SoLuongThucTe == null ? "Chưa nhập" : item.SoLuongThucTe}</Text></Text>
+              <Text style={styles.metric}>Hiệu lực: <Text style={styles.metricStrong}>{item.SoLuongHieuLuc ?? item.SoLuongKeHoach ?? 0}</Text></Text>
               <Text style={styles.metric}>Lỗi: <Text style={styles.metricStrong}>{item.TongLoi || 0}</Text></Text>
               <Text style={styles.metric}>Tỷ lệ: <Text style={styles.metricStrong}>{item.TyLeLoi == null ? "Cảnh báo SL=0" : `${item.TyLeLoi}%`}</Text></Text>
             </View>

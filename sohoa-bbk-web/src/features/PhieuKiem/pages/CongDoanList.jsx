@@ -101,7 +101,7 @@ export default function CongDoanList() {
                                 <TableRow>
                                     <TableCell>Số phiếu</TableCell><TableCell>Ngày kiểm</TableCell>
                                     <TableCell>Phân xưởng / tổ máy</TableCell><TableCell>Người tạo</TableCell>
-                                    <TableCell align="right">Kế hoạch</TableCell><TableCell align="right">Số lỗi</TableCell>
+                                    <TableCell align="right">Kế hoạch</TableCell><TableCell align="right">KH / TT / Hiệu lực</TableCell><TableCell align="right">Số lỗi</TableCell>
                                     <TableCell>Trạng thái</TableCell><TableCell width={64} />
                                 </TableRow>
                             </TableHead>
@@ -115,13 +115,14 @@ export default function CongDoanList() {
                                             <TableCell>{[item.PhanXuong, item.ToMay].filter(Boolean).join(" · ") || "---"}</TableCell>
                                             <TableCell>{item.TenNguoiTao || "---"}</TableCell>
                                             <TableCell align="right">{item.SoKeHoach || 0}</TableCell>
+                                            <TableCell align="right">{item.TongSoLuongKeHoach || 0} / {item.SoKeHoachDaNhapThucTe ? item.TongSoLuongThucTe : "Chưa nhập"} / {item.TongSoLuongHieuLuc || 0}</TableCell>
                                             <TableCell align="right">{item.TongSoLuongLoi || 0}</TableCell>
                                             <TableCell><Chip size="small" label={meta[0]} color={meta[1]} /></TableCell>
                                             <TableCell><Button title="Xem chi tiết" onClick={() => navigate(`/phieu-kiem/cong-doan/${item.Id}`)}><VisibilityIcon /></Button></TableCell>
                                         </TableRow>
                                     );
                                 })}
-                                {!filteredRows.length && <TableRow><TableCell colSpan={8} align="center" sx={{ py: 7, color: "text.secondary" }}>Chưa có phiếu phù hợp.</TableCell></TableRow>}
+                                {!filteredRows.length && <TableRow><TableCell colSpan={9} align="center" sx={{ py: 7, color: "text.secondary" }}>Chưa có phiếu phù hợp.</TableCell></TableRow>}
                             </TableBody>
                         </Table>
                     </TableContainer>

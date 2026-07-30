@@ -7,7 +7,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  Modal
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
@@ -16,7 +19,8 @@ import {
   approveTrenChuyen,
   completeTrenChuyen,
   createTrenChuyenBienBan,
-  getPhieuKiemDetail
+  getPhieuKiemDetail,
+  updatePhieuKiemActualQuantity
 } from "../api/phieuKiem.api";
 import { getUser } from "../utils/auth";
 
@@ -66,6 +70,7 @@ export default function TrenChuyenInspectionScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hourModalVisible, setHourModalVisible] = useState(false);
+  const [actualQuantity, setActualQuantity] = useState("");
 
   const canEdit = user?.permissions?.includes("THUC_HIEN_KIEM") && canEditStatus(phieu?.TrangThai);
   const approveBoPhanId = Number(getFieldValue(dynamicFields, APPROVE_BOPHAN_FIELD) || 0) || null;
@@ -96,6 +101,7 @@ export default function TrenChuyenInspectionScreen({ route, navigation }) {
 
       const data = detailRes.data || {};
       setPhieu(data.phieu || null);
+      setActualQuantity(data.phieu?.SoLuongThucTe == null ? "" : String(data.phieu.SoLuongThucTe));
       setDynamicFields(data.dynamicFields || []);
       setSummary(data.summary || null);
       setXacNhans(Array.isArray(data.xacNhans) ? data.xacNhans : []);
@@ -247,6 +253,18 @@ export default function TrenChuyenInspectionScreen({ route, navigation }) {
     navigation.navigate("TrenChuyenSlotDetail", { id, gioKiem });
   };
 
+  const saveActualQuantity = async () => {
+    try {
+      setSaving(true);
+      const response = await updatePhieuKiemActualQuantity(id, actualQuantity === "" ? null : Number(actualQuantity));
+      setPhieu((current) => ({ ...current, ...(response.data || {}) }));
+    } catch (error) {
+      Alert.alert("Lỗi", error.response?.data?.message || "Không cập nhật được số lượng thực tế.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.centered} edges={["bottom"]}>
@@ -257,6 +275,7 @@ export default function TrenChuyenInspectionScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={[styles.content, canEdit ? styles.contentWithBottomBar : null]}>
         <View style={styles.headerCard}>
           <View style={styles.headerTop}>
@@ -270,6 +289,19 @@ export default function TrenChuyenInspectionScreen({ route, navigation }) {
           <Text style={styles.metaText}>Đơn vị / chuyền: {getFieldValue(dynamicFields, "TrenChuyen_TenDonVi") || phieu?.DoiTuong || "---"} / {getFieldValue(dynamicFields, "TrenChuyen_TenBoPhan") || "---"}</Text>
           <Text style={styles.metaText}>Ngày kế hoạch: {getFieldValue(dynamicFields, "TrenChuyen_NgayKeHoach") ? new Date(getFieldValue(dynamicFields, "TrenChuyen_NgayKeHoach")).toLocaleDateString("vi-VN") : "---"}</Text>
           <Text style={styles.metaText}>KH: {getFieldValue(dynamicFields, "TrenChuyen_SoLuongKeHoach") || "---"} | NS dự kiến: {getFieldValue(dynamicFields, "TrenChuyen_NangSuatDuKien") || "---"} | Đã SX: {getFieldValue(dynamicFields, "TrenChuyen_DaSanXuat") || "---"}</Text>
+          <View style={styles.actualRow}>
+            <TextInput
+              style={styles.actualInput}
+              value={actualQuantity}
+              editable={canEdit}
+              keyboardType="numeric"
+              placeholder="Số lượng thực tế (không bắt buộc)"
+              placeholderTextColor="#64748b"
+              onChangeText={(value) => setActualQuantity(value.replace(/\D/g, ""))}
+            />
+            {canEdit && <TouchableOpacity style={styles.actualSaveButton} disabled={saving} onPress={saveActualQuantity}><Text style={styles.actualSaveText}>Lưu</Text></TouchableOpacity>}
+          </View>
+          <Text style={styles.metaText}>Hiệu lực: {phieu?.SoLuongHieuLuc ?? phieu?.SoLuong ?? 0} | Chênh lệch: {phieu?.ChenhLechSoLuong ?? "Chưa nhập"}</Text>
         </View>
 
         {latestTbpApproval ? (
@@ -446,6 +478,7 @@ export default function TrenChuyenInspectionScreen({ route, navigation }) {
           </View>
         </View>
       </Modal>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -565,6 +598,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#fbfdff"
   },
   slotCardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  actualRow: { flexDirection: "row", gap: 8, marginTop: 10 },
+  actualInput: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10, paddingHorizontal: 12, backgroundColor: "#fff", color: "#0f172a" },
+  actualSaveButton: { minWidth: 58, borderRadius: 10, backgroundColor: "#2563eb", alignItems: "center", justifyContent: "center" },
+  actualSaveText: { color: "#fff", fontWeight: "700" },
   slotTitle: { fontSize: 18, fontWeight: "700", color: "#0f172a" },
   slotMetricRow: { flexDirection: "row", gap: 8, marginTop: 4, marginBottom: 10 },
   slotMetricChip: {

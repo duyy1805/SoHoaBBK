@@ -257,7 +257,7 @@ const buildPrintRows = (plans = [], columns = []) => plans.map((plan, index) => 
         index: index + 1,
         product: [plan?.MaSanPham, plan?.TenSanPham].filter(Boolean).join(" - "),
         planInfo: [plan?.TenDonVi, plan?.TenBoPhan, formatDate(plan?.NgayKeHoach)].filter(Boolean).join(" / "),
-        checkedQty: Number(plan?.DaSanXuat || plan?.SoLuongKeHoach || 0),
+        checkedQty: Number(plan?.SoLuongHieuLuc ?? plan?.SoLuongThucTe ?? plan?.DaSanXuat ?? plan?.SoLuongKeHoach ?? 0),
         defectQty: totalDefectQty,
         nhe: minor,
         nang: major,

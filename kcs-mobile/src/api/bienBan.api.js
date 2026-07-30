@@ -65,6 +65,18 @@ export const confirmAssign = (bienBanId) => {
     return axiosClient.post(`/bien-ban/${bienBanId}/confirm-assign`);
 };
 
+export const confirmOpinionDepartments = (bienBanId, boPhanIds) =>
+    axiosClient.post(`/bien-ban/${bienBanId}/opinion-departments/confirm`, { boPhanIds });
+
+export const respondSpecialistOpinion = (bienBanId, opinionId, data) =>
+    axiosClient.post(`/bien-ban/${bienBanId}/specialist-opinions/${opinionId}/respond`, data);
+
+export const confirmKphByCreatorDepartment = (bienBanId) =>
+    axiosClient.post(`/bien-ban/${bienBanId}/creator-confirm`);
+
+export const updateKphRequirements = (bienBanId, data) =>
+    axiosClient.patch(`/bien-ban/${bienBanId}/requirements`, data);
+
 export const assignUserToDepartment = (bienBanId, data) => {
     return axiosClient.post(`/bien-ban/${bienBanId}/assign-user`, data);
 };

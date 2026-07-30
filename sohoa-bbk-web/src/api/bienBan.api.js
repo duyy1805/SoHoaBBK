@@ -100,6 +100,12 @@ export const confirmUser = (bienBanId, boPhanId = null) =>
 export const updateKphRequirements = (bienBanId, data) =>
     axiosClient.patch(`/bien-ban/${bienBanId}/requirements`, data);
 
+export const confirmOpinionDepartments = (bienBanId, boPhanIds) =>
+    axiosClient.post(`/bien-ban/${bienBanId}/opinion-departments/confirm`, { boPhanIds });
+
+export const confirmKphByCreatorDepartment = (bienBanId) =>
+    axiosClient.post(`/bien-ban/${bienBanId}/creator-confirm`);
+
 export const addHanhDong = (data) =>
     axiosClient.post("/bien-ban/hanh-dong", data);
 /* ================================

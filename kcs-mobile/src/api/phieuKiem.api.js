@@ -167,6 +167,9 @@ export const completeTrenChuyen = (phieuKiemId, ketLuan) => {
   return axiosClient.post("/phieu-kiem/tren-chuyen/complete", { phieuKiemId, ketLuan });
 };
 
+export const updatePhieuKiemActualQuantity = (id, soLuongThucTe) =>
+  axiosClient.patch(`/phieu-kiem/${id}/actual-quantity`, { soLuongThucTe });
+
 export const createTrenChuyenBienBan = (phieuKiemId) => {
   return axiosClient.post("/phieu-kiem/tren-chuyen/create-bien-ban", { phieuKiemId });
 };

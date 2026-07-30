@@ -43,33 +43,42 @@ const CongDoanPrintTemplate = forwardRef(function CongDoanPrintTemplate(
         return [...map.values()];
     }, [plans]);
 
-    const rows = useMemo(() => plans.map((plan) => {
-        const defectMap = (plan.Defects || []).reduce((map, defect) => ({
-            ...map,
-            [defect.DefectId]: Number(map[defect.DefectId] || 0) + Number(defect.SoLuong || 0)
-        }), {});
-        const catalogDefects = (plan.Defects || [])
-            .reduce((sum, defect) => sum + Number(defect.SoLuong || 0), 0);
-        const total = catalogDefects
-            + Number(plan.SoLoiBuiBan || 0)
-            + Number(plan.SoLoiConTrung || 0);
-        const checked = Number(plan.SoLuongKeHoach || 0);
-        const workers = [...new Set(
-            (plan.Defects || [])
-                .map((defect) => String(defect.TenCongNhan || "").trim())
-                .filter(Boolean)
-        )];
-        return {
-            ...plan,
-            defectMap,
-            total,
-            workers,
-            ratio: checked > 0 ? `${(total * 100 / checked).toFixed(2)}%` : "Không tính",
-            repairedPass: (plan.Defects || [])
-                .reduce((sum, defect) => sum + Number(defect.SoLuongDatSauSua || 0), 0),
-            repairedFail: (plan.Defects || [])
-                .reduce((sum, defect) => sum + Number(defect.SoLuongKhongDatSauSua || 0), 0)
-        };
+    const rows = useMemo(() => plans.flatMap((plan) => {
+        const lots = Array.isArray(plan.Lots) ? plan.Lots : [];
+        const unassignedDefects = (plan.Defects || []).filter((defect) => !defect.PlanLotId);
+        const targets = lots.length ? [
+            ...lots.map((lot) => ({ lot, defects: (plan.Defects || []).filter((defect) => Number(defect.PlanLotId) === Number(lot.Id)) })),
+            ...(unassignedDefects.length || Number(plan.SoLoiBuiBan || 0) > 0 || Number(plan.SoLoiConTrung || 0) > 0
+                ? [{ lot: null, defects: unassignedDefects }]
+                : [])
+        ] : [{ lot: null, defects: plan.Defects || [] }];
+
+        return targets.map(({ lot, defects }, targetIndex) => {
+            const defectMap = defects.reduce((map, defect) => ({
+                ...map,
+                [defect.DefectId]: Number(map[defect.DefectId] || 0) + Number(defect.SoLuong || 0)
+            }), {});
+            const specialDirty = lot ? Number(lot.SoLoiBuiBan || 0) : Number(plan.SoLoiBuiBan || 0);
+            const specialInsect = lot ? Number(lot.SoLoiConTrung || 0) : Number(plan.SoLoiConTrung || 0);
+            const total = defects.reduce((sum, defect) => sum + Number(defect.SoLuong || 0), 0)
+                + specialDirty + specialInsect;
+            const checked = Number(lot?.SoLuong ?? plan.SoLuongHieuLuc ?? plan.SoLuongKeHoach ?? 0);
+            return {
+                ...plan,
+                Id: `${plan.Id}-${lot?.Id || `general-${targetIndex}`}`,
+                defectMap,
+                total,
+                workers: [...new Set(defects.map((defect) => String(defect.TenCongNhan || "").trim()).filter(Boolean))],
+                lotDisplay: lot ? lot.Lot : (lots.length ? "Chưa xác định Lot" : plan.Lot),
+                lxvtDisplay: lot ? lot.LenhXuatVatTu : plan.LenhXuatVatTu,
+                SoLuongHieuLuc: checked,
+                SoLoiBuiBan: specialDirty,
+                SoLoiConTrung: specialInsect,
+                ratio: checked > 0 ? `${(total * 100 / checked).toFixed(2)}%` : "Không tính",
+                repairedPass: defects.reduce((sum, defect) => sum + Number(defect.SoLuongDatSauSua || 0), 0),
+                repairedFail: defects.reduce((sum, defect) => sum + Number(defect.SoLuongKhongDatSauSua || 0), 0)
+            };
+        });
     }), [plans]);
 
     const totalColumns = 16 + defectColumns.length;
@@ -147,7 +156,7 @@ const CongDoanPrintTemplate = forwardRef(function CongDoanPrintTemplate(
                         <th rowSpan={2} style={cell}>ĐVSX</th>
                         <th rowSpan={2} style={cell}>Lô (LOT)</th>
                         <th rowSpan={2} style={cell}>Lệnh xuất VT</th>
-                        <th rowSpan={2} style={cell}>Số lượng kiểm</th>
+                        <th rowSpan={2} style={cell}>KH / TT / SL Lot</th>
                         <th rowSpan={2} style={cell}>Số lượng lỗi</th>
                         <th rowSpan={2} style={cell}>Tỷ lệ lỗi</th>
                         <th colSpan={defectColumns.length + 2} style={cell}>Các dạng lỗi (Ngân hàng lỗi)</th>
@@ -173,9 +182,9 @@ const CongDoanPrintTemplate = forwardRef(function CongDoanPrintTemplate(
                             <td style={cell}>{[row.MaSanPham, row.TenSanPham].filter(Boolean).join(" - ")}</td>
                             <td style={cell}>{text(row.MaDonHang)}</td>
                             <td style={cell}>{text(row.TenDonVi || row.TenBoPhan)}</td>
-                            <td style={cell}>{text(row.Lot)}</td>
-                            <td style={cell}>{text(row.LenhXuatVatTu)}</td>
-                            <td style={cell}>{text(row.SoLuongKeHoach)}</td>
+                            <td style={cell}>{text(row.lotDisplay)}</td>
+                            <td style={cell}>{text(row.lxvtDisplay)}</td>
+                            <td style={cell}>{text(row.SoLuongKeHoach)} / {row.SoLuongThucTe == null ? "Chưa nhập" : text(row.SoLuongThucTe)} / {text(row.SoLuongHieuLuc)}</td>
                             <td style={cell}>{row.total || ""}</td>
                             <td style={cell}>{row.ratio}</td>
                             {defectColumns.map((item) => (

@@ -321,7 +321,7 @@ export default function BienBanList() {
                                                             ? item.SoBoPhan > 0
                                                                 ? `Xác nhận ${item.DaCoYKien}/${item.SoBoPhan} bộ phận`
                                                                 : "Chưa mở luồng"
-                                                            : `${item.DaCoYKien}/${item.SoBoPhan} bộ phận`}
+                                                            : `Phản hồi ${item.DaCoYKien}/${item.SoBoPhan} bộ phận`}
                                                     </Typography>
                                                     <Typography variant="caption" fontWeight="bold" color="primary">
                                                         {item.ProgressPercent}%

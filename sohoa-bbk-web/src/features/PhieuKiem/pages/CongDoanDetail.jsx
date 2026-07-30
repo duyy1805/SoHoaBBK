@@ -54,7 +54,10 @@ export default function CongDoanDetail() {
 
     const totals = useMemo(() => ({
         plans: data.plans.length,
-        quantity: data.plans.reduce((sum, item) => sum + Number(item.SoLuongKeHoach || 0), 0),
+        planned: data.plans.reduce((sum, item) => sum + Number(item.SoLuongKeHoach || 0), 0),
+        actual: data.plans.reduce((sum, item) => sum + Number(item.SoLuongThucTe || 0), 0),
+        actualCount: data.plans.filter((item) => item.SoLuongThucTe != null).length,
+        effective: data.plans.reduce((sum, item) => sum + Number(item.SoLuongHieuLuc || 0), 0),
         defects: data.plans.reduce((sum, item) => sum + Number(item.TongLoi || 0), 0)
     }), [data.plans]);
     const canApprove = data.phieu?.TrangThai === "CHO_TBP_DUYET"
@@ -140,7 +143,9 @@ export default function CongDoanDetail() {
                     <Box><Typography variant="caption" color="text.secondary">PHÂN XƯỞNG</Typography><Typography fontWeight={700}>{phieu.PhanXuong || "---"}</Typography></Box>
                     <Box><Typography variant="caption" color="text.secondary">TỔ / MÁY</Typography><Typography fontWeight={700}>{phieu.ToMay || "---"}</Typography></Box>
                     <Box><Typography variant="caption" color="text.secondary">SỐ KẾ HOẠCH</Typography><Typography fontWeight={700}>{totals.plans}</Typography></Box>
-                    <Box><Typography variant="caption" color="text.secondary">TỔNG SL KIỂM</Typography><Typography fontWeight={700}>{totals.quantity.toLocaleString("vi-VN")}</Typography></Box>
+                    <Box><Typography variant="caption" color="text.secondary">TỔNG KẾ HOẠCH</Typography><Typography fontWeight={700}>{totals.planned.toLocaleString("vi-VN")}</Typography></Box>
+                    <Box><Typography variant="caption" color="text.secondary">TỔNG THỰC TẾ</Typography><Typography fontWeight={700}>{totals.actualCount ? totals.actual.toLocaleString("vi-VN") : "Chưa nhập"}</Typography></Box>
+                    <Box><Typography variant="caption" color="text.secondary">TỔNG HIỆU LỰC</Typography><Typography fontWeight={700}>{totals.effective.toLocaleString("vi-VN")}</Typography></Box>
                     <Box><Typography variant="caption" color="text.secondary">TỔNG LỖI</Typography><Typography fontWeight={700}>{totals.defects.toLocaleString("vi-VN")}</Typography></Box>
                     <Box><Typography variant="caption" color="text.secondary">KẾT LUẬN</Typography><Typography fontWeight={700}>{conclusionLabel[phieu.KetLuan] || phieu.KetLuan || "---"}</Typography></Box>
                 </Stack>
@@ -150,7 +155,7 @@ export default function CongDoanDetail() {
                 <Table size="small">
                     <TableHead><TableRow>
                         <TableCell>ID kế hoạch</TableCell><TableCell>Ngày / KCS / Công nhân</TableCell><TableCell>Sản phẩm</TableCell><TableCell>Đơn vị / bộ phận</TableCell>
-                        <TableCell>Đơn hàng / LOT / LXVT</TableCell><TableCell align="right">SL kiểm</TableCell>
+                        <TableCell>Đơn hàng / LOT / LXVT</TableCell><TableCell align="right">KH / TT / Hiệu lực</TableCell>
                         <TableCell align="right">SL lỗi</TableCell><TableCell align="right">Tỷ lệ lỗi</TableCell><TableCell>Lỗi ghi nhận</TableCell>
                     </TableRow></TableHead>
                     <TableBody>
@@ -166,16 +171,43 @@ export default function CongDoanDetail() {
                                 </TableCell>
                                 <TableCell><b>{plan.MaSanPham || "---"}</b><br />{plan.TenSanPham || "---"}<br /><Typography variant="caption" color="primary">Quy trình: {plan.TenQuyTrinhSanXuat || "---"}</Typography></TableCell>
                                 <TableCell>{plan.TenDonVi || "---"}<br />{plan.TenBoPhan || "---"}</TableCell>
-                                <TableCell>{plan.MaDonHang || "---"}<br />LOT: {plan.Lot || "---"}<br />LXVT: {plan.LenhXuatVatTu || "---"}</TableCell>
-                                <TableCell align="right">{Number(plan.SoLuongKeHoach || 0).toLocaleString("vi-VN")}</TableCell>
+                                <TableCell>
+                                    {plan.MaDonHang || "---"}<br />
+                                    {(plan.Lots || []).length ? (plan.Lots || []).map((lot, lotIndex) => {
+                                        const lotDefects = (plan.Defects || []).filter((defect) =>
+                                            Number(defect.PlanLotId) === Number(lot.Id)
+                                        );
+                                        const defectText = [
+                                            ...lotDefects.map((defect) =>
+                                                `${defect.TenCongNhan ? `${defect.TenCongNhan} - ` : ""}${defect.MaLoi || defect.TenLoi}: ${defect.SoLuong}`
+                                            ),
+                                            Number(lot.SoLoiBuiBan || 0) > 0 ? `Bụi bẩn: ${lot.SoLoiBuiBan}` : null,
+                                            Number(lot.SoLoiConTrung || 0) > 0 ? `Côn trùng: ${lot.SoLoiConTrung}` : null
+                                        ].filter(Boolean).join("; ");
+                                        return (
+                                            <Box key={lot.Id || lotIndex} sx={{ mt: 0.6 }}>
+                                                <Typography variant="caption" fontWeight={800}>
+                                                    Lot {lot.Lot || "—"} · LXVT {lot.LenhXuatVatTu || "—"} · SL {lot.SoLuong}
+                                                </Typography>
+                                                <Typography variant="caption" display="block" color="text.secondary">
+                                                    {defectText || "Không phát sinh lỗi"}
+                                                </Typography>
+                                            </Box>
+                                        );
+                                    }) : "Không phân bổ Lot"}
+                                </TableCell>
+                                <TableCell align="right">
+                                    {Number(plan.SoLuongKeHoach || 0).toLocaleString("vi-VN")} / {plan.SoLuongThucTe == null ? "Chưa nhập" : Number(plan.SoLuongThucTe).toLocaleString("vi-VN")} / <b>{Number(plan.SoLuongHieuLuc || 0).toLocaleString("vi-VN")}</b>
+                                    <br /><Typography variant="caption" color="text.secondary">Chênh: {plan.ChenhLechSoLuong == null ? "—" : Number(plan.ChenhLechSoLuong).toLocaleString("vi-VN")}</Typography>
+                                </TableCell>
                                 <TableCell align="right">{Number(plan.TongLoi || 0).toLocaleString("vi-VN")}</TableCell>
-                                <TableCell align="right">{plan.TyLeLoi == null ? <Chip size="small" color="warning" label="SL kế hoạch = 0" /> : `${Number(plan.TyLeLoi).toFixed(2)}%`}</TableCell>
+                                <TableCell align="right">{Number(plan.SoLuongHieuLuc || 0) <= 0 ? <Chip size="small" color="warning" label="SL hiệu lực = 0" /> : `${(Number(plan.TongLoi || 0) * 100 / Number(plan.SoLuongHieuLuc)).toFixed(2)}%`}</TableCell>
                                 <TableCell>
                                     {[
-                                        ...(plan.Defects || []).map((item) => `${item.TenCongNhan ? `${item.TenCongNhan} - ` : ""}${item.MaLoi || item.TenLoi}: ${item.SoLuong}`),
+                                        ...(plan.Defects || []).filter((item) => !item.PlanLotId).map((item) => `${item.TenCongNhan ? `${item.TenCongNhan} - ` : ""}${item.MaLoi || item.TenLoi}: ${item.SoLuong}`),
                                         Number(plan.SoLoiBuiBan || 0) > 0 ? `Bụi bẩn: ${plan.SoLoiBuiBan}` : null,
                                         Number(plan.SoLoiConTrung || 0) > 0 ? `Côn trùng: ${plan.SoLoiConTrung}` : null
-                                    ].filter(Boolean).join("; ") || "Không phát sinh"}
+                                    ].filter(Boolean).join("; ") || ((plan.Lots || []).length ? "Xem theo từng Lot" : "Không phát sinh")}
                                 </TableCell>
                             </TableRow>
                         ))}

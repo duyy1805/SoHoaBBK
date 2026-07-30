@@ -12,7 +12,8 @@ import {
     Alert,
     TextInput,
     Modal,
-    Platform
+    Platform,
+    KeyboardAvoidingView
 } from "react-native";
 import KeyboardFormScrollView from "../components/KeyboardFormScrollView";
 
@@ -24,7 +25,8 @@ import {
     updateLot,
     getThongSoKq,
     deletePhieuKiem,
-    saveCustomFields
+    saveCustomFields,
+    updatePhieuKiemActualQuantity
 } from "../api/phieuKiem.api";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
@@ -61,6 +63,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
     const [soDonHang, setSoDonHang] = useState("");
     const [phienBan, setPhienBan] = useState("");
     const [thamChieuTieuChuan, setThamChieuTieuChuan] = useState("");
+    const [actualQuantity, setActualQuantity] = useState("");
 
     const parseStoredDate = (value) => {
         if (!value) return new Date();
@@ -110,6 +113,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
         }
 
         setPhieu(phieuData);
+        setActualQuantity(phieuData?.SoLuongThucTe == null ? "" : String(phieuData.SoLuongThucTe));
         setSections(Array.isArray(res.data.sections) ? res.data.sections : []);
         setCheckItems(Array.isArray(res.data.checkItems) ? res.data.checkItems : []);
         setDynamicFields(res.data.dynamicFields || []);
@@ -394,9 +398,25 @@ export default function PhieuDetailScreen({ route, navigation }) {
         }
     };
 
+    const saveActualQuantity = async () => {
+        try {
+            setLoadingAction(true);
+            const response = await updatePhieuKiemActualQuantity(
+                id,
+                actualQuantity === "" ? null : Number(actualQuantity)
+            );
+            setPhieu((current) => ({ ...current, ...(response.data || {}) }));
+            Alert.alert("Đã lưu", "Đã cập nhật số lượng thực tế.");
+        } catch (error) {
+            Alert.alert("Lỗi", error.response?.data?.message || "Không cập nhật được số lượng thực tế.");
+        } finally {
+            setLoadingAction(false);
+        }
+    };
+
     return (
 
-        <View style={{ flex: 1 }}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
 
             {isCompleted && (
                 <View style={styles.completedBanner}>
@@ -455,12 +475,39 @@ export default function PhieuDetailScreen({ route, navigation }) {
 
                     <View style={styles.infoRow}>
                         <View style={styles.infoItem}>
-                            <Text style={styles.infoLabel}>Số lượng</Text>
+                            <Text style={styles.infoLabel}>Số lượng kế hoạch</Text>
                             <Text style={styles.infoValue}>{phieu?.SoLuong}</Text>
                         </View>
                         <View style={styles.infoItem}>
                             <Text style={styles.infoLabel}>Ngày giao</Text>
                             <Text style={styles.infoValue}>{phieu?.Ngay_Giao ? new Date(phieu.Ngay_Giao).toLocaleDateString('vi-VN') : "---"}</Text>
+                        </View>
+                    </View>
+
+                    <View style={styles.infoRow}>
+                        <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Số lượng thực tế</Text>
+                            {isKCS && !isCompleted ? (
+                                <View>
+                                    <TextInput
+                                        style={styles.inlineInput}
+                                        value={actualQuantity}
+                                        keyboardType="numeric"
+                                        placeholder="Chưa nhập"
+                                        placeholderTextColor="#64748b"
+                                        onChangeText={(value) => setActualQuantity(value.replace(/\D/g, ""))}
+                                    />
+                                    <TouchableOpacity style={styles.inlineSaveButton} disabled={loadingAction} onPress={saveActualQuantity}>
+                                        <Text style={styles.inlineSaveText}>Lưu thực tế</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            ) : <Text style={styles.infoValue}>{phieu?.SoLuongThucTe ?? "Chưa nhập"}</Text>}
+                        </View>
+                        <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Hiệu lực / chênh lệch</Text>
+                            <Text style={styles.infoValue}>
+                                {phieu?.SoLuongHieuLuc ?? phieu?.SoLuong ?? 0} / {phieu?.ChenhLechSoLuong ?? "Chưa nhập"}
+                            </Text>
                         </View>
                     </View>
 
@@ -863,11 +910,11 @@ export default function PhieuDetailScreen({ route, navigation }) {
                 onClose={() => setIsConfigModalVisible(false)}
                 phieuId={id}
                 sanPhamId={phieu?.SanPhamId}
-                initialLotSize={phieu?.SoLuong}
+                initialLotSize={phieu?.SoLuongHieuLuc ?? phieu?.SoLuong}
                 onSuccess={loadData}
             />
 
-        </View>
+        </KeyboardAvoidingView>
 
     );
 }
@@ -922,6 +969,15 @@ const styles = StyleSheet.create({
         fontWeight: "600",
         color: "#0f172a"
     },
+    inlineSaveButton: {
+        alignSelf: "flex-start",
+        marginTop: 6,
+        backgroundColor: "#2563eb",
+        borderRadius: 8,
+        paddingVertical: 7,
+        paddingHorizontal: 10
+    },
+    inlineSaveText: { color: "#fff", fontSize: 12, fontWeight: "700" },
     dateBox: {
         backgroundColor: "#f8fafc",
         borderRadius: 10,

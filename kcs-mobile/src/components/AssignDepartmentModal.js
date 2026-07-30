@@ -8,12 +8,15 @@ import {
     TouchableOpacity,
     StyleSheet,
     Alert,
-    SafeAreaView
+    SafeAreaView,
+    KeyboardAvoidingView,
+    Platform
 } from "react-native";
 
 import {
     getBoPhan,
-    assignDepartments
+    assignDepartments,
+    confirmOpinionDepartments
 } from "../api/bienBan.api";
 
 export default function AssignDepartmentModal({
@@ -21,7 +24,8 @@ export default function AssignDepartmentModal({
     bienBanId,
     assignedDepartments = [],
     onClose,
-    reload
+    reload,
+    opinionFlow = false
 }) {
     const [departments, setDepartments] = useState([]);
     const [selected, setSelected] = useState([]);
@@ -57,7 +61,11 @@ export default function AssignDepartmentModal({
             return;
         }
         try {
-            await assignDepartments(bienBanId, selected);
+            if (opinionFlow) {
+                await confirmOpinionDepartments(bienBanId, selected);
+            } else {
+                await assignDepartments(bienBanId, selected);
+            }
             reload();
             onClose();
         } catch (err) {
@@ -94,13 +102,17 @@ export default function AssignDepartmentModal({
     return (
         <Modal visible={visible} animationType="slide">
           <SafeAreaView style={styles.container}>
+            <KeyboardAvoidingView
+                style={styles.container}
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+            >
                 {/* HEADER */}
                 <View style={styles.header}>
                     <TouchableOpacity onPress={onClose}>
                         <Text style={styles.back}>←</Text>
                     </TouchableOpacity>
 
-                    <Text style={styles.title}>Chọn bộ phận xử lý</Text>
+                    <Text style={styles.title}>{opinionFlow ? "Bộ phận cần lấy ý kiến" : "Chọn bộ phận xử lý"}</Text>
 
                     <View style={{ width: 30 }} />
                 </View>
@@ -111,6 +123,7 @@ export default function AssignDepartmentModal({
                     value={search}
                     onChangeText={setSearch}
                     style={styles.search}
+                    placeholderTextColor="#64748b"
                 />
 
                 {/* LIST */}
@@ -119,14 +132,16 @@ export default function AssignDepartmentModal({
                     renderItem={renderDepartment}
                     keyExtractor={(item) => item.Id.toString()}
                     contentContainerStyle={{ paddingBottom: 100 }}
+                    keyboardShouldPersistTaps="handled"
                 />
 
                 {/* FOOTER */}
                 <View style={styles.footer}>
                     <TouchableOpacity style={styles.btn} onPress={handleSubmit}>
-                        <Text style={styles.btnText}>Xác nhận</Text>
+                        <Text style={styles.btnText}>{opinionFlow ? "Xác nhận danh sách" : "Xác nhận"}</Text>
                     </TouchableOpacity>
                 </View>
+            </KeyboardAvoidingView>
           </SafeAreaView>
         </Modal>
     );

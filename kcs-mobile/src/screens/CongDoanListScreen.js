@@ -113,7 +113,7 @@ export default function CongDoanListScreen({ navigation }) {
               <Text style={styles.status}>{stateLabel[item.TrangThai] || item.TrangThai}</Text>
             </View>
             <Text style={styles.product}>{item.PhanXuong || "Chưa nhập phân xưởng"}{item.ToMay ? ` · ${item.ToMay}` : ""}</Text>
-            <Text style={styles.meta}>{displayDate(item.NgayKiem)} · {item.SoKeHoach || 0} kế hoạch · {item.TongSoLuongLoi || 0} lỗi</Text>
+            <Text style={styles.meta}>{displayDate(item.NgayKiem)} · {item.SoKeHoach || 0} kế hoạch · KH {item.TongSoLuongKeHoach || 0} · TT {item.SoKeHoachDaNhapThucTe ? item.TongSoLuongThucTe : "Chưa nhập"} · HL {item.TongSoLuongHieuLuc || 0}</Text>
             <Text style={styles.meta}>Người tạo: {item.TenNguoiTao || "---"}</Text>
           </TouchableOpacity>
         )}

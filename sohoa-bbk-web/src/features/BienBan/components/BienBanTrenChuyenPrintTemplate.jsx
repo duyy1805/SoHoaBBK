@@ -10,6 +10,8 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
     xacNhan = [],
     assigns = [],
     dynamicFields = [],
+    specialistOpinions = [],
+    followUpEvaluation = null,
     canEditCustomFields = false
 }, ref) => {
 
@@ -43,6 +45,7 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
             .toUpperCase();
+    const printOpinions = specialistOpinions || [];
 
     const inferPhatHienTu = () => {
         if (customData.PhatHienTu || info.PhatHienTu) {
@@ -573,6 +576,32 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                     </table>
                                 </Box>
 
+                                {printOpinions.length > 0 && (
+                                    <Box mt={2}>
+                                        <table style={styles.table}>
+                                            <thead>
+                                                <tr>
+                                                    <th style={{ ...styles.th, width: '18%' }}>Bộ phận</th>
+                                                    <th style={styles.th}>Nội dung ý kiến</th>
+                                                    <th style={{ ...styles.th, width: '20%' }}>Xác nhận</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {printOpinions.map((opinion, index) => (
+                                                    <tr key={opinion.Id || index}>
+                                                        <td style={styles.td}>{opinion.MaBoPhan || opinion.TenBoPhan}</td>
+                                                        <td style={{ ...styles.td, whiteSpace: 'pre-wrap' }}>{opinion.NoiDung}</td>
+                                                        <td style={styles.td}>
+                                                            {opinion.NguoiTraLoi}
+                                                            {opinion.ThoiGian ? ` · ${new Date(opinion.ThoiGian).toLocaleDateString('vi-VN')}` : ''}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </Box>
+                                )}
+
                                 {/* Chữ ký 2 */}
                                 {signatureRows.length > 0 && (
                                     <Box className="avoid-break" style={{ ...styles.signatureBlock, justifyContent: 'flex-start', direction: 'rtl' }}>
@@ -593,12 +622,12 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                 <Box className="avoid-break" mt={2} pt={0}>
                                     <div style={styles.sectionTitle}>8. Theo dõi đánh giá</div>
                                     <div style={{ display: 'flex', marginTop: '8px' }}>
-                                        {renderCheckbox('Thỏa mãn', false)}
-                                        {renderCheckbox('Không thỏa mãn', false)}
-                                        <span style={{ marginLeft: '40px' }}>Phiếu KPH mới số: ................................................</span>
+                                        {renderCheckbox('Thỏa mãn', followUpEvaluation?.KetQua === 'THOA_MAN')}
+                                        {renderCheckbox('Không thỏa mãn', followUpEvaluation?.KetQua === 'KHONG_THOA_MAN')}
+                                        <span style={{ marginLeft: '40px' }}>Phiếu KPH mới số: {followUpEvaluation?.PhieuKphMoiSo || '................................................'}</span>
                                     </div>
                                     <div style={{ marginTop: '16px' }}>
-                                        <div style={styles.text}>Ghi chú: ..........................................................................................................................................................</div>
+                                        <div style={styles.text}>Ghi chú: {followUpEvaluation?.GhiChu || '..........................................................................................................................................................'}</div>
                                     </div>
 
                                     <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>

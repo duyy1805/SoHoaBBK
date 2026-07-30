@@ -41,7 +41,8 @@ import {
     getThongSoKq,
     completePhieuKiem,
     confirmPX,
-    deletePhieuKiem
+    deletePhieuKiem,
+    updatePhieuKiemActualQuantity
 } from "../../../api/phieuKiem.api";
 
 import { getSanPhamNhomKiem, getInspectionLevels, updateSanPhamImage, uploadSanPhamImage } from "../../../api/lookup.api"
@@ -72,6 +73,8 @@ export default function PhieuKiemDetail() {
     const [creatingSection, setCreatingSection] = useState(false);
     const [loadingAction, setLoadingAction] = useState(false);
     const [actionNotice, setActionNotice] = useState(null);
+    const [actualQuantity, setActualQuantity] = useState("");
+    const [savingActualQuantity, setSavingActualQuantity] = useState(false);
     const componentRef = useRef();
     const productImageInputRef = useRef(null);
     const [openPrintModal, setOpenPrintModal] = useState(false);
@@ -127,6 +130,7 @@ export default function PhieuKiemDetail() {
                 return;
             }
             setPhieu(data.phieu);
+            setActualQuantity(data.phieu?.SoLuongThucTe == null ? "" : String(data.phieu.SoLuongThucTe));
             setSections(data.sections);
             setCheckItems(data.checkItems);
             setDefects(data.defects);
@@ -150,7 +154,7 @@ export default function PhieuKiemDetail() {
                 const configs = nhomRes.data.map(n => ({
                     nhomKiemId: n.NhomKiemId,
                     tenNhom: n.TenNhom,
-                    lotSize: data.phieu.SoLuong,
+                    lotSize: data.phieu.SoLuongHieuLuc ?? data.phieu.SoLuong,
                     inspectionLevel: "II"
                 }));
                 setNhomConfigs(configs);
@@ -162,6 +166,23 @@ export default function PhieuKiemDetail() {
             console.error(err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleSaveActualQuantity = async () => {
+        try {
+            setSavingActualQuantity(true);
+            const value = actualQuantity === "" ? null : Number(actualQuantity);
+            const response = await updatePhieuKiemActualQuantity(id, value);
+            setPhieu((current) => ({ ...current, ...(response.data || {}) }));
+            setActionNotice({ severity: "success", message: "Đã cập nhật số lượng thực tế." });
+        } catch (error) {
+            setActionNotice({
+                severity: "error",
+                message: error.response?.data?.message || "Không cập nhật được số lượng thực tế."
+            });
+        } finally {
+            setSavingActualQuantity(false);
         }
     };
 
@@ -447,6 +468,32 @@ export default function PhieuKiemDetail() {
                             <Grid size={{ xs: 3 }}>
                                 <Typography variant="subtitle2">Số lượng kế hoạch</Typography>
                                 <Typography fontWeight={600}>{phieu?.SoLuong}</Typography>
+                            </Grid>
+                            <Grid size={{ xs: 3 }}>
+                                <Typography variant="subtitle2">Số lượng thực tế</Typography>
+                                {hasPermission("THUC_HIEN_KIEM") && !["HOAN_TAT", "DA_DUYET"].includes(phieu?.TrangThai) ? (
+                                    <Stack direction="row" spacing={1} alignItems="center">
+                                        <TextField
+                                            size="small"
+                                            type="number"
+                                            value={actualQuantity}
+                                            placeholder="Chưa nhập"
+                                            inputProps={{ min: 0, step: 1 }}
+                                            onChange={(event) => setActualQuantity(event.target.value.replace(/\D/g, ""))}
+                                        />
+                                        <Button size="small" variant="outlined" disabled={savingActualQuantity} onClick={handleSaveActualQuantity}>
+                                            Lưu
+                                        </Button>
+                                    </Stack>
+                                ) : <Typography fontWeight={600}>{phieu?.SoLuongThucTe ?? "Chưa nhập"}</Typography>}
+                            </Grid>
+                            <Grid size={{ xs: 3 }}>
+                                <Typography variant="subtitle2">Số lượng hiệu lực</Typography>
+                                <Typography fontWeight={700} color="primary">{phieu?.SoLuongHieuLuc ?? phieu?.SoLuong ?? 0}</Typography>
+                            </Grid>
+                            <Grid size={{ xs: 3 }}>
+                                <Typography variant="subtitle2">Chênh lệch</Typography>
+                                <Typography fontWeight={600}>{phieu?.ChenhLechSoLuong ?? "Chưa nhập"}</Typography>
                             </Grid>
 
                             <Grid size={{ xs: 3 }}>

@@ -1,438 +1,171 @@
-// src/components/XuLyModal.jsx
-
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-    View,
-    Text,
-    Modal,
-    TextInput,
-    TouchableOpacity,
-    StyleSheet,
-    Alert,
-    FlatList,
-    KeyboardAvoidingView,
-    Platform
+    Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet,
+    Text, TextInput, TouchableOpacity, View
 } from "react-native";
-import KeyboardFormScrollView from "./KeyboardFormScrollView";
-
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { addXuLy, getDeNghiXuLy } from "../api/bienBan.api";
+import MobileSelect from "./MobileSelect";
 
-import {
-    getDeNghiXuLy,
-    addXuLy
-} from "../api/bienBan.api";
+const emptyRow = () => ({
+    noiDung: "", deNghiXuLyId: null, thoiHan: new Date(), trachNhiem: "", theoDoi: ""
+});
 
-export default function XuLyModal({
-    visible,
-    bienBanId,
-    currentUserId,
-    onClose,
-    reload
-}) {
-
-    const [noiDung, setNoiDung] = useState("");
-    const [deNghiXuLyId, setDeNghiXuLyId] = useState(null);
-    const [deNghiText, setDeNghiText] = useState("");
-
+export default function XuLyModal({ visible, bienBanId, onClose, reload }) {
+    const [rows, setRows] = useState([emptyRow()]);
     const [deNghiList, setDeNghiList] = useState([]);
-
-    const [thoiHan, setThoiHan] = useState(new Date());
-    const [showDate, setShowDate] = useState(false);
-
-    const [showSelectModal, setShowSelectModal] = useState(false);
-
+    const [dateRow, setDateRow] = useState(null);
     const [loading, setLoading] = useState(false);
-
-    /* LOAD LOOKUP */
+    const scrollRef = useRef(null);
 
     useEffect(() => {
-
         if (visible) {
-
-            setNoiDung("");
-            setDeNghiXuLyId(null);
-            setDeNghiText("");
-            setThoiHan(new Date());
-
-            loadLookup();
+            setRows([emptyRow()]);
+            getDeNghiXuLy()
+                .then(res => setDeNghiList(res.data || []))
+                .catch(error => console.log(error));
         }
-
     }, [visible]);
 
-    const loadLookup = async () => {
-
-        try {
-
-            const res = await getDeNghiXuLy();
-
-            setDeNghiList(res.data || []);
-
-        } catch (err) {
-
-            console.log(err);
-
-        }
-
+    const options = deNghiList.map(item => ({ value: item.Id, label: item.Ten }));
+    const updateRow = (index, patch) => setRows(current =>
+        current.map((row, rowIndex) => rowIndex === index ? { ...row, ...patch } : row)
+    );
+    const removeRow = (index) => setRows(current =>
+        current.length === 1 ? [emptyRow()] : current.filter((_, rowIndex) => rowIndex !== index)
+    );
+    const addRow = () => {
+        setRows(current => [...current, emptyRow()]);
+        requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
     };
 
-    /* DATE */
-
-    const onChangeDate = (event, selectedDate) => {
-
-        setShowDate(false);
-
-        if (selectedDate) {
-            setThoiHan(selectedDate);
-        }
-
-    };
-
-    /* SELECT */
-
-    const handleSelect = (item) => {
-
-        setDeNghiXuLyId(item.Id);
-        setDeNghiText(item.Ten);
-
-        setShowSelectModal(false);
-
-    };
-
-    /* SUBMIT */
-
-    const handleSubmit = async () => {
-
-        if (!noiDung.trim()) {
-            Alert.alert("Thiếu dữ liệu", "Vui lòng nhập nội dung");
+    const submit = async () => {
+        if (rows.some(row =>
+            !row.noiDung.trim() || !row.trachNhiem.trim() || !row.theoDoi.trim()
+        )) {
+            Alert.alert("Thiếu dữ liệu", "Vui lòng nhập nội dung, trách nhiệm và theo dõi cho tất cả các dòng.");
             return;
         }
-
-        if (!deNghiXuLyId) {
-            Alert.alert("Thiếu dữ liệu", "Chọn đề nghị xử lý");
-            return;
-        }
-
         try {
-
             setLoading(true);
-
             await addXuLy({
                 bienBanId,
-                noiDung,
-                deNghiXuLyId,
-                currentUserId,
-                thoiHan
+                items: rows.map(row => ({
+                    noiDung: row.noiDung.trim(),
+                    deNghiXuLyId: row.deNghiXuLyId,
+                    thoiHan: row.thoiHan,
+                    trachNhiem: row.trachNhiem.trim(),
+                    theoDoi: row.theoDoi.trim()
+                }))
             });
-
-            Alert.alert("Thành công", "Đã lưu đề xuất xử lý");
-
-            reload();
+            await reload();
             onClose();
-
+            Alert.alert("Thành công", `Đã lưu ${rows.length} dòng đề xuất xử lý.`);
         } catch (err) {
-
-            Alert.alert(
-                "Lỗi",
-                err?.response?.data?.message || "Không thể lưu đề xuất"
-            );
-
+            Alert.alert("Lỗi", err?.response?.data?.message || "Không thể lưu đề xuất.");
         } finally {
-
             setLoading(false);
-
         }
-
     };
 
     return (
-
-        <Modal visible={visible} animationType="none">
-
-            <KeyboardAvoidingView
-                style={styles.container}
-                behavior={Platform.OS === "ios" ? "padding" : undefined}
-            >
-
-                {/* HEADER */}
-
+        <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+            <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
                 <View style={styles.header}>
-
-                    <TouchableOpacity onPress={onClose}>
-                        <Text style={styles.back}>←</Text>
-                    </TouchableOpacity>
-
-                    <Text style={styles.title}>
-                        Nhập ý kiến xử lý
-                    </Text>
-
-                    <View style={{ width: 30 }} />
-
+                    <TouchableOpacity onPress={onClose}><Text style={styles.back}>←</Text></TouchableOpacity>
+                    <Text style={styles.title}>Đề xuất xử lý</Text>
+                    <View style={styles.spacer} />
                 </View>
-
-                {/* FORM */}
-
-                <KeyboardFormScrollView
+                <ScrollView
+                    ref={scrollRef}
                     style={styles.form}
-                    contentContainerStyle={styles.formContent}
+                    contentContainerStyle={styles.content}
                     keyboardShouldPersistTaps="handled"
                 >
-
-                    {/* NỘI DUNG */}
-
-                    <Text style={styles.label}>
-                        Nội dung
-                    </Text>
-
-                    <TextInput
-                        style={styles.textarea}
-                        placeholderTextColor="#64748b"
-                        placeholder="Mô tả nội dung xử lý..."
-                        multiline
-                        value={noiDung}
-                        onChangeText={setNoiDung}
+                    {rows.map((row, index) => (
+                        <View key={index} style={styles.card}>
+                            <View style={styles.rowHeader}>
+                                <Text style={styles.rowTitle}>Đề xuất {index + 1}</Text>
+                                <TouchableOpacity onPress={() => removeRow(index)}><Text style={styles.remove}>Xóa</Text></TouchableOpacity>
+                            </View>
+                            <Text style={styles.label}>Nội dung</Text>
+                            <TextInput
+                                style={[styles.input, styles.textarea]}
+                                multiline
+                                value={row.noiDung}
+                                onChangeText={value => updateRow(index, { noiDung: value })}
+                                placeholder="Mô tả nội dung xử lý"
+                                placeholderTextColor="#64748b"
+                                textAlignVertical="top"
+                            />
+                            <Text style={styles.label}>Hình thức xử lý</Text>
+                            <MobileSelect
+                                value={row.deNghiXuLyId}
+                                options={options}
+                                onValueChange={value => updateRow(index, { deNghiXuLyId: value })}
+                                title="Chọn hình thức xử lý"
+                                placeholder="Không bắt buộc"
+                            />
+                            <Text style={styles.label}>Trách nhiệm</Text>
+                            <TextInput
+                                style={styles.input}
+                                value={row.trachNhiem}
+                                onChangeText={value => updateRow(index, { trachNhiem: value })}
+                                placeholder="Người/bộ phận chịu trách nhiệm"
+                                placeholderTextColor="#64748b"
+                            />
+                            <Text style={styles.label}>Thời hạn</Text>
+                            <TouchableOpacity style={styles.dateBox} onPress={() => setDateRow(index)}>
+                                <Text>{row.thoiHan.toLocaleDateString("vi-VN")}</Text>
+                            </TouchableOpacity>
+                            <Text style={styles.label}>Theo dõi</Text>
+                            <TextInput
+                                style={styles.input}
+                                value={row.theoDoi}
+                                onChangeText={value => updateRow(index, { theoDoi: value })}
+                                placeholder="Người/bộ phận theo dõi"
+                                placeholderTextColor="#64748b"
+                                onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150)}
+                            />
+                        </View>
+                    ))}
+                    <TouchableOpacity style={styles.addButton} onPress={addRow}><Text style={styles.addText}>+ Thêm dòng đề xuất</Text></TouchableOpacity>
+                </ScrollView>
+                {dateRow !== null && (
+                    <DateTimePicker
+                        value={rows[dateRow]?.thoiHan || new Date()}
+                        mode="date"
+                        onChange={(_, date) => {
+                            if (date) updateRow(dateRow, { thoiHan: date });
+                            setDateRow(null);
+                        }}
                     />
-
-                    {/* ĐỀ NGHỊ XỬ LÝ */}
-
-                    <Text style={styles.label}>
-                        Đề nghị xử lý
-                    </Text>
-
-                    <TouchableOpacity
-                        style={styles.selectBox}
-                        onPress={() => setShowSelectModal(true)}
-                    >
-
-                        <Text style={{
-                            color: deNghiText ? "#000" : "#999"
-                        }}>
-                            {deNghiText || "Chọn đề nghị xử lý"}
-                        </Text>
-
-                    </TouchableOpacity>
-
-                    {/* THỜI HẠN */}
-
-                    <Text style={styles.label}>
-                        Thời hạn
-                    </Text>
-
-                    <TouchableOpacity
-                        style={styles.dateBox}
-                        onPress={() => setShowDate(true)}
-                    >
-
-                        <Text>
-                            {thoiHan.toLocaleDateString()}
-                        </Text>
-
-                    </TouchableOpacity>
-
-                    {showDate && (
-
-                        <DateTimePicker
-                            value={thoiHan}
-                            mode="date"
-                            display="default"
-                            onChange={onChangeDate}
-                        />
-
-                    )}
-
-                </KeyboardFormScrollView>
-
-                {/* FOOTER */}
-
+                )}
                 <View style={styles.footer}>
-
-                    <TouchableOpacity
-                        style={styles.btn}
-                        onPress={handleSubmit}
-                        disabled={loading}
-                    >
-
-                        <Text style={styles.btnText}>
-                            Lưu đề xuất xử lý
-                        </Text>
-
+                    <TouchableOpacity style={styles.btn} onPress={submit} disabled={loading}>
+                        <Text style={styles.btnText}>{loading ? "Đang lưu..." : `Lưu ${rows.length} dòng`}</Text>
                     </TouchableOpacity>
-
                 </View>
-
             </KeyboardAvoidingView>
-
-            {/* MODAL CHỌN ĐỀ NGHỊ */}
-
-            <Modal
-                visible={showSelectModal}
-                transparent
-                animationType="fade"
-            >
-
-                <View style={styles.overlay}>
-
-                    <View style={styles.selectModal}>
-
-                        <Text style={styles.modalTitle}>
-                            Chọn đề nghị xử lý
-                        </Text>
-
-                        <FlatList
-                            data={deNghiList}
-                            keyExtractor={(item) => item.Id.toString()}
-                            renderItem={({ item }) => (
-
-                                <TouchableOpacity
-                                    style={styles.item}
-                                    onPress={() => handleSelect(item)}
-                                >
-
-                                    <Text style={styles.itemText}>
-                                        {item.Ten}
-                                    </Text>
-
-                                </TouchableOpacity>
-
-                            )}
-                        />
-
-                        <TouchableOpacity
-                            style={styles.cancel}
-                            onPress={() => setShowSelectModal(false)}
-                        >
-
-                            <Text>Đóng</Text>
-
-                        </TouchableOpacity>
-
-                    </View>
-
-                </View>
-
-            </Modal>
-
         </Modal>
-
     );
-
 }
 
 const styles = StyleSheet.create({
-
-    container: {
-        flex: 1,
-        backgroundColor: "#f6f7fb"
-    },
-
-    header: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        paddingTop: 70,
-        padding: 16,
-        borderBottomWidth: 1,
-        borderColor: "#eee",
-        backgroundColor: "#fff"
-    },
-
-    title: {
-        fontSize: 18,
-        fontWeight: "600"
-    },
-
-    back: {
-        fontSize: 22
-    },
-
-    form: {
-        flex: 1
-    },
-
-    formContent: {
-        padding: 16,
-        paddingBottom: 24
-    },
-
-    label: {
-        fontWeight: "600",
-        marginTop: 16,
-        marginBottom: 6
-    },
-
-    textarea: {
-        backgroundColor: "#fff",
-        borderRadius: 12,
-        padding: 12,
-        minHeight: 100,
-        borderWidth: 1,
-        borderColor: "#e5e7eb"
-    },
-
-    selectBox: {
-        backgroundColor: "#fff",
-        padding: 14,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: "#e5e7eb"
-    },
-
-    dateBox: {
-        backgroundColor: "#fff",
-        padding: 14,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: "#e5e7eb"
-    },
-
-    footer: {
-        padding: 16
-    },
-
-    btn: {
-        backgroundColor: "#2d8cff",
-        padding: 16,
-        borderRadius: 14,
-        alignItems: "center"
-    },
-
-    btnText: {
-        color: "#fff",
-        fontWeight: "600"
-    },
-
-    overlay: {
-        flex: 1,
-        backgroundColor: "rgba(0,0,0,0.4)",
-        justifyContent: "center",
-        padding: 20
-    },
-
-    selectModal: {
-        backgroundColor: "#fff",
-        borderRadius: 16,
-        padding: 16,
-        maxHeight: "70%"
-    },
-
-    modalTitle: {
-        fontSize: 18,
-        fontWeight: "600",
-        marginBottom: 12
-    },
-
-    item: {
-        paddingVertical: 14,
-        borderBottomWidth: 1,
-        borderColor: "#eee"
-    },
-
-    itemText: {
-        fontSize: 16
-    },
-
-    cancel: {
-        alignItems: "center",
-        marginTop: 12
-    }
-
+    container: { flex: 1, backgroundColor: "#f6f7fb" },
+    header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 60, paddingHorizontal: 16, paddingBottom: 14, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e5e7eb" },
+    back: { fontSize: 24 }, title: { fontSize: 18, fontWeight: "700" }, spacer: { width: 24 },
+    form: { flex: 1 }, content: { padding: 16, paddingBottom: 28, gap: 12 },
+    card: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 12, padding: 14 },
+    rowHeader: { flexDirection: "row", justifyContent: "space-between" },
+    rowTitle: { fontWeight: "800", color: "#0f172a" }, remove: { color: "#dc2626", fontWeight: "700" },
+    label: { fontWeight: "600", marginTop: 12, marginBottom: 6, color: "#334155" },
+    input: { backgroundColor: "#fff", borderRadius: 8, padding: 12, borderWidth: 1, borderColor: "#cbd5e1", color: "#0f172a" },
+    textarea: { minHeight: 90 },
+    dateBox: { backgroundColor: "#fff", padding: 13, borderRadius: 8, borderWidth: 1, borderColor: "#cbd5e1" },
+    addButton: { padding: 13, borderWidth: 1, borderColor: "#93c5fd", borderRadius: 8, alignItems: "center" },
+    addText: { color: "#2563eb", fontWeight: "700" },
+    footer: { padding: 16, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#e2e8f0" },
+    btn: { backgroundColor: "#2d8cff", padding: 15, borderRadius: 10, alignItems: "center" },
+    btnText: { color: "#fff", fontWeight: "800" }
 });

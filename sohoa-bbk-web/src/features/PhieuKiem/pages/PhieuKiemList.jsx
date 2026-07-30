@@ -492,8 +492,9 @@ export default function PhieuKiemList() {
                                             </TableCell>
                                             <TableCell>{item.Lot || "—"}</TableCell>
                                             <TableCell align="right" sx={{ fontWeight: 500 }}>
-                                                {/* Hiển thị Số Lượng */}
-                                                {item.SoLuong ? item.SoLuong.toLocaleString('vi-VN') : "—"}
+                                                <Typography variant="body2">KH: {Number(item.SoLuongKeHoach ?? item.SoLuong ?? 0).toLocaleString("vi-VN")}</Typography>
+                                                <Typography variant="caption" color="text.secondary">TT: {item.SoLuongThucTe == null ? "Chưa nhập" : Number(item.SoLuongThucTe).toLocaleString("vi-VN")}</Typography>
+                                                <Typography variant="caption" display="block" color="primary">HL: {Number(item.SoLuongHieuLuc ?? item.SoLuong ?? 0).toLocaleString("vi-VN")}</Typography>
                                             </TableCell>
                                             <TableCell>{item.TenNguoiKiem || "—"}</TableCell>
                                             <TableCell align="center">

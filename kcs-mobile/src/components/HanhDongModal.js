@@ -1,426 +1,135 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-    View,
-    Text,
-    Modal,
-    TextInput,
-    TouchableOpacity,
-    StyleSheet,
-    Alert,
-    FlatList,
-    KeyboardAvoidingView,
-    Platform
+    Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet,
+    Text, TextInput, TouchableOpacity, View
 } from "react-native";
-import KeyboardFormScrollView from "./KeyboardFormScrollView";
-
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { addHanhDong } from "../api/bienBan.api";
 
-import {
-    addHanhDong,
-    getBoPhan
-} from "../api/bienBan.api";
+const emptyRow = () => ({ noiDung: "", thoiHan: new Date(), theoDoi: "" });
 
-export default function HanhDongModal({
-    visible,
-    bienBanId,
-    onClose,
-    reload
-}) {
-
-    const [noiDung, setNoiDung] = useState("");
-
-    const [boPhanId, setBoPhanId] = useState(null);
-    const [boPhanText, setBoPhanText] = useState("");
-
-    const [boPhanList, setBoPhanList] = useState([]);
-
-    const [thoiHan, setThoiHan] = useState(new Date());
-    const [showDate, setShowDate] = useState(false);
-
-    const [showBoPhanModal, setShowBoPhanModal] = useState(false);
-
+export default function HanhDongModal({ visible, bienBanId, onClose, reload }) {
+    const [rows, setRows] = useState([emptyRow()]);
+    const [dateRow, setDateRow] = useState(null);
     const [loading, setLoading] = useState(false);
-
-
-    /* LOAD LOOKUP */
+    const scrollRef = useRef(null);
 
     useEffect(() => {
-
-        if (visible) {
-
-            setNoiDung("");
-            setBoPhanId(null);
-            setBoPhanText("");
-            setThoiHan(new Date());
-
-            loadBoPhan();
-
-        }
-
+        if (visible) setRows([emptyRow()]);
     }, [visible]);
 
-
-    const loadBoPhan = async () => {
-
-        try {
-
-            const res = await getBoPhan();
-
-            setBoPhanList(res.data || []);
-
-        } catch (err) {
-
-            console.log(err);
-
-        }
-
+    const updateRow = (index, patch) => setRows(current =>
+        current.map((row, rowIndex) => rowIndex === index ? { ...row, ...patch } : row)
+    );
+    const removeRow = (index) => setRows(current =>
+        current.length === 1 ? [emptyRow()] : current.filter((_, rowIndex) => rowIndex !== index)
+    );
+    const addRow = () => {
+        setRows(current => [...current, emptyRow()]);
+        requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
     };
-
-
-    /* DATE */
-
-    const onChangeDate = (event, selectedDate) => {
-
-        setShowDate(false);
-
-        if (selectedDate) {
-            setThoiHan(selectedDate);
-        }
-
-    };
-
-
-    /* SUBMIT */
-
-    const handleSubmit = async () => {
-        if (!noiDung.trim()) {
-            Alert.alert("Thiếu dữ liệu", "Nhập nội dung");
+    const submit = async () => {
+        if (rows.some(row => !row.noiDung.trim() || !row.theoDoi.trim())) {
+            Alert.alert("Thiếu dữ liệu", "Vui lòng nhập nội dung và người theo dõi cho tất cả các dòng.");
             return;
         }
         try {
             setLoading(true);
             await addHanhDong({
                 bienBanId,
-                noiDung,
-                thoiHan
+                items: rows.map(row => ({
+                    noiDung: row.noiDung.trim(),
+                    thoiHan: row.thoiHan,
+                    theoDoi: row.theoDoi.trim()
+                }))
             });
-            Alert.alert("Thành công", "Đã thêm hành động");
-            reload();
+            await reload();
             onClose();
+            Alert.alert("Thành công", `Đã lưu ${rows.length} dòng hành động.`);
         } catch (err) {
-            Alert.alert(
-                "Lỗi",
-                err?.response?.data?.message || "Không thể thêm hành động"
-            );
+            Alert.alert("Lỗi", err?.response?.data?.message || "Không thể thêm hành động.");
         } finally {
             setLoading(false);
         }
     };
 
-
     return (
-
-        <Modal visible={visible} animationType="none">
-
-            <KeyboardAvoidingView
-                style={styles.container}
-                behavior={Platform.OS === "ios" ? "padding" : undefined}
-            >
-
-
-                {/* HEADER */}
-
+        <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+            <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
                 <View style={styles.header}>
-
-                    <TouchableOpacity onPress={onClose}>
-                        <Text style={styles.back}>←</Text>
-                    </TouchableOpacity>
-
-                    <Text style={styles.title}>
-                        Thêm hành động khắc phục
-                    </Text>
-
-                    <View style={{ width: 30 }} />
-
+                    <TouchableOpacity onPress={onClose}><Text style={styles.back}>←</Text></TouchableOpacity>
+                    <Text style={styles.title}>Hành động khắc phục</Text>
+                    <View style={styles.spacer} />
                 </View>
-
-
-                {/* FORM */}
-
-                <KeyboardFormScrollView
-                    style={styles.form}
-                    contentContainerStyle={styles.formContent}
-                    keyboardShouldPersistTaps="handled"
-                >
-
-
-                    {/* NỘI DUNG */}
-
-                    <Text style={styles.label}>
-                        Nội dung
-                    </Text>
-
-                    <TextInput
-                        style={[styles.input, { height: 90 }]}
-                        placeholderTextColor="#64748b"
-                        placeholder="Nhập nội dung hành động"
-                        multiline
-                        value={noiDung}
-                        onChangeText={setNoiDung}
+                <ScrollView ref={scrollRef} style={styles.form} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+                    {rows.map((row, index) => (
+                        <View key={index} style={styles.card}>
+                            <View style={styles.rowHeader}>
+                                <Text style={styles.rowTitle}>Hành động {index + 1}</Text>
+                                <TouchableOpacity onPress={() => removeRow(index)}><Text style={styles.remove}>Xóa</Text></TouchableOpacity>
+                            </View>
+                            <Text style={styles.label}>Nội dung</Text>
+                            <TextInput
+                                style={[styles.input, styles.textarea]}
+                                multiline
+                                value={row.noiDung}
+                                onChangeText={value => updateRow(index, { noiDung: value })}
+                                placeholder="Nhập nội dung hành động"
+                                placeholderTextColor="#64748b"
+                                textAlignVertical="top"
+                            />
+                            <Text style={styles.label}>Thời hạn</Text>
+                            <TouchableOpacity style={styles.dateBox} onPress={() => setDateRow(index)}>
+                                <Text>{row.thoiHan.toLocaleDateString("vi-VN")}</Text>
+                            </TouchableOpacity>
+                            <Text style={styles.label}>Theo dõi</Text>
+                            <TextInput
+                                style={styles.input}
+                                value={row.theoDoi}
+                                onChangeText={value => updateRow(index, { theoDoi: value })}
+                                placeholder="Người/bộ phận theo dõi"
+                                placeholderTextColor="#64748b"
+                                onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150)}
+                            />
+                        </View>
+                    ))}
+                    <TouchableOpacity style={styles.addButton} onPress={addRow}><Text style={styles.addText}>+ Thêm dòng hành động</Text></TouchableOpacity>
+                </ScrollView>
+                {dateRow !== null && (
+                    <DateTimePicker
+                        value={rows[dateRow]?.thoiHan || new Date()}
+                        mode="date"
+                        onChange={(_, date) => {
+                            if (date) updateRow(dateRow, { thoiHan: date });
+                            setDateRow(null);
+                        }}
                     />
-
-
-                    {/* BỘ PHẬN */}
-
-                    {/* <Text style={styles.label}>
-                        Bộ phận chịu trách nhiệm
-                    </Text>
-
-                    <TouchableOpacity
-                        style={styles.selectBox}
-                        onPress={() => setShowBoPhanModal(true)}
-                    >
-
-                        <Text style={{
-                            color: boPhanText ? "#000" : "#999"
-                        }}>
-                            {boPhanText || "Chọn bộ phận"}
-                        </Text>
-
-                    </TouchableOpacity> */}
-
-
-                    {/* THỜI HẠN */}
-
-                    <Text style={styles.label}>
-                        Thời hạn
-                    </Text>
-
-                    <TouchableOpacity
-                        style={styles.dateBox}
-                        onPress={() => setShowDate(true)}
-                    >
-
-                        <Text>
-                            {thoiHan.toLocaleDateString("vi-VN")}
-                        </Text>
-
-                    </TouchableOpacity>
-
-                    {showDate && (
-
-                        <DateTimePicker
-                            value={thoiHan}
-                            mode="date"
-                            display="default"
-                            onChange={onChangeDate}
-                        />
-
-                    )}
-
-                </KeyboardFormScrollView>
-
-
-                {/* FOOTER */}
-
+                )}
                 <View style={styles.footer}>
-
-                    <TouchableOpacity
-                        style={styles.btn}
-                        onPress={handleSubmit}
-                        disabled={loading}
-                    >
-
-                        <Text style={styles.btnText}>
-                            Lưu hành động
-                        </Text>
-
+                    <TouchableOpacity style={styles.btn} onPress={submit} disabled={loading}>
+                        <Text style={styles.btnText}>{loading ? "Đang lưu..." : `Lưu ${rows.length} dòng`}</Text>
                     </TouchableOpacity>
-
                 </View>
-
             </KeyboardAvoidingView>
-
-
-            {/* MODAL CHỌN BỘ PHẬN */}
-
-            <Modal
-                visible={showBoPhanModal}
-                transparent
-                animationType="fade"
-            >
-
-                <View style={styles.overlay}>
-
-                    <View style={styles.selectModal}>
-
-                        <Text style={styles.modalTitle}>
-                            Chọn bộ phận
-                        </Text>
-
-                        <FlatList
-                            data={boPhanList}
-                            keyExtractor={(item) => item.Id.toString()}
-                            renderItem={({ item }) => (
-
-                                <TouchableOpacity
-                                    style={styles.item}
-                                    onPress={() => {
-
-                                        setBoPhanId(item.Id);
-                                        setBoPhanText(item.MaBoPhan + " - " + item.TenBoPhan);
-
-                                        setShowBoPhanModal(false);
-
-                                    }}
-                                >
-
-                                    <Text style={styles.itemText}>
-                                        {item.MaBoPhan} - {item.TenBoPhan}
-                                    </Text>
-
-                                </TouchableOpacity>
-
-                            )}
-                        />
-
-                        <TouchableOpacity
-                            style={styles.cancel}
-                            onPress={() => setShowBoPhanModal(false)}
-                        >
-
-                            <Text>Đóng</Text>
-
-                        </TouchableOpacity>
-
-                    </View>
-
-                </View>
-
-            </Modal>
-
         </Modal>
-
     );
-
 }
 
-
 const styles = StyleSheet.create({
-
-    container: {
-        flex: 1,
-        backgroundColor: "#f6f7fb"
-    },
-
-    header: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        paddingTop: 70,
-        padding: 16,
-        borderBottomWidth: 1,
-        borderColor: "#eee",
-        backgroundColor: "#fff"
-    },
-
-    title: {
-        fontSize: 18,
-        fontWeight: "600"
-    },
-
-    back: {
-        fontSize: 22
-    },
-
-    form: {
-        flex: 1
-    },
-
-    formContent: {
-        padding: 16,
-        paddingBottom: 24
-    },
-
-    label: {
-        fontWeight: "600",
-        marginTop: 16,
-        marginBottom: 6
-    },
-
-    input: {
-        backgroundColor: "#fff",
-        borderRadius: 12,
-        padding: 12,
-        borderWidth: 1,
-        borderColor: "#e5e7eb"
-    },
-
-    selectBox: {
-        backgroundColor: "#fff",
-        padding: 14,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: "#e5e7eb"
-    },
-
-    dateBox: {
-        backgroundColor: "#fff",
-        padding: 14,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: "#e5e7eb"
-    },
-
-    footer: {
-        padding: 16
-    },
-
-    btn: {
-        backgroundColor: "#16a085",
-        padding: 16,
-        borderRadius: 14,
-        alignItems: "center"
-    },
-
-    btnText: {
-        color: "#fff",
-        fontWeight: "600"
-    },
-
-    overlay: {
-        flex: 1,
-        backgroundColor: "rgba(0,0,0,0.4)",
-        justifyContent: "center",
-        padding: 20
-    },
-
-    selectModal: {
-        backgroundColor: "#fff",
-        borderRadius: 16,
-        padding: 16,
-        maxHeight: "70%"
-    },
-
-    modalTitle: {
-        fontSize: 18,
-        fontWeight: "600",
-        marginBottom: 12
-    },
-
-    item: {
-        paddingVertical: 14,
-        borderBottomWidth: 1,
-        borderColor: "#eee"
-    },
-
-    itemText: {
-        fontSize: 16
-    },
-
-    cancel: {
-        alignItems: "center",
-        marginTop: 12
-    }
-
+    container: { flex: 1, backgroundColor: "#f6f7fb" },
+    header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 60, paddingHorizontal: 16, paddingBottom: 14, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e5e7eb" },
+    back: { fontSize: 24 }, title: { fontSize: 18, fontWeight: "700" }, spacer: { width: 24 },
+    form: { flex: 1 }, content: { padding: 16, paddingBottom: 28, gap: 12 },
+    card: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 12, padding: 14 },
+    rowHeader: { flexDirection: "row", justifyContent: "space-between" },
+    rowTitle: { fontWeight: "800", color: "#0f172a" }, remove: { color: "#dc2626", fontWeight: "700" },
+    label: { fontWeight: "600", marginTop: 12, marginBottom: 6, color: "#334155" },
+    input: { backgroundColor: "#fff", borderRadius: 8, padding: 12, borderWidth: 1, borderColor: "#cbd5e1", color: "#0f172a" },
+    textarea: { minHeight: 90 },
+    dateBox: { backgroundColor: "#fff", padding: 13, borderRadius: 8, borderWidth: 1, borderColor: "#cbd5e1" },
+    addButton: { padding: 13, borderWidth: 1, borderColor: "#93c5fd", borderRadius: 8, alignItems: "center" },
+    addText: { color: "#2563eb", fontWeight: "700" },
+    footer: { padding: 16, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#e2e8f0" },
+    btn: { backgroundColor: "#16a085", padding: 15, borderRadius: 10, alignItems: "center" },
+    btnText: { color: "#fff", fontWeight: "800" }
 });

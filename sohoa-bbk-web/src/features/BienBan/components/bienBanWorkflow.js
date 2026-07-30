@@ -44,18 +44,16 @@ export function buildBienBanWorkflow({
 }) {
     const status = String(info?.TrangThai || "BB_MOI");
     const isFinished = ["HOAN_TAT", "HOAN_THANH", "DA_XAC_NHAN"].includes(status) || Boolean(evaluation);
-    const assignConfirmed = Boolean(info?.AssignConfirmed);
-    const isAssigned = assigns.some((item) => sameDepartment(item.BoPhanId, currentUserBoPhanId));
-    const b7Assign = assigns.find((item) => String(item.MaBoPhan || "").toUpperCase() === "B7");
-    const hasOwnProcessing = Boolean(b7Assign) && sameDepartment(b7Assign.BoPhanId, currentUserBoPhanId) &&
-        xuLy.some((item) => sameDepartment(item.BoPhanId, b7Assign.BoPhanId));
-    const ownPendingOpinion = opinions.some((item) => sameDepartment(item.BoPhanId, currentUserBoPhanId) && !item.NguoiTraLoiId);
-    const allProcessingDone = !b7Assign || xuLy.some((item) => sameDepartment(item.BoPhanId, b7Assign.BoPhanId));
-    const allOpinionsAnswered = info?.MauPhieuVersion !== "V01" || (
-        opinions.length === assigns.length && assigns.every((assign) =>
-            opinions.some((item) => sameDepartment(item.BoPhanId, assign.BoPhanId) && item.NguoiTraLoiId)
-        )
+    const isV01 = info?.MauPhieuVersion === "V01";
+    const assignConfirmed = isV01
+        ? Boolean(info?.OpinionDepartmentsConfirmed)
+        : Boolean(info?.AssignConfirmed);
+    const ownPendingOpinion = opinions.some((item) =>
+        sameDepartment(item.BoPhanId, currentUserBoPhanId) && !item.HasResponded
     );
+    const allProcessingDone = !isV01 || xuLy.length > 0;
+    const allOpinionsAnswered = !isV01 ||
+        (opinions.length > 0 && opinions.every((item) => item.HasResponded));
     const allConfirmed = assigns.length > 0 && assigns.every((assign) =>
         xacNhan.some((item) => sameDepartment(item.BoPhanId, assign.BoPhanId))
     );
@@ -119,10 +117,10 @@ export function buildBienBanWorkflow({
             description: "Bạn sẽ nhận được thao tác xử lý khi danh sách bộ phận được xác nhận.",
             tone: "info"
         };
-    } else if (b7Assign && sameDepartment(b7Assign.BoPhanId, currentUserBoPhanId) && !hasOwnProcessing) {
+    } else if (isV01 && isManagerOrQA && xuLy.length === 0) {
         guidance = {
             eyebrow: "VIỆC BẠN CẦN LÀM",
-            title: "Nhập phương án xử lý của bộ phận",
+            title: "Nhập đề xuất xử lý",
             description: "Ghi rõ đề xuất, người thực hiện và thời hạn xử lý.",
             actionLabel: "Nhập phương án xử lý",
             onAction: actions.addProcessing,
