@@ -341,13 +341,13 @@ export default function BienBanSxbtDetail() {
             </Paper>
 
             <Container maxWidth="xl">
-                <Stack spacing={3}>
+                <Stack spacing={2}>
                     <Card sx={{ ...cardShellSx, overflow: "hidden" }}>
-                        <CardContent sx={{ p: { xs: 2, md: 3 }, "&:last-child": { pb: { xs: 2, md: 3 } } }}>
-                            <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={3}>
+                        <CardContent sx={{ p: { xs: 1.5, md: 2 }, "&:last-child": { pb: { xs: 1.5, md: 2 } } }}>
+                            <Stack direction={{ xs: "column", lg: "row" }} justifyContent="space-between" spacing={2}>
                                 <Box sx={{ minWidth: 0 }}>
                                     <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap">
-                                        <Typography sx={{ fontSize: { xs: 26, md: 34 }, fontWeight: 700, color: "#0f172a", lineHeight: 1.15 }}>
+                                        <Typography sx={{ fontSize: { xs: 21, md: 25 }, fontWeight: 800, color: "#0f172a", lineHeight: 1.2 }}>
                                             {info?.SoPhieu || "---"}
                                         </Typography>
                                         <Chip
@@ -357,17 +357,20 @@ export default function BienBanSxbtDetail() {
                                             sx={{ fontWeight: 800, borderRadius: 1.5 }}
                                         />
                                     </Stack>
-                                    <Typography sx={{ mt: 0.75, color: "#64748b", fontSize: 16, fontWeight: 600 }}>
+                                    <Typography sx={{ mt: 0.5, color: "#64748b", fontSize: 13, fontWeight: 600 }}>
                                         {info?.SoBienBan || "Biên bản xử lý sản xuất bổ trợ"}
                                     </Typography>
                                 </Box>
 
-                                <Grid container spacing={1.5} sx={{ minWidth: { lg: 640 } }}>
+                                <Grid container spacing={1.5} sx={{ minWidth: { lg: 760 } }}>
                                     <Grid size={{ xs: 6, md: 3 }}>
                                         <InfoTile icon={<PersonOutlineOutlinedIcon />} label="Người tạo" value={info?.NguoiTao || "---"} />
                                     </Grid>
                                     <Grid size={{ xs: 6, md: 3 }}>
                                         <InfoTile icon={<ApartmentOutlinedIcon />} label="Loại phát sinh" value={info?.LoaiPhatSinh || "SXBT"} />
+                                    </Grid>
+                                    <Grid size={{ xs: 6, md: 3 }}>
+                                        <InfoTile icon={<ApartmentOutlinedIcon />} label="Mã đơn vị SXBT" value={info?.MaDonVi || "---"} />
                                     </Grid>
                                     <Grid size={{ xs: 6, md: 3 }}>
                                         <InfoTile icon={<ReportProblemOutlinedIcon />} label="Mức độ" value={`Mức ${mucDo || "---"}`} />
@@ -380,9 +383,9 @@ export default function BienBanSxbtDetail() {
                         </CardContent>
                     </Card>
 
-                    <Grid container spacing={3} alignItems="flex-start">
+                    <Grid container spacing={2} alignItems="flex-start">
                         <Grid size={{ xs: 12, lg: 8.5 }}>
-                            <Stack spacing={3}>
+                            <Stack spacing={2}>
                                 <Card sx={cardShellSx}>
                                     <CardContent sx={{ p: { xs: 2, md: 3 } }}>
                                         <Stack direction={{ xs: "column", md: "row" }} spacing={2.5}>
@@ -553,7 +556,7 @@ export default function BienBanSxbtDetail() {
                         </Grid>
 
                         <Grid size={{ xs: 12, lg: 3.5 }}>
-                            <Stack spacing={3} sx={{ position: { lg: "sticky" }, top: { lg: 92 } }}>
+                            <Stack spacing={2} sx={{ position: { lg: "sticky" }, top: { lg: 76 } }}>
                                 <Card sx={cardShellSx}>
                                     <CardContent sx={{ p: { xs: 2, md: 3 }, ...flowPanelSx }}>
                                         <Stack direction="row" spacing={1} alignItems="center" mb={2}>

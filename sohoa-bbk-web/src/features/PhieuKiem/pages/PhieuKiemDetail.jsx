@@ -428,10 +428,10 @@ export default function PhieuKiemDetail() {
                 </Paper>
                 {/* THÔNG TIN PHIẾU */}
 
-                <Card sx={{ mb: 4, borderRadius: 3 }}>
+                <Card sx={{ mb: 2.5, borderRadius: 2 }}>
                     <CardContent>
 
-                        <Grid container spacing={3}>
+                        <Grid container spacing={2}>
 
                             <Grid size={{ xs: 3 }}>
                                 <Typography variant="subtitle2">Số phiếu</Typography>
@@ -522,9 +522,9 @@ export default function PhieuKiemDetail() {
                 {phieu?.TrangThai === "TAO_MOI" &&
                     hasPermission("PHAN_BO_KIEM") && (
 
-                        <Card sx={{ mb: 4, p: 3 }}>
+                        <Card sx={{ mb: 2.5, p: 2 }}>
 
-                            <Typography variant="h6" sx={{ mb: 3 }}>
+                            <Typography variant="h6" sx={{ mb: 2 }}>
                                 Cấu hình AQL theo nhóm kiểm
                             </Typography>
 
@@ -597,7 +597,7 @@ export default function PhieuKiemDetail() {
 
                     return (
 
-                        <Accordion defaultExpanded key={section.Id} sx={{ mb: 3 }}>
+                        <Accordion defaultExpanded key={section.Id} sx={{ mb: 2 }}>
 
                             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
 

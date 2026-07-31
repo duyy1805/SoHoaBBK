@@ -469,10 +469,10 @@ export default function SxbtDetail() {
 
                 <Container maxWidth="xl">
                     {/* ---- I. Thông tin phiếu ---- */}
-                    <Card sx={{ mb: 3, borderRadius: 3, boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
-                        <CardContent sx={{ p: 3 }}>
+                    <Card sx={{ mb: 2, borderRadius: 2, boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
+                        <CardContent sx={{ p: 2 }}>
                             <SectionHeader icon={<AssignmentIcon sx={{ color: "#fff", fontSize: 20 }} />} title="Thông tin phiếu kiểm" />
-                            <Grid container spacing={3}>
+                            <Grid container spacing={2}>
                                 <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                     <InfoItem label="Số phiếu">
                                         <Typography fontWeight={700} color="primary">{phieu?.SoPhieu || "—"}</Typography>
@@ -553,8 +553,8 @@ export default function SxbtDetail() {
 
                     {/* ---- II. Chi tiết BTP ---- */}
                     {btpItems.length > 0 && (
-                        <Card sx={{ mb: 3, borderRadius: 3, boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
-                            <CardContent sx={{ p: 3 }}>
+                        <Card sx={{ mb: 2, borderRadius: 2, boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
+                            <CardContent sx={{ p: 2 }}>
                                 <SectionHeader icon={<InventoryIcon sx={{ color: "#fff", fontSize: 20 }} />} title="II. Chi tiết BTP" />
                                 <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
                                     <Table size="small">
@@ -618,10 +618,10 @@ export default function SxbtDetail() {
 
                     {/* ---- III. Tỷ lệ kiểm ---- */}
                     {summary && (
-                        <Card sx={{ mb: 3, borderRadius: 3, boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
-                            <CardContent sx={{ p: 3 }}>
+                        <Card sx={{ mb: 2, borderRadius: 2, boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
+                            <CardContent sx={{ p: 2 }}>
                                 <SectionHeader icon={<BarChartIcon sx={{ color: "#fff", fontSize: 20 }} />} title="III. Tỷ lệ kiểm" />
-                                <Grid container spacing={3} sx={{ mb: 3 }}>
+                                <Grid container spacing={2} sx={{ mb: 2 }}>
                                     <Grid size={{ xs: 12, sm: 4 }}>
                                         <InfoItem label="Loại mẫu">
                                             <Typography fontWeight={600}>{LOAI_MAU_LABEL[loaiMau] || loaiMau || "—"}</Typography>
@@ -671,8 +671,8 @@ export default function SxbtDetail() {
                     )}
 
                     {/* ---- IV. Danh sách lỗi ---- */}
-                    <Card sx={{ mb: 3, borderRadius: 3, boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
-                        <CardContent sx={{ p: 3 }}>
+                    <Card sx={{ mb: 2, borderRadius: 2, boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
+                        <CardContent sx={{ p: 2 }}>
                             <SectionHeader icon={<BugReportIcon sx={{ color: "#fff", fontSize: 20 }} />} title="IV. Ghi nhận lỗi" />
 
                             {defects.length === 0 ? (

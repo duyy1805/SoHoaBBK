@@ -247,6 +247,8 @@ export const BienBanSxbtPrintTemplate = React.forwardRef(({
                                     <div style={styles.sectionTitle}>1. Thông tin biên bản</div>
                                     <div style={styles.text}><strong>Số biên bản:</strong> {info.SoBienBan || "Biên bản SXBT"}</div>
                                     <div style={styles.text}><strong>Người tạo:</strong> {info.NguoiTao || ""}</div>
+                                    <div style={styles.text}><strong>Bộ phận tạo:</strong> {[info.MaBoPhanTao, info.TenBoPhanTao].filter(Boolean).join(" - ")}</div>
+                                    <div style={styles.text}><strong>Mã đơn vị SXBT:</strong> {info.MaDonVi || ""}</div>
                                     <div style={styles.text}>
                                         <strong>Mức độ không phù hợp:</strong>
                                         <span style={{ marginLeft: "10px" }}>

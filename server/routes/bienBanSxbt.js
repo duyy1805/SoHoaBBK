@@ -52,11 +52,25 @@ router.get("/:id", authenticateToken, async (req, res) => {
             .query(`
                 SELECT TOP 1
                     bb.NguoiLapId,
+                    bb.PhieuKiemId,
                     bb.DynamicFieldsJSON,
                     ulap.FullName AS NguoiTao,
+                    COALESCE(bb.BoPhanTaoId, ulap.BoPhanId) AS BoPhanTaoId,
+                    creatorDepartment.MaBoPhan AS MaBoPhanTao,
+                    creatorDepartment.TenBoPhan AS TenBoPhanTao,
+                    contractor.Ma_NhaThau AS MaDonVi,
                     ISNULL(bb.MucDoKhongPhuHopConfirmed, 0) AS MucDoKhongPhuHopConfirmed
                 FROM dbo.BIEN_BAN_KIEM bb
                 LEFT JOIN dbo.USERS ulap ON ulap.Id = bb.NguoiLapId
+                LEFT JOIN dbo.DM_BO_PHAN creatorDepartment
+                    ON creatorDepartment.Id = COALESCE(bb.BoPhanTaoId, ulap.BoPhanId)
+                LEFT JOIN dbo.PHIEU_KIEM pk ON pk.Id = bb.PhieuKiemId
+                LEFT JOIN TAG_QTKD.dbo.PhieuNhapBTP receipt
+                    ON receipt.ID_PhieuNhapBTP = pk.SourceId
+                LEFT JOIN TAG_System.dbo.DM_BoPhan sourceDepartment
+                    ON sourceDepartment.ID_BoPhan = receipt.ID_BoPhan
+                LEFT JOIN TAG_QTKD.dbo.DM_NhaThau contractor
+                    ON contractor.ID_BoPhan = sourceDepartment.ID_BoPhan
                 WHERE bb.Id = @BienBanId
             `);
 

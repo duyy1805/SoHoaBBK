@@ -50,14 +50,14 @@ export default function Sidebar({
                     justifyContent: collapsed ? 'center' : 'flex-start',
                     gap: collapsed ? 0 : 1.5,
                     px: collapsed ? 0 : 2,
-                    minHeight: 72,
+                    minHeight: 60,
                     transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)'
                 }}
             >
                 <Box
                     sx={{
-                        width: 44,
-                        height: 44,
+                        width: 38,
+                        height: 38,
                         borderRadius: 2,
                         background:
                             'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
@@ -71,7 +71,7 @@ export default function Sidebar({
                     }}
                     onClick={() => navigate('/dashboard')}
                 >
-                    <FactoryIcon sx={{ color: '#fff', fontSize: 22 }} />
+                    <FactoryIcon sx={{ color: '#fff', fontSize: 20 }} />
                 </Box>
 
                 {!collapsed && (
@@ -126,6 +126,7 @@ export default function Sidebar({
                                         ? 'center'
                                         : 'flex-start',
                                     px: collapsed ? 1 : 2,
+                                    py: 0.75,
                                     position: 'relative',
                                     transition:
                                         'all 0.2s ease'
@@ -170,6 +171,7 @@ export default function Sidebar({
                                         }}
                                         primaryTypographyProps={{
                                             fontWeight: selected ? 600 : 500,
+                                            fontSize: 13,
                                             noWrap: true
                                         }}
                                     />

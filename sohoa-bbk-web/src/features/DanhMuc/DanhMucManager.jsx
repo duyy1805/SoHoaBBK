@@ -12,7 +12,7 @@ export default function DanhMucManager() {
 
     return (
         <Box>
-            <Typography variant="h4" sx={{ mb: 2 }}>
+            <Typography variant="h5" sx={{ mb: 1.5, fontWeight: 800 }}>
                 Quản lý Danh mục
             </Typography>
 

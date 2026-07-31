@@ -293,14 +293,48 @@ router.get(
                 (progressResult.recordset || []).map((item) => [Number(item.BienBanId), item])
             );
 
+            const listMetaResult = await pool.request()
+                .input("BienBanIds", sql.NVarChar(sql.MAX), bienBanIds.join(","))
+                .query(`
+                    SELECT
+                        bb.Id AS BienBanId,
+                        COALESCE(bb.BoPhanTaoId, creator.BoPhanId) AS BoPhanTaoId,
+                        creatorDepartment.MaBoPhan AS MaBoPhanTao,
+                        creatorDepartment.TenBoPhan AS TenBoPhanTao,
+                        CASE WHEN pk.LoaiKiemId = 4 THEN contractor.Ma_NhaThau ELSE NULL END AS MaDonVi
+                    FROM dbo.BIEN_BAN_KIEM bb
+                    LEFT JOIN dbo.USERS creator ON creator.Id = bb.NguoiLapId
+                    LEFT JOIN dbo.DM_BO_PHAN creatorDepartment
+                        ON creatorDepartment.Id = COALESCE(bb.BoPhanTaoId, creator.BoPhanId)
+                    LEFT JOIN dbo.PHIEU_KIEM pk ON pk.Id = bb.PhieuKiemId
+                    LEFT JOIN TAG_QTKD.dbo.PhieuNhapBTP receipt
+                        ON receipt.ID_PhieuNhapBTP = pk.SourceId
+                    LEFT JOIN TAG_System.dbo.DM_BoPhan sourceDepartment
+                        ON sourceDepartment.ID_BoPhan = receipt.ID_BoPhan
+                    LEFT JOIN TAG_QTKD.dbo.DM_NhaThau contractor
+                        ON contractor.ID_BoPhan = sourceDepartment.ID_BoPhan
+                    WHERE bb.Id IN (
+                        SELECT TRY_CONVERT(int, [value])
+                        FROM STRING_SPLIT(@BienBanIds, ',')
+                    )
+                `);
+            const listMetaByBienBanId = new Map(
+                (listMetaResult.recordset || []).map((item) => [Number(item.BienBanId), item])
+            );
+
             const normalizedRows = rows.map((item) => {
+                const listMeta = listMetaByBienBanId.get(Number(item.BienBanId)) || {};
+                const enrichedItem = {
+                    ...item,
+                    ...listMeta
+                };
                 const progress = progressByBienBanId.get(Number(item.BienBanId));
-                if (!progress) return item;
+                if (!progress) return enrichedItem;
 
                 const isSxbt = progress.IsSxbt === true || progress.IsSxbt === 1 ||
-                    item.LoaiBienBan === "SXBT" ||
-                    item.LoaiKiemId === 4 ||
-                    String(item.TrangThai || "").startsWith("BB_SXBT");
+                    enrichedItem.LoaiBienBan === "SXBT" ||
+                    enrichedItem.LoaiKiemId === 4 ||
+                    String(enrichedItem.TrangThai || "").startsWith("BB_SXBT");
 
                 const normalProgress = normalProgressByBienBanId.get(Number(item.BienBanId));
                 const total = isSxbt ? (Number(progress.SoBoPhan) || 0) : (normalProgress?.total || 0);
@@ -310,8 +344,8 @@ router.get(
                     : (total > 0 ? Math.round((done / total) * 100) : 0);
 
                 return {
-                    ...item,
-                    LoaiBienBan: isSxbt ? "SXBT" : item.LoaiBienBan,
+                    ...enrichedItem,
+                    LoaiBienBan: isSxbt ? "SXBT" : enrichedItem.LoaiBienBan,
                     DaCoYKien: done,
                     SoBoPhan: total,
                     ProgressPercent: Number.isFinite(progressPercent)

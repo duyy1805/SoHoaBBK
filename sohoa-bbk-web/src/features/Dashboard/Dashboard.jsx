@@ -320,7 +320,7 @@ export default function Dashboard() {
                 </Alert>
             )}
 
-            <Grid container spacing={3}>
+            <Grid container spacing={2}>
                 {stats.map((stat) => (
                     <Grid size={{ xs: 12, sm: 6, md: 3 }} key={stat.title}>
                         <StatCard {...stat} />
@@ -392,7 +392,7 @@ export default function Dashboard() {
                         </TableContainer>
                     </Paper>
 
-                    <Paper sx={{ mt: 3, p: 3 }}>
+                    <Paper sx={{ mt: 2, p: 2 }}>
                         <Typography variant="h6">Phiếu hoàn tất trong 7 ngày gần nhất</Typography>
                         <Box
                             sx={{

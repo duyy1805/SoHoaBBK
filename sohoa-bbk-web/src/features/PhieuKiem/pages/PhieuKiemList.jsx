@@ -148,6 +148,11 @@ export default function PhieuKiemList() {
         .trim();
 
     const getLoaiKiemLabel = (item) => item.TenLoaiKiem || (item.LoaiKiemId ? `Loại ${item.LoaiKiemId}` : "");
+    const getDepartmentLabel = (item) => {
+        const code = item.MaBoPhanTao || item.MaBoPhanNguoiKiem || "";
+        const name = item.TenBoPhanTao || item.TenBoPhanNguoiKiem || item.TenBoPhan || "";
+        return [code, name].filter(Boolean).join(" - ");
+    };
 
     const includesFilter = (value, filter) => {
         const normalizedFilter = normalizeFilterText(filter);
@@ -159,7 +164,10 @@ export default function PhieuKiemList() {
     const filteredData = useMemo(() => {
         return data.filter((item) => {
             if (!includesFilter(getLoaiKiemLabel(item), filterLoaiKiem)) return false;
-            if (!includesFilter(item.TenNguoiKiem || "", filterNguoiKiem)) return false;
+            if (!includesFilter(
+                `${item.TenNguoiKiem || ""} ${getDepartmentLabel(item)}`,
+                filterNguoiKiem
+            )) return false;
             if (filterKetLuan && item.KetLuan !== filterKetLuan) return false;
 
             // Lọc theo trạng thái
@@ -176,8 +184,9 @@ export default function PhieuKiemList() {
                 const matchLot = item.Lot?.toLowerCase().includes(searchLower);
                 const matchNguoiKiem = item.TenNguoiKiem?.toLowerCase().includes(searchLower);
                 const matchSanPham = item.TenSanPham?.toLowerCase().includes(searchLower); // Đã thêm lọc theo sản phẩm
+                const matchBoPhan = getDepartmentLabel(item).toLowerCase().includes(searchLower);
 
-                if (!matchSoPhieu && !matchLot && !matchNguoiKiem && !matchSanPham) {
+                if (!matchSoPhieu && !matchLot && !matchNguoiKiem && !matchSanPham && !matchBoPhan) {
                     return false;
                 }
             }
@@ -342,12 +351,14 @@ export default function PhieuKiemList() {
                     justifyContent="space-between"
                     alignItems={{ xs: "stretch", md: "center" }}
                     spacing={2}
-                    sx={{ mb: 4 }}
+                    sx={{ mb: 2.5 }}
                 >
                     <Typography
-                        variant="h4"
+                        variant="h5"
                         sx={{
-                            fontWeight: 700,
+                            fontWeight: 800,
+                            fontSize: { xs: 22, md: 26 },
+                            lineHeight: 1.2,
                             background: "linear-gradient(135deg, #1e293b 0%, #475569 100%)",
                             backgroundClip: "text",
                             WebkitTextFillColor: "transparent"
@@ -358,12 +369,13 @@ export default function PhieuKiemList() {
 
                     <Stack direction="row" spacing={1}>
                         {hasPermission("THUC_HIEN_KIEM") && (
-                            <Button variant="outlined" onClick={() => navigate("/phieu-kiem/cong-doan")}>
+                            <Button size="small" variant="outlined" onClick={() => navigate("/phieu-kiem/cong-doan")}>
                                 Phiếu công đoạn
                             </Button>
                         )}
                         {hasPermission("PHAN_BO_KIEM") && (
                             <Button
+                                size="small"
                                 variant="contained"
                                 startIcon={<AddIcon />}
                                 onClick={() => navigate("/phieu-kiem/create")}
@@ -376,7 +388,7 @@ export default function PhieuKiemList() {
                 </Stack>
 
                 {/* Filters Section */}
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mb: 3 }}>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mb: 2 }}>
                     <TextField
                         size="small"
                         placeholder="Tìm Số phiếu, Sản phẩm, Lot..."
@@ -391,7 +403,7 @@ export default function PhieuKiemList() {
                                 </InputAdornment>
                             ),
                         }}
-                        sx={{ minWidth: { xs: "100%", sm: 300 }, bgcolor: "background.paper", borderRadius: 1 }}
+                        sx={{ width: { xs: "100%", sm: 320 }, bgcolor: "background.paper", borderRadius: 1 }}
                     />
                     <TextField
                         select
@@ -401,7 +413,7 @@ export default function PhieuKiemList() {
                         onChange={(e) => {
                             updateFilter(setFilterStatus, "status", e.target.value);
                         }}
-                        sx={{ minWidth: { xs: "100%", sm: 200 }, bgcolor: "background.paper", borderRadius: 1 }}
+                        sx={{ width: { xs: "100%", sm: 210 }, bgcolor: "background.paper", borderRadius: 1 }}
                     >
                         <MenuItem value="">Tất cả</MenuItem>
                         <MenuItem value="DA_TAO_SECTION">Chưa kiểm</MenuItem>
@@ -413,13 +425,51 @@ export default function PhieuKiemList() {
                 </Stack>
 
                 {/* Table Data Section */}
-                <Card sx={{ borderRadius: 2, boxShadow: "0 4px 20px rgba(0,0,0,0.05)" }}>
-                    <TableContainer ref={tableContainerRef} sx={{ maxHeight: 'calc(100vh - 280px)' }}>
-                        <Table stickyHeader >
+                <Card
+                    variant="outlined"
+                    sx={{
+                        borderRadius: 2,
+                        borderColor: "#e2e8f0",
+                        boxShadow: "0 4px 18px rgba(15, 23, 42, 0.04)",
+                        overflow: "hidden"
+                    }}
+                >
+                    <TableContainer ref={tableContainerRef} sx={{ maxHeight: 'calc(100vh - 235px)' }}>
+                        <Table
+                            stickyHeader
+                            size="small"
+                            sx={{
+                                minWidth: 1180,
+                                tableLayout: "fixed",
+                                "& .MuiTableCell-root": {
+                                    px: 1.5,
+                                    py: 1.15,
+                                    fontSize: 13,
+                                    lineHeight: 1.35,
+                                    verticalAlign: "middle",
+                                    borderColor: "#edf0f4"
+                                },
+                                "& .MuiTableCell-head": {
+                                    py: 1.25,
+                                    color: "#334155",
+                                    fontSize: 12.5,
+                                    fontWeight: 800,
+                                    lineHeight: 1.2,
+                                    bgcolor: "#f8fafc"
+                                },
+                                "& .MuiChip-root": {
+                                    height: 24,
+                                    fontSize: 11.5
+                                },
+                                "& .MuiTableRow-root:hover": {
+                                    bgcolor: "#f8fafc"
+                                }
+                            }}
+                        >
                             <TableHead>
                                 <TableRow hover>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Số phiếu</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper', minWidth: 170 }}>
+                                    <TableCell sx={{ width: 132 }}>Số phiếu</TableCell>
+                                    <TableCell sx={{ width: 135 }}>
                                         {renderFilterHeader({
                                             field: "loaiKiem",
                                             label: "Loại kiểm",
@@ -428,19 +478,19 @@ export default function PhieuKiemList() {
                                             placeholder: "Nhập loại kiểm"
                                         })}
                                     </TableCell>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Sản phẩm</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>LOT</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }} align="right">SL Kế hoạch</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper', minWidth: 170 }}>
+                                    <TableCell sx={{ width: 255 }}>Sản phẩm</TableCell>
+                                    <TableCell sx={{ width: 100 }}>LOT</TableCell>
+                                    <TableCell sx={{ width: 145 }} align="right">Số lượng</TableCell>
+                                    <TableCell sx={{ width: 220 }}>
                                         {renderFilterHeader({
                                             field: "nguoiKiem",
-                                            label: "Người kiểm",
+                                            label: "Người kiểm / Bộ phận",
                                             value: filterNguoiKiem,
                                             onChange: (value) => updateFilter(setFilterNguoiKiem, "inspector", value),
-                                            placeholder: "Nhập người kiểm"
+                                            placeholder: "Nhập người kiểm hoặc bộ phận"
                                         })}
                                     </TableCell>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper', minWidth: 160 }} align="center">
+                                    <TableCell sx={{ width: 115 }} align="center">
                                         {renderFilterHeader({
                                             field: "ketLuan",
                                             label: "Kết luận",
@@ -454,8 +504,8 @@ export default function PhieuKiemList() {
                                             ]
                                         })}
                                     </TableCell>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }} align="center">Trạng thái</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }} align="center">Thao tác</TableCell>
+                                    <TableCell sx={{ width: 135 }} align="center">Trạng thái</TableCell>
+                                    <TableCell sx={{ width: 65 }} align="center">Xem</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
@@ -473,10 +523,17 @@ export default function PhieuKiemList() {
                                             key={item.Id}
                                             hover
                                             onClick={() => openDetail(item)}
-                                            sx={{ cursor: "pointer", transition: "0.2s" }}
+                                            sx={{ cursor: "pointer", transition: "background-color 0.15s ease" }}
                                         >
-                                            <TableCell sx={{ fontWeight: 600, color: 'primary.main' }}>
-                                                {item.SoPhieu}
+                                            <TableCell sx={{ color: 'primary.main' }}>
+                                                <Typography
+                                                    variant="body2"
+                                                    fontWeight={800}
+                                                    color="primary.main"
+                                                    sx={{ fontSize: 12.75, lineHeight: 1.35, overflowWrap: "anywhere" }}
+                                                >
+                                                    {item.SoPhieu}
+                                                </Typography>
                                             </TableCell>
                                             <TableCell>
                                                 <Chip
@@ -486,17 +543,56 @@ export default function PhieuKiemList() {
                                                 />
                                             </TableCell>
                                             <TableCell>
-                                                {/* Hiển thị Tên Sản Phẩm */}
-                                                <Typography variant="body2" fontWeight={500}>{item.TenSanPham || "—"}</Typography>
-                                                <Typography variant="caption" color="text.secondary">{item.MaSanPham}</Typography>
+                                                <Tooltip title={item.TenSanPham || ""} placement="top-start">
+                                                    <Typography
+                                                        variant="body2"
+                                                        fontWeight={700}
+                                                        sx={{
+                                                            fontSize: 13,
+                                                            lineHeight: 1.35,
+                                                            display: "-webkit-box",
+                                                            WebkitLineClamp: 2,
+                                                            WebkitBoxOrient: "vertical",
+                                                            overflow: "hidden"
+                                                        }}
+                                                    >
+                                                        {item.TenSanPham || "—"}
+                                                    </Typography>
+                                                </Tooltip>
+                                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11.5 }}>
+                                                    {item.MaSanPham || ""}
+                                                </Typography>
                                             </TableCell>
-                                            <TableCell>{item.Lot || "—"}</TableCell>
-                                            <TableCell align="right" sx={{ fontWeight: 500 }}>
-                                                <Typography variant="body2">KH: {Number(item.SoLuongKeHoach ?? item.SoLuong ?? 0).toLocaleString("vi-VN")}</Typography>
-                                                <Typography variant="caption" color="text.secondary">TT: {item.SoLuongThucTe == null ? "Chưa nhập" : Number(item.SoLuongThucTe).toLocaleString("vi-VN")}</Typography>
-                                                <Typography variant="caption" display="block" color="primary">HL: {Number(item.SoLuongHieuLuc ?? item.SoLuong ?? 0).toLocaleString("vi-VN")}</Typography>
+                                            <TableCell>
+                                                <Typography variant="body2" noWrap sx={{ fontSize: 12.5 }}>
+                                                    {item.Lot || "—"}
+                                                </Typography>
                                             </TableCell>
-                                            <TableCell>{item.TenNguoiKiem || "—"}</TableCell>
+                                            <TableCell align="right">
+                                                <Typography variant="body2" fontWeight={800} color="primary.main" sx={{ fontSize: 13 }}>
+                                                    HL {Number(item.SoLuongHieuLuc ?? item.SoLuong ?? 0).toLocaleString("vi-VN")}
+                                                </Typography>
+                                                <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: 11.25, mt: 0.25 }}>
+                                                    KH {Number(item.SoLuongKeHoach ?? item.SoLuong ?? 0).toLocaleString("vi-VN")}
+                                                    {" · "}TT {item.SoLuongThucTe == null ? "—" : Number(item.SoLuongThucTe).toLocaleString("vi-VN")}
+                                                </Typography>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Typography variant="body2" fontWeight={700} noWrap sx={{ fontSize: 12.75 }}>
+                                                    {item.TenNguoiKiem || "—"}
+                                                </Typography>
+                                                <Tooltip title={getDepartmentLabel(item) || ""} placement="top-start">
+                                                    <Typography
+                                                        variant="caption"
+                                                        color="text.secondary"
+                                                        noWrap
+                                                        display="block"
+                                                        sx={{ fontSize: 11.5, mt: 0.25 }}
+                                                    >
+                                                        {getDepartmentLabel(item) || "—"}
+                                                    </Typography>
+                                                </Tooltip>
+                                            </TableCell>
                                             <TableCell align="center">
                                                 {item.KetLuan ? renderKetLuanChip(item.KetLuan) : "—"}
                                             </TableCell>

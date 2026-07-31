@@ -162,7 +162,17 @@ const attachListQuantities = async (pool, rows = []) => {
                     ELSE pk.SoLuongThucTe END AS SoLuongThucTe,
                 CASE WHEN pk.LoaiKiemId = @CuoiChuyenLoaiKiemId
                     THEN ISNULL(planTotals.TongHieuLuc, 0) ELSE COALESCE(pk.SoLuongThucTe, pk.SoLuong, 0) END AS SoLuongHieuLuc
+                , creator.BoPhanId AS BoPhanTaoId
+                , creatorDepartment.MaBoPhan AS MaBoPhanTao
+                , creatorDepartment.TenBoPhan AS TenBoPhanTao
+                , inspector.BoPhanId AS BoPhanNguoiKiemId
+                , inspectorDepartment.MaBoPhan AS MaBoPhanNguoiKiem
+                , inspectorDepartment.TenBoPhan AS TenBoPhanNguoiKiem
             FROM dbo.PHIEU_KIEM pk
+            LEFT JOIN dbo.USERS creator ON creator.Id = pk.NguoiLapId
+            LEFT JOIN dbo.DM_BO_PHAN creatorDepartment ON creatorDepartment.Id = creator.BoPhanId
+            LEFT JOIN dbo.USERS inspector ON inspector.Id = pk.NguoiKiemId
+            LEFT JOIN dbo.DM_BO_PHAN inspectorDepartment ON inspectorDepartment.Id = inspector.BoPhanId
             OUTER APPLY (
                 SELECT SUM(ISNULL(planRow.SoLuongKeHoach, 0)) AS TongKeHoach,
                     SUM(ISNULL(planRow.SoLuongThucTe, 0)) AS TongThucTe,

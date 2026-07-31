@@ -82,9 +82,9 @@ export default function CongDoanList() {
 
     return (
         <Box>
-            <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", md: "center" }} spacing={2} sx={{ mb: 3 }}>
+            <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", md: "center" }} spacing={1.5} sx={{ mb: 2 }}>
                 <Box>
-                    <Typography variant="h4" sx={{ fontWeight: 800, color: "#0f172a" }}>Theo dõi, kiểm tra nghiệm thu công đoạn</Typography>
+                    <Typography variant="h5" sx={{ fontWeight: 800, color: "#0f172a" }}>Theo dõi, kiểm tra nghiệm thu công đoạn</Typography>
                     <Typography color="text.secondary" sx={{ mt: 0.5 }}>Phiếu dùng chung theo kế hoạch sản xuất trong ngày</Typography>
                 </Box>
                 {canCreate && <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpen(true)}>Tạo phiếu</Button>}

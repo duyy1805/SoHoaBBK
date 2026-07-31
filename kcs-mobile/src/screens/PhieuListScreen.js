@@ -123,6 +123,10 @@ export default function PhieuListScreen({ navigation }) {
             item.TenLoaiKiem,
             item.DoiTuong,
             item.TenNguoiKiem,
+            item.MaBoPhanTao,
+            item.TenBoPhanTao,
+            item.MaBoPhanNguoiKiem,
+            item.TenBoPhanNguoiKiem,
             item.SoLuong,
             item.TrangThai,
             statusStyle.text,
@@ -259,6 +263,15 @@ export default function PhieuListScreen({ navigation }) {
                 <View style={styles.infoRow}>
                     <Text style={styles.label}>Người kiểm</Text>
                     <Text style={styles.value}>{item.TenNguoiKiem}</Text>
+                </View>
+                <View style={styles.infoRow}>
+                    <Text style={styles.label}>Bộ phận</Text>
+                    <Text style={styles.value}>
+                        {[
+                            item.MaBoPhanTao || item.MaBoPhanNguoiKiem,
+                            item.TenBoPhanTao || item.TenBoPhanNguoiKiem || item.TenBoPhan
+                        ].filter(Boolean).join(" - ") || "---"}
+                    </Text>
                 </View>
             </TouchableOpacity>
         );

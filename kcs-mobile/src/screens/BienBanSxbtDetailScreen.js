@@ -195,6 +195,8 @@ export default function BienBanSxbtDetailScreen({ route, navigation }) {
             <View style={styles.card}>
                 <Text style={styles.title}>Biên bản SXBT</Text>
                 <Text style={styles.meta}>Số phiếu: {info?.SoPhieu || "---"}</Text>
+                <Text style={styles.meta}>Bộ phận tạo: {[info?.MaBoPhanTao, info?.TenBoPhanTao].filter(Boolean).join(" - ") || "---"}</Text>
+                <Text style={styles.meta}>Mã đơn vị SXBT: {info?.MaDonVi || "---"}</Text>
                 <Text style={styles.meta}>Trạng thái: {info?.TrangThai || "---"}</Text>
             </View>
 

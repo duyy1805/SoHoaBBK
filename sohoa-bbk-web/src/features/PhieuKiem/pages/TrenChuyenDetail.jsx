@@ -327,14 +327,14 @@ export default function TrenChuyenDetail() {
                 </Paper>
 
                 <Container maxWidth="xl">
-                    <Stack spacing={3}>
+                    <Stack spacing={2}>
                         <Card sx={{ borderRadius: 3, border: "1px solid #e2e8f0", boxShadow: "0 14px 40px rgba(15, 23, 42, 0.06)" }}>
                             <CardContent>
-                                <Stack spacing={3}>
-                                    <Stack direction={{ xs: "column", xl: "row" }} justifyContent="space-between" spacing={3}>
+                                <Stack spacing={2}>
+                                    <Stack direction={{ xs: "column", xl: "row" }} justifyContent="space-between" spacing={2}>
                                         <Box sx={{ maxWidth: 860 }}>
                                             <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap" useFlexGap>
-                                                <Typography variant="h4" fontWeight={800} color="#0f172a">
+                                                <Typography variant="h5" fontWeight={800} color="#0f172a">
                                                     {phieu?.SoPhieu || "---"}
                                                 </Typography>
                                                 <Chip size="small" color={status.color} label={status.label} />
@@ -342,10 +342,10 @@ export default function TrenChuyenDetail() {
                                                     <Chip size="small" color="warning" variant="outlined" label={`Biên bản #${phieu.BienBanId}`} />
                                                 ) : null}
                                             </Stack>
-                                            <Typography sx={{ mt: 1.5, color: "#0f172a", fontSize: 34, fontWeight: 800, lineHeight: 1.15 }}>
+                                            <Typography sx={{ mt: 1, color: "#0f172a", fontSize: { xs: 21, md: 25 }, fontWeight: 800, lineHeight: 1.2 }}>
                                                 {productName}
                                             </Typography>
-                                            <Typography sx={{ mt: 1, color: "text.secondary", fontSize: 18 }}>
+                                            <Typography sx={{ mt: 0.5, color: "text.secondary", fontSize: 13 }}>
                                                 Item code: {itemCode}
                                             </Typography>
                                         </Box>

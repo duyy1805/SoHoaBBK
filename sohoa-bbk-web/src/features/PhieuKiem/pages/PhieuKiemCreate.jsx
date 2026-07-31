@@ -470,21 +470,21 @@ export default function PhieuKiemCreate() {
         <Fade in timeout={300}>
             <Box>
                 {/* HEADER */}
-                <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 4 }}>
+                <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2.5 }}>
                     <IconButton onClick={() => navigate("/phieu-kiem")}>
                         <ArrowBackIcon />
                     </IconButton>
-                    <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                    <Typography variant="h5" sx={{ fontWeight: 800 }}>
                         Tạo Phiếu kiểm
                     </Typography>
                 </Stack>
 
                 {/* FORM */}
-                <Paper sx={{ p: 4, borderRadius: 4 }}>
+                <Paper sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3 }}>
                     <Typography variant="h6" sx={{ mb: 2 }}>Thông tin chung</Typography>
-                    <Divider sx={{ mb: 3 }} />
+                    <Divider sx={{ mb: 2 }} />
 
-                    <Grid container spacing={3}>
+                    <Grid container spacing={2}>
                         <Grid size={{ xs: 12, md: 4 }}>
                             <StaticSelect
                                 label="Loại kiểm"

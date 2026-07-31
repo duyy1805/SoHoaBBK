@@ -144,8 +144,12 @@ export default function BienBanList() {
                 const matchSanPham = item.TenSanPham?.toLowerCase().includes(searchLower);
                 const matchLot = item.Lot?.toLowerCase().includes(searchLower);
                 const matchNguoiLap = item.NguoiLap?.toLowerCase().includes(searchLower);
+                const matchBoPhan = `${item.MaBoPhanTao || ""} ${item.TenBoPhanTao || ""}`
+                    .toLowerCase()
+                    .includes(searchLower);
+                const matchMaDonVi = item.MaDonVi?.toLowerCase().includes(searchLower);
 
-                if (!matchSoPhieu && !matchSanPham && !matchLot && !matchNguoiLap) {
+                if (!matchSoPhieu && !matchSanPham && !matchLot && !matchNguoiLap && !matchBoPhan && !matchMaDonVi) {
                     return false;
                 }
             }
@@ -183,7 +187,7 @@ export default function BienBanList() {
                     justifyContent="space-between"
                     alignItems={{ xs: "stretch", md: "center" }}
                     spacing={2}
-                    sx={{ mb: 4 }}
+                    sx={{ mb: 2.5 }}
                 >
                     <Typography
                         variant="h5"
@@ -278,6 +282,7 @@ export default function BienBanList() {
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Sản Phẩm</TableCell>
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Lot</TableCell>
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Người Lập</TableCell>
+                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Bộ phận</TableCell>
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Ngày Tạo</TableCell>
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper', width: 200 }}>Tiến Độ</TableCell>
                                     <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }} align="center">Trạng Thái</TableCell>
@@ -287,7 +292,7 @@ export default function BienBanList() {
                             <TableBody>
                                 {paginatedData.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
+                                        <TableCell colSpan={9} align="center" sx={{ py: 6 }}>
                                             <Typography color="text.secondary">
                                                 Không tìm thấy biên bản nào phù hợp.
                                             </Typography>
@@ -311,6 +316,16 @@ export default function BienBanList() {
                                             <TableCell>{item.TenSanPham || "—"}</TableCell>
                                             <TableCell>{item.Lot || "—"}</TableCell>
                                             <TableCell>{item.NguoiLap || "—"}</TableCell>
+                                            <TableCell>
+                                                <Typography variant="body2">
+                                                    {[item.MaBoPhanTao, item.TenBoPhanTao].filter(Boolean).join(" - ") || "—"}
+                                                </Typography>
+                                                {isSxbtBienBan(item) && item.MaDonVi && (
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        Mã đơn vị SXBT: {item.MaDonVi}
+                                                    </Typography>
+                                                )}
+                                            </TableCell>
                                             <TableCell>
                                                 {item.CreatedAt ? new Date(item.CreatedAt).toLocaleDateString('vi-VN') : "—"}
                                             </TableCell>

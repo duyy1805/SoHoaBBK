@@ -4,8 +4,8 @@ import { useState } from 'react';
 import AppHeader from './AppHeader';
 import Sidebar from './Sidebar';
 
-const DRAWER_WIDTH = 260;
-const COLLAPSED_WIDTH = 80;
+const DRAWER_WIDTH = 238;
+const COLLAPSED_WIDTH = 70;
 
 export default function AppLayout() {
     const [collapsed, setCollapsed] = useState(false);
@@ -42,10 +42,10 @@ export default function AppLayout() {
                     ml: {
                         sm: collapsed ? `${COLLAPSED_WIDTH}px` : `${DRAWER_WIDTH}px`
                     },
-                    p: 3
+                    p: { xs: 1.5, md: 2 }
                 }}
             >
-                <Box sx={{ height: 64 }} />
+                <Box sx={{ height: 56 }} />
                 <Outlet />
             </Box>
         </Box>

@@ -15,12 +15,12 @@ export default function PageHeader({
     const navigate = useNavigate();
 
     return (
-        <Box sx={{ mb: 4 }}>
+        <Box sx={{ mb: 2.5 }}>
             {/* Breadcrumbs */}
             {breadcrumbs.length > 0 && (
                 <Breadcrumbs
                     separator={<NavigateNextIcon fontSize="small" />}
-                    sx={{ mb: 2 }}
+                    sx={{ mb: 1 }}
                 >
                     {breadcrumbs.map((crumb, index) => {
                         const isLast = index === breadcrumbs.length - 1;
@@ -62,7 +62,7 @@ export default function PageHeader({
                 <Box>
                     <Stack direction="row" alignItems="center" spacing={2}>
                         <Typography
-                            variant="h4"
+                            variant="h5"
                             sx={{
                                 fontWeight: 700,
                                 background: 'linear-gradient(135deg, #1e293b 0%, #475569 100%)',
@@ -86,7 +86,7 @@ export default function PageHeader({
                         )}
                     </Stack>
                     {subtitle && (
-                        <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.35 }}>
                             {subtitle}
                         </Typography>
                     )}
@@ -100,8 +100,7 @@ export default function PageHeader({
                             onClick={onAction}
                             sx={{
                                 borderRadius: 2,
-                                px: 3,
-                                py: 1,
+                                px: 2,
                                 background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
                                 boxShadow: '0 4px 14px rgba(99, 102, 241, 0.3)'
                             }}

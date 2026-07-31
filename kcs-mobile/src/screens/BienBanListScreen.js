@@ -92,6 +92,12 @@ export default function BienBanListScreen({ navigation }) {
                 <Text style={styles.creator}>
                     Người lập: {item.NguoiLap}
                 </Text>
+                <Text style={styles.creator}>
+                    Bộ phận: {[item.MaBoPhanTao, item.TenBoPhanTao].filter(Boolean).join(" - ") || "---"}
+                </Text>
+                {isSxbtBienBan && item.MaDonVi ? (
+                    <Text style={styles.creator}>Mã đơn vị SXBT: {item.MaDonVi}</Text>
+                ) : null}
 
                 <View style={styles.row}>
 

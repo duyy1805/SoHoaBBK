@@ -67,7 +67,7 @@ export default function AppHeader({
                     color: 'text.primary' // Đảm bảo text không bị trắng trên nền sáng
                 }}
             >
-                <Toolbar sx={{ justifyContent: 'space-between' }}>
+                <Toolbar sx={{ justifyContent: 'space-between', minHeight: '56px !important' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <IconButton
                             sx={{ display: { xs: 'block', sm: 'none' } }}
@@ -102,9 +102,9 @@ export default function AppHeader({
                         >
                             <Avatar
                                 sx={{
-                                    width: 38,
-                                    height: 38,
-                                    fontSize: 14,
+                                    width: 32,
+                                    height: 32,
+                                    fontSize: 12,
                                     bgcolor: '#6366f1',
                                     fontWeight: 'bold'
                                 }}

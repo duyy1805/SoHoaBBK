@@ -1,4 +1,4 @@
-import { createTheme, alpha } from '@mui/material/styles';
+import { createTheme } from '@mui/material/styles';
 
 const theme = createTheme({
     palette: {
@@ -39,15 +39,23 @@ const theme = createTheme({
     },
     typography: {
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif',
-        h1: { fontWeight: 700 },
-        h2: { fontWeight: 700 },
-        h3: { fontWeight: 700 },
-        h4: { fontWeight: 700 },
-        h5: { fontWeight: 600 },
-        h6: { fontWeight: 600 },
+        fontSize: 13,
+        h1: { fontWeight: 700, fontSize: '2rem', lineHeight: 1.2 },
+        h2: { fontWeight: 700, fontSize: '1.75rem', lineHeight: 1.22 },
+        h3: { fontWeight: 700, fontSize: '1.5rem', lineHeight: 1.25 },
+        h4: { fontWeight: 700, fontSize: '1.375rem', lineHeight: 1.28 },
+        h5: { fontWeight: 700, fontSize: '1.2rem', lineHeight: 1.3 },
+        h6: { fontWeight: 600, fontSize: '1.05rem', lineHeight: 1.35 },
+        subtitle1: { fontSize: '0.9rem', lineHeight: 1.45 },
+        subtitle2: { fontSize: '0.82rem', lineHeight: 1.4 },
+        body1: { fontSize: '0.875rem', lineHeight: 1.5 },
+        body2: { fontSize: '0.8rem', lineHeight: 1.45 },
+        caption: { fontSize: '0.72rem', lineHeight: 1.4 },
         button: {
             textTransform: 'none',
-            fontWeight: 600
+            fontWeight: 600,
+            fontSize: '0.8rem',
+            lineHeight: 1.35
         }
     },
     shape: {
@@ -66,12 +74,14 @@ const theme = createTheme({
     components: {
         MuiButton: {
             defaultProps: {
-                disableElevation: true
+                disableElevation: true,
+                size: 'small'
             },
             styleOverrides: {
                 root: {
-                    borderRadius: 10,
-                    padding: '10px 20px',
+                    borderRadius: 8,
+                    minHeight: 34,
+                    padding: '7px 14px',
                     fontWeight: 600
                 },
                 contained: {
@@ -85,7 +95,7 @@ const theme = createTheme({
         MuiCard: {
             styleOverrides: {
                 root: {
-                    borderRadius: 16,
+                    borderRadius: 12,
                     boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)'
                 }
             }
@@ -98,11 +108,47 @@ const theme = createTheme({
             }
         },
         MuiTextField: {
+            defaultProps: {
+                size: 'small'
+            },
             styleOverrides: {
                 root: {
                     '& .MuiOutlinedInput-root': {
-                        borderRadius: 10
+                        borderRadius: 8
                     }
+                }
+            }
+        },
+        MuiInputBase: {
+            styleOverrides: {
+                root: {
+                    fontSize: '0.84rem'
+                },
+                input: {
+                    paddingTop: 9,
+                    paddingBottom: 9
+                }
+            }
+        },
+        MuiInputLabel: {
+            styleOverrides: {
+                root: {
+                    fontSize: '0.82rem'
+                }
+            }
+        },
+        MuiFormLabel: {
+            styleOverrides: {
+                root: {
+                    fontSize: '0.82rem'
+                }
+            }
+        },
+        MuiFormHelperText: {
+            styleOverrides: {
+                root: {
+                    fontSize: '0.7rem',
+                    marginTop: 3
                 }
             }
         },
@@ -111,8 +157,8 @@ const theme = createTheme({
             styleOverrides: {
                 root: {
                     fontWeight: 500,
-                    fontSize: '0.75rem',
-                    height: 24
+                    fontSize: '0.7rem',
+                    height: 23
                 }
             }
         },
@@ -126,14 +172,14 @@ const theme = createTheme({
         MuiTableCell: {
             styleOverrides: {
                 root: {
-                    fontSize: '0.85rem', // Chữ nhỏ gọn
-                    padding: '8px 16px', // Giảm khoảng cách trên dưới
+                    fontSize: '0.78rem',
+                    padding: '7px 12px',
                 },
                 head: {
-                    fontWeight: 600,
+                    fontWeight: 700,
                     backgroundColor: '#f8fafc',
-                    paddingTop: '12px',
-                    paddingBottom: '12px',
+                    paddingTop: '9px',
+                    paddingBottom: '9px',
                     lineHeight: 1.2
                 }
             }
@@ -142,22 +188,135 @@ const theme = createTheme({
         MuiTablePagination: {
             styleOverrides: {
                 toolbar: {
-                    minHeight: '40px', // Ép chiều cao thanh phân trang
+                    minHeight: '38px',
                 },
                 selectLabel: {
-                    fontSize: '0.85rem',
+                    fontSize: '0.76rem',
                 },
                 displayedRows: {
-                    fontSize: '0.85rem',
+                    fontSize: '0.76rem',
+                }
+            }
+        },
+        MuiMenuItem: {
+            styleOverrides: {
+                root: {
+                    minHeight: 36,
+                    fontSize: '0.82rem',
+                    paddingTop: 6,
+                    paddingBottom: 6
+                }
+            }
+        },
+        MuiListItemButton: {
+            styleOverrides: {
+                root: {
+                    minHeight: 40
+                }
+            }
+        },
+        MuiListItemText: {
+            styleOverrides: {
+                primary: {
+                    fontSize: '0.82rem'
+                },
+                secondary: {
+                    fontSize: '0.72rem'
+                }
+            }
+        },
+        MuiIconButton: {
+            styleOverrides: {
+                root: {
+                    padding: 7
+                }
+            }
+        },
+        MuiToolbar: {
+            styleOverrides: {
+                root: {
+                    minHeight: 56
+                }
+            }
+        },
+        MuiDialogTitle: {
+            styleOverrides: {
+                root: {
+                    fontSize: '1.1rem',
+                    fontWeight: 700,
+                    padding: '14px 18px'
+                }
+            }
+        },
+        MuiDialogContent: {
+            styleOverrides: {
+                root: {
+                    padding: '14px 18px'
+                }
+            }
+        },
+        MuiDialogActions: {
+            styleOverrides: {
+                root: {
+                    padding: '10px 18px 14px'
+                }
+            }
+        },
+        MuiTab: {
+            styleOverrides: {
+                root: {
+                    minHeight: 40,
+                    minWidth: 88,
+                    padding: '8px 12px',
+                    fontSize: '0.78rem',
+                    fontWeight: 600
+                }
+            }
+        },
+        MuiTabs: {
+            styleOverrides: {
+                root: {
+                    minHeight: 40
+                }
+            }
+        },
+        MuiAlert: {
+            styleOverrides: {
+                root: {
+                    padding: '7px 12px',
+                    fontSize: '0.8rem'
+                }
+            }
+        },
+        MuiTooltip: {
+            styleOverrides: {
+                tooltip: {
+                    fontSize: '0.72rem'
                 }
             }
         },
         MuiAccordion: {
             styleOverrides: {
                 root: {
-                    borderRadius: 12,
+                    borderRadius: 10,
                     '&:before': {
                         display: 'none'
+                    }
+                }
+            }
+        },
+        MuiAccordionSummary: {
+            styleOverrides: {
+                root: {
+                    minHeight: 42,
+                    '&.Mui-expanded': {
+                        minHeight: 42
+                    }
+                },
+                content: {
+                    margin: '9px 0',
+                    '&.Mui-expanded': {
+                        margin: '9px 0'
                     }
                 }
             }
