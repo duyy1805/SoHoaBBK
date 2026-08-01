@@ -476,7 +476,7 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                             </Box>
                                             <Grid container spacing={2}>
                                                 {defectImages.map((img, idx) => (
-                                                    <Grid item xs={4} key={idx} sx={{ mb: 2 }}>
+                                                    <Grid size={4} key={idx} sx={{ mb: 2 }}>
                                                         <Box style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center', height: '100%' }}>
                                                             <img
                                                                 src={img.url}

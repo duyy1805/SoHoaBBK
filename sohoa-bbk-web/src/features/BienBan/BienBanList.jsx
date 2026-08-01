@@ -170,6 +170,42 @@ export default function BienBanList() {
         setPage(0);
     };
 
+    const getItemPath = (item) => isSxbtBienBan(item)
+        ? `/bien-ban/sxbt/${item.BienBanId}`
+        : `/bien-ban/${item.BienBanId}`;
+
+    const getProgressLabel = (item) => isSxbtBienBan(item)
+        ? item.SoBoPhan > 0
+            ? `Xác nhận ${item.DaCoYKien}/${item.SoBoPhan} bộ phận`
+            : "Chưa mở luồng"
+        : `Phản hồi ${item.DaCoYKien}/${item.SoBoPhan} bộ phận`;
+
+    const renderProgress = (item) => (
+        <Box sx={{ minWidth: 0 }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
+                <Typography variant="caption" color="text.secondary" noWrap>
+                    {getProgressLabel(item)}
+                </Typography>
+                <Typography variant="caption" fontWeight={700} color="primary.main">
+                    {item.ProgressPercent || 0}%
+                </Typography>
+            </Stack>
+            <LinearProgress
+                variant="determinate"
+                value={item.ProgressPercent || 0}
+                sx={{ height: 5, borderRadius: 999, bgcolor: "rgba(99,102,241,0.12)" }}
+            />
+        </Box>
+    );
+
+    const getActionLabel = (item) => {
+        if (isSxbtBienBan(item)) return "Xem chi tiết";
+        const bucket = getWorkBucket(item, currentUser, isManager, false);
+        if (bucket === "action") return "Xử lý ngay";
+        if (bucket === "done") return "Xem kết quả";
+        return "Xem tiến độ";
+    };
+
     if (loading) {
         return (
             <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "50vh" }}>
@@ -265,143 +301,173 @@ export default function BienBanList() {
                     </Tabs>
                 </Paper>
 
-                {/* Data Table */}
-                <Card sx={{ borderRadius: 2, boxShadow: "0 4px 20px rgba(0,0,0,0.05)" }}>
-                    <TableContainer sx={{ maxHeight: 'calc(100vh - 240px)' }}>
+                {/* Danh sách desktop + card mobile */}
+                <Card sx={{ borderRadius: 2.5, boxShadow: "0 4px 20px rgba(15,23,42,0.06)", overflow: "hidden" }}>
+                    <TableContainer sx={{ display: { xs: "none", md: "block" }, maxHeight: 'calc(100vh - 240px)' }}>
                         <Table
                             stickyHeader
+                            size="small"
                             sx={{
-                                "& tbody tr:hover": {
-                                    backgroundColor: "#f5f5f5"
-                                }
+                                tableLayout: "fixed",
+                                "& .MuiTableCell-root": { px: 1.5, py: 1.25, verticalAlign: "middle" },
+                                "& tbody tr": { transition: "background-color 0.15s ease" },
+                                "& tbody tr:hover": { backgroundColor: "rgba(99,102,241,0.04)" }
                             }}
                         >
                             <TableHead>
                                 <TableRow>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Số Phiếu</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Sản Phẩm</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Lot</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Người Lập</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Bộ phận</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }}>Ngày Tạo</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper', width: 200 }}>Tiến Độ</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }} align="center">Trạng Thái</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, bgcolor: 'background.paper' }} align="center">Thao tác</TableCell>
+                                    <TableCell sx={{ width: "15%", fontWeight: 700, bgcolor: 'background.paper' }}>Biên bản</TableCell>
+                                    <TableCell sx={{ width: "24%", fontWeight: 700, bgcolor: 'background.paper' }}>Sản phẩm / Lot</TableCell>
+                                    <TableCell sx={{ width: "22%", fontWeight: 700, bgcolor: 'background.paper' }}>Người lập / Bộ phận</TableCell>
+                                    <TableCell sx={{ width: "18%", fontWeight: 700, bgcolor: 'background.paper' }}>Tiến độ</TableCell>
+                                    <TableCell sx={{ width: "16%", fontWeight: 700, bgcolor: 'background.paper' }} align="center">Trạng thái</TableCell>
+                                    <TableCell sx={{ width: "5%", fontWeight: 700, bgcolor: 'background.paper' }} align="center" aria-label="Thao tác" />
                                 </TableRow>
                             </TableHead>
                             <TableBody>
                                 {paginatedData.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={9} align="center" sx={{ py: 6 }}>
-                                            <Typography color="text.secondary">
-                                                Không tìm thấy biên bản nào phù hợp.
-                                            </Typography>
+                                        <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
+                                            <Typography color="text.secondary">Không tìm thấy biên bản nào phù hợp.</Typography>
                                         </TableCell>
                                     </TableRow>
-                                ) : (
-                                    paginatedData.map((item) => (
+                                ) : paginatedData.map((item) => {
+                                    const pendingText = getPendingDepartmentsText(item);
+                                    const bucket = getWorkBucket(item, currentUser, isManager, isSxbtBienBan(item));
+                                    return (
                                         <TableRow
                                             key={item.BienBanId}
                                             hover
-                                            onClick={() => navigate(
-                                                isSxbtBienBan(item)
-                                                    ? `/bien-ban/sxbt/${item.BienBanId}`
-                                                    : `/bien-ban/${item.BienBanId}`
-                                            )}
-                                            sx={{ cursor: "pointer", transition: "0.2s" }}
+                                            onClick={() => navigate(getItemPath(item))}
+                                            sx={{ cursor: "pointer" }}
                                         >
-                                            <TableCell sx={{ fontWeight: 500, color: 'primary.main' }}>
-                                                {item.SoPhieu}
-                                            </TableCell>
-                                            <TableCell>{item.TenSanPham || "—"}</TableCell>
-                                            <TableCell>{item.Lot || "—"}</TableCell>
-                                            <TableCell>{item.NguoiLap || "—"}</TableCell>
                                             <TableCell>
-                                                <Typography variant="body2">
+                                                <Typography variant="body2" fontWeight={700} color="primary.main" sx={{ lineHeight: 1.3, overflowWrap: "anywhere" }}>
+                                                    {item.SoPhieu}
+                                                </Typography>
+                                                <Typography variant="caption" color="text.secondary">
+                                                    {item.CreatedAt ? new Date(item.CreatedAt).toLocaleDateString('vi-VN') : "—"}
+                                                </Typography>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Typography variant="body2" fontWeight={600} title={item.TenSanPham || ""} sx={{ lineHeight: 1.35 }}>
+                                                    {item.TenSanPham || "—"}
+                                                </Typography>
+                                                <Typography variant="caption" color="text.secondary">Lot: {item.Lot || "—"}</Typography>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Typography variant="body2" fontWeight={600}>{item.NguoiLap || "—"}</Typography>
+                                                <Typography variant="caption" color="text.secondary" sx={{ display: "block", lineHeight: 1.35 }}>
                                                     {[item.MaBoPhanTao, item.TenBoPhanTao].filter(Boolean).join(" - ") || "—"}
                                                 </Typography>
                                                 {isSxbtBienBan(item) && item.MaDonVi && (
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        Mã đơn vị SXBT: {item.MaDonVi}
-                                                    </Typography>
+                                                    <Typography variant="caption" color="text.secondary">Đơn vị SXBT: {item.MaDonVi}</Typography>
                                                 )}
                                             </TableCell>
-                                            <TableCell>
-                                                {item.CreatedAt ? new Date(item.CreatedAt).toLocaleDateString('vi-VN') : "—"}
-                                            </TableCell>
-                                            <TableCell onClick={(e) => e.stopPropagation() /* Tránh click bar làm trigger row click */}>
-                                                <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        {isSxbtBienBan(item)
-                                                            ? item.SoBoPhan > 0
-                                                                ? `Xác nhận ${item.DaCoYKien}/${item.SoBoPhan} bộ phận`
-                                                                : "Chưa mở luồng"
-                                                            : `Phản hồi ${item.DaCoYKien}/${item.SoBoPhan} bộ phận`}
-                                                    </Typography>
-                                                    <Typography variant="caption" fontWeight="bold" color="primary">
-                                                        {item.ProgressPercent}%
-                                                    </Typography>
-                                                </Stack>
-                                                <LinearProgress
-                                                    variant="determinate"
-                                                    value={item.ProgressPercent || 0}
-                                                    sx={{ height: 6, borderRadius: 3 }}
-                                                />
+                                            <TableCell onClick={(event) => event.stopPropagation()}>
+                                                {renderProgress(item)}
                                             </TableCell>
                                             <TableCell align="center">
-                                                <Stack alignItems="center" spacing={0.5} sx={{ maxWidth: 260, mx: "auto" }}>
+                                                <Stack alignItems="center" spacing={0.4} sx={{ minWidth: 0 }}>
                                                     {renderTrangThaiChip(item)}
-                                                    {getPendingDepartmentsText(item) && (
-                                                        <Tooltip title={getPendingDepartmentsText(item)}>
-                                                            <Typography
-                                                                variant="caption"
-                                                                color="text.secondary"
-                                                                noWrap
-                                                                sx={{ maxWidth: "100%", display: "block" }}
-                                                            >
-                                                                {getPendingDepartmentsText(item)}
+                                                    {pendingText && (
+                                                        <Tooltip title={pendingText}>
+                                                            <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: "100%" }}>
+                                                                {pendingText}
                                                             </Typography>
                                                         </Tooltip>
                                                     )}
                                                 </Stack>
                                             </TableCell>
                                             <TableCell align="center">
-                                                {isSxbtBienBan(item) ? (
-                                                    <Tooltip title="Xem chi tiết">
-                                                        <IconButton
-                                                            size="small"
-                                                            color="primary"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                navigate(`/bien-ban/sxbt/${item.BienBanId}`);
-                                                            }}
-                                                        >
-                                                            <VisibilityIcon fontSize="small" />
-                                                        </IconButton>
-                                                    </Tooltip>
-                                                ) : (
-                                                    <Button
+                                                <Tooltip title={getActionLabel(item)}>
+                                                    <IconButton
                                                         size="small"
-                                                        variant={getWorkBucket(item, currentUser, isManager, false) === "action" ? "contained" : "outlined"}
-                                                        endIcon={<ArrowForwardIcon />}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            navigate(`/bien-ban/${item.BienBanId}`);
+                                                        color="primary"
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            navigate(getItemPath(item));
                                                         }}
-                                                        sx={{ whiteSpace: "nowrap" }}
+                                                        sx={bucket === "action" ? { bgcolor: "primary.main", color: "primary.contrastText", "&:hover": { bgcolor: "primary.dark" } } : undefined}
                                                     >
-                                                        {getWorkBucket(item, currentUser, isManager, false) === "action"
-                                                            ? "Xử lý ngay"
-                                                            : getWorkBucket(item, currentUser, isManager, false) === "done" ? "Xem kết quả" : "Xem tiến độ"}
-                                                    </Button>
-                                                )}
+                                                        {bucket === "action" ? <ArrowForwardIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
+                                                    </IconButton>
+                                                </Tooltip>
                                             </TableCell>
                                         </TableRow>
-                                    ))
-                                )}
+                                    );
+                                })}
                             </TableBody>
                         </Table>
                     </TableContainer>
+
+                    <Stack spacing={1.25} sx={{ display: { xs: "flex", md: "none" }, p: 1.25, bgcolor: "grey.50" }}>
+                        {paginatedData.length === 0 ? (
+                            <Box sx={{ py: 6, textAlign: "center" }}>
+                                <Typography color="text.secondary">Không tìm thấy biên bản nào phù hợp.</Typography>
+                            </Box>
+                        ) : paginatedData.map((item) => {
+                            const pendingText = getPendingDepartmentsText(item);
+                            const department = [item.MaBoPhanTao, item.TenBoPhanTao].filter(Boolean).join(" - ") || "—";
+                            return (
+                                <Paper
+                                    key={item.BienBanId}
+                                    variant="outlined"
+                                    onClick={() => navigate(getItemPath(item))}
+                                    sx={{ p: 1.5, borderRadius: 2, cursor: "pointer", bgcolor: "background.paper" }}
+                                >
+                                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
+                                        <Box sx={{ minWidth: 0 }}>
+                                            <Typography variant="body2" fontWeight={800} color="primary.main">{item.SoPhieu}</Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                                {item.CreatedAt ? new Date(item.CreatedAt).toLocaleDateString('vi-VN') : "—"}
+                                            </Typography>
+                                        </Box>
+                                        {renderTrangThaiChip(item)}
+                                    </Stack>
+
+                                    <Typography variant="body2" fontWeight={700} sx={{ mt: 1, lineHeight: 1.35 }}>
+                                        {item.TenSanPham || "—"}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">Lot: {item.Lot || "—"}</Typography>
+
+                                    <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, my: 1.25 }}>
+                                        <Box>
+                                            <Typography variant="caption" color="text.secondary">Người lập</Typography>
+                                            <Typography variant="body2" fontWeight={600}>{item.NguoiLap || "—"}</Typography>
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="caption" color="text.secondary">Bộ phận</Typography>
+                                            <Typography variant="body2" fontWeight={600}>{department}</Typography>
+                                            {isSxbtBienBan(item) && item.MaDonVi && (
+                                                <Typography variant="caption" color="text.secondary">Đơn vị: {item.MaDonVi}</Typography>
+                                            )}
+                                        </Box>
+                                    </Box>
+
+                                    {renderProgress(item)}
+                                    {pendingText && (
+                                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
+                                            {pendingText}
+                                        </Typography>
+                                    )}
+                                    <Button
+                                        fullWidth
+                                        size="small"
+                                        variant={getWorkBucket(item, currentUser, isManager, isSxbtBienBan(item)) === "action" ? "contained" : "outlined"}
+                                        endIcon={<ArrowForwardIcon />}
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            navigate(getItemPath(item));
+                                        }}
+                                        sx={{ mt: 1.25 }}
+                                    >
+                                        {getActionLabel(item)}
+                                    </Button>
+                                </Paper>
+                            );
+                        })}
+                    </Stack>
 
                     <TablePagination
                         component="div"

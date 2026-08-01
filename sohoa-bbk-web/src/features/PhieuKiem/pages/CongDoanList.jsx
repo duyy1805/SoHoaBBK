@@ -95,7 +95,32 @@ export default function CongDoanList() {
                 {loading ? (
                     <Box sx={{ py: 8, textAlign: "center" }}><CircularProgress /></Box>
                 ) : (
-                    <TableContainer>
+                    <>
+                    <Stack spacing={1} sx={{ display: { xs: "flex", md: "none" }, p: 1 }}>
+                        {filteredRows.map((item) => {
+                            const meta = statusMeta[item.TrangThai] || [item.TrangThai, "default"];
+                            return (
+                                <Paper key={item.Id} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+                                    <Stack spacing={1}>
+                                        <Stack direction="row" justifyContent="space-between">
+                                            <Box>
+                                                <Typography color="primary" fontWeight={800}>{item.SoPhieu}</Typography>
+                                                <Typography variant="body2">{formatDate(item.NgayKiem)}</Typography>
+                                            </Box>
+                                            <Chip size="small" label={meta[0]} color={meta[1]} />
+                                        </Stack>
+                                        <Typography fontWeight={700}>{[item.PhanXuong, item.ToMay].filter(Boolean).join(" · ") || "---"}</Typography>
+                                        <Typography variant="body2" color="text.secondary">
+                                            {item.SoKeHoach || 0} kế hoạch · HL {item.TongSoLuongHieuLuc || 0} · {item.TongSoLuongLoi || 0} lỗi
+                                        </Typography>
+                                        <Button fullWidth variant="outlined" startIcon={<VisibilityIcon />} onClick={() => navigate(`/phieu-kiem/cong-doan/${item.Id}`)}>Mở phiếu</Button>
+                                    </Stack>
+                                </Paper>
+                            );
+                        })}
+                        {!filteredRows.length && <Typography textAlign="center" color="text.secondary" sx={{ py: 5 }}>Chưa có phiếu phù hợp.</Typography>}
+                    </Stack>
+                    <TableContainer sx={{ display: { xs: "none", md: "block" } }}>
                         <Table>
                             <TableHead>
                                 <TableRow>
@@ -126,6 +151,7 @@ export default function CongDoanList() {
                             </TableBody>
                         </Table>
                     </TableContainer>
+                    </>
                 )}
             </Paper>
 

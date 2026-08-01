@@ -753,6 +753,14 @@ export default function SxbtInspectionScreen({ route, navigation }) {
 
                     <View style={styles.infoGrid}>
                         <View style={[styles.infoItem, { width: '100%', marginBottom: 10 }]}>
+                            <Text style={styles.infoLabel}>Nguồn SXBT</Text>
+                            <Text style={styles.infoValue}>
+                                {phieu?.SxbtSourceType === "KE_HOACH_NHAP"
+                                    ? `Kế hoạch nhập #${phieu?.KeHoachNhapId || "---"}`
+                                    : (phieu?.So_PhieuNhapBTP || `Phiếu nhập #${phieu?.PhieuNhapBtpId || "---"}`)}
+                            </Text>
+                        </View>
+                        <View style={[styles.infoItem, { width: '100%', marginBottom: 10 }]}>
                             <Text style={styles.infoLabel}>Mã đơn hàng</Text>
                             <Text style={styles.infoValue}>{phieu?.MaDonHang || "---"}</Text>
                         </View>

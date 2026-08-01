@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
     Dialog,
     DialogTitle,
@@ -49,31 +49,35 @@ export default function SanPhamThongSoDialog({ open, onClose, selectedSanPham })
         ThuTu: 1
     });
 
-    useEffect(() => {
-        if (open && selectedSanPham) {
-            loadThongSo(selectedSanPham.Id);
-            setForm({
-                Id: null,
-                NhomThongSo: "Kích thước sản phẩm",
-                TenThongSo: "",
-                GiaTriChuan: "",
-                DungSaiAm: 0,
-                DungSaiDuong: 0,
-                DonVi: "mm",
-                ThuTu: 1
-            });
-        }
-    }, [open, selectedSanPham]);
-
-    const loadThongSo = async (sanPhamId) => {
+    const loadThongSo = useCallback(async (sanPhamId) => {
         try {
             const res = await getSanPhamThongSo(sanPhamId);
             setThongSoData(res.data || []);
             setForm(prev => ({ ...prev, ThuTu: (res.data?.length || 0) + 1 }));
-        } catch (error) {
+        } catch {
             showToast("Lỗi tải cấu hình thông số", "error");
         }
-    };
+    }, [showToast]);
+
+    useEffect(() => {
+        if (open && selectedSanPham) {
+            const timer = window.setTimeout(() => {
+                loadThongSo(selectedSanPham.Id);
+                setForm({
+                    Id: null,
+                    NhomThongSo: "Kích thước sản phẩm",
+                    TenThongSo: "",
+                    GiaTriChuan: "",
+                    DungSaiAm: 0,
+                    DungSaiDuong: 0,
+                    DonVi: "mm",
+                    ThuTu: 1
+                });
+            }, 0);
+            return () => window.clearTimeout(timer);
+        }
+        return undefined;
+    }, [loadThongSo, open, selectedSanPham]);
 
     const handleSave = async () => {
         if (!form.NhomThongSo || !form.GiaTriChuan) {
@@ -99,7 +103,7 @@ export default function SanPhamThongSoDialog({ open, onClose, selectedSanPham })
             }));
             
             loadThongSo(selectedSanPham.Id);
-        } catch (error) {
+        } catch {
             showToast("Lỗi lưu thông số", "error");
         }
     };
@@ -110,7 +114,7 @@ export default function SanPhamThongSoDialog({ open, onClose, selectedSanPham })
                 await deleteSanPhamThongSo(id);
                 showToast("Đã xóa thông số", "success");
                 loadThongSo(selectedSanPham.Id);
-            } catch (error) {
+            } catch {
                 showToast("Lỗi xóa thông số", "error");
             }
         }
@@ -147,56 +151,56 @@ export default function SanPhamThongSoDialog({ open, onClose, selectedSanPham })
                         {form.Id ? "CẬP NHẬT THÔNG SỐ" : "THÊM THÔNG SỐ MỚI"}
                     </Typography>
                     <Grid container spacing={2}>
-                        <Grid item xs={12} sm={3}>
+                        <Grid size={{ xs: 12, sm: 3 }}>
                             <TextField
                                 fullWidth size="small" label="Nhóm (vd: Hộp, Kích thước)"
                                 value={form.NhomThongSo}
                                 onChange={(e) => setForm({ ...form, NhomThongSo: e.target.value })}
                             />
                         </Grid>
-                        <Grid item xs={12} sm={3}>
+                        <Grid size={{ xs: 12, sm: 3 }}>
                             <TextField
                                 fullWidth size="small" label="Tên thông số (tuỳ chọn)"
                                 value={form.TenThongSo}
                                 onChange={(e) => setForm({ ...form, TenThongSo: e.target.value })}
                             />
                         </Grid>
-                        <Grid item xs={12} sm={2}>
+                        <Grid size={{ xs: 12, sm: 2 }}>
                             <TextField
                                 fullWidth size="small" label="Giá trị chuẩn (vd: 580)"
                                 value={form.GiaTriChuan}
                                 onChange={(e) => setForm({ ...form, GiaTriChuan: e.target.value })}
                             />
                         </Grid>
-                        <Grid item xs={6} sm={2}>
+                        <Grid size={{ xs: 6, sm: 2 }}>
                             <TextField
                                 fullWidth size="small" label="Dung sai - (Âm)" type="number"
                                 value={form.DungSaiAm}
                                 onChange={(e) => setForm({ ...form, DungSaiAm: Number(e.target.value) })}
                             />
                         </Grid>
-                        <Grid item xs={6} sm={2}>
+                        <Grid size={{ xs: 6, sm: 2 }}>
                             <TextField
                                 fullWidth size="small" label="Dung sai + (Dương)" type="number"
                                 value={form.DungSaiDuong}
                                 onChange={(e) => setForm({ ...form, DungSaiDuong: Number(e.target.value) })}
                             />
                         </Grid>
-                        <Grid item xs={12} sm={2}>
+                        <Grid size={{ xs: 12, sm: 2 }}>
                             <TextField
                                 fullWidth size="small" label="Đơn vị (vd: mm)"
                                 value={form.DonVi}
                                 onChange={(e) => setForm({ ...form, DonVi: e.target.value })}
                             />
                         </Grid>
-                        <Grid item xs={6} sm={2}>
+                        <Grid size={{ xs: 6, sm: 2 }}>
                             <TextField
                                 fullWidth size="small" label="Thứ tự" type="number"
                                 value={form.ThuTu}
                                 onChange={(e) => setForm({ ...form, ThuTu: Number(e.target.value) })}
                             />
                         </Grid>
-                        <Grid item xs={12} sm={4} display="flex" alignItems="center" gap={1}>
+                        <Grid size={{ xs: 12, sm: 4 }} display="flex" alignItems="center" gap={1}>
                             <Button
                                 variant="contained"
                                 onClick={handleSave}

@@ -5,6 +5,7 @@ const sql = require('mssql');
 const { poolPromise1 } = require('../db1');
 const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
+const { attachClosingScheduleCustomer } = require('../utils/closingScheduleCustomer');
 
 
 router.get(
@@ -35,7 +36,7 @@ router.get(
                 .input('Week', parseInt(week))
                 .input('Years', parseInt(year))
                 .execute('[Sale].[SP_ESAM_ClosingSchedule_LichDongCong_V2]');
-            res.json(result.recordset);
+            res.json((result.recordset || []).map(attachClosingScheduleCustomer));
 
         } catch (err) {
             console.error('Get ESAM LichDongCont error:', err);

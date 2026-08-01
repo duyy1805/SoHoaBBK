@@ -424,6 +424,16 @@ export const SxbtPrintTemplate = React.forwardRef(({
                                 Số phiếu:&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '90px' }}>{phieu.SoPhieu || ''}</span>;
                             </td>
                         </tr>
+                        <tr>
+                            <td colSpan={3} style={{ border: 'none', padding: '1px 0' }}>
+                                Nguồn:&nbsp;
+                                <span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '180px' }}>
+                                    {phieu.SxbtSourceType === 'KE_HOACH_NHAP'
+                                        ? `Kế hoạch nhập #${phieu.KeHoachNhapId || ''}`
+                                        : (phieu.So_PhieuNhapBTP || `Phiếu nhập #${phieu.PhieuNhapBtpId || ''}`)}
+                                </span>
+                            </td>
+                        </tr>
                         {splitInfo && (
                             <tr>
                                 <td colSpan={3} style={{ border: 'none', padding: '1px 0', fontStyle: 'italic' }}>
@@ -850,6 +860,16 @@ export const SxbtPrintTemplate = React.forwardRef(({
                                         </td>
                                         <td style={{ border: 'none', padding: '1px 0', width: '33%' }}>
                                             Số phiếu:&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '90px' }}>{phieu.SoPhieu || ''}</span>;
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td colSpan={3} style={{ border: 'none', padding: '1px 0' }}>
+                                            Nguồn:&nbsp;
+                                            <span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '180px' }}>
+                                                {phieu.SxbtSourceType === 'KE_HOACH_NHAP'
+                                                    ? `Kế hoạch nhập #${phieu.KeHoachNhapId || ''}`
+                                                    : (phieu.So_PhieuNhapBTP || `Phiếu nhập #${phieu.PhieuNhapBtpId || ''}`)}
+                                            </span>
                                         </td>
                                     </tr>
                                     {splitInfo && (

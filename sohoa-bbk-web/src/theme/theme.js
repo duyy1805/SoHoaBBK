@@ -82,7 +82,10 @@ const theme = createTheme({
                     borderRadius: 8,
                     minHeight: 34,
                     padding: '7px 14px',
-                    fontWeight: 600
+                    fontWeight: 600,
+                    '@media (max-width:599.95px)': {
+                        minHeight: 44
+                    }
                 },
                 contained: {
                     boxShadow: '0 4px 14px 0 rgba(99, 102, 241, 0.25)',
@@ -122,7 +125,10 @@ const theme = createTheme({
         MuiInputBase: {
             styleOverrides: {
                 root: {
-                    fontSize: '0.84rem'
+                    fontSize: '0.84rem',
+                    '@media (max-width:599.95px)': {
+                        fontSize: '16px'
+                    }
                 },
                 input: {
                     paddingTop: 9,
@@ -228,7 +234,11 @@ const theme = createTheme({
         MuiIconButton: {
             styleOverrides: {
                 root: {
-                    padding: 7
+                    padding: 7,
+                    '@media (max-width:599.95px)': {
+                        minWidth: 44,
+                        minHeight: 44
+                    }
                 }
             }
         },

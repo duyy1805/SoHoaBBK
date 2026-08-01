@@ -20,7 +20,9 @@ import {
     MenuItem,
     Paper,
     Container,
-    Alert
+    Alert,
+    IconButton,
+    Tooltip
 } from "@mui/material";
 import { PhieuKiemPrintTemplate } from "../components/PhieuKiemPrintTemplate";
 import { PhieuGiamDinhPrintTemplate } from "../components/PhieuGiamDinhPrintTemplate"
@@ -33,6 +35,8 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import AssignmentIcon from "@mui/icons-material/Assignment";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import ScienceOutlinedIcon from "@mui/icons-material/ScienceOutlined";
 
 import {
     getPhieuKiemDetail,
@@ -48,6 +52,8 @@ import {
 import { getSanPhamNhomKiem, getInspectionLevels, updateSanPhamImage, uploadSanPhamImage } from "../../../api/lookup.api"
 
 import { hasPermission } from "../../../utils/auth";
+import CheckItemEditor from "../components/CheckItemEditor";
+import MeasurementEditor from "../components/MeasurementEditor";
 
 export default function PhieuKiemDetail() {
 
@@ -64,6 +70,7 @@ export default function PhieuKiemDetail() {
     const [dynamicFields, setDynamicFields] = useState([]);
     const [nhomConfigs, setNhomConfigs] = useState([]);
     const [levels, setLevels] = useState([]);
+    const [capabilities, setCapabilities] = useState({});
 
     // Thêm state cho thông số KQ đặc biệt
     const [thongSoList, setThongSoList] = useState([]);
@@ -78,6 +85,8 @@ export default function PhieuKiemDetail() {
     const componentRef = useRef();
     const productImageInputRef = useRef(null);
     const [openPrintModal, setOpenPrintModal] = useState(false);
+    const [editingItem, setEditingItem] = useState(null);
+    const [measurementOpen, setMeasurementOpen] = useState(false);
 
     // Đổi tên hàm của thư viện thành triggerPrint
     const triggerPrint = useReactToPrint({
@@ -117,8 +126,9 @@ export default function PhieuKiemDetail() {
         loadData();
     }, [id]);
 
-    const loadData = async () => {
+    const loadData = async ({ background = false } = {}) => {
         try {
+            if (!background) setLoading(true);
             const res = await getPhieuKiemDetail(id);
             const data = res.data;
             if (data?.phieu?.LoaiKiemId === 3) {
@@ -135,6 +145,7 @@ export default function PhieuKiemDetail() {
             setCheckItems(data.checkItems);
             setDefects(data.defects);
             setDynamicFields(data.dynamicFields);
+            setCapabilities(data.capabilities || {});
 
             // Lấy thêm thông số kết quả kiểm tra cấp độ đặc biệt
             try {
@@ -165,7 +176,7 @@ export default function PhieuKiemDetail() {
         } catch (err) {
             console.error(err);
         } finally {
-            setLoading(false);
+            if (!background) setLoading(false);
         }
     };
 
@@ -175,10 +186,10 @@ export default function PhieuKiemDetail() {
             const value = actualQuantity === "" ? null : Number(actualQuantity);
             const response = await updatePhieuKiemActualQuantity(id, value);
             setPhieu((current) => ({ ...current, ...(response.data || {}) }));
-            setActionNotice({ severity: "success", message: "Đã cập nhật số lượng thực tế." });
+            setActionNotice({ type: "success", message: "Đã cập nhật số lượng thực tế." });
         } catch (error) {
             setActionNotice({
-                severity: "error",
+                type: "error",
                 message: error.response?.data?.message || "Không cập nhật được số lượng thực tế."
             });
         } finally {
@@ -207,7 +218,7 @@ export default function PhieuKiemDetail() {
             const imageUrl = uploadRes?.data?.imageUrl;
             if (!imageUrl) throw new Error("UPLOAD_FAILED");
             await updateSanPhamImage(phieu.SanPhamId, imageUrl);
-            await loadData();
+            await loadData({ background: true });
         } catch (error) {
             console.error(error);
             window.alert(error?.response?.data?.message || "Không thể cập nhật ảnh sản phẩm.");
@@ -243,7 +254,7 @@ export default function PhieuKiemDetail() {
 
             await createAllSection(payload);
 
-            await loadData();
+            await loadData({ background: true });
 
         } catch (err) {
 
@@ -301,6 +312,7 @@ export default function PhieuKiemDetail() {
 
     const isKCS = hasPermission("THUC_HIEN_KIEM");
     const isLeader = hasPermission("PHAN_BO_KIEM");
+    const canEditInspection = capabilities.canEdit ?? (isKCS || isLeader);
     const isPX = hasPermission("XAC_NHAN_PX");
     const canDeletePhieu = sections.length === 0 && phieu?.TrangThai === "TAO_MOI" && (isKCS || isLeader);
     const isAllConfirmed = sections.length > 0 && sections.every(s => s.KetLuan);
@@ -325,7 +337,7 @@ export default function PhieuKiemDetail() {
             setLoadingAction(true);
             setActionNotice(null);
             await completePhieuKiem(id);
-            await loadData();
+            await loadData({ background: true });
             setActionNotice({ type: "success", message: "Xác nhận hoàn tất phiếu kiểm thành công" });
         } catch (err) {
             setActionNotice({
@@ -342,7 +354,7 @@ export default function PhieuKiemDetail() {
             setLoadingAction(true);
             setActionNotice(null);
             await confirmPX(id);
-            await loadData();
+            await loadData({ background: true });
             setActionNotice({ type: "success", message: "Xác nhận trưởng bộ phận thành công" });
         } catch (err) {
             setActionNotice({
@@ -398,7 +410,7 @@ export default function PhieuKiemDetail() {
                             >
                                 Danh sách phiếu kiểm
                             </Button>
-                            <Stack direction="row" spacing={2}>
+                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap justifyContent={{ xs: "center", sm: "flex-end" }}>
                                 {canDeletePhieu && (
                                     <Button
                                         variant="outlined"
@@ -422,6 +434,15 @@ export default function PhieuKiemDetail() {
                                 <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => setOpenPrintModal(true)}>
                                     In phiếu kiểm
                                 </Button>
+                                {thongSoList.length > 0 && (
+                                    <Button
+                                        variant="outlined"
+                                        startIcon={<ScienceOutlinedIcon />}
+                                        onClick={() => setMeasurementOpen(true)}
+                                    >
+                                        Thông số đặc biệt
+                                    </Button>
+                                )}
                             </Stack>
                         </Stack>
                     </Container>
@@ -433,43 +454,54 @@ export default function PhieuKiemDetail() {
 
                         <Grid container spacing={2}>
 
-                            <Grid size={{ xs: 3 }}>
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                 <Typography variant="subtitle2">Số phiếu</Typography>
                                 <Typography fontWeight={600}>{phieu?.SoPhieu}</Typography>
                             </Grid>
 
                             {phieu?.ID_ChungTuNhap && (
-                                <Grid size={{ xs: 3 }}>
+                                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                     <Typography variant="subtitle2">Mã CT Nhập</Typography>
                                     <Typography fontWeight={600} color="primary">{phieu.ID_ChungTuNhap}</Typography>
                                 </Grid>
                             )}
 
-                            <Grid size={{ xs: 3 }}>
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                 <Typography variant="subtitle2">Tên sản phẩm</Typography>
                                 <Typography fontWeight={600}>{phieu?.TenSanPham}</Typography>
                             </Grid>
 
-                            <Grid size={{ xs: 3 }}>
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                 <Typography variant="subtitle2">Itemcode</Typography>
                                 <Typography fontWeight={600}>{phieu?.MaSanPham}</Typography>
                             </Grid>
 
-                            <Grid size={{ xs: 3 }}>
+                            {Number(phieu?.LoaiKiemId) === 5 && (
+                                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                                    <Typography variant="subtitle2">Khách hàng</Typography>
+                                    <Chip
+                                        size="small"
+                                        label={phieu?.KhachHang || "Chưa xác định"}
+                                        color={phieu?.KhachHang === "IKEA" ? "primary" : phieu?.KhachHang === "DEK" ? "warning" : "default"}
+                                    />
+                                </Grid>
+                            )}
+
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                 <Typography variant="subtitle2">LOT</Typography>
                                 <Typography fontWeight={600}>{phieu?.Lot}</Typography>
                             </Grid>
 
-                            <Grid size={{ xs: 3 }}>
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                 <Typography variant="subtitle2">Số đơn hàng</Typography>
                                 <Typography fontWeight={600}>{soDonHang || "---"}</Typography>
                             </Grid>
 
-                            <Grid size={{ xs: 3 }}>
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                 <Typography variant="subtitle2">Số lượng kế hoạch</Typography>
                                 <Typography fontWeight={600}>{phieu?.SoLuong}</Typography>
                             </Grid>
-                            <Grid size={{ xs: 3 }}>
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                 <Typography variant="subtitle2">Số lượng thực tế</Typography>
                                 {hasPermission("THUC_HIEN_KIEM") && !["HOAN_TAT", "DA_DUYET"].includes(phieu?.TrangThai) ? (
                                     <Stack direction="row" spacing={1} alignItems="center">
@@ -487,28 +519,28 @@ export default function PhieuKiemDetail() {
                                     </Stack>
                                 ) : <Typography fontWeight={600}>{phieu?.SoLuongThucTe ?? "Chưa nhập"}</Typography>}
                             </Grid>
-                            <Grid size={{ xs: 3 }}>
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                 <Typography variant="subtitle2">Số lượng hiệu lực</Typography>
                                 <Typography fontWeight={700} color="primary">{phieu?.SoLuongHieuLuc ?? phieu?.SoLuong ?? 0}</Typography>
                             </Grid>
-                            <Grid size={{ xs: 3 }}>
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                 <Typography variant="subtitle2">Chênh lệch</Typography>
                                 <Typography fontWeight={600}>{phieu?.ChenhLechSoLuong ?? "Chưa nhập"}</Typography>
                             </Grid>
 
-                            <Grid size={{ xs: 3 }}>
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                 <Typography variant="subtitle2">Người kiểm</Typography>
                                 <Typography fontWeight={600}>{phieu?.TenNguoiKiem}</Typography>
                             </Grid>
-                            <Grid size={{ xs: 3 }}>
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                 <Typography variant="subtitle2">Trạng thái</Typography>
                                 {renderTrangThaiChip(phieu?.TrangThai)}
                             </Grid>
-                            <Grid size={{ xs: 3 }}>
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                 <Typography variant="subtitle2">Kết luận</Typography>
                                 {renderKetLuanChip(phieu?.KetLuan)}
                             </Grid>
-                            <Grid size={{ xs: 3 }}>
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                 <Typography variant="subtitle2">Mức độ kiểm tra</Typography>
                                 <Typography fontWeight={600} color="secondary">{phieu?.MucDoKiemTra || "Chưa xác định"}</Typography>
                             </Grid>
@@ -532,13 +564,13 @@ export default function PhieuKiemDetail() {
 
                                 <Grid container spacing={2} key={n.nhomKiemId} sx={{ mb: 2 }}>
 
-                                    <Grid size={{ xs: 4 }}>
+                                    <Grid size={{ xs: 12, sm: 4 }}>
                                         <Typography sx={{ mt: 1 }}>
                                             {n.tenNhom}
                                         </Typography>
                                     </Grid>
 
-                                    <Grid size={{ xs: 4 }}>
+                                    <Grid size={{ xs: 12, sm: 4 }}>
                                         <TextField
                                             label="Lot Size"
                                             type="number"
@@ -550,7 +582,7 @@ export default function PhieuKiemDetail() {
                                         />
                                     </Grid>
 
-                                    <Grid size={{ xs: 4 }}>
+                                    <Grid size={{ xs: 12, sm: 4 }}>
                                         <TextField
                                             select
                                             label="Inspection Level"
@@ -627,60 +659,120 @@ export default function PhieuKiemDetail() {
                                     // );
 
                                     const totalLoi = item.SoLuongLoi || 0;
+                                    const canEditItem = canEditInspection
+                                        && !section.KetLuan
+                                        && ["DA_TAO_SECTION", "DANG_KIEM"].includes(phieu?.TrangThai);
+                                    const statusConfig = item.KetQua === "DAT"
+                                        ? {
+                                            label: "Đạt",
+                                            color: "success",
+                                            borderColor: "success.light",
+                                            bgcolor: alpha("#22c55e", 0.05)
+                                        }
+                                        : item.KetQua === "KHONG_DAT"
+                                            ? {
+                                                label: "Có lỗi",
+                                                color: "error",
+                                                borderColor: "error.light",
+                                                bgcolor: alpha("#ef4444", 0.05)
+                                            }
+                                            : item.KetQua === "NA"
+                                                ? {
+                                                    label: "N/A",
+                                                    color: "default",
+                                                    borderColor: "grey.300",
+                                                    bgcolor: "grey.50"
+                                                }
+                                                : {
+                                                    label: "Chưa kiểm",
+                                                    color: "default",
+                                                    borderColor: "divider",
+                                                    bgcolor: "background.paper"
+                                                };
 
                                     return (
 
                                         <Card
                                             key={item.Id}
                                             sx={{
-                                                mb: 1.5,
-                                                px: 2,
-                                                py: 1.5,
-                                                borderRadius: 3,
+                                                mb: 1,
+                                                px: { xs: 1.25, sm: 1.5 },
+                                                py: { xs: 1, sm: 1.25 },
+                                                borderRadius: 2,
                                                 border: "1px solid",
-                                                borderColor:
-                                                    totalLoi > 0
-                                                        ? "error.light"
-                                                        : "success.light",
-                                                bgcolor:
-                                                    totalLoi > 0
-                                                        ? alpha("#ef4444", 0.05)
-                                                        : alpha("#22c55e", 0.05)
+                                                borderColor: statusConfig.borderColor,
+                                                bgcolor: statusConfig.bgcolor,
+                                                boxShadow: "none"
                                             }}
                                         >
+                                            <Box
+                                                sx={{
+                                                    display: "grid",
+                                                    gridTemplateColumns: canEditItem
+                                                        ? "minmax(0, 1fr) auto auto auto"
+                                                        : "minmax(0, 1fr) auto auto",
+                                                    gap: { xs: 0.75, sm: 1.5 },
+                                                    alignItems: "center",
+                                                    minHeight: 44
+                                                }}
+                                            >
+                                                <Typography
+                                                    title={item.TenMucKiem}
+                                                    fontWeight={600}
+                                                    sx={{
+                                                        minWidth: 0,
+                                                        lineHeight: 1.25,
+                                                        display: "-webkit-box",
+                                                        WebkitBoxOrient: "vertical",
+                                                        WebkitLineClamp: 2,
+                                                        overflow: "hidden"
+                                                    }}
+                                                >
+                                                    {item.TenMucKiem}
+                                                </Typography>
 
-                                            <Grid container alignItems="center">
+                                                <Typography
+                                                    variant="caption"
+                                                    color={totalLoi > 0 ? "error.main" : "text.secondary"}
+                                                    fontWeight={700}
+                                                    whiteSpace="nowrap"
+                                                >
+                                                    Lỗi: {totalLoi}
+                                                </Typography>
 
-                                                <Grid size={{ xs: 6 }}>
-                                                    <Typography fontWeight={500}>
-                                                        {item.TenMucKiem}
-                                                    </Typography>
-                                                </Grid>
+                                                <Chip
+                                                    label={statusConfig.label}
+                                                    color={statusConfig.color}
+                                                    size="small"
+                                                    sx={{
+                                                        height: 26,
+                                                        fontWeight: 700,
+                                                        "& .MuiChip-label": { px: 1 }
+                                                    }}
+                                                />
 
-                                                <Grid size={{ xs: 3 }}>
-                                                    <Chip
-                                                        label={`Tổng lỗi: ${totalLoi}`}
-                                                        size="small"
-                                                    />
-                                                </Grid>
-
-                                                <Grid size={{ xs: 3 }}>
-
-                                                    {!item.KetQua &&
-                                                        <Chip label="Chưa kiểm tra" size="small" />}
-
-                                                    {item.KetQua === "DAT" &&
-                                                        <Chip label="Đạt" color="success" size="small" />}
-
-                                                    {item.KetQua === "KHONG_DAT" &&
-                                                        <Chip label="Có lỗi" color="error" size="small" />}
-
-                                                    {item.KetQua === "NA" &&
-                                                        <Chip label="N/A" color="default" size="small" />}
-
-                                                </Grid>
-
-                                            </Grid>
+                                                {canEditItem && (
+                                                    <Tooltip title={item.KetQua ? "Sửa kết quả" : "Thực hiện kiểm"}>
+                                                        <IconButton
+                                                            color="primary"
+                                                            aria-label={item.KetQua ? `Sửa kết quả ${item.TenMucKiem}` : `Kiểm ${item.TenMucKiem}`}
+                                                            onClick={() => setEditingItem({
+                                                                ...item,
+                                                                Defects: defects.filter((defect) => Number(defect.CheckItemId) === Number(item.Id))
+                                                            })}
+                                                            sx={{
+                                                                width: 44,
+                                                                height: 44,
+                                                                border: "1px solid",
+                                                                borderColor: "primary.light",
+                                                                borderRadius: 1.5
+                                                            }}
+                                                        >
+                                                            <EditOutlinedIcon />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                )}
+                                            </Box>
 
                                         </Card>
 
@@ -768,6 +860,28 @@ export default function PhieuKiemDetail() {
                         </Button>
                     </DialogActions>
                 </Dialog>
+                <CheckItemEditor
+                    open={Boolean(editingItem)}
+                    item={editingItem}
+                    canEditDiemTrongYeu={[1, 5].includes(Number(phieu?.LoaiKiemId))}
+                    onClose={() => setEditingItem(null)}
+                    onSaved={async () => {
+                        await loadData({ background: true });
+                        setActionNotice({ type: "success", message: "Đã lưu kết quả mục kiểm." });
+                    }}
+                />
+                <MeasurementEditor
+                    open={measurementOpen}
+                    phieuId={id}
+                    specs={thongSoList}
+                    results={thongSoKqList}
+                    readOnly={!["DA_TAO_SECTION", "DANG_KIEM"].includes(phieu?.TrangThai) || !canEditInspection}
+                    onClose={() => setMeasurementOpen(false)}
+                    onSaved={async () => {
+                        await loadData({ background: true });
+                        setActionNotice({ type: "success", message: "Đã lưu kết quả thông số đặc biệt." });
+                    }}
+                />
             </Box>
         </Fade>
     );

@@ -197,6 +197,11 @@ export default function BienBanSxbtDetailScreen({ route, navigation }) {
                 <Text style={styles.meta}>Số phiếu: {info?.SoPhieu || "---"}</Text>
                 <Text style={styles.meta}>Bộ phận tạo: {[info?.MaBoPhanTao, info?.TenBoPhanTao].filter(Boolean).join(" - ") || "---"}</Text>
                 <Text style={styles.meta}>Mã đơn vị SXBT: {info?.MaDonVi || "---"}</Text>
+                <Text style={styles.meta}>
+                    Nguồn SXBT: {info?.SxbtSourceType === "KE_HOACH_NHAP"
+                        ? `Kế hoạch nhập #${info?.KeHoachNhapId || "---"}`
+                        : (info?.So_PhieuNhapBTP || `Phiếu nhập #${info?.PhieuNhapBtpId || "---"}`)}
+                </Text>
                 <Text style={styles.meta}>Trạng thái: {info?.TrangThai || "---"}</Text>
             </View>
 

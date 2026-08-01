@@ -39,6 +39,7 @@ const fs = require('fs');
 const { poolPromise } = require('../db');
 const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
+const { getClosingScheduleCustomer } = require('../utils/closingScheduleCustomer');
 
 const multer = require('multer');
 const path = require('path');
@@ -59,6 +60,34 @@ const TREN_CHUYEN_COMPLETED_BY_NAME_FIELD = 'TrenChuyen_CompletedByName';
 
 const isCuoiChuyenLoaiKiem = (loaiKiemId) => Number(loaiKiemId) === CUOI_CHUYEN_LOAI_KIEM_ID;
 const isTrenChuyenLoaiKiem = (loaiKiemId) => Number(loaiKiemId) === TREN_CHUYEN_LOAI_KIEM_ID;
+const normalizeDateOnly = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+
+    const rawValue = String(value).trim();
+    const match = /^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/.exec(rawValue);
+    if (!match) return null;
+    if (rawValue.includes('T') && Number.isNaN(Date.parse(rawValue))) return null;
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const parsedDate = new Date(Date.UTC(year, month - 1, day));
+    if (parsedDate.getUTCFullYear() !== year
+        || parsedDate.getUTCMonth() !== month - 1
+        || parsedDate.getUTCDate() !== day) {
+        return null;
+    }
+
+    return `${match[1]}-${match[2]}-${match[3]}`;
+};
+const serializeSqlDateOnly = (value) => {
+    if (!(value instanceof Date)) return normalizeDateOnly(value);
+
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
 const isAdminUser = (user = {}) =>
     Array.isArray(user?.permissions) && user.permissions.includes('QUAN_TRI_DM')
     || (Array.isArray(user?.roles) && user.roles.some((role) => String(role || '').toUpperCase().includes('ADMIN')));
@@ -110,10 +139,194 @@ const attachProductImageToPhieu = async (pool, phieu = null) => {
     return phieu;
 };
 
+const getSxbtSourceInfo = async (pool, phieuKiemId) => {
+    const sourceResult = await pool.request()
+        .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+        .query(`
+            SELECT TOP 1
+                pk.SourceId,
+                pk.SxbtKeHoachNhapId,
+                COALESCE(pk.SxbtPhieuNhapBtpId,
+                    CASE WHEN pk.SxbtKeHoachNhapId IS NULL THEN pk.SourceId END
+                ) AS SxbtPhieuNhapBtpId
+            FROM dbo.PHIEU_KIEM pk
+            WHERE pk.Id = @PhieuKiemId
+              AND pk.LoaiKiemId = 4
+        `);
+    const sourceLink = sourceResult.recordset?.[0];
+    if (!sourceLink) return null;
+
+    if (sourceLink.SxbtKeHoachNhapId) {
+        const planResult = await pool.request()
+            .input('KeHoachNhapId', sql.Int, sourceLink.SxbtKeHoachNhapId)
+            .input('PhieuNhapBtpId', sql.Int, sourceLink.SxbtPhieuNhapBtpId || null)
+            .query(`
+                SELECT TOP 1
+                    N'KE_HOACH_NHAP' AS SourceType,
+                    sourceRow.ID_TuTang AS KeHoachNhapId,
+                    @PhieuNhapBtpId AS PhieuNhapBtpId,
+                    receipt.So_PhieuNhapBTP,
+                    sourceRow.ID_KeHoachSanXuat,
+                    sourceRow.Ngay_NhapBTP,
+                    sourceRow.Ngay_ThucTeSX,
+                    sourceRow.Ngay_Tao,
+                    sourceRow.SoLuong,
+                    sourceRow.LoaiKH,
+                    sourceRow.ID_DonHang_LoSanXuat,
+                    sourceRow.ID_DonHang_SanPham,
+                    productionPlan.ID_QuyTrinhSanXuat,
+                    processRow.Ten_QuyTrinhSanXuat,
+                    productionOrder.ID_DonVi,
+                    productionPlan.ID_BoPhan,
+                    unitRow.Ten_DonVi,
+                    departmentRow.Ten_BoPhan,
+                    contractor.Ma_NhaThau AS MaDonVi,
+                    contractor.Ma_NhaThau,
+                    orderRow.Ma_DonHang,
+                    productionLot.So_LoSanXuat,
+                    productRow.ItemCode,
+                    productRow.Ten_SanPham,
+                    warehouse.Ten_Kho AS Ten_KhoNhap,
+                    CASE WHEN sourceRow.LoaiKH = 2 THEN N'Điều chỉnh' ELSE N'Kế hoạch gốc' END AS TenLoaiKeHoach
+                FROM TAG_QLSX.dbo.KeHoachSanXuat_NhaThau_ThamChieu_Nhap sourceRow
+                INNER JOIN TAG_QLSX.dbo.KeHoachSanXuat productionPlan
+                    ON productionPlan.ID_KeHoachSanXuat = sourceRow.ID_KeHoachSanXuat
+                INNER JOIN TAG_QLSX.dbo.LenhSanXuat productionOrder
+                    ON productionOrder.ID_LenhSanXuat = productionPlan.ID_LenhSanXuat
+                LEFT JOIN TAG_QTKD.dbo.DonHang orderRow
+                    ON orderRow.ID_DonHang = productionOrder.ID_DonHang
+                LEFT JOIN TAG_QTKD.dbo.DonHang_SanPham orderProduct
+                    ON orderProduct.ID_DonHang_SanPham = NULLIF(sourceRow.ID_DonHang_SanPham, 0)
+                LEFT JOIN TAG_QTKD.dbo.DM_SanPham productRow
+                    ON productRow.ID_SanPham = orderProduct.ID_SanPham
+                LEFT JOIN TAG_QTKD.dbo.DonHang_LoSanXuat productionLot
+                    ON productionLot.ID_DonHang_LoSanXuat = NULLIF(sourceRow.ID_DonHang_LoSanXuat, 0)
+                LEFT JOIN TAG_QTKD.dbo.DM_QuyTrinhSanXuat processRow
+                    ON processRow.ID_QuyTrinhSanXuat = productionPlan.ID_QuyTrinhSanXuat
+                LEFT JOIN TAG_System.dbo.DM_DonVi unitRow
+                    ON unitRow.ID_DonVi = productionOrder.ID_DonVi
+                LEFT JOIN TAG_System.dbo.DM_BoPhan departmentRow
+                    ON departmentRow.ID_BoPhan = productionPlan.ID_BoPhan
+                LEFT JOIN TAG_QTKD.dbo.DM_NhaThau contractor
+                    ON contractor.ID_BoPhan = productionPlan.ID_BoPhan
+                LEFT JOIN TAG_QTKD.dbo.PhieuNhapBTP receipt
+                    ON receipt.ID_PhieuNhapBTP = @PhieuNhapBtpId
+                LEFT JOIN TAG_QTKD.dbo.DM_Kho warehouse
+                    ON warehouse.ID_Kho = receipt.ID_KhoNhap
+                WHERE sourceRow.ID_TuTang = @KeHoachNhapId
+            `);
+        return planResult.recordset?.[0] || {
+            SourceType: 'KE_HOACH_NHAP',
+            KeHoachNhapId: sourceLink.SxbtKeHoachNhapId,
+            PhieuNhapBtpId: null
+        };
+    }
+
+    const legacyReceiptId = sourceLink.SxbtPhieuNhapBtpId;
+    if (!legacyReceiptId) {
+        return {
+            SourceType: 'LEGACY_PHIEU_NHAP',
+            KeHoachNhapId: null,
+            PhieuNhapBtpId: null
+        };
+    }
+
+    const receiptResult = await pool.request()
+        .input('PhieuNhapBtpId', sql.Int, legacyReceiptId)
+        .query(`
+            SELECT TOP 1
+                N'LEGACY_PHIEU_NHAP' AS SourceType,
+                CAST(NULL AS INT) AS KeHoachNhapId,
+                receipt.ID_PhieuNhapBTP AS PhieuNhapBtpId,
+                receipt.So_PhieuNhapBTP,
+                receipt.Ngay_NhapBTP,
+                receipt.ID_QuyTrinhSanXuat,
+                processRow.Ten_QuyTrinhSanXuat,
+                receipt.ID_DonVi,
+                receipt.ID_BoPhan,
+                unitRow.Ten_DonVi,
+                departmentRow.Ten_BoPhan,
+                contractor.Ma_NhaThau AS MaDonVi,
+                contractor.Ma_NhaThau,
+                warehouse.Ten_Kho AS Ten_KhoNhap
+            FROM TAG_QTKD.dbo.PhieuNhapBTP receipt
+            LEFT JOIN TAG_QTKD.dbo.DM_Kho warehouse
+                ON warehouse.ID_Kho = receipt.ID_KhoNhap
+            LEFT JOIN TAG_QTKD.dbo.DM_QuyTrinhSanXuat processRow
+                ON processRow.ID_QuyTrinhSanXuat = receipt.ID_QuyTrinhSanXuat
+            LEFT JOIN TAG_System.dbo.DM_DonVi unitRow
+                ON unitRow.ID_DonVi = receipt.ID_DonVi
+            LEFT JOIN TAG_System.dbo.DM_BoPhan departmentRow
+                ON departmentRow.ID_BoPhan = receipt.ID_BoPhan
+            LEFT JOIN TAG_QTKD.dbo.DM_NhaThau contractor
+                ON contractor.ID_BoPhan = receipt.ID_BoPhan
+            WHERE receipt.ID_PhieuNhapBTP = @PhieuNhapBtpId
+        `);
+
+    return receiptResult.recordset?.[0] || {
+        SourceType: 'LEGACY_PHIEU_NHAP',
+        KeHoachNhapId: null,
+        PhieuNhapBtpId: legacyReceiptId
+    };
+};
+
+const attachSxbtSourceInfo = async (pool, phieu = null) => {
+    if (!phieu?.Id) return { phieu, source: null };
+
+    const source = await getSxbtSourceInfo(pool, phieu.Id);
+    if (!source) return { phieu, source: null };
+
+    const mappedFields = {
+        SxbtSourceType: source.SourceType,
+        SxbtSource: source,
+        KeHoachNhapId: source.KeHoachNhapId || null,
+        PhieuNhapBtpId: source.PhieuNhapBtpId || null,
+        So_PhieuNhapBTP: source.So_PhieuNhapBTP || phieu.So_PhieuNhapBTP || null,
+        Ngay_NhapBTP: source.Ngay_NhapBTP || phieu.Ngay_NhapBTP || null,
+        NgayNhap: source.Ngay_NhapBTP || phieu.NgayNhap || phieu.Ngay_NhapBTP || null,
+        Ngay_ThucTeSX: source.Ngay_ThucTeSX || phieu.Ngay_ThucTeSX || null,
+        Ten_KhoNhap: source.Ten_KhoNhap || phieu.Ten_KhoNhap || null,
+        Ten_DonVi: source.Ten_DonVi || phieu.Ten_DonVi || null,
+        Ten_BoPhan: source.Ten_BoPhan || phieu.Ten_BoPhan || null,
+        MaDonVi: source.MaDonVi || phieu.MaDonVi || phieu.Ma_NhaThau || null,
+        Ma_NhaThau: source.Ma_NhaThau || phieu.Ma_NhaThau || null,
+        Ma_DonHang: source.Ma_DonHang || phieu.Ma_DonHang || null,
+        MaDonHang: source.Ma_DonHang || phieu.MaDonHang || phieu.Ma_DonHang || null,
+        Ten_QuyTrinhSanXuat: source.Ten_QuyTrinhSanXuat || phieu.Ten_QuyTrinhSanXuat || null,
+        So_LoSanXuat: source.So_LoSanXuat || phieu.So_LoSanXuat || null
+    };
+
+    Object.assign(phieu, mappedFields);
+    return { phieu, source };
+};
+
 const optionalNonNegativeInteger = (value) => {
     if (value === '' || value === null || value === undefined) return null;
     const parsed = Number(value);
     return Number.isInteger(parsed) && parsed >= 0 ? parsed : Number.NaN;
+};
+
+const inspectionCapabilities = (req, phieu = {}) => {
+    const permissions = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+    const roles = Array.isArray(req.user?.roles) ? req.user.roles : [];
+    const isAdmin = permissions.includes('QUAN_TRI_DM')
+        || roles.some((role) => String(role || '').toUpperCase().includes('ADMIN'));
+    const status = String(phieu?.TrangThai || '').toUpperCase();
+    const open = ['TAO_MOI', 'CHUA_KIEM', 'DA_TAO_SECTION', 'DANG_KIEM'].includes(status);
+    const canInspect = isAdmin || permissions.includes('THUC_HIEN_KIEM');
+    return {
+        canEdit: open && canInspect,
+        canComplete: open && canInspect,
+        canApprove: status === 'CHO_TBP_DUYET' && (
+            isAdmin
+            || permissions.includes('PHAN_CONG_NGUOI_XU_LY')
+            || permissions.includes('KET_LUAN')
+        ),
+        canDelete: open && (canInspect || permissions.includes('PHAN_BO_KIEM')),
+        canCreateBienBan: Boolean(phieu?.KetLuan === 'KHONG_DAT') && (
+            isAdmin || canInspect || permissions.includes('KET_LUAN')
+        )
+    };
 };
 
 const applyQuantityFields = (row, plannedField = 'SoLuong') => {
@@ -205,6 +418,45 @@ const upsertPhieuKiemCustomFields = async (pool, phieuKiemId, fields) => {
         .input('PhieuKiemId', sql.Int, phieuKiemId)
         .input('JsonData', sql.NVarChar(sql.MAX), JSON.stringify(fields))
         .execute('SP_Upsert_PhieuKiem_CustomFields');
+};
+
+const applyClosingScheduleSnapshot = (phieu, dynamicFields = []) => {
+    if (!phieu || !Array.isArray(dynamicFields)) return phieu;
+
+    const fieldMap = new Map(
+        dynamicFields
+            .filter((field) => field?.FieldName)
+            .map((field) => [field.FieldName, field.FieldValue])
+    );
+    const invoiceNo = String(
+        fieldMap.get('DongCont_InvoiceNo')
+        || (Number(phieu.LoaiKiemId) === 5 ? String(phieu.DoiTuong || '').split(' - ')[0] : '')
+        || ''
+    ).trim();
+    const packingMethod = String(fieldMap.get('DongCont_PackingMethod') || '').trim();
+    const customer = String(
+        fieldMap.get('DongCont_KhachHang')
+        || fieldMap.get('KhachHang')
+        || (Number(phieu.LoaiKiemId) === 5
+            ? getClosingScheduleCustomer({ invoiceNo, packingMethod })
+            : '')
+        || ''
+    ).trim().toUpperCase();
+
+    if (customer === 'IKEA' || customer === 'DEK') {
+        phieu.KhachHang = customer;
+    }
+
+    phieu.DongContInvoiceNo = invoiceNo || null;
+    phieu.DongContPackingMethod = packingMethod || null;
+    const packageValue = fieldMap.get('DongCont_Package');
+    const normalizedPackage = packageValue === '' || packageValue === null || packageValue === undefined
+        ? null
+        : Number(packageValue);
+    phieu.DongContPackage = Number.isInteger(normalizedPackage) && normalizedPackage >= 0
+        ? normalizedPackage
+        : null;
+    return phieu;
 };
 
 const enrichSxbtSignatureFields = async (pool, dynamicFields = [], phieu = null) => {
@@ -371,7 +623,8 @@ router.get(
             const result = await request.execute('sp_PhieuKiem_GetList_ByRole');
 
             const visibleRows = await excludeCongDoanRows(pool, result.recordset);
-            res.json(await attachListQuantities(pool, visibleRows));
+            const rowsWithQuantities = await attachListQuantities(pool, visibleRows);
+            res.json(rowsWithQuantities.map((row) => applyClosingScheduleSnapshot(row, [])));
         } catch (err) {
             console.error('GetPhieuKiem error:', err);
             res.status(500).json({ message: 'Lỗi tải danh sách phiếu kiểm' });
@@ -394,7 +647,13 @@ router.get(
             const result = await pool.request()
                 .execute('sp_LichDongCont_GetList');
 
-            res.json(result.recordset);
+            res.json((result.recordset || []).map((row) => ({
+                ...row,
+                KhachHang: getClosingScheduleCustomer({
+                    invoiceNo: row.InvoiceNo,
+                    packingMethod: row.PackingMethod
+                })
+            })));
 
         } catch (err) {
             console.error('GetLichDongCont error:', err);
@@ -634,6 +893,26 @@ router.get(
 );
 
 router.get(
+    '/ke-hoach-nhap-btp/chua-kiem',
+    authenticateToken,
+    authorize('XEM_PHIEU_KIEM'),
+    async (req, res) => {
+        try {
+            const pool = await poolPromise;
+            const result = await pool.request()
+                .execute('sp_KeHoachNhapBTP_GetList_ChuaKiem');
+
+            res.json(result.recordset || []);
+        } catch (err) {
+            console.error('Get import plan list for SXBT error:', err);
+            res.status(500).json({
+                message: err?.originalError?.info?.message || err.message || 'Lỗi lấy danh sách kế hoạch nhập BTP'
+            });
+        }
+    }
+);
+
+router.get(
     '/ke-hoach-san-xuat/chua-kiem',
     authenticateToken,
     authorize('XEM_PHIEU_KIEM'),
@@ -644,7 +923,13 @@ router.get(
             const result = await pool.request()
                 .execute('sp_KeHoachSanXuat_GetList_ChuaKiem_TrenChuyen');
 
-            res.json(result.recordset);
+            res.json((result.recordset || []).map((row) => ({
+                ...row,
+                // mssql/useUTC=false tao Date theo gio dia phuong; JSON.stringify se
+                // doi sang UTC va co the lui mot ngay. Tra date-only de client gui
+                // lai dung khoa nghiep vu ID ke hoach + ngay hien tai.
+                Ngay: serializeSqlDateOnly(row.Ngay)
+            })));
 
         } catch (err) {
             console.error(err);
@@ -782,6 +1067,7 @@ router.get(
                 const phieu = result.recordsets[0][0] || null;
                 await attachProductImageToPhieu(pool, phieu);
                 await attachPhieuQuantity(pool, phieu);
+                const { source: sxbtSource } = await attachSxbtSourceInfo(pool, phieu);
                 let dynamicFields = [];
                 if (phieu && phieu.DynamicFieldsJSON) {
                     try {
@@ -823,7 +1109,11 @@ router.get(
                     summary: result.recordsets[2][0] || null,
                     defects: result.recordsets[3] || [],
                     dynamicFields,
-                    splitInfo: splitResult.recordset?.[0] || null
+                    splitInfo: splitResult.recordset?.[0] || null,
+                    sxbtSourceType: sxbtSource?.SourceType || null,
+                    sxbtSource,
+                    phieuNhapBtpId: sxbtSource?.PhieuNhapBtpId || null,
+                    capabilities: inspectionCapabilities(req, phieu)
                 });
             }
 
@@ -940,7 +1230,8 @@ router.get(
                     plans,
                     summary: { ...(summary || {}), ...quantitySummary },
                     dynamicFields,
-                    xacNhans
+                    xacNhans,
+                    capabilities: inspectionCapabilities(req, phieu)
                 });
             }
 
@@ -1042,7 +1333,8 @@ router.get(
                     slots,
                     summary,
                     dynamicFields,
-                    xacNhans
+                    xacNhans,
+                    capabilities: inspectionCapabilities(req, phieu)
                 });
             }
 
@@ -1064,6 +1356,7 @@ router.get(
                 // Xóa trường string thô để API trả về nhẹ và sạch sẽ
                 delete phieu.DynamicFieldsJSON;
             }
+            applyClosingScheduleSnapshot(phieu, dynamicFields);
 
             const sections = result.recordsets[1] || [];
             // const checkItems = result.recordsets[2] || [];
@@ -1098,7 +1391,8 @@ router.get(
                 sections,
                 checkItems,
                 defects,
-                dynamicFields
+                dynamicFields,
+                capabilities: inspectionCapabilities(req, phieu)
             });
 
         } catch (err) {
@@ -1132,11 +1426,27 @@ router.post(
             soLuong,
             Ngay_Giao,
             mucDoKiemTra,
-            cuoiChuyenPlans
+            cuoiChuyenPlans,
+            ngayKiem
         } = req.body;
         const normalizedCuoiChuyenPlans = isCuoiChuyenLoaiKiem(loaiKiemId)
             ? normalizeCuoiChuyenPlans(cuoiChuyenPlans || [])
             : [];
+        const isTrenChuyen = isTrenChuyenLoaiKiem(loaiKiemId);
+        const hasNgayKiem = ngayKiem !== null && ngayKiem !== undefined && ngayKiem !== '';
+        const normalizedNgayKiem = isTrenChuyen ? normalizeDateOnly(ngayKiem) : null;
+
+        if (!isTrenChuyen && hasNgayKiem) {
+            return res.status(400).json({
+                message: 'Ngày kiểm chỉ áp dụng cho phiếu kiểm trên chuyền'
+            });
+        }
+
+        if (isTrenChuyen && !normalizedNgayKiem) {
+            return res.status(400).json({
+                message: 'Ngày kiểm trên chuyền không hợp lệ'
+            });
+        }
 
         // Bắt buộc phải có 1 trong 2 loại source
         if (!sanPhamId || !loaiKiemId || !nguoiKiemId || !soLuong || (!sourceId && !sourceId_LCD)) {
@@ -1151,8 +1461,26 @@ router.post(
             });
         }
 
+        const closingScheduleSnapshot = sourceId_LCD ? (req.body?.snapshotFields || {}) : null;
+        const rawPackage = closingScheduleSnapshot?.DongCont_Package;
+        const closingSchedulePackage = rawPackage === '' || rawPackage === null || rawPackage === undefined
+            ? null
+            : Number(rawPackage);
+        if (sourceId_LCD && closingSchedulePackage !== null
+            && (!Number.isInteger(closingSchedulePackage) || closingSchedulePackage < 0)) {
+            return res.status(400).json({ message: 'Số Package của lịch đóng cont không hợp lệ' });
+        }
+
         try {
             const pool = await poolPromise;
+            let effectiveNgayKiem = null;
+
+            if (isTrenChuyen) {
+                const sqlDateResult = await pool.request().query(`
+                    SELECT CONVERT(char(10), CONVERT(date, GETDATE()), 23) AS NgayKiem
+                `);
+                effectiveNgayKiem = sqlDateResult.recordset?.[0]?.NgayKiem || null;
+            }
 
             if (isCuoiChuyenLoaiKiem(loaiKiemId)) {
                 const selectedPlanIds = normalizedCuoiChuyenPlans
@@ -1198,10 +1526,28 @@ router.post(
                 .input('SourceId_LCD', sql.UniqueIdentifier, sourceId_LCD || null)
                 .input('Ngay_Giao', sql.Date, Ngay_Giao || null)
                 .input('MucDoKiemTra', sql.NVarChar, mucDoKiemTra || null)
+                // KIEM_TREN_CHUYEN chi tao cho ngay hien tai. Lay ngay tu cung
+                // SQL Server de khong bi lech ngay khi Date duoc serialize qua UTC.
+                .input('NgayKiem', sql.Date, effectiveNgayKiem)
                 .execute('sp_PhieuKiem_Create');
 
             const newPhieuId = result.recordset[0].Id;
             const soPhieu = result.recordset[0].SoPhieu;
+
+            if (sourceId_LCD) {
+                const invoiceNo = String(closingScheduleSnapshot.DongCont_InvoiceNo || '').trim();
+                const packingMethod = String(closingScheduleSnapshot.DongCont_PackingMethod || '').trim();
+                const khachHang = getClosingScheduleCustomer({ invoiceNo, packingMethod });
+
+                await upsertPhieuKiemCustomFields(pool, newPhieuId, {
+                    DongCont_KhachHang: khachHang || '',
+                    KhachHang: khachHang || '',
+                    DongCont_InvoiceNo: invoiceNo,
+                    DongCont_PackingMethod: packingMethod,
+                    DongCont_WarehouseId: String(closingScheduleSnapshot.DongCont_WarehouseId || '').trim(),
+                    DongCont_Package: closingSchedulePackage ?? ''
+                });
+            }
 
             if (isTrenChuyenLoaiKiem(loaiKiemId) && req.body.snapshotFields) {
                 await upsertPhieuKiemCustomFields(pool, newPhieuId, req.body.snapshotFields);
@@ -1261,13 +1607,17 @@ router.post(
             const message = `Tổ trưởng vừa phân công cho bạn phiếu kiểm ${soPhieu}.`;
 
             // A. Lưu vào Database (Bảng NOTIFICATIONS)
-            await pool.request()
-                .input('UserId', sql.Int, nguoiKiemId)
-                .input('Title', sql.NVarChar, title)
-                .input('Message', sql.NVarChar, message)
-                .input('Type', sql.VarChar, 'NEW_PHIEU')
-                .input('ReferenceId', sql.Int, newPhieuId)
-                .query('INSERT INTO NOTIFICATIONS (UserId, Title, Message, Type, ReferenceId) VALUES (@UserId, @Title, @Message, @Type, @ReferenceId)');
+            try {
+                await pool.request()
+                    .input('UserId', sql.Int, nguoiKiemId)
+                    .input('Title', sql.NVarChar, title)
+                    .input('Message', sql.NVarChar, message)
+                    .input('Type', sql.VarChar, 'NEW_PHIEU')
+                    .input('ReferenceId', sql.Int, newPhieuId)
+                    .query('INSERT INTO NOTIFICATIONS (UserId, Title, Message, Type, ReferenceId) VALUES (@UserId, @Title, @Message, @Type, @ReferenceId)');
+            } catch (notificationError) {
+                console.error('CreateSXBT notification error:', notificationError);
+            }
 
             // B. Lấy Tokens và gửi Expo Push Notification
             const userTokensRes = await pool.request()
@@ -1310,8 +1660,15 @@ router.post(
 
         } catch (err) {
             console.error('CreatePhieuKiem error:', err);
-            res.status(500).json({
-                message: 'Tạo phiếu kiểm thất bại'
+            const sqlMessage = err?.originalError?.info?.message
+                || err?.precedingErrors?.find((item) => item?.message)?.message
+                || err?.message;
+            const isDailyPlanConflict = isTrenChuyen
+                && /Kế hoạch đã có phiếu kiểm trên chuyền ngày/i.test(sqlMessage || '');
+            res.status(isDailyPlanConflict ? 409 : 500).json({
+                message: isDailyPlanConflict
+                    ? sqlMessage
+                    : 'Tạo phiếu kiểm thất bại'
             });
         }
     }
@@ -1827,23 +2184,36 @@ router.post(
         const {
             loaiKiemId,
             nguoiKiemId,
+            keHoachNhapId,
             sourceId,
             soLuong,
             doiTuong,
             mucDoKiemTra
         } = req.body;
-        console.log(req.body);
+
+        if (!loaiKiemId || !nguoiKiemId || (!keHoachNhapId && !sourceId)) {
+            return res.status(400).json({
+                message: 'Thiếu loại kiểm, người kiểm hoặc nguồn kế hoạch nhập BTP'
+            });
+        }
+
         try {
             const pool = await poolPromise;
-            const result = await pool.request()
+            const request = pool.request()
                 .input('LoaiKiemId', sql.Int, loaiKiemId)
                 .input('NguoiKiemId', sql.Int, nguoiKiemId)
                 .input('NguoiLapId', sql.Int, req.user.userId)
-                .input('SourceId', sql.Int, sourceId)
-                .input('SoLuong', sql.Int, soLuong)
-                .input('DoiTuong', sql.NVarChar, doiTuong)
-                .input('MucDoKiemTra', sql.NVarChar, mucDoKiemTra || null)
-                .execute('sp_PhieuKiem_Create_SXBT');
+                .input('MucDoKiemTra', sql.NVarChar, mucDoKiemTra || null);
+
+            const result = keHoachNhapId
+                ? await request
+                    .input('KeHoachNhapId', sql.Int, keHoachNhapId)
+                    .execute('sp_PhieuKiem_Create_SXBT_FromKeHoachNhap')
+                : await request
+                    .input('SourceId', sql.Int, sourceId)
+                    .input('SoLuong', sql.Int, soLuong)
+                    .input('DoiTuong', sql.NVarChar, doiTuong)
+                    .execute('sp_PhieuKiem_Create_SXBT');
 
             const newPhieuId = result.recordset[0].Id;
             const soPhieu = result.recordset[0].SoPhieu;
@@ -1867,7 +2237,11 @@ router.post(
             });
         } catch (err) {
             console.error('CreateSXBT error:', err);
-            res.status(500).json({ message: 'Tạo phiếu kiểm bổ trợ thất bại' });
+            const sqlMessage = err?.originalError?.info?.message || err.message;
+            const isConflict = /đã được tạo phiếu kiểm|duplicate|unique/i.test(sqlMessage || '');
+            res.status(isConflict ? 409 : 500).json({
+                message: sqlMessage || 'Tạo phiếu kiểm bổ trợ thất bại'
+            });
         }
     }
 );
@@ -2127,6 +2501,32 @@ router.post(
 
         try {
             const pool = await poolPromise;
+            const sourceResult = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .query(`
+                    SELECT TOP 1
+                        SourceId,
+                        SxbtKeHoachNhapId,
+                        SxbtPhieuNhapBtpId
+                    FROM dbo.PHIEU_KIEM
+                    WHERE Id = @PhieuKiemId
+                      AND LoaiKiemId = 4
+                `);
+            const source = sourceResult.recordset?.[0];
+            if (!source) {
+                return res.status(404).json({ message: 'Không tìm thấy phiếu SXBT' });
+            }
+            if (source.SxbtKeHoachNhapId && !source.SxbtPhieuNhapBtpId) {
+                return res.status(409).json({
+                    message: 'Phiếu SXBT này lấy từ kế hoạch nhập và chưa sinh phiếu nhập BTP để đồng bộ.'
+                });
+            }
+            if (!source.SxbtPhieuNhapBtpId && !source.SourceId) {
+                return res.status(409).json({
+                    message: 'Phiếu chưa có liên kết phiếu nhập BTP tương thích với chức năng đồng bộ hiện tại.'
+                });
+            }
+
             const result = await pool.request()
                 .input('PhieuKiemId', sql.Int, phieuKiemId)
                 .execute('sp_PhieuKiem_SXBT_SyncKhoQuantityToSource');
@@ -2189,15 +2589,39 @@ router.post(
             return res.status(400).json({ message: 'Thiếu phieuKiemId hoặc dữ liệu dòng lô.' });
         }
 
+        let transaction;
         try {
             const pool = await poolPromise;
-            const result = await pool.request()
+            transaction = new sql.Transaction(pool);
+            await transaction.begin();
+
+            const result = await new sql.Request(transaction)
                 .input('PhieuKiemId', sql.Int, phieuKiemId)
                 .input('UserId', sql.Int, req.user.userId)
                 .input('LotRowsJson', sql.NVarChar(sql.MAX), JSON.stringify(lotRows))
                 .execute('sp_PhieuKiem_SXBT_SplitComplete');
 
             const row = result.recordset?.[0];
+            if (!row?.RejectedPhieuKiemId) {
+                throw new Error('Không nhận được phiếu không đạt sau khi tách.');
+            }
+
+            await new sql.Request(transaction)
+                .input('OriginalPhieuKiemId', sql.Int, row.PassedPhieuKiemId || phieuKiemId)
+                .input('RejectedPhieuKiemId', sql.Int, row.RejectedPhieuKiemId)
+                .query(`
+                    UPDATE rejected
+                    SET
+                        rejected.SxbtKeHoachNhapId = original.SxbtKeHoachNhapId,
+                        rejected.SxbtPhieuNhapBtpId = original.SxbtPhieuNhapBtpId,
+                        rejected.SxbtIsSplitChild = 1
+                    FROM dbo.PHIEU_KIEM rejected
+                    INNER JOIN dbo.PHIEU_KIEM original
+                        ON original.Id = @OriginalPhieuKiemId
+                    WHERE rejected.Id = @RejectedPhieuKiemId;
+                `);
+
+            await transaction.commit();
             return res.json({
                 success: true,
                 passedPhieu: {
@@ -2210,6 +2634,13 @@ router.post(
                 }
             });
         } catch (err) {
+            if (transaction) {
+                try {
+                    await transaction.rollback();
+                } catch (rollbackError) {
+                    console.error('SXBT split rollback error:', rollbackError);
+                }
+            }
             console.error('SXBT Split Complete error:', err);
             return res.status(400).json({
                 message: err?.originalError?.info?.message || err.message || 'Không thể tách phiếu SXBT.'

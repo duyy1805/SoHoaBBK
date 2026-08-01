@@ -24,17 +24,20 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PrintIcon from "@mui/icons-material/Print";
 import AssignmentIcon from "@mui/icons-material/Assignment";
 import AddTaskIcon from "@mui/icons-material/AddTask";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import ReportProblemOutlinedIcon from "@mui/icons-material/ReportProblemOutlined";
 import ErrorOutlineOutlinedIcon from "@mui/icons-material/ErrorOutlineOutlined";
 import CheckCircleOutlineOutlinedIcon from "@mui/icons-material/CheckCircleOutlineOutlined";
 import {
     approveCuoiChuyen,
+    completeCuoiChuyen,
     createCuoiChuyenBienBan,
     getPhieuKiemDetail
 } from "../../../api/phieuKiem.api";
 import { getCurrentUser } from "../../../utils/auth";
 import CuoiChuyenPrintTemplate from "../components/CuoiChuyenPrintTemplate";
+import CuoiChuyenPlanEditor from "../components/CuoiChuyenPlanEditor";
 
 const getFieldValue = (dynamicFields = [], name) =>
     dynamicFields.find((field) => field?.FieldName === name)?.FieldValue ?? "";
@@ -111,7 +114,11 @@ export default function CuoiChuyenDetail() {
     const [summary, setSummary] = useState(null);
     const [dynamicFields, setDynamicFields] = useState([]);
     const [xacNhans, setXacNhans] = useState([]);
+    const [capabilities, setCapabilities] = useState({});
     const [openPrint, setOpenPrint] = useState(false);
+    const [editingPlanId, setEditingPlanId] = useState(null);
+    const [completeOpen, setCompleteOpen] = useState(false);
+    const [completing, setCompleting] = useState(false);
     const [currentUser] = useState(() => getCurrentUser());
 
     const handlePrint = useReactToPrint({
@@ -123,9 +130,9 @@ export default function CuoiChuyenDetail() {
         loadData();
     }, [id]);
 
-    const loadData = async () => {
+    const loadData = async ({ background = false } = {}) => {
         try {
-            setLoading(true);
+            if (!background) setLoading(true);
             const res = await getPhieuKiemDetail(id);
             const data = res.data || {};
             if (data?.phieu?.LoaiKiemId !== 3) {
@@ -137,10 +144,11 @@ export default function CuoiChuyenDetail() {
             setSummary(data.summary || null);
             setDynamicFields(data.dynamicFields || []);
             setXacNhans(Array.isArray(data.xacNhans) ? data.xacNhans : []);
+            setCapabilities(data.capabilities || {});
         } catch (error) {
             console.error(error);
         } finally {
-            setLoading(false);
+            if (!background) setLoading(false);
         }
     };
 
@@ -174,7 +182,7 @@ export default function CuoiChuyenDetail() {
         try {
             setApproving(true);
             await approveCuoiChuyen(id);
-            await loadData();
+            await loadData({ background: true });
         } catch (error) {
             window.alert(error?.response?.data?.message || "Không thể duyệt phiếu.");
         } finally {
@@ -187,7 +195,7 @@ export default function CuoiChuyenDetail() {
             setCreatingBienBan(true);
             const res = await createCuoiChuyenBienBan(id);
             const bienBanId = res?.data?.bienBanId;
-            await loadData();
+            await loadData({ background: true });
             if (bienBanId) {
                 navigate(`/bien-ban/${bienBanId}`);
             }
@@ -195,6 +203,24 @@ export default function CuoiChuyenDetail() {
             window.alert(error?.response?.data?.message || "Không thể sinh biên bản.");
         } finally {
             setCreatingBienBan(false);
+        }
+    };
+
+    const canEdit = capabilities.canEdit ?? Boolean(
+        currentUser?.permissions?.includes("THUC_HIEN_KIEM")
+        && !["HOAN_TAT", "CHO_TBP_DUYET", "CHO_KIEM_NGHIEM", "CHO_XUONG_XAC_NHAN"].includes(phieu?.TrangThai)
+    );
+
+    const handleComplete = async (ketLuan) => {
+        try {
+            setCompleting(true);
+            await completeCuoiChuyen(id, ketLuan);
+            setCompleteOpen(false);
+            await loadData({ background: true });
+        } catch (error) {
+            window.alert(error?.response?.data?.message || "Không thể hoàn tất phiếu.");
+        } finally {
+            setCompleting(false);
         }
     };
 
@@ -218,7 +244,7 @@ export default function CuoiChuyenDetail() {
 
     return (
         <Container maxWidth="xl" sx={{ py: 3 }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
+            <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", md: "center" }} spacing={2} sx={{ mb: 3 }}>
                 <Stack direction="row" spacing={1.5} alignItems="center">
                     <Button startIcon={<ArrowBackIcon />} onClick={returnToList} color="inherit">
                         Quay lại
@@ -236,7 +262,7 @@ export default function CuoiChuyenDetail() {
                     </Box>
                 </Stack>
 
-                <Stack direction="row" spacing={1}>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                     <Button startIcon={<PrintIcon />} variant="outlined" onClick={() => setOpenPrint(true)}>
                         In phiếu
                     </Button>
@@ -245,6 +271,11 @@ export default function CuoiChuyenDetail() {
                             Duyệt TBP
                         </Button>
                     ) : null}
+                    {canEdit && (
+                        <Button variant="contained" color="success" onClick={() => setCompleteOpen(true)}>
+                            Hoàn tất phiếu
+                        </Button>
+                    )}
                     {phieu?.BienBanId ? (
                         <Button
                             startIcon={<AssignmentIcon />}
@@ -324,6 +355,9 @@ export default function CuoiChuyenDetail() {
                                         <Typography variant="body2" color="text.secondary">
                                             {plan.TenDonVi || "---"} {plan.TenBoPhan ? `• ${plan.TenBoPhan}` : ""} • {formatDate(plan.NgayKeHoach)}
                                         </Typography>
+                                        <Typography variant="body2" color="primary.main" fontWeight={600}>
+                                            Quy trình: {plan.Ten_QuyTrinhSanXuat || plan.TenQuyTrinhSanXuat || "---"}
+                                        </Typography>
                                     </Box>
                                     <Stack direction="row" spacing={1} flexWrap="wrap">
                                         <Chip label={`KH: ${plan.SoLuongKeHoach ?? "---"}`} size="small" />
@@ -333,6 +367,16 @@ export default function CuoiChuyenDetail() {
                                         <Chip label={`NSDK: ${plan.NangSuatDuKien ?? "---"}`} size="small" />
                                         <Chip label={`Đã SX: ${plan.DaSanXuat ?? "---"}`} size="small" />
                                         <Chip label={`Lỗi: ${defectQty}`} size="small" color={defectQty > 0 ? "error" : "default"} />
+                                        {canEdit && (
+                                            <Button
+                                                size="small"
+                                                variant="outlined"
+                                                startIcon={<EditOutlinedIcon />}
+                                                onClick={() => setEditingPlanId(plan.Id)}
+                                            >
+                                                Nhập kết quả
+                                            </Button>
+                                        )}
                                     </Stack>
                                 </Stack>
 
@@ -390,6 +434,25 @@ export default function CuoiChuyenDetail() {
                     </Button>
                 </DialogActions>
             </Dialog>
+            <Dialog open={completeOpen} onClose={completing ? undefined : () => setCompleteOpen(false)} fullWidth maxWidth="xs">
+                <DialogTitle>Hoàn tất phiếu cuối chuyền</DialogTitle>
+                <DialogContent dividers>
+                    <Typography>Chọn kết luận thực tế để chuyển phiếu sang bước duyệt của Trưởng bộ phận.</Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setCompleteOpen(false)} disabled={completing}>Hủy</Button>
+                    <Button color="error" variant="outlined" disabled={completing} onClick={() => handleComplete("KHONG_DAT")}>Không đạt</Button>
+                    <Button color="success" variant="contained" disabled={completing} onClick={() => handleComplete("DAT")}>Đạt</Button>
+                </DialogActions>
+            </Dialog>
+            <CuoiChuyenPlanEditor
+                open={Boolean(editingPlanId)}
+                phieuId={id}
+                planId={editingPlanId}
+                plans={plans}
+                onClose={() => setEditingPlanId(null)}
+                onSaved={() => loadData({ background: true })}
+            />
         </Container>
     );
 }

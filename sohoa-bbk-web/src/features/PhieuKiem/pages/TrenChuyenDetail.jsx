@@ -32,10 +32,13 @@ import StairsOutlinedIcon from "@mui/icons-material/StairsOutlined";
 import ReportProblemOutlinedIcon from "@mui/icons-material/ReportProblemOutlined";
 import ErrorOutlineOutlinedIcon from "@mui/icons-material/ErrorOutlineOutlined";
 import CheckCircleOutlineOutlinedIcon from "@mui/icons-material/CheckCircleOutlineOutlined";
-import { approveTrenChuyen, createTrenChuyenBienBan, getPhieuKiemDetail, updatePhieuKiemActualQuantity } from "../../../api/phieuKiem.api";
+import AddIcon from "@mui/icons-material/Add";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import { approveTrenChuyen, completeTrenChuyen, createTrenChuyenBienBan, getPhieuKiemDetail, updatePhieuKiemActualQuantity } from "../../../api/phieuKiem.api";
 import { updateSanPhamImage, uploadSanPhamImage } from "../../../api/lookup.api";
 import { getCurrentUser } from "../../../utils/auth";
 import TrenChuyenPrintTemplate from "../components/TrenChuyenPrintTemplate";
+import TrenChuyenSlotEditor from "../components/TrenChuyenSlotEditor";
 
 const getFieldValue = (dynamicFields = [], name) =>
     dynamicFields.find((field) => field?.FieldName === name)?.FieldValue ?? "";
@@ -130,10 +133,15 @@ export default function TrenChuyenDetail() {
     const [summary, setSummary] = useState(null);
     const [dynamicFields, setDynamicFields] = useState([]);
     const [xacNhans, setXacNhans] = useState([]);
+    const [capabilities, setCapabilities] = useState({});
     const [openPrint, setOpenPrint] = useState(false);
     const [approving, setApproving] = useState(false);
     const [actualQuantity, setActualQuantity] = useState("");
     const [savingActual, setSavingActual] = useState(false);
+    const [editingHour, setEditingHour] = useState(undefined);
+    const [slotEditorOpen, setSlotEditorOpen] = useState(false);
+    const [completeOpen, setCompleteOpen] = useState(false);
+    const [completing, setCompleting] = useState(false);
     const [currentUser] = useState(() => getCurrentUser());
 
     const handlePrint = useReactToPrint({
@@ -145,9 +153,9 @@ export default function TrenChuyenDetail() {
         loadData();
     }, [id]);
 
-    const loadData = async () => {
+    const loadData = async ({ background = false } = {}) => {
         try {
-            setLoading(true);
+            if (!background) setLoading(true);
             const res = await getPhieuKiemDetail(id);
             const data = res.data || {};
             if (data?.phieu?.LoaiKiemId !== 6) {
@@ -160,10 +168,11 @@ export default function TrenChuyenDetail() {
             setSummary(data.summary || null);
             setDynamicFields(data.dynamicFields || []);
             setXacNhans(data.xacNhans || []);
+            setCapabilities(data.capabilities || {});
         } catch (error) {
             console.error(error);
         } finally {
-            setLoading(false);
+            if (!background) setLoading(false);
         }
     };
 
@@ -200,7 +209,7 @@ export default function TrenChuyenDetail() {
             const imageUrl = uploadRes?.data?.imageUrl;
             if (!imageUrl) throw new Error("UPLOAD_FAILED");
             await updateSanPhamImage(phieu.SanPhamId, imageUrl);
-            await loadData();
+            await loadData({ background: true });
         } catch (error) {
             console.error(error);
             window.alert(error?.response?.data?.message || "Không thể cập nhật ảnh sản phẩm.");
@@ -212,7 +221,7 @@ export default function TrenChuyenDetail() {
             setCreatingBienBan(true);
             const res = await createTrenChuyenBienBan(id);
             const bienBanId = res?.data?.bienBanId;
-            await loadData();
+            await loadData({ background: true });
             if (bienBanId) {
                 navigate(`/bien-ban/${bienBanId}`);
             }
@@ -234,6 +243,10 @@ export default function TrenChuyenDetail() {
                 Number(currentUser?.boPhanId) === approveBoPhanId
             )
         )
+    );
+    const canEdit = capabilities.canEdit ?? Boolean(
+        currentUser?.permissions?.includes("THUC_HIEN_KIEM")
+        && !["HOAN_TAT", "CHO_TBP_DUYET", "CHO_KIEM_NGHIEM", "CHO_XUONG_XAC_NHAN"].includes(phieu?.TrangThai)
     );
     const productName = getFieldValue(dynamicFields, "TrenChuyen_TenSanPham") || phieu?.TenSanPham || "---";
     const itemCode = getFieldValue(dynamicFields, "TrenChuyen_MaSanPham") || phieu?.MaSanPham || "---";
@@ -262,12 +275,25 @@ export default function TrenChuyenDetail() {
         try {
             setApproving(true);
             await approveTrenChuyen(id);
-            await loadData();
+            await loadData({ background: true });
         } catch (error) {
             console.error(error);
             window.alert(error?.response?.data?.message || "Không thể duyệt phiếu.");
         } finally {
             setApproving(false);
+        }
+    };
+
+    const handleComplete = async (ketLuan) => {
+        try {
+            setCompleting(true);
+            await completeTrenChuyen(id, ketLuan);
+            setCompleteOpen(false);
+            await loadData({ background: true });
+        } catch (error) {
+            window.alert(error?.response?.data?.message || "Không thể hoàn tất phiếu.");
+        } finally {
+            setCompleting(false);
         }
     };
 
@@ -288,7 +314,7 @@ export default function TrenChuyenDetail() {
                             <Button startIcon={<ArrowBackIcon />} onClick={returnToList} color="inherit">
                                 Danh sách phiếu kiểm
                             </Button>
-                            <Stack direction="row" spacing={2}>
+                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                                 {canApprove ? (
                                     <Button
                                         variant="contained"
@@ -300,6 +326,23 @@ export default function TrenChuyenDetail() {
                                         Duyệt phiếu
                                     </Button>
                                 ) : null}
+                                {canEdit && (
+                                    <>
+                                        <Button
+                                            variant="outlined"
+                                            startIcon={<AddIcon />}
+                                            onClick={() => {
+                                                setEditingHour(undefined);
+                                                setSlotEditorOpen(true);
+                                            }}
+                                        >
+                                            Thêm khung giờ
+                                        </Button>
+                                        <Button variant="contained" color="success" onClick={() => setCompleteOpen(true)}>
+                                            Hoàn tất phiếu
+                                        </Button>
+                                    </>
+                                )}
                                 {phieu?.BienBanId ? (
                                     <Button
                                         variant="outlined"
@@ -374,19 +417,19 @@ export default function TrenChuyenDetail() {
                                     <Divider />
 
                                     <Grid container spacing={2.5}>
-                                        <Grid item xs={12} md={6} lg={3}>
+                                        <Grid size={{ xs: 12, md: 6, lg: 3 }}>
                                             <InfoLine label="Đơn vị" value={donVi} />
                                         </Grid>
-                                        <Grid item xs={12} md={6} lg={3}>
+                                        <Grid size={{ xs: 12, md: 6, lg: 3 }}>
                                             <InfoLine label="Chuyền / Bộ phận" value={chuyen} />
                                         </Grid>
-                                        <Grid item xs={12} md={6} lg={2}>
+                                        <Grid size={{ xs: 12, md: 6, lg: 2 }}>
                                             <InfoLine label="Ngày kế hoạch" value={ngayKeHoach} />
                                         </Grid>
-                                        <Grid item xs={12} md={6} lg={2}>
+                                        <Grid size={{ xs: 12, md: 6, lg: 2 }}>
                                             <InfoLine label="Kế hoạch" value={soLuongKeHoach} />
                                         </Grid>
-                                        <Grid item xs={12} md={6} lg={3}>
+                                        <Grid size={{ xs: 12, md: 6, lg: 3 }}>
                                             <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 700 }}>THỰC TẾ / HIỆU LỰC / CHÊNH</Typography>
                                             {currentUser?.permissions?.includes("THUC_HIEN_KIEM") && !["HOAN_TAT", "CHO_TBP_DUYET"].includes(phieu?.TrangThai) ? (
                                                 <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
@@ -397,7 +440,7 @@ export default function TrenChuyenDetail() {
                                                 <Typography fontWeight={600}>{phieu?.SoLuongThucTe ?? "Chưa nhập"} / {phieu?.SoLuongHieuLuc ?? phieu?.SoLuong ?? 0} / {phieu?.ChenhLechSoLuong ?? "—"}</Typography>
                                             )}
                                         </Grid>
-                                        <Grid item xs={12} md={6} lg={2}>
+                                        <Grid size={{ xs: 12, md: 6, lg: 2 }}>
                                             <InfoLine label="NS dự kiến / Đã SX" value={`${nangSuatDuKien} / ${daSanXuat}`} />
                                         </Grid>
                                     </Grid>
@@ -438,16 +481,16 @@ export default function TrenChuyenDetail() {
                                     </Stack>
 
                                     <Grid container spacing={2}>
-                                        <Grid item xs={12} sm={6} lg={3}>
+                                        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
                                             <StatCard icon={<ScheduleOutlinedIcon fontSize="small" />} label="Khung giờ" value={summary?.TotalSlots || 0} accent="#2563eb" />
                                         </Grid>
-                                        <Grid item xs={12} sm={6} lg={3}>
+                                        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
                                             <StatCard icon={<StairsOutlinedIcon fontSize="small" />} label="Công đoạn" value={summary?.TotalEntries || 0} accent="#0f766e" />
                                         </Grid>
-                                        <Grid item xs={12} sm={6} lg={3}>
+                                        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
                                             <StatCard icon={<ReportProblemOutlinedIcon fontSize="small" />} label="Dòng lỗi" value={summary?.TotalDefectRows || 0} accent="#d97706" />
                                         </Grid>
-                                        <Grid item xs={12} sm={6} lg={3}>
+                                        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
                                             <StatCard icon={<ErrorOutlineOutlinedIcon fontSize="small" />} label="Tổng số lỗi" value={summary?.TotalDefectQuantity || 0} accent="#dc2626" />
                                         </Grid>
                                     </Grid>
@@ -514,6 +557,19 @@ export default function TrenChuyenDetail() {
                                                         </Typography>
                                                     </Stack>
                                                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                                        {canEdit && (
+                                                            <Button
+                                                                size="small"
+                                                                startIcon={<EditOutlinedIcon />}
+                                                                variant="outlined"
+                                                                onClick={() => {
+                                                                    setEditingHour(slot.GioKiem);
+                                                                    setSlotEditorOpen(true);
+                                                                }}
+                                                            >
+                                                                Nhập kết quả
+                                                            </Button>
+                                                        )}
                                                         <Chip size="small" color="default" label={`${slot.Entries?.length || 0} công đoạn`} />
                                                         <Chip
                                                             size="small"
@@ -692,6 +748,25 @@ export default function TrenChuyenDetail() {
                         </Button>
                     </DialogActions>
                 </Dialog>
+                <Dialog open={completeOpen} onClose={completing ? undefined : () => setCompleteOpen(false)} fullWidth maxWidth="xs">
+                    <DialogTitle>Hoàn tất phiếu trên chuyền</DialogTitle>
+                    <DialogContent dividers>
+                        <Typography>Chọn kết luận thực tế để chuyển phiếu sang bước duyệt.</Typography>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setCompleteOpen(false)} disabled={completing}>Hủy</Button>
+                        <Button color="error" variant="outlined" disabled={completing} onClick={() => handleComplete("KHONG_DAT")}>Không đạt</Button>
+                        <Button color="success" variant="contained" disabled={completing} onClick={() => handleComplete("DAT")}>Đạt</Button>
+                    </DialogActions>
+                </Dialog>
+                <TrenChuyenSlotEditor
+                    open={slotEditorOpen}
+                    phieuId={id}
+                    gioKiem={editingHour}
+                    slots={slots}
+                    onClose={() => setSlotEditorOpen(false)}
+                    onSaved={() => loadData({ background: true })}
+                />
             </Box>
         </Fade>
     );

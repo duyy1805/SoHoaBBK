@@ -53,31 +53,71 @@ const CongDoanPrintTemplate = forwardRef(function CongDoanPrintTemplate(
                 : [])
         ] : [{ lot: null, defects: plan.Defects || [] }];
 
-        return targets.map(({ lot, defects }, targetIndex) => {
-            const defectMap = defects.reduce((map, defect) => ({
-                ...map,
-                [defect.DefectId]: Number(map[defect.DefectId] || 0) + Number(defect.SoLuong || 0)
-            }), {});
+        return targets.flatMap(({ lot, defects }, targetIndex) => {
             const specialDirty = lot ? Number(lot.SoLoiBuiBan || 0) : Number(plan.SoLoiBuiBan || 0);
             const specialInsect = lot ? Number(lot.SoLoiConTrung || 0) : Number(plan.SoLoiConTrung || 0);
-            const total = defects.reduce((sum, defect) => sum + Number(defect.SoLuong || 0), 0)
-                + specialDirty + specialInsect;
             const checked = Number(lot?.SoLuong ?? plan.SoLuongHieuLuc ?? plan.SoLuongKeHoach ?? 0);
-            return {
+
+            const detailLines = [
+                ...defects
+                    .filter((defect) => Number(defect.SoLuong || 0) > 0)
+                    .map((defect, defectIndex) => ({
+                        key: `defect-${defect.Id || defectIndex}`,
+                        defectId: defect.DefectId,
+                        quantity: Number(defect.SoLuong || 0),
+                        worker: String(defect.TenCongNhan || "").trim(),
+                        repairedPass: defect.SoLuongDatSauSua,
+                        repairedFail: defect.SoLuongKhongDatSauSua,
+                        note: defect.GhiChu || ""
+                    })),
+                ...(specialDirty > 0 ? [{
+                    key: "special-dirty",
+                    specialType: "dirty",
+                    quantity: specialDirty,
+                    worker: "",
+                    repairedPass: null,
+                    repairedFail: null,
+                    note: ""
+                }] : []),
+                ...(specialInsect > 0 ? [{
+                    key: "special-insect",
+                    specialType: "insect",
+                    quantity: specialInsect,
+                    worker: "",
+                    repairedPass: null,
+                    repairedFail: null,
+                    note: ""
+                }] : [])
+            ];
+
+            if (!detailLines.length) {
+                detailLines.push({
+                    key: "no-defect",
+                    quantity: 0,
+                    worker: "",
+                    repairedPass: null,
+                    repairedFail: null,
+                    note: ""
+                });
+            }
+
+            return detailLines.map((detail, detailIndex) => ({
                 ...plan,
-                Id: `${plan.Id}-${lot?.Id || `general-${targetIndex}`}`,
-                defectMap,
-                total,
-                workers: [...new Set(defects.map((defect) => String(defect.TenCongNhan || "").trim()).filter(Boolean))],
+                Id: `${plan.Id}-${lot?.Id || `general-${targetIndex}`}-${detail.key}`,
+                isFirstInGroup: detailIndex === 0,
+                rowSpan: detailLines.length,
+                defectId: detail.defectId || null,
+                specialType: detail.specialType || null,
+                total: detail.quantity,
+                worker: detail.worker,
                 lotDisplay: lot ? lot.Lot : (lots.length ? "Chưa xác định Lot" : plan.Lot),
                 lxvtDisplay: lot ? lot.LenhXuatVatTu : plan.LenhXuatVatTu,
                 SoLuongHieuLuc: checked,
-                SoLoiBuiBan: specialDirty,
-                SoLoiConTrung: specialInsect,
-                ratio: checked > 0 ? `${(total * 100 / checked).toFixed(2)}%` : "Không tính",
-                repairedPass: defects.reduce((sum, defect) => sum + Number(defect.SoLuongDatSauSua || 0), 0),
-                repairedFail: defects.reduce((sum, defect) => sum + Number(defect.SoLuongKhongDatSauSua || 0), 0)
-            };
+                ratio: checked > 0 ? `${(detail.quantity * 100 / checked).toFixed(2)}%` : "Không tính",
+                repairedPass: detail.repairedPass,
+                repairedFail: detail.repairedFail,
+                rowNote: [detail.note, detailIndex === 0 ? plan.GhiChu : ""].filter(Boolean).join("; ")
+            }));
         });
     }), [plans]);
 
@@ -176,25 +216,45 @@ const CongDoanPrintTemplate = forwardRef(function CongDoanPrintTemplate(
                 <tbody>
                     {rows.map((row) => (
                         <tr key={row.Id} className="cong-doan-print-row" style={{ height: 25 }}>
-                            <td style={cell}>{formatDate(row.NgayKeHoach || phieu?.NgayKiem)}</td>
-                            <td style={cell}>{text(row.TenNguoiGhiNhan)}</td>
-                            <td style={cell}>{row.workers.join(", ")}</td>
-                            <td style={cell}>{[row.MaSanPham, row.TenSanPham].filter(Boolean).join(" - ")}</td>
-                            <td style={cell}>{text(row.MaDonHang)}</td>
-                            <td style={cell}>{text(row.TenDonVi || row.TenBoPhan)}</td>
-                            <td style={cell}>{text(row.lotDisplay)}</td>
-                            <td style={cell}>{text(row.lxvtDisplay)}</td>
-                            <td style={cell}>{text(row.SoLuongKeHoach)} / {row.SoLuongThucTe == null ? "Chưa nhập" : text(row.SoLuongThucTe)} / {text(row.SoLuongHieuLuc)}</td>
+                            {row.isFirstInGroup && (
+                                <td rowSpan={row.rowSpan} style={cell}>{formatDate(row.NgayKeHoach || phieu?.NgayKiem)}</td>
+                            )}
+                            {row.isFirstInGroup && (
+                                <td rowSpan={row.rowSpan} style={cell}>{text(row.TenNguoiGhiNhan)}</td>
+                            )}
+                            <td style={cell}>{text(row.worker)}</td>
+                            {row.isFirstInGroup && (
+                                <td rowSpan={row.rowSpan} style={cell}>{[row.MaSanPham, row.TenSanPham].filter(Boolean).join(" - ")}</td>
+                            )}
+                            {row.isFirstInGroup && (
+                                <td rowSpan={row.rowSpan} style={cell}>{text(row.MaDonHang)}</td>
+                            )}
+                            {row.isFirstInGroup && (
+                                <td rowSpan={row.rowSpan} style={cell}>{text(row.TenDonVi || row.TenBoPhan)}</td>
+                            )}
+                            {row.isFirstInGroup && (
+                                <td rowSpan={row.rowSpan} style={cell}>{text(row.lotDisplay)}</td>
+                            )}
+                            {row.isFirstInGroup && (
+                                <td rowSpan={row.rowSpan} style={cell}>{text(row.lxvtDisplay)}</td>
+                            )}
+                            {row.isFirstInGroup && (
+                                <td rowSpan={row.rowSpan} style={cell}>
+                                    {text(row.SoLuongKeHoach)} / {row.SoLuongThucTe == null ? "Chưa nhập" : text(row.SoLuongThucTe)} / {text(row.SoLuongHieuLuc)}
+                                </td>
+                            )}
                             <td style={cell}>{row.total || ""}</td>
                             <td style={cell}>{row.ratio}</td>
                             {defectColumns.map((item) => (
-                                <td key={item.id} style={cell}>{row.defectMap[item.id] || ""}</td>
+                                <td key={item.id} style={cell}>
+                                    {Number(row.defectId) === Number(item.id) ? row.total || "" : ""}
+                                </td>
                             ))}
-                            <td style={cell}>{Number(row.SoLoiBuiBan || 0) || ""}</td>
-                            <td style={cell}>{Number(row.SoLoiConTrung || 0) || ""}</td>
-                            <td style={cell}>{row.repairedPass || ""}</td>
-                            <td style={cell}>{row.repairedFail || ""}</td>
-                            <td style={cell}>{text(row.GhiChu)}</td>
+                            <td style={cell}>{row.specialType === "dirty" ? row.total : ""}</td>
+                            <td style={cell}>{row.specialType === "insect" ? row.total : ""}</td>
+                            <td style={cell}>{row.repairedPass == null ? "" : text(row.repairedPass)}</td>
+                            <td style={cell}>{row.repairedFail == null ? "" : text(row.repairedFail)}</td>
+                            <td style={cell}>{text(row.rowNote)}</td>
                         </tr>
                     ))}
                     {Array.from({ length: Math.max(1, 20 - rows.length) }).map((_, index) => (

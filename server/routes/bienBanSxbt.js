@@ -58,7 +58,24 @@ router.get("/:id", authenticateToken, async (req, res) => {
                     COALESCE(bb.BoPhanTaoId, ulap.BoPhanId) AS BoPhanTaoId,
                     creatorDepartment.MaBoPhan AS MaBoPhanTao,
                     creatorDepartment.TenBoPhan AS TenBoPhanTao,
-                    contractor.Ma_NhaThau AS MaDonVi,
+                    CASE
+                        WHEN pk.SxbtKeHoachNhapId IS NOT NULL THEN N'KE_HOACH_NHAP'
+                        ELSE N'LEGACY_PHIEU_NHAP'
+                    END AS SxbtSourceType,
+                    pk.SxbtKeHoachNhapId AS KeHoachNhapId,
+                    COALESCE(pk.SxbtPhieuNhapBtpId,
+                        CASE WHEN pk.SxbtKeHoachNhapId IS NULL THEN pk.SourceId END
+                    ) AS PhieuNhapBtpId,
+                    receipt.So_PhieuNhapBTP,
+                    COALESCE(importPlan.Ngay_NhapBTP, receipt.Ngay_NhapBTP) AS Ngay_NhapBTP,
+                    importPlan.Ngay_ThucTeSX,
+                    COALESCE(planContractor.Ma_NhaThau, contractor.Ma_NhaThau) AS MaDonVi,
+                    COALESCE(planContractor.Ma_NhaThau, contractor.Ma_NhaThau) AS Ma_NhaThau,
+                    COALESCE(planUnit.Ten_DonVi, receiptUnit.Ten_DonVi) AS Ten_DonVi,
+                    COALESCE(planDepartment.Ten_BoPhan, sourceDepartment.Ten_BoPhan) AS Ten_BoPhan,
+                    orderRow.Ma_DonHang,
+                    productionLot.So_LoSanXuat,
+                    processRow.Ten_QuyTrinhSanXuat,
                     ISNULL(bb.MucDoKhongPhuHopConfirmed, 0) AS MucDoKhongPhuHopConfirmed
                 FROM dbo.BIEN_BAN_KIEM bb
                 LEFT JOIN dbo.USERS ulap ON ulap.Id = bb.NguoiLapId
@@ -66,11 +83,34 @@ router.get("/:id", authenticateToken, async (req, res) => {
                     ON creatorDepartment.Id = COALESCE(bb.BoPhanTaoId, ulap.BoPhanId)
                 LEFT JOIN dbo.PHIEU_KIEM pk ON pk.Id = bb.PhieuKiemId
                 LEFT JOIN TAG_QTKD.dbo.PhieuNhapBTP receipt
-                    ON receipt.ID_PhieuNhapBTP = pk.SourceId
+                    ON receipt.ID_PhieuNhapBTP = COALESCE(
+                        pk.SxbtPhieuNhapBtpId,
+                        CASE WHEN pk.SxbtKeHoachNhapId IS NULL THEN pk.SourceId END
+                    )
+                LEFT JOIN TAG_System.dbo.DM_DonVi receiptUnit
+                    ON receiptUnit.ID_DonVi = receipt.ID_DonVi
                 LEFT JOIN TAG_System.dbo.DM_BoPhan sourceDepartment
                     ON sourceDepartment.ID_BoPhan = receipt.ID_BoPhan
                 LEFT JOIN TAG_QTKD.dbo.DM_NhaThau contractor
                     ON contractor.ID_BoPhan = sourceDepartment.ID_BoPhan
+                LEFT JOIN TAG_QLSX.dbo.KeHoachSanXuat_NhaThau_ThamChieu_Nhap importPlan
+                    ON importPlan.ID_TuTang = pk.SxbtKeHoachNhapId
+                LEFT JOIN TAG_QLSX.dbo.KeHoachSanXuat productionPlan
+                    ON productionPlan.ID_KeHoachSanXuat = importPlan.ID_KeHoachSanXuat
+                LEFT JOIN TAG_QLSX.dbo.LenhSanXuat productionOrder
+                    ON productionOrder.ID_LenhSanXuat = productionPlan.ID_LenhSanXuat
+                LEFT JOIN TAG_QTKD.dbo.DonHang orderRow
+                    ON orderRow.ID_DonHang = productionOrder.ID_DonHang
+                LEFT JOIN TAG_QTKD.dbo.DonHang_LoSanXuat productionLot
+                    ON productionLot.ID_DonHang_LoSanXuat = NULLIF(importPlan.ID_DonHang_LoSanXuat, 0)
+                LEFT JOIN TAG_QTKD.dbo.DM_QuyTrinhSanXuat processRow
+                    ON processRow.ID_QuyTrinhSanXuat = productionPlan.ID_QuyTrinhSanXuat
+                LEFT JOIN TAG_System.dbo.DM_DonVi planUnit
+                    ON planUnit.ID_DonVi = productionOrder.ID_DonVi
+                LEFT JOIN TAG_System.dbo.DM_BoPhan planDepartment
+                    ON planDepartment.ID_BoPhan = productionPlan.ID_BoPhan
+                LEFT JOIN TAG_QTKD.dbo.DM_NhaThau planContractor
+                    ON planContractor.ID_BoPhan = productionPlan.ID_BoPhan
                 WHERE bb.Id = @BienBanId
             `);
 

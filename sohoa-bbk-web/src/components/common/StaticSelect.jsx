@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
     Box,
     ClickAwayListener,
@@ -31,18 +31,14 @@ export default function StaticSelect({
     clearable = true,
     helperText = ""
 }) {
-    const anchorRef = useRef(null);
+    const [anchorEl, setAnchorEl] = useState(null);
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState("");
-    const [selected, setSelected] = useState(null);
-
-    useEffect(() => {
+    const selected = useMemo(() => {
         if (value !== undefined && value !== null && value !== "") {
-            const found = options.find((opt) => String(opt?.[valueField]) === String(value));
-            setSelected(found || null);
-        } else {
-            setSelected(null);
+            return options.find((opt) => String(opt?.[valueField]) === String(value)) || null;
         }
+        return null;
     }, [value, options, valueField]);
 
     const filteredOptions = useMemo(() => {
@@ -56,7 +52,6 @@ export default function StaticSelect({
     }, [options, search, labelField, subLabelField]);
 
     const handleSelect = (option) => {
-        setSelected(option);
         setOpen(false);
         setSearch("");
         onSelect?.(option);
@@ -64,18 +59,16 @@ export default function StaticSelect({
 
     const handleClear = (event) => {
         event.stopPropagation();
-        setSelected(null);
         setSearch("");
         onSelect?.(null);
     };
 
     return (
         <ClickAwayListener onClickAway={() => setOpen(false)}>
-            <Box>
+            <Box ref={setAnchorEl}>
                 <FormControl fullWidth disabled={disabled}>
                     {label ? <InputLabel shrink>{label}</InputLabel> : null}
                     <OutlinedInput
-                        inputRef={anchorRef}
                         notched
                         label={label}
                         value={selected ? selected[labelField] : ""}
@@ -112,9 +105,9 @@ export default function StaticSelect({
 
                 <Popper
                     open={open && !disabled}
-                    anchorEl={anchorRef.current}
+                    anchorEl={anchorEl}
                     placement="bottom-start"
-                    sx={{ zIndex: 1400, width: anchorRef.current?.clientWidth || undefined }}
+                    sx={{ zIndex: 1400, width: anchorEl?.clientWidth || undefined }}
                 >
                     <Paper
                         elevation={8}

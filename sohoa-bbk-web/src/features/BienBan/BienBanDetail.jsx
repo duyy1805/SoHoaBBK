@@ -5,7 +5,6 @@ import { useReactToPrint } from "react-to-print";
 // --- MUI Core ---
 import {
     Box,
-    Autocomplete,
     Card,
     CardContent,
     Typography,
@@ -88,6 +87,7 @@ import { PhieuXuLyKhongPhuHopPrintTemplate } from "./components/PhieuXuLyKhongPh
 import KphV01WorkflowSections from "./components/KphV01WorkflowSections";
 import BienBanWorkflowGuide from "./components/BienBanWorkflowGuide";
 import DefectImageGalleryDialog from "./components/DefectImageGalleryDialog";
+import DefectPickerDialog from "../PhieuKiem/components/DefectPickerDialog";
 import {
     buildBienBanWorkflow,
     getBienBanStatusMeta
@@ -1179,37 +1179,13 @@ export default function BienBanDetail({ standalone = false }) {
                                                                         </Stack>
                                                                     ) : (
                                                                         <Stack spacing={1.5}>
-                                                                            <Autocomplete
-                                                                                options={defectOptions}
-                                                                                value={selectedOption}
-                                                                                onChange={(_, value) => handleCatalogDefectSelected(i, value?.Id || "")}
-                                                                                getOptionLabel={(option) => option ? `${option.MaLoi ? `${option.MaLoi} - ` : ""}${option.TenLoi || ""}` : ""}
-                                                                                isOptionEqualToValue={(option, value) => Number(option.Id) === Number(value.Id)}
-                                                                                renderInput={(params) => (
-                                                                                    <TextField
-                                                                                        {...params}
-                                                                                        size="small"
-                                                                                        label="Chọn lỗi từ danh mục"
-                                                                                        placeholder="Tìm theo mã lỗi hoặc tên lỗi"
-                                                                                    />
-                                                                                )}
-                                                                                renderOption={(props, option) => (
-                                                                                    <Box component="li" {...props} sx={{ py: 1.25, alignItems: "flex-start" }}>
-                                                                                        <Box>
-                                                                                            <Typography variant="body2" fontWeight={600}>
-                                                                                                {option.MaLoi ? `${option.MaLoi} - ` : ""}{option.TenLoi}
-                                                                                            </Typography>
-                                                                                            {option.MoTa && (
-                                                                                                <Typography variant="caption" color="text.secondary" sx={{ display: "block", whiteSpace: "normal" }}>
-                                                                                                    {option.MoTa}
-                                                                                                </Typography>
-                                                                                            )}
-                                                                                            <Stack direction="row" spacing={1} sx={{ mt: 0.75 }}>
-                                                                                                {option.DefectType && <Chip size="small" label={option.DefectType} variant="outlined" />}
-                                                                                            </Stack>
-                                                                                        </Box>
-                                                                                    </Box>
-                                                                                )}
+                                                                            <DefectPickerDialog
+                                                                                defects={defectOptions}
+                                                                                onSelect={(value) => handleCatalogDefectSelected(i, value?.Id || "")}
+                                                                                buttonLabel={selectedOption
+                                                                                    ? `${selectedOption.MaLoi ? `${selectedOption.MaLoi} - ` : ""}${selectedOption.TenLoi || ""}`
+                                                                                    : "Chọn lỗi từ danh mục"}
+                                                                                fullWidth
                                                                             />
                                                                             <Paper variant="outlined" sx={{ p: 1.5, bgcolor: "#fff" }}>
                                                                                 <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>

@@ -301,18 +301,31 @@ router.get(
                         COALESCE(bb.BoPhanTaoId, creator.BoPhanId) AS BoPhanTaoId,
                         creatorDepartment.MaBoPhan AS MaBoPhanTao,
                         creatorDepartment.TenBoPhan AS TenBoPhanTao,
-                        CASE WHEN pk.LoaiKiemId = 4 THEN contractor.Ma_NhaThau ELSE NULL END AS MaDonVi
+                        CASE
+                            WHEN pk.LoaiKiemId = 4
+                                THEN COALESCE(planContractor.Ma_NhaThau, contractor.Ma_NhaThau)
+                            ELSE NULL
+                        END AS MaDonVi
                     FROM dbo.BIEN_BAN_KIEM bb
                     LEFT JOIN dbo.USERS creator ON creator.Id = bb.NguoiLapId
                     LEFT JOIN dbo.DM_BO_PHAN creatorDepartment
                         ON creatorDepartment.Id = COALESCE(bb.BoPhanTaoId, creator.BoPhanId)
                     LEFT JOIN dbo.PHIEU_KIEM pk ON pk.Id = bb.PhieuKiemId
                     LEFT JOIN TAG_QTKD.dbo.PhieuNhapBTP receipt
-                        ON receipt.ID_PhieuNhapBTP = pk.SourceId
+                        ON receipt.ID_PhieuNhapBTP = COALESCE(
+                            pk.SxbtPhieuNhapBtpId,
+                            CASE WHEN pk.SxbtKeHoachNhapId IS NULL THEN pk.SourceId END
+                        )
                     LEFT JOIN TAG_System.dbo.DM_BoPhan sourceDepartment
                         ON sourceDepartment.ID_BoPhan = receipt.ID_BoPhan
                     LEFT JOIN TAG_QTKD.dbo.DM_NhaThau contractor
                         ON contractor.ID_BoPhan = sourceDepartment.ID_BoPhan
+                    LEFT JOIN TAG_QLSX.dbo.KeHoachSanXuat_NhaThau_ThamChieu_Nhap importPlan
+                        ON importPlan.ID_TuTang = pk.SxbtKeHoachNhapId
+                    LEFT JOIN TAG_QLSX.dbo.KeHoachSanXuat productionPlan
+                        ON productionPlan.ID_KeHoachSanXuat = importPlan.ID_KeHoachSanXuat
+                    LEFT JOIN TAG_QTKD.dbo.DM_NhaThau planContractor
+                        ON planContractor.ID_BoPhan = productionPlan.ID_BoPhan
                     WHERE bb.Id IN (
                         SELECT TRY_CONVERT(int, [value])
                         FROM STRING_SPLIT(@BienBanIds, ',')

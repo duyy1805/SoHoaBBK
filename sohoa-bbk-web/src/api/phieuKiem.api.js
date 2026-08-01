@@ -1,5 +1,12 @@
 import axiosClient from "./axiosClient";
 
+export const getAssetUrl = (url) => {
+    if (!url) return "";
+    if (/^https?:\/\//i.test(url)) return url;
+    const apiBase = axiosClient.defaults.baseURL || "";
+    return `${apiBase.replace(/\/api\/?$/, "")}${url.startsWith("/") ? url : `/${url}`}`;
+};
+
 
 // Lấy danh sách sản phẩm
 export const getSanPhamLookup = () => {
@@ -71,6 +78,9 @@ export const getKeHoachSanXuatChuaKiem = () =>
 
 export const getPhieuNhapBTPChuaKiem = () =>
     axiosClient.get("/phieu-kiem/phieu-nhap-btp/chua-kiem");
+
+export const getKeHoachNhapBTPChuaKiem = () =>
+    axiosClient.get("/phieu-kiem/ke-hoach-nhap-btp/chua-kiem");
 /* =========================================================
    PHÂN BỔ (TO_TRUONG_KCS)
 ========================================================= */
@@ -92,6 +102,14 @@ export const createAllSection = (data) => {
 // Lưu kết quả check item
 export const saveCheckItem = (data) => {
     return axiosClient.post("/phieu-kiem/check-item", data);
+};
+
+export const uploadInspectionImages = (files = []) => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append("images", file));
+    return axiosClient.post("/phieu-kiem/upload", formData, {
+        timeout: 120000
+    });
 };
 
 // Tính AQL
@@ -128,6 +146,10 @@ export const confirmKhoSxbt = (phieuKiemId, lotRows) => {
     return axiosClient.post("/phieu-kiem/sxbt/confirm-kho", { phieuKiemId, lotRows });
 };
 
+export const saveSxbtData = (data) => {
+    return axiosClient.post("/phieu-kiem/sxbt-save", data);
+};
+
 export const saveTrenChuyenData = (data) => {
     return axiosClient.post("/phieu-kiem/tren-chuyen/save", data);
 };
@@ -141,6 +163,10 @@ export const updatePhieuKiemActualQuantity = (id, soLuongThucTe) =>
 
 export const createTrenChuyenBienBan = (phieuKiemId) => {
     return axiosClient.post("/phieu-kiem/tren-chuyen/create-bien-ban", { phieuKiemId });
+};
+
+export const deleteTrenChuyenEntry = (entryId) => {
+    return axiosClient.delete(`/phieu-kiem/tren-chuyen/entry/${entryId}`);
 };
 
 export const approveTrenChuyen = (phieuKiemId) => {
@@ -218,4 +244,8 @@ export const saveCustomFields = (data) => {
 
 export const getThongSoKq = (phieuKiemId) => {
     return axiosClient.get(`/phieu-kiem/${phieuKiemId}/thong-so-kq`);
+};
+
+export const saveThongSoKq = (phieuKiemId, results) => {
+    return axiosClient.post(`/phieu-kiem/${phieuKiemId}/thong-so-kq`, { results });
 };

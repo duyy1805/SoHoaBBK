@@ -21,6 +21,7 @@ import InventoryIcon from "@mui/icons-material/Inventory";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import BugReportIcon from "@mui/icons-material/BugReport";
 import CallSplitIcon from "@mui/icons-material/CallSplit";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 
 import { SxbtPrintTemplate } from "../components/SxbtPrintTemplate";
 import {
@@ -31,6 +32,7 @@ import {
 } from "../../../api/phieuKiem.api";
 import { getBienBanSxbtDetail } from "../../../api/bienBan.api";
 import { hasPermission } from "../../../utils/auth";
+import SxbtDraftEditor from "../components/SxbtDraftEditor";
 
 // ============================================================
 // Helpers
@@ -146,6 +148,7 @@ export default function SxbtDetail() {
     const [summary, setSummary] = useState(null);
     const [defects, setDefects] = useState([]);
     const [dynamicFields, setDynamicFields] = useState([]);
+    const [capabilities, setCapabilities] = useState({});
     const [confirmSteps, setConfirmSteps] = useState([]);
     const [khoLotQuantities, setKhoLotQuantities] = useState({});
     const [error, setError] = useState(null);
@@ -155,6 +158,8 @@ export default function SxbtDetail() {
     const [splitInfo, setSplitInfo] = useState(null);
     const [openSplit, setOpenSplit] = useState(false);
     const [splitQuantities, setSplitQuantities] = useState({});
+    const [draftOpen, setDraftOpen] = useState(false);
+    const [draftConclusion, setDraftConclusion] = useState("");
     const triggerPrint = useReactToPrint({
         contentRef: printRef,
         documentTitle: phieu ? `SXBT_${phieu.SoPhieu}` : 'PhieuKiemSXBT',
@@ -164,9 +169,9 @@ export default function SxbtDetail() {
         loadData();
     }, [id]);
 
-    const loadData = async () => {
+    const loadData = async ({ background = false } = {}) => {
         try {
-            setLoading(true);
+            if (!background) setLoading(true);
             setError(null);
             const res = await getPhieuKiemDetail(id);
             const data = res.data;
@@ -177,6 +182,7 @@ export default function SxbtDetail() {
             setSummary(data.summary || null);
             setDefects((data.defects || []).filter(d => d.SoLuong > 0));
             setDynamicFields(data.dynamicFields || []);
+            setCapabilities(data.capabilities || {});
             setSplitInfo(data.splitInfo || null);
 
             if (data.phieu?.BienBanId) {
@@ -196,7 +202,7 @@ export default function SxbtDetail() {
             console.error(err);
             setError("Không thể tải dữ liệu phiếu kiểm.");
         } finally {
-            setLoading(false);
+            if (!background) setLoading(false);
         }
     };
 
@@ -337,7 +343,7 @@ export default function SxbtDetail() {
                 rejectQuantity: Number(splitQuantities[String(lotRow.Id)] || 0)
             })));
             setOpenSplit(false);
-            await loadData();
+            await loadData({ background: true });
             setActionNotice({
                 type: "success",
                 message: `Đã tạo phiếu KĐ ${response.data?.rejectedPhieu?.soPhieu || ""}.`
@@ -350,14 +356,15 @@ export default function SxbtDetail() {
     };
 
     const handleComplete = async () => {
-        const label = inferredKetLuan === "DAT" ? "Đạt" : "Không đạt";
+        const completionConclusion = draftConclusion || inferredKetLuan;
+        const label = completionConclusion === "DAT" ? "Đạt" : "Không đạt";
         if (!window.confirm(`Xác nhận hoàn tất phiếu SXBT với kết luận: ${label}?`)) return;
 
         try {
             setLoadingAction(true);
             setActionNotice(null);
-            await completeSxbt(id, inferredKetLuan);
-            await loadData();
+            await completeSxbt(id, completionConclusion);
+            await loadData({ background: true });
             setActionNotice({ type: "success", message: "Hoàn tất phiếu SXBT thành công. Phiếu đã chuyển sang bước Kho xác nhận số lượng." });
         } catch (err) {
             setActionNotice({
@@ -386,7 +393,7 @@ export default function SxbtDetail() {
             setLoadingAction(true);
             setActionNotice(null);
             await confirmKhoSxbt(id, lotRows);
-            await loadData();
+            await loadData({ background: true });
             setActionNotice({ type: "success", message: "Kho đã xác nhận số lượng nhập. Phiếu đã hoàn thành." });
         } catch (err) {
             setActionNotice({
@@ -425,7 +432,16 @@ export default function SxbtDetail() {
                                 <TrangThaiChip value={phieu?.TrangThai} />
                                 <KetLuanChip value={phieu?.KetLuan} />
                             </Stack> */}
-                            <Stack direction="row" spacing={1}>
+                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap justifyContent={{ xs: "center", sm: "flex-end" }}>
+                                {(capabilities.canEdit ?? (isKCS && !isCompleted)) && (
+                                    <Button
+                                        variant="contained"
+                                        startIcon={<EditOutlinedIcon />}
+                                        onClick={() => setDraftOpen(true)}
+                                    >
+                                        Nhập kết quả
+                                    </Button>
+                                )}
                                 {splitInfo && (
                                     <Button
                                         variant="outlined"
@@ -479,6 +495,22 @@ export default function SxbtDetail() {
                                     </InfoItem>
                                 </Grid>
                                 <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                                    <InfoItem label="Nguồn SXBT">
+                                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                                            <Typography fontWeight={600}>
+                                                {phieu?.SxbtSourceType === "KE_HOACH_NHAP"
+                                                    ? `Kế hoạch nhập #${phieu?.KeHoachNhapId || "—"}`
+                                                    : (phieu?.So_PhieuNhapBTP || `Phiếu nhập #${phieu?.PhieuNhapBtpId || "—"}`)}
+                                            </Typography>
+                                            <Chip
+                                                size="small"
+                                                variant="outlined"
+                                                label={phieu?.SxbtSourceType === "KE_HOACH_NHAP" ? "Nguồn mới" : "Legacy"}
+                                            />
+                                        </Stack>
+                                    </InfoItem>
+                                </Grid>
+                                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                     <InfoItem label="Mã đơn hàng">
                                         <Typography fontWeight={600}>{phieu?.MaDonHang || "—"}</Typography>
                                     </InfoItem>
@@ -498,6 +530,23 @@ export default function SxbtDetail() {
                                         <Typography fontWeight={600}>
                                             {phieu?.NgayNhap ? new Date(phieu.NgayNhap).toLocaleDateString("vi-VN") : "—"}
                                         </Typography>
+                                    </InfoItem>
+                                </Grid>
+                                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                                    <InfoItem label="Ngày thực tế sản xuất">
+                                        <Typography fontWeight={600}>
+                                            {phieu?.Ngay_ThucTeSX ? new Date(phieu.Ngay_ThucTeSX).toLocaleDateString("vi-VN") : "—"}
+                                        </Typography>
+                                    </InfoItem>
+                                </Grid>
+                                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                                    <InfoItem label="Bộ phận / Nhà thầu">
+                                        <Typography fontWeight={600}>{phieu?.Ten_BoPhan || phieu?.DoiTuong || "—"}</Typography>
+                                    </InfoItem>
+                                </Grid>
+                                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                                    <InfoItem label="Quy trình">
+                                        <Typography fontWeight={600}>{phieu?.Ten_QuyTrinhSanXuat || "—"}</Typography>
                                     </InfoItem>
                                 </Grid>
                                 <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -927,6 +976,20 @@ export default function SxbtDetail() {
                         </Button>
                     </DialogActions>
                 </Dialog>
+                <SxbtDraftEditor
+                    open={draftOpen}
+                    phieu={phieu}
+                    sourceBtpItems={btpItems}
+                    sourceSummary={summary}
+                    sourceDefects={defects}
+                    dynamicFields={dynamicFields}
+                    onClose={() => setDraftOpen(false)}
+                    onSaved={async ({ conclusion }) => {
+                        setDraftConclusion(conclusion);
+                        await loadData({ background: true });
+                        setActionNotice({ type: "success", message: "Đã lưu nháp phiếu SXBT." });
+                    }}
+                />
             </Box>
         </Fade>
     );

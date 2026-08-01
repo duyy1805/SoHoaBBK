@@ -43,7 +43,7 @@ import {
     getKeHoachSanXuatChuaKiem,
     getLichDongCont,
     getSourceChecked,
-    getPhieuNhapBTPChuaKiem,
+    getKeHoachNhapBTPChuaKiem,
 } from "../../../api/phieuKiem.api";
 import {
     getSanPhamList
@@ -179,7 +179,7 @@ export default function PhieuKiemCreate() {
                 setLichList(res.data || []);
             }
             if (loai?.Id === 4) {
-                const res = await getPhieuNhapBTPChuaKiem();
+                const res = await getKeHoachNhapBTPChuaKiem();
                 setLichList(res.data || []);
             }
         } catch (err) {
@@ -202,7 +202,8 @@ export default function PhieuKiemCreate() {
                         row.ItemId?.toLowerCase().includes(lower) ||
                         row.ItemName?.toLowerCase().includes(lower) ||
                         row.WarehouseId?.toLowerCase().includes(lower) ||
-                        row.InvoiceNo?.toLowerCase().includes(lower)
+                        row.InvoiceNo?.toLowerCase().includes(lower) ||
+                        row.KhachHang?.toLowerCase().includes(lower)
                     );
                 }
                 if (selectedLoai?.MaLoai === "DAU_VAO") {
@@ -219,16 +220,24 @@ export default function PhieuKiemCreate() {
                         row.ID_KeHoachSanXuat?.toString().includes(lower) ||
                         row.MaSanPham?.toLowerCase().includes(lower) ||
                         row.TenSanPham?.toLowerCase().includes(lower) ||
+                        row.Ten_QuyTrinhSanXuat?.toLowerCase().includes(lower) ||
+                        row.TenQuyTrinhSanXuat?.toLowerCase().includes(lower) ||
                         row.Ten_DonVi?.toLowerCase().includes(lower) ||
                         row.Ten_BoPhan?.toLowerCase().includes(lower)
                     );
                 }
                 if (selectedLoai?.Id === 4) {
                     return (
-                        row.So_PhieuNhapBTP?.toLowerCase().includes(lower) ||
+                        row.ID_TuTang?.toString().includes(lower) ||
+                        row.ID_KeHoachSanXuat?.toString().includes(lower) ||
                         row.Ten_DonVi?.toLowerCase().includes(lower) ||
                         row.Ten_BoPhan?.toLowerCase().includes(lower) ||
-                        row.Ma_DonHang?.toLowerCase().includes(lower)
+                        row.Ma_NhaThau?.toLowerCase().includes(lower) ||
+                        row.Ma_DonHang?.toLowerCase().includes(lower) ||
+                        row.ItemCode?.toLowerCase().includes(lower) ||
+                        row.Ten_SanPham?.toLowerCase().includes(lower) ||
+                        row.So_LoSanXuat?.toLowerCase().includes(lower) ||
+                        row.Ten_QuyTrinhSanXuat?.toLowerCase().includes(lower)
                     );
                 }
                 return false;
@@ -249,7 +258,7 @@ export default function PhieuKiemCreate() {
         if (selectedLoai?.MaLoai === "KIEM_DONG_CONT") return row.ClosingScheduleDetailGuid;
         if (selectedLoai?.MaLoai === "DAU_VAO") return row.ID_ChungTuNhap_ChiTiet;
         if (isKeHoachSanXuatLoai(selectedLoai)) return row.ID_KeHoachSanXuat;
-        if (selectedLoai?.Id === 4) return row.SourceId;
+        if (selectedLoai?.Id === 4) return row.KeHoachNhapId || row.ID_TuTang;
         return row.Id;
     };
 
@@ -421,8 +430,16 @@ export default function PhieuKiemCreate() {
                 if (row.isDongCont) {
                     payload.sourceId_LCD = row.ClosingScheduleDetailGuid;
                     payload.Ngay_Giao = formatDateToISO(row.RequiredDateString);
+                    payload.snapshotFields = {
+                        DongCont_KhachHang: row.KhachHang || "",
+                        DongCont_InvoiceNo: row.InvoiceNo || "",
+                        DongCont_PackingMethod: row.PackingMethod || "",
+                        DongCont_WarehouseId: row.WarehouseId || "",
+                        DongCont_Package: row.Package ?? ""
+                    };
                 } else if (selectedLoai?.MaLoai === "KIEM_TREN_CHUYEN") {
                     payload.sourceId = row.ID_KeHoachSanXuat;
+                    payload.ngayKiem = row.Ngay;
                     payload.sanPhamId = row.SanPhamId;
                     payload.soLuong = row.NangSuat_DuKien;
                     payload.doiTuong = row.Ten_DonVi;
@@ -438,11 +455,7 @@ export default function PhieuKiemCreate() {
                         TrenChuyen_IDKeHoachSanXuat: row.ID_KeHoachSanXuat ?? ""
                     };
                 } else if (selectedLoai?.Id === 4) {
-                    payload.sourceId = row.SourceId;
-                    payload.soLuong = row.SoLuong;
-                    payload.doiTuong = `${row.Ten_DonVi || ''} ${row.Ten_BoPhan ? `- ${row.Ten_BoPhan}` : ''}`;
-                    // we will need a dummy sanPhamId or allow null for this type, assuming handled in backend later
-                    payload.sanPhamId = 0;
+                    payload.keHoachNhapId = row.KeHoachNhapId || row.ID_TuTang;
                 } else {
                     payload.sourceId = getRowId(row);
                 }
@@ -544,6 +557,7 @@ export default function PhieuKiemCreate() {
                                             <TableRow>
                                                 <TableCell>Mã SP/Vật tư</TableCell>
                                                 <TableCell>Tên / Quy cách</TableCell>
+                                                {isKeHoachSanXuatLoai(selectedLoai) && <TableCell>Quy trình sản xuất</TableCell>}
                                                 <TableCell>Số lượng</TableCell>
                                                 <TableCell>Nguồn</TableCell>
                                                 <TableCell align="center">Xóa</TableCell>
@@ -555,15 +569,22 @@ export default function PhieuKiemCreate() {
                                                     <TableCell fontWeight={600}>
                                                         {selectedLoai?.MaLoai === "DAU_VAO" ? row.Ma_VatTu :
                                                             isKeHoachSanXuatLoai(selectedLoai) ? row.MaSanPham :
-                                                                selectedLoai?.Id === 4 ? row.So_PhieuNhapBTP :
+                                                                selectedLoai?.Id === 4 ? (row.ItemCode || `KH nhập #${row.ID_TuTang}`) :
                                                                     row.ItemId}
                                                     </TableCell>
                                                     <TableCell>
                                                         {selectedLoai?.MaLoai === "DAU_VAO" ? row.QuyCach :
                                                             isKeHoachSanXuatLoai(selectedLoai) ? row.TenSanPham :
-                                                                selectedLoai?.Id === 4 ? `${row.Ten_DonVi || ''} ${row.Ten_BoPhan ? `- ${row.Ten_BoPhan}` : ''}` :
+                                                                selectedLoai?.Id === 4
+                                                                    ? (row.Ten_SanPham || row.Ma_DonHang || `${row.Ten_DonVi || ''} ${row.Ten_BoPhan ? `- ${row.Ten_BoPhan}` : ''}`)
+                                                                    :
                                                                     row.ItemName}
                                                     </TableCell>
+                                                    {isKeHoachSanXuatLoai(selectedLoai) && (
+                                                        <TableCell>
+                                                            {row.Ten_QuyTrinhSanXuat || row.TenQuyTrinhSanXuat || "---"}
+                                                        </TableCell>
+                                                    )}
                                                     <TableCell>
                                                         <b>{selectedLoai?.MaLoai === "KIEM_DONG_CONT" ? row.Quantity :
                                                             isKeHoachSanXuatLoai(selectedLoai) ? row.NangSuat_DuKien :
@@ -617,7 +638,9 @@ export default function PhieuKiemCreate() {
                 </Paper>
 
                 <Dialog open={openModal} onClose={() => setOpenModal(false)} maxWidth="lg" fullWidth scroll="paper">
-                    <DialogTitle>Chọn kế hoạch kiểm tra</DialogTitle>
+                    <DialogTitle>
+                        {selectedLoai?.Id === 4 ? "Chọn kế hoạch nhập BTP cần kiểm" : "Chọn kế hoạch kiểm tra"}
+                    </DialogTitle>
                     <DialogContent dividers sx={{ p: 0 }}>
                         {loadingModal ? (
                             <Box sx={{ textAlign: "center", p: 4 }}>
@@ -628,7 +651,7 @@ export default function PhieuKiemCreate() {
                                 <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
                                     <TextField
                                         fullWidth
-                                        placeholder="Tìm kiếm theo mã, tên, số cont, invoice..."
+                                        placeholder="Tìm theo mã, tên, quy trình, số cont, invoice..."
                                         variant="outlined"
                                         value={displaySearchTerm}
                                         onChange={(e) => setDisplaySearchTerm(e.target.value)}
@@ -707,6 +730,7 @@ export default function PhieuKiemCreate() {
                                                     <TableCell>Phân xưởng</TableCell>
                                                     <TableCell>Mã SP</TableCell>
                                                     <TableCell>Tên sản phẩm</TableCell>
+                                                    <TableCell>Quy trình sản xuất</TableCell>
                                                     <TableCell>Kế hoạch</TableCell>
                                                     <TableCell>NS Dự kiến</TableCell>
                                                     <TableCell>Đã SX</TableCell>
@@ -714,11 +738,13 @@ export default function PhieuKiemCreate() {
                                             )}
                                             {selectedLoai?.Id === 4 && (
                                                 <>
-                                                    <TableCell sx={{ minWidth: 160 }}>Số phiếu nhập</TableCell>
-                                                    <TableCell sx={{ minWidth: 160 }}>Mã đơn hàng</TableCell>
-                                                    <TableCell sx={{ minWidth: 200 }}>Đơn vị</TableCell>
-                                                    <TableCell sx={{ minWidth: 200 }}>Bộ phận</TableCell>
-                                                    <TableCell sx={{ minWidth: 150 }}>Kho nhập</TableCell>
+                                                    <TableCell sx={{ minWidth: 120 }}>KH nhập</TableCell>
+                                                    <TableCell sx={{ minWidth: 200 }}>Nhà thầu</TableCell>
+                                                    <TableCell sx={{ minWidth: 150 }}>Đơn hàng</TableCell>
+                                                    <TableCell sx={{ minWidth: 220 }}>Sản phẩm / Lot</TableCell>
+                                                    <TableCell sx={{ minWidth: 160 }}>Quy trình</TableCell>
+                                                    <TableCell sx={{ minWidth: 120 }}>Ngày SX</TableCell>
+                                                    <TableCell sx={{ minWidth: 120 }}>Loại KH</TableCell>
                                                 </>
                                             )}
                                             {!isKeHoachSanXuatLoai(selectedLoai) && (
@@ -759,7 +785,16 @@ export default function PhieuKiemCreate() {
                                                                 <TableCell>{row.ItemId}</TableCell>
                                                                 <TableCell>{row.ItemName}</TableCell>
                                                                 <TableCell>
-                                                                    <Chip label={row.WarehouseId} size="small" />
+                                                                    <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                                                                        <Chip
+                                                                            label={row.KhachHang || "Chưa xác định"}
+                                                                            size="small"
+                                                                            color={row.KhachHang === "IKEA" ? "primary" : row.KhachHang === "DEK" ? "warning" : "default"}
+                                                                        />
+                                                                        <Typography variant="caption" color="text.secondary">
+                                                                            {row.WarehouseId || "---"}
+                                                                        </Typography>
+                                                                    </Stack>
                                                                 </TableCell>
                                                                 <TableCell>{row.InvoiceNo}</TableCell>
                                                             </>
@@ -783,6 +818,7 @@ export default function PhieuKiemCreate() {
                                                                 <TableCell>{row.Ten_DonVi}</TableCell>
                                                                 <TableCell>{row.MaSanPham}</TableCell>
                                                                 <TableCell>{row.TenSanPham}</TableCell>
+                                                                <TableCell>{row.Ten_QuyTrinhSanXuat || row.TenQuyTrinhSanXuat || "---"}</TableCell>
                                                                 <TableCell>{row.SoLuongKeHoach}</TableCell>
                                                                 <TableCell><b>{row.NangSuat_DuKien}</b></TableCell>
                                                                 <TableCell>{row.DaSanXuat}</TableCell>
@@ -790,11 +826,36 @@ export default function PhieuKiemCreate() {
                                                         )}
                                                         {selectedLoai?.Id === 4 && (
                                                             <>
-                                                                <TableCell><b>{row.So_PhieuNhapBTP}</b></TableCell>
+                                                                <TableCell>
+                                                                    <Typography fontWeight={700}>#{row.ID_TuTang}</Typography>
+                                                                    <Typography variant="caption" color="text.secondary">
+                                                                        KHSX #{row.ID_KeHoachSanXuat}
+                                                                    </Typography>
+                                                                </TableCell>
+                                                                <TableCell>
+                                                                    <Typography variant="body2">{row.Ten_BoPhan || "---"}</Typography>
+                                                                    <Typography variant="caption" color="text.secondary">
+                                                                        {row.Ma_NhaThau || row.Ten_DonVi || ""}
+                                                                    </Typography>
+                                                                </TableCell>
                                                                 <TableCell>{row.Ma_DonHang}</TableCell>
-                                                                <TableCell>{row.Ten_DonVi}</TableCell>
-                                                                <TableCell>{row.Ten_BoPhan}</TableCell>
-                                                                <TableCell>{row.Ten_KhoNhap}</TableCell>
+                                                                <TableCell>
+                                                                    <Typography variant="body2">{row.ItemCode || "---"} · {row.Ten_SanPham || row.Ma_DonHang || "---"}</Typography>
+                                                                    <Typography variant="caption" color="text.secondary">
+                                                                        Lot: {row.So_LoSanXuat || "---"}
+                                                                    </Typography>
+                                                                </TableCell>
+                                                                <TableCell>{row.Ten_QuyTrinhSanXuat || "---"}</TableCell>
+                                                                <TableCell>
+                                                                    {row.Ngay_ThucTeSX ? new Date(row.Ngay_ThucTeSX).toLocaleDateString("vi-VN") : "---"}
+                                                                </TableCell>
+                                                                <TableCell>
+                                                                    <Chip
+                                                                        size="small"
+                                                                        color={Number(row.LoaiKH) === 2 ? "warning" : "default"}
+                                                                        label={row.TenLoaiKeHoach || (Number(row.LoaiKH) === 2 ? "Điều chỉnh" : "Kế hoạch gốc")}
+                                                                    />
+                                                                </TableCell>
                                                             </>
                                                         )}
                                                         {!isKeHoachSanXuatLoai(selectedLoai) && (

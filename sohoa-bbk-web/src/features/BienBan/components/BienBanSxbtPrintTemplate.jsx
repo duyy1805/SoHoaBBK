@@ -37,8 +37,6 @@ export const BienBanSxbtPrintTemplate = React.forwardRef(({
     dynamicFields = [],
     confirmSteps = []
 }, ref) => {
-    if (!info) return null;
-
     const customData = useMemo(
         () => (dynamicFields || []).reduce((acc, field) => {
             if (field?.FieldName) acc[field.FieldName] = field.FieldValue;
@@ -51,6 +49,8 @@ export const BienBanSxbtPrintTemplate = React.forwardRef(({
     const [mucCXuLyTaiNhaMay, setMucCXuLyTaiNhaMay] = useState(false);
 
     useEffect(() => {
+        // Sync the editable print checkboxes when a different record is loaded.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setMucCChuyenTraKH(
             customData.SxbtMucCChuyenTraKH === true || customData.SxbtMucCChuyenTraKH === "true"
         );
@@ -145,7 +145,7 @@ export const BienBanSxbtPrintTemplate = React.forwardRef(({
 
         return (
             <Box className="avoid-break" style={styles.signatureBlock}>
-                {signatureDisplayFlow.map((maBoPhan) => {
+                {signatureDisplayFlow.map((maBoPhan, index) => {
                     const originalOrder = signatureFlow.indexOf(maBoPhan) + 1;
                     const step = stepByMaBoPhan.get(maBoPhan) || confirmSteps.find((item) => item?.StepOrder === originalOrder);
                     const ngayKy = step?.ConfirmedAt ? formatLongDate(step.ConfirmedAt) : "Ngày................";
@@ -249,6 +249,12 @@ export const BienBanSxbtPrintTemplate = React.forwardRef(({
                                     <div style={styles.text}><strong>Người tạo:</strong> {info.NguoiTao || ""}</div>
                                     <div style={styles.text}><strong>Bộ phận tạo:</strong> {[info.MaBoPhanTao, info.TenBoPhanTao].filter(Boolean).join(" - ")}</div>
                                     <div style={styles.text}><strong>Mã đơn vị SXBT:</strong> {info.MaDonVi || ""}</div>
+                                    <div style={styles.text}>
+                                        <strong>Nguồn SXBT:</strong>{" "}
+                                        {info.SxbtSourceType === "KE_HOACH_NHAP"
+                                            ? `Kế hoạch nhập #${info.KeHoachNhapId || ""}`
+                                            : (info.So_PhieuNhapBTP || `Phiếu nhập #${info.PhieuNhapBtpId || ""}`)}
+                                    </div>
                                     <div style={styles.text}>
                                         <strong>Mức độ không phù hợp:</strong>
                                         <span style={{ marginLeft: "10px" }}>

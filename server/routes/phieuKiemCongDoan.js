@@ -15,6 +15,21 @@ const canManageAll = (user = {}) =>
     isAdmin(user) || (user.permissions || []).some((permission) =>
         ['PHAN_BO_KIEM', 'KET_LUAN', 'PHAN_CONG_NGUOI_XU_LY'].includes(permission)
     );
+const inspectionCapabilities = (req, phieu = {}) => {
+    const permissions = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+    const status = String(phieu?.TrangThai || '').toUpperCase();
+    const open = OPEN_STATES.has(status);
+    const admin = isAdmin(req.user);
+    return {
+        canEdit: open && (admin || permissions.includes('THUC_HIEN_KIEM')),
+        canComplete: open && (admin || permissions.includes('THUC_HIEN_KIEM')),
+        canApprove: status === 'CHO_TBP_DUYET'
+            && (admin || permissions.includes('PHAN_CONG_NGUOI_XU_LY')),
+        canDelete: open && (admin || permissions.includes('THUC_HIEN_KIEM')),
+        canCreateBienBan: phieu?.KetLuan === 'KHONG_DAT'
+            && (admin || permissions.includes('THUC_HIEN_KIEM'))
+    };
+};
 const errorMessage = (error, fallback) =>
     error?.originalError?.info?.message || error?.message || fallback;
 const statusForError = (error) => {
@@ -336,7 +351,8 @@ router.get(
                 phieu: { ...normalizePhieuDates(phieu), ...totals },
                 plans,
                 xacNhans: result.recordsets[3] || [],
-                readOnly: !OPEN_STATES.has(phieu.TrangThai)
+                readOnly: !OPEN_STATES.has(phieu.TrangThai),
+                capabilities: inspectionCapabilities(req, phieu)
             }));
         } catch (error) {
             console.error('CongDoan detail error:', error);

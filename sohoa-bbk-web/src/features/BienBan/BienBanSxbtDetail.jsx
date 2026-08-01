@@ -373,6 +373,15 @@ export default function BienBanSxbtDetail() {
                                         <InfoTile icon={<ApartmentOutlinedIcon />} label="Mã đơn vị SXBT" value={info?.MaDonVi || "---"} />
                                     </Grid>
                                     <Grid size={{ xs: 6, md: 3 }}>
+                                        <InfoTile
+                                            icon={<RuleFolderOutlinedIcon />}
+                                            label="Nguồn SXBT"
+                                            value={info?.SxbtSourceType === "KE_HOACH_NHAP"
+                                                ? `Kế hoạch nhập #${info?.KeHoachNhapId || "---"}`
+                                                : (info?.So_PhieuNhapBTP || `Phiếu nhập #${info?.PhieuNhapBtpId || "---"}`)}
+                                        />
+                                    </Grid>
+                                    <Grid size={{ xs: 6, md: 3 }}>
                                         <InfoTile icon={<ReportProblemOutlinedIcon />} label="Mức độ" value={`Mức ${mucDo || "---"}`} />
                                     </Grid>
                                     <Grid size={{ xs: 6, md: 3 }}>
@@ -837,6 +846,8 @@ function SxbtXuLyDialog({ open, onClose, bienBanId, mucDo, reload }) {
 
     useEffect(() => {
         if (open) {
+            // Reset form whenever the dialog is opened.
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setForm({ chiPhi: "", noiDung: "", boPhanTrachNhiemId: "", thoiHan: "" });
             getBoPhan().then((res) => setDepartments(res.data || []));
         }
@@ -878,6 +889,8 @@ function SxbtHanhDongDialog({ open, onClose, onSave }) {
 
     useEffect(() => {
         if (open) {
+            // Reset form whenever the dialog is opened.
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setForm({ noiDung: "", thoiHan: "", boPhanId: "" });
             getBoPhan().then((res) => setDepartments(res.data || []));
         }

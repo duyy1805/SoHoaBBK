@@ -367,7 +367,7 @@ export default function PhieuKiemList() {
                         Danh sách Phiếu kiểm
                     </Typography>
 
-                    <Stack direction="row" spacing={1}>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                         {hasPermission("THUC_HIEN_KIEM") && (
                             <Button size="small" variant="outlined" onClick={() => navigate("/phieu-kiem/cong-doan")}>
                                 Phiếu công đoạn
@@ -434,7 +434,46 @@ export default function PhieuKiemList() {
                         overflow: "hidden"
                     }}
                 >
-                    <TableContainer ref={tableContainerRef} sx={{ maxHeight: 'calc(100vh - 235px)' }}>
+                    <Stack spacing={1} sx={{ display: { xs: "flex", sm: "none" }, p: 1 }}>
+                        {paginatedData.length === 0 ? (
+                            <Typography color="text.secondary" textAlign="center" sx={{ py: 5 }}>Không tìm thấy phiếu kiểm nào.</Typography>
+                        ) : paginatedData.map((item) => (
+                            <Card
+                                key={item.Id}
+                                variant="outlined"
+                                onClick={() => openDetail(item)}
+                                sx={{ p: 1.5, cursor: "pointer", boxShadow: "none" }}
+                            >
+                                <Stack spacing={1}>
+                                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
+                                        <Box sx={{ minWidth: 0 }}>
+                                            <Typography color="primary" fontWeight={800}>{item.SoPhieu}</Typography>
+                                            <Typography fontWeight={700}>{item.TenSanPham || "—"}</Typography>
+                                            <Typography variant="caption" color="text.secondary">{item.MaSanPham || ""}</Typography>
+                                        </Box>
+                                        {renderTrangThaiChip(item.TrangThai)}
+                                    </Stack>
+                                    <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                                        <Chip label={getLoaiKiemLabel(item)} variant="outlined" size="small" />
+                                        {item.KetLuan && renderKetLuanChip(item.KetLuan)}
+                                    </Stack>
+                                    <Typography variant="body2" color="text.secondary">
+                                        Lot: {item.Lot || "—"} · HL {Number(item.SoLuongHieuLuc ?? item.SoLuong ?? 0).toLocaleString("vi-VN")}
+                                    </Typography>
+                                    <Typography variant="body2">
+                                        {item.TenNguoiKiem || "Chưa phân công"} · {getDepartmentLabel(item) || "Chưa có bộ phận"}
+                                    </Typography>
+                                    <Button fullWidth variant="outlined" startIcon={<VisibilityIcon />} onClick={(event) => {
+                                        event.stopPropagation();
+                                        openDetail(item);
+                                    }}>
+                                        Mở phiếu
+                                    </Button>
+                                </Stack>
+                            </Card>
+                        ))}
+                    </Stack>
+                    <TableContainer ref={tableContainerRef} sx={{ maxHeight: 'calc(100vh - 235px)', display: { xs: "none", sm: "block" } }}>
                         <Table
                             stickyHeader
                             size="small"

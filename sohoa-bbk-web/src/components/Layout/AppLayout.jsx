@@ -38,11 +38,16 @@ export default function AppLayout() {
                 component="main"
                 sx={{
                     flexGrow: 1,
+                    minWidth: 0,
+                    minHeight: '100dvh',
                     transition: 'margin 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                     ml: {
                         sm: collapsed ? `${COLLAPSED_WIDTH}px` : `${DRAWER_WIDTH}px`
                     },
-                    p: { xs: 1.5, md: 2 }
+                    p: {
+                        xs: '12px max(12px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))',
+                        md: 2
+                    }
                 }}
             >
                 <Box sx={{ height: 56 }} />

@@ -26,6 +26,59 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
         return acc;
     }, {});
 
+    const invoiceNo = String(
+        customData.DongCont_InvoiceNo
+        || phieu.DongContInvoiceNo
+        || String(phieu.DoiTuong || "").split(" - ")[0]
+        || ""
+    ).trim();
+    let closingScheduleCustomer = String(
+        customData.DongCont_KhachHang || customData.KhachHang || phieu.KhachHang || ""
+    ).trim().toUpperCase();
+    if (!closingScheduleCustomer && invoiceNo.toUpperCase().includes("ECIS")) closingScheduleCustomer = "IKEA";
+    if (!closingScheduleCustomer && invoiceNo.toUpperCase().includes("DC")) closingScheduleCustomer = "DEK";
+    const isDek = Number(phieu.LoaiKiemId) === 5 && closingScheduleCustomer === "DEK";
+
+    const rawPackage = customData.DongCont_Package ?? phieu.DongContPackage;
+    const parsedPackage = rawPackage === "" || rawPackage === null || rawPackage === undefined
+        ? null
+        : Number(rawPackage);
+    const dekPackage = Number.isInteger(parsedPackage) && parsedPackage >= 0 ? parsedPackage : null;
+
+    const closingScheduleOrderNumber = (() => {
+        if (Number(phieu.LoaiKiemId) !== 5) return "";
+
+        if (closingScheduleCustomer === "IKEA") {
+            return invoiceNo;
+        }
+
+        if (closingScheduleCustomer === "DEK") {
+            return customData.DongCont_PackingMethod || phieu.DongContPackingMethod || "";
+        }
+
+        return "";
+    })();
+    const effectiveQuantity = phieu.SoLuongThucTe != null
+        ? phieu.SoLuongThucTe
+        : (phieu.SoLuong ?? "");
+
+    const ticketCreatedAt = (() => {
+        if (phieu.CreatedAt && !Number.isNaN(new Date(phieu.CreatedAt).getTime())) {
+            return new Date(phieu.CreatedAt);
+        }
+        const match = String(phieu.SoPhieu || "").match(/^PK(\d{4})(\d{2})(\d{2})-/);
+        return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : null;
+    })();
+    const inspectionDate = isDek ? ticketCreatedAt : (phieu.NgayKiem ? new Date(phieu.NgayKiem) : new Date());
+    const formattedInspectionDate = inspectionDate && !Number.isNaN(inspectionDate.getTime())
+        ? inspectionDate.toLocaleDateString("vi-VN")
+        : "";
+    const formattedLongInspectionDate = formattedInspectionDate
+        ? formattedInspectionDate
+            .replace(/\//g, " tháng ")
+            .replace(/ tháng \d{4}/, (match) => match.replace(" tháng ", " năm "))
+        : "";
+
     // Tính toán kích thước sản phẩm từ thongSoList (Cấp độ đặc biệt)
     const specDimensions = (() => {
         const dimGroup = (thongSoList || []).filter(ts => ts.NhomThongSo === "Kích thước sản phẩm");
@@ -54,7 +107,10 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
     const khayQty = getSectionQuantity(name => name.includes("KHAY"));
     const palletQty = getSectionQuantity(name => name.includes("PALLET"));
     const productImageUrl = phieu?.ImageUrl ? getAssetUrl(phieu.ImageUrl) : "";
-    const selectedInspectionPlanLevel = String(sections?.[0]?.InspectionLevel || "").trim().charAt(0);
+    const rawInspectionPlanLevel = String(sections?.[0]?.InspectionLevel || "").trim().toUpperCase();
+    const selectedInspectionPlanLevel = isDek
+        ? (rawInspectionPlanLevel.startsWith("II") ? "II" : rawInspectionPlanLevel.startsWith("I") ? "I" : "")
+        : rawInspectionPlanLevel.charAt(0);
 
     const styles = {
         previewBackground: {
@@ -116,7 +172,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
             gap: '12px',
             whiteSpace: 'nowrap'
         }}>
-            {["1", "2", "3", "4"].map((level) => (
+            {(isDek ? ["I", "II"] : ["1", "2", "3", "4"]).map((level) => (
                 <span
                     key={level}
                     style={{
@@ -127,7 +183,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                         lineHeight: 1
                     }}
                 >
-                    MĐ {level}
+                    {isDek ? `Level ${level}` : `MĐ ${level}`}
                     {renderCheckbox(selectedLevel === level)}
                 </span>
             ))}
@@ -216,8 +272,9 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 <div style={{ fontSize: '14pt' }}>CÔNG TY TNHH MTV 76</div>
                             </td>
                             <td rowSpan={2} style={{ ...styles.headerTd, width: '25%', textAlign: 'left', paddingLeft: '10px' }}>
-                                <div style={{ fontWeight: 'bold', fontSize: '11pt' }}>Mã số: </div> <span>BM.01.01-QT.04-B8</span>
-                                <div style={{ fontSize: '11pt' }}>Ngày hiệu lực: 15/6/2026</div>
+                                <div style={{ fontWeight: 'bold', fontSize: '11pt' }}>Mã số: </div>
+                                <span>{isDek ? 'BM.01.02-HD.02.QT.04-B8' : 'BM.01.01-QT.04-B8'}</span>
+                                <div style={{ fontSize: '11pt' }}>Ngày hiệu lực: {isDek ? '26/06/2026' : '15/6/2026'}</div>
                                 <div style={{ fontSize: '11pt' }}>Phiên bản: 00</div>
                             </td>
                         </tr>
@@ -240,7 +297,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 Số: {phieu.SoPhieu || '..........'}/KN.
                             </div>
                             <div style={{ ...styles.text, fontStyle: 'italic' }}>
-                                Ngày {phieu.NgayKiem ? new Date(phieu.NgayKiem).toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm ')) : new Date().toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm '))}
+                                Ngày {formattedLongInspectionDate}
                             </div>
                         </Box>
                     </Box>
@@ -373,11 +430,11 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 </td>
                                 <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>Khách hàng</td>
                                 <td style={styles.infoTableCell}>
-                                    <input name="KhachHang" className="custom-field" type="text" defaultValue={customData.KhachHang || phieu.KhachHang || ''} style={styles.inputField} />
+                                    <input name="KhachHang" className="custom-field" type="text" defaultValue={isDek ? 'DEK' : (customData.KhachHang || phieu.KhachHang || '')} style={styles.inputField} />
                                 </td>
-                                <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>Số đơn hàng/</td>
+                                <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>Số đơn hàng</td>
                                 <td style={styles.infoTableCell}>
-                                    <input name="SoDonHang" className="custom-field" type="text" defaultValue={customData.SoDonHang || phieu.SoDonHang || ''} style={styles.inputField} />
+                                    <input name="SoDonHang" className="custom-field" type="text" defaultValue={closingScheduleOrderNumber || customData.SoDonHang || phieu.SoDonHang || ''} style={styles.inputField} />
                                 </td>
                                 <td style={styles.infoTableUnitCell}></td>
                                 {/* <td style={styles.infoTableUnitCell}></td> */}
@@ -401,9 +458,9 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                         rows={2}
                                     />
                                 </td>
-                                <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>SL KH / TT / hiệu lực</td>
+                                <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>SL</td>
                                 <td style={styles.infoTableCell}>
-                                    <span>{phieu.SoLuong ?? ""} / {phieu.SoLuongThucTe == null ? "Chưa nhập" : phieu.SoLuongThucTe} / {phieu.SoLuongHieuLuc ?? phieu.SoLuong ?? ""}</span>
+                                    <span>{effectiveQuantity}</span>
                                 </td>
                                 <td style={styles.infoTableUnitCell}>cái</td>
                                 {/* <td style={styles.infoTableUnitCell}>hộp</td> */}
@@ -431,7 +488,9 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 </td>
                                 <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>Ngày kiểm tra</td>
                                 <td style={styles.infoTableCell}>
-                                    <input name="NgayKiemTra" className="custom-field" type="text" defaultValue={customData.NgayKiemTra || (phieu.NgayKiem ? new Date(phieu.NgayKiem).toLocaleDateString('vi-VN') : new Date().toLocaleDateString('vi-VN'))} style={styles.inputField} />
+                                    {isDek
+                                        ? <span>{formattedInspectionDate}</span>
+                                        : <input name="NgayKiemTra" className="custom-field" type="text" defaultValue={customData.NgayKiemTra || formattedInspectionDate} style={styles.inputField} />}
                                 </td>
                                 <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>Pallet</td>
                                 <td style={styles.infoTableCell}>
@@ -451,12 +510,14 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 </td>
                                 <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>Tổng SL</td>
                                 <td style={styles.infoTableCell}>
-                                    <input name="TongSL" className="custom-field" type="text" defaultValue={customData.TongSL || phieu.TongSL || ''} style={styles.inputField} />
+                                    {isDek
+                                        ? <span>{effectiveQuantity}</span>
+                                        : <input name="TongSL" className="custom-field" type="text" defaultValue={customData.TongSL || phieu.TongSL || ''} style={styles.inputField} />}
                                 </td>
                                 <td style={styles.infoTableUnitCell}></td>
                                 {/* <td style={styles.infoTableUnitCell}></td> */}
                             </tr>
-                            <tr>
+                            {!isDek && <tr>
                                 <td style={styles.infoTableLabel}></td>
                                 <td style={{ ...styles.infoTableCell, height: '24px' }}></td>
                                 <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>Hiệu lực test</td>
@@ -473,7 +534,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 <td style={styles.infoTableCell}></td>
                                 <td style={styles.infoTableUnitCell}></td>
                                 {/* <td style={styles.infoTableUnitCell}></td> */}
-                            </tr>
+                            </tr>}
                         </tbody>
                     </table>
                 </Box>
@@ -503,6 +564,14 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                             const sectionItems = checkItems.filter(
                                 item => item.SectionId === section.Id && item.KetQua !== 'NA'
                             );
+                            const isDekPackagingSection = isDek
+                                && normalizeText(section.TenNhom).includes('BAO GOI');
+                            const displayedSectionTotal = isDekPackagingSection && dekPackage !== null
+                                ? dekPackage
+                                : section.TongSo;
+                            const displayedSectionSample = isDekPackagingSection && dekPackage !== null
+                                ? Math.ceil(Math.sqrt(dekPackage))
+                                : section.SoLuongKiem;
 
                             if (sectionItems.length === 0) {
                                 return null;
@@ -518,8 +587,8 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                                     {toRoman(sIndex + 1)}. {section.TenNhom.toUpperCase()} {section.InspectionLevel ? <span style={{ fontWeight: 'normal', fontSize: '10pt', marginLeft: '5px' }}> - AQL: {section.InspectionLevel}</span> : ''}
                                                 </div>
                                                 <Box style={{ display: 'flex', gap: '40px', paddingRight: '20px' }}>
-                                                    <span>Tổng số: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: '1px dotted #000', textAlign: 'center' }}><b>{section.TongSo}</b></span> Pcs</span>
-                                                    <span>Số lượng kiểm: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: '1px dotted #000', textAlign: 'center' }}><b>{section.SoLuongKiem}</b></span> Pcs</span>
+                                                    <span>Tổng số: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: '1px dotted #000', textAlign: 'center' }}><b>{displayedSectionTotal}</b></span> Pcs</span>
+                                                    <span>Số lượng kiểm: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: '1px dotted #000', textAlign: 'center' }}><b>{displayedSectionSample}</b></span> Pcs</span>
                                                 </Box>
                                             </Box>
                                         </td>
@@ -758,7 +827,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                             </Box>
                             <Grid container spacing={2}>
                                 {defectImages.map((img, idx) => (
-                                    <Grid item xs={4} key={idx} sx={{ mb: 2 }}>
+                                    <Grid size={4} key={idx} sx={{ mb: 2 }}>
                                         <Box style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center', height: '100%' }}>
                                             <img
                                                 src={`https://z76api.z76.vn${img.url}`}
