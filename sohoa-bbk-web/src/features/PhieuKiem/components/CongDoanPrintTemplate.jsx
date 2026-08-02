@@ -9,6 +9,11 @@ const cell = {
     lineHeight: 1.1,
     overflowWrap: "anywhere"
 };
+const populatedDefectCell = {
+    ...cell,
+    backgroundColor: "#eeeeee",
+    fontWeight: 700
+};
 const text = (value) => value == null || value === "" ? "" : String(value);
 const formatDate = (value) => value
     ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString("vi-VN")
@@ -203,9 +208,26 @@ const CongDoanPrintTemplate = forwardRef(function CongDoanPrintTemplate(
                         <th colSpan={2} style={cell}>Báo cáo sửa lỗi</th>
                         <th rowSpan={2} style={cell}>Ghi chú</th>
                     </tr>
-                    <tr style={{ height: 22, fontStyle: "italic", fontWeight: 400 }}>
+                    <tr style={{ height: 32, fontWeight: 400 }}>
                         {defectColumns.map((item) => (
-                            <th key={item.id} style={cell} title={item.name}>{item.code || item.name}</th>
+                            <th key={item.id} style={{ ...cell, padding: "2px 1px" }} title={item.name}>
+                                <div style={{ fontWeight: 700, lineHeight: 1.05 }}>
+                                    {item.code || item.name}
+                                </div>
+                                {item.code && item.name ? (
+                                    <div style={{
+                                        marginTop: 2,
+                                        fontSize: "0.82em",
+                                        fontWeight: 400,
+                                        fontStyle: "normal",
+                                        lineHeight: 1.05,
+                                        whiteSpace: "normal",
+                                        overflowWrap: "anywhere"
+                                    }}>
+                                        {item.name}
+                                    </div>
+                                ) : null}
+                            </th>
                         ))}
                         <th style={cell}>Bụi bẩn</th>
                         <th style={cell}>Côn trùng</th>
@@ -245,13 +267,20 @@ const CongDoanPrintTemplate = forwardRef(function CongDoanPrintTemplate(
                             )}
                             <td style={cell}>{row.total || ""}</td>
                             <td style={cell}>{row.ratio}</td>
-                            {defectColumns.map((item) => (
-                                <td key={item.id} style={cell}>
-                                    {Number(row.defectId) === Number(item.id) ? row.total || "" : ""}
-                                </td>
-                            ))}
-                            <td style={cell}>{row.specialType === "dirty" ? row.total : ""}</td>
-                            <td style={cell}>{row.specialType === "insect" ? row.total : ""}</td>
+                            {defectColumns.map((item) => {
+                                const isPopulated = Number(row.defectId) === Number(item.id) && Number(row.total) > 0;
+                                return (
+                                    <td key={item.id} style={isPopulated ? populatedDefectCell : cell}>
+                                        {isPopulated ? row.total : ""}
+                                    </td>
+                                );
+                            })}
+                            <td style={row.specialType === "dirty" ? populatedDefectCell : cell}>
+                                {row.specialType === "dirty" ? row.total : ""}
+                            </td>
+                            <td style={row.specialType === "insect" ? populatedDefectCell : cell}>
+                                {row.specialType === "insect" ? row.total : ""}
+                            </td>
                             <td style={cell}>{row.repairedPass == null ? "" : text(row.repairedPass)}</td>
                             <td style={cell}>{row.repairedFail == null ? "" : text(row.repairedFail)}</td>
                             <td style={cell}>{text(row.rowNote)}</td>

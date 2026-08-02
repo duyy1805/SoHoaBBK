@@ -16,6 +16,38 @@ export const getDefectList = (params = {}) => {
     return axiosClient.get("/lookup/defect-list", { params });
 };
 
+export const getDefectManagement = () => {
+    return axiosClient.get("/lookup/defect-management");
+};
+
+export const createDefectRequest = (data, defectId = null) => {
+    return axiosClient.post("/lookup/defect-requests", { defectId, data });
+};
+
+export const updateDefectRequest = (id, data, rowVersion) => {
+    return axiosClient.put(`/lookup/defect-requests/${id}`, { data, rowVersion });
+};
+
+export const cancelDefectRequest = (id, rowVersion) => {
+    return axiosClient.delete(`/lookup/defect-requests/${id}`, { data: { rowVersion } });
+};
+
+export const approveDefectRequest = (id, rowVersion) => {
+    return axiosClient.post(`/lookup/defect-requests/${id}/approve`, { rowVersion });
+};
+
+export const rejectDefectRequest = (id, reviewNote, rowVersion) => {
+    return axiosClient.post(`/lookup/defect-requests/${id}/reject`, { reviewNote, rowVersion });
+};
+
+export const batchApproveDefectRequests = (items) => {
+    return axiosClient.post("/lookup/defect-requests/batch-approve", { items });
+};
+
+export const changeDefectStatus = (id, trangThai) => {
+    return axiosClient.patch(`/lookup/defect/${id}/status`, { trangThai });
+};
+
 // Thêm lỗi
 export const createDefect = (data) => {
     return axiosClient.post("/lookup/defect", data);

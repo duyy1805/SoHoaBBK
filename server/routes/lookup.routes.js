@@ -131,6 +131,40 @@ const stringifyImageUrls = (urls) => {
   const normalized = normalizeImageUrls(urls);
   return normalized.length ? JSON.stringify(normalized) : null;
 };
+const isDefectAdmin = (user) =>
+  Array.isArray(user?.permissions) && user.permissions.includes("QUAN_TRI_DM");
+const defectPayloadFields = [
+  "MaLoi", "TenLoi", "DefectType", "MoTa", "GhiChu", "PhuongAnXuLy",
+  "PhanHe", "MaNhomLoi", "LoaiLoiSXBT", "TenSanPham", "ChungLoai",
+  "PhamViApDung", "ThiTruong", "ImageUrl", "ImageUrls", "ThuTu"
+];
+const normalizeDefectPayload = (source = {}) => {
+  const payload = {};
+  defectPayloadFields.forEach((field) => { payload[field] = source[field] ?? null; });
+  payload.MaLoi = trimValue(payload.MaLoi) || null;
+  payload.TenLoi = trimValue(payload.TenLoi);
+  payload.MaNhomLoi = trimValue(payload.MaNhomLoi) || null;
+  payload.DefectType = normalizeDefectType(payload.LoaiLoiSXBT, payload.DefectType);
+  payload.ImageUrls = normalizeImageUrls(payload.ImageUrls, payload.ImageUrl).slice(0, 10);
+  payload.ImageUrl = payload.ImageUrls[0] || null;
+  payload.ThuTu = parseOptionalOrder(payload.ThuTu);
+  return payload;
+};
+const validateDefectPayload = (payload) => {
+  if (!payload.TenLoi) return "Vui lòng nhập tên lỗi";
+  if (!payload.MaLoi && !payload.MaNhomLoi) return "Vui lòng nhập mã nhóm lỗi để tự sinh mã lỗi";
+  if (!["CRITICAL", "MAJOR", "MINOR"].includes(payload.DefectType)) {
+    return "Phân loại lỗi không hợp lệ";
+  }
+  return null;
+};
+const decodeRowVersion = (value) => {
+  if (!value) return null;
+  try {
+    const buffer = Buffer.from(String(value), "base64");
+    return buffer.length === 8 ? buffer : null;
+  } catch { return null; }
+};
 const buildNhomImportKey = (tenNhom, moTaNhom) => `${normalizeKey(tenNhom)}|${normalizeKey(moTaNhom)}`;
 const parseOrder = (value, fallback) => {
   const parsed = Number.parseInt(value, 10);
@@ -427,6 +461,234 @@ const normalizeThongSoImportRow = (row, index) => ({
 
 const requestWithTransaction = (transaction) => new sql.Request(transaction);
 
+async function createDefectRequest(pool, user, rawPayload, defectId = null) {
+  const userId = Number(user.userId);
+  const isAdmin = isDefectAdmin(user);
+  const payload = normalizeDefectPayload(rawPayload);
+  const validationError = validateDefectPayload(payload);
+  if (validationError) {
+    const error = new Error(validationError);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const transaction = new sql.Transaction(pool);
+  await transaction.begin();
+  try {
+    let target = null;
+    if (defectId) {
+      const targetResult = await requestWithTransaction(transaction)
+        .input("DefectId", sql.Int, defectId)
+        .query("SELECT Id, CreatedBy FROM dbo.DM_DEFECT WITH (UPDLOCK, HOLDLOCK) WHERE Id=@DefectId");
+      target = targetResult.recordset?.[0] || null;
+      if (!target) {
+        const error = new Error("Không tìm thấy danh mục lỗi cần sửa");
+        error.statusCode = 404;
+        throw error;
+      }
+      if (!isAdmin && Number(target.CreatedBy) !== userId) {
+        const error = new Error("Bạn chỉ được sửa danh mục lỗi do mình tạo");
+        error.statusCode = 403;
+        throw error;
+      }
+      const pendingResult = await requestWithTransaction(transaction)
+        .input("DefectId", sql.Int, defectId)
+        .query("SELECT Id FROM dbo.DM_DEFECT_REQUEST WHERE DefectId=@DefectId AND Status='PENDING'");
+      if (pendingResult.recordset.length) {
+        const error = new Error("Danh mục lỗi đang có đề xuất chờ duyệt");
+        error.statusCode = 409;
+        throw error;
+      }
+    }
+
+    if (payload.MaLoi) {
+      const duplicate = await requestWithTransaction(transaction)
+        .input("MaLoi", sql.NVarChar(50), payload.MaLoi)
+        .input("DefectId", sql.Int, defectId || 0)
+        .query("SELECT Id FROM dbo.DM_DEFECT WHERE MaLoi=@MaLoi AND Id<>@DefectId");
+      if (duplicate.recordset.length) {
+        const error = new Error(`Mã lỗi ${payload.MaLoi} đã tồn tại`);
+        error.statusCode = 409;
+        throw error;
+      }
+      const pendingDuplicate = await requestWithTransaction(transaction)
+        .input("MaLoi", sql.NVarChar(50), payload.MaLoi)
+        .query(`
+          SELECT Id FROM dbo.DM_DEFECT_REQUEST
+          WHERE Status='PENDING' AND JSON_VALUE(ProposedData, '$.MaLoi')=@MaLoi
+        `);
+      if (pendingDuplicate.recordset.length) {
+        const error = new Error(`Mã lỗi ${payload.MaLoi} đang có đề xuất chờ duyệt`);
+        error.statusCode = 409;
+        throw error;
+      }
+    }
+
+    const inserted = await requestWithTransaction(transaction)
+      .input("DefectId", sql.Int, defectId || null)
+      .input("RequestType", sql.VarChar(10), defectId ? "UPDATE" : "CREATE")
+      .input("ProposedData", sql.NVarChar(sql.MAX), JSON.stringify(payload))
+      .input("CreatedBy", sql.Int, userId)
+      .query(`
+        INSERT dbo.DM_DEFECT_REQUEST (DefectId, RequestType, ProposedData, Status, CreatedBy)
+        OUTPUT INSERTED.Id, INSERTED.Status, INSERTED.RowVersion
+        VALUES (@DefectId, @RequestType, @ProposedData, 'PENDING', @CreatedBy)
+      `);
+    await transaction.commit();
+    const row = inserted.recordset[0];
+    return { ...row, RowVersion: row.RowVersion?.toString("base64") || null };
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
+}
+
+async function approveDefectRequest(pool, requestId, reviewerId, expectedRowVersion) {
+  const rowVersion = decodeRowVersion(expectedRowVersion);
+  if (!rowVersion) {
+    const error = new Error("Thiếu phiên bản dữ liệu đề xuất, vui lòng tải lại danh sách");
+    error.statusCode = 400;
+    throw error;
+  }
+  const transaction = new sql.Transaction(pool);
+  await transaction.begin();
+  try {
+    const requestQuery = requestWithTransaction(transaction)
+      .input("RequestId", sql.Int, requestId);
+    requestQuery.input("RowVersion", sql.VarBinary(8), rowVersion);
+    const requestResult = await requestQuery.query(`
+      SELECT * FROM dbo.DM_DEFECT_REQUEST WITH (UPDLOCK, HOLDLOCK)
+      WHERE Id=@RequestId AND Status='PENDING'
+        AND RowVersion=@RowVersion
+    `);
+    const requestRow = requestResult.recordset?.[0];
+    if (!requestRow) {
+      const error = new Error("Đề xuất đã được xử lý hoặc dữ liệu đã thay đổi");
+      error.statusCode = 409;
+      throw error;
+    }
+
+    const payload = normalizeDefectPayload(JSON.parse(requestRow.ProposedData));
+    const validationError = validateDefectPayload(payload);
+    if (validationError) {
+      const error = new Error(validationError);
+      error.statusCode = 400;
+      throw error;
+    }
+
+    let maLoi = payload.MaLoi;
+    if (!maLoi) {
+      const nextResult = await requestWithTransaction(transaction)
+        .input("MaNhomLoi", sql.NVarChar(20), payload.MaNhomLoi)
+        .query(`
+          SELECT ISNULL(MAX(TRY_CONVERT(INT, SUBSTRING(MaLoi, LEN(@MaNhomLoi)+2, 50))), 0) + 1 AS NextStt
+          FROM dbo.DM_DEFECT WITH (UPDLOCK, HOLDLOCK)
+          WHERE MaNhomLoi=@MaNhomLoi AND MaLoi LIKE @MaNhomLoi + '-%'
+        `);
+      maLoi = `${payload.MaNhomLoi}-${String(nextResult.recordset[0].NextStt).padStart(4, "0")}`;
+    }
+
+    const lockResult = await requestWithTransaction(transaction)
+      .input("LockResource", sql.NVarChar(255), `DM_DEFECT_CODE:${maLoi}`)
+      .query(`
+        DECLARE @LockResult INT;
+        EXEC @LockResult = sys.sp_getapplock
+          @Resource=@LockResource, @LockMode='Exclusive',
+          @LockOwner='Transaction', @LockTimeout=10000;
+        SELECT @LockResult AS LockResult;
+      `);
+    if (Number(lockResult.recordset[0].LockResult) < 0) {
+      const error = new Error("Không thể khóa mã lỗi để duyệt, vui lòng thử lại");
+      error.statusCode = 409;
+      throw error;
+    }
+
+    const duplicate = await requestWithTransaction(transaction)
+      .input("MaLoi", sql.NVarChar(50), maLoi)
+      .input("DefectId", sql.Int, requestRow.DefectId || 0)
+      .query("SELECT Id FROM dbo.DM_DEFECT WHERE MaLoi=@MaLoi AND Id<>@DefectId");
+    if (duplicate.recordset.length) {
+      const error = new Error(`Mã lỗi ${maLoi} đã tồn tại`);
+      error.statusCode = 409;
+      throw error;
+    }
+
+    const catalogRequest = requestWithTransaction(transaction)
+      .input("DefectId", sql.Int, requestRow.DefectId || null)
+      .input("MaLoi", sql.NVarChar(50), maLoi)
+      .input("TenLoi", sql.NVarChar(255), payload.TenLoi)
+      .input("DefectType", sql.NVarChar(20), payload.DefectType)
+      .input("MoTa", sql.NVarChar(sql.MAX), payload.MoTa)
+      .input("GhiChu", sql.NVarChar(sql.MAX), payload.GhiChu)
+      .input("PhuongAnXuLy", sql.NVarChar(sql.MAX), payload.PhuongAnXuLy)
+      .input("PhanHe", sql.NVarChar(20), payload.PhanHe)
+      .input("MaNhomLoi", sql.NVarChar(20), payload.MaNhomLoi)
+      .input("LoaiLoiSXBT", sql.NVarChar(10), payload.LoaiLoiSXBT)
+      .input("TenSanPham", sql.NVarChar(255), payload.TenSanPham)
+      .input("ChungLoai", sql.NVarChar(255), payload.ChungLoai)
+      .input("PhamViApDung", sql.NVarChar(500), payload.PhamViApDung)
+      .input("ThiTruong", sql.NVarChar(255), payload.ThiTruong)
+      .input("ImageUrl", sql.NVarChar(500), payload.ImageUrl)
+      .input("ImageUrls", sql.NVarChar(sql.MAX), stringifyImageUrls(payload.ImageUrls))
+      .input("ThuTu", sql.Int, payload.ThuTu)
+      .input("CreatedBy", sql.Int, requestRow.CreatedBy)
+      .input("ReviewerId", sql.Int, reviewerId);
+
+    let defectId = requestRow.DefectId;
+    if (requestRow.RequestType === "CREATE") {
+      const created = await catalogRequest.query(`
+        INSERT dbo.DM_DEFECT (
+          MaLoi, TenLoi, DefectType, TrangThai, MoTa, GhiChu, PhuongAnXuLy,
+          PhanHe, MaNhomLoi, LoaiLoiSXBT, TenSanPham, ChungLoai, PhamViApDung,
+          ThiTruong, ImageUrl, ImageUrls, ThuTu, CreatedBy, CreatedAt, ApprovedBy, ApprovedAt
+        )
+        OUTPUT INSERTED.Id
+        VALUES (
+          @MaLoi, @TenLoi, @DefectType, 1, @MoTa, @GhiChu, @PhuongAnXuLy,
+          @PhanHe, @MaNhomLoi, @LoaiLoiSXBT, @TenSanPham, @ChungLoai, @PhamViApDung,
+          @ThiTruong, @ImageUrl, @ImageUrls, @ThuTu, @CreatedBy, SYSDATETIME(), @ReviewerId, SYSDATETIME()
+        )
+      `);
+      defectId = created.recordset[0].Id;
+    } else {
+      const updated = await catalogRequest.query(`
+        UPDATE dbo.DM_DEFECT
+        SET MaLoi=@MaLoi, TenLoi=@TenLoi, DefectType=@DefectType, MoTa=@MoTa,
+            GhiChu=@GhiChu, PhuongAnXuLy=@PhuongAnXuLy, PhanHe=@PhanHe,
+            MaNhomLoi=@MaNhomLoi, LoaiLoiSXBT=@LoaiLoiSXBT,
+            TenSanPham=@TenSanPham, ChungLoai=@ChungLoai,
+            PhamViApDung=@PhamViApDung, ThiTruong=@ThiTruong,
+            ImageUrl=@ImageUrl, ImageUrls=@ImageUrls, ThuTu=@ThuTu,
+            UpdatedBy=@ReviewerId, UpdatedAt=SYSDATETIME(),
+            ApprovedBy=@ReviewerId, ApprovedAt=SYSDATETIME()
+        WHERE Id=@DefectId;
+        SELECT @@ROWCOUNT AS Affected;
+      `);
+      if (!Number(updated.recordset[0].Affected)) {
+        const error = new Error("Danh mục lỗi gốc không còn tồn tại");
+        error.statusCode = 409;
+        throw error;
+      }
+    }
+
+    await requestWithTransaction(transaction)
+      .input("RequestId", sql.Int, requestId)
+      .input("DefectId", sql.Int, defectId)
+      .input("ReviewerId", sql.Int, reviewerId)
+      .query(`
+        UPDATE dbo.DM_DEFECT_REQUEST
+        SET DefectId=@DefectId, Status='APPROVED', ReviewedBy=@ReviewerId,
+            ReviewedAt=SYSDATETIME(), ReviewNote=NULL
+        WHERE Id=@RequestId AND Status='PENDING'
+      `);
+    await transaction.commit();
+    return { requestId: Number(requestId), defectId, maLoi };
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
+}
+
 async function getAllSanPham(pool) {
   const pageSize = 500;
   let page = 0;
@@ -550,10 +812,207 @@ router.get(
   }
 );
 
+router.get("/defect-management", authenticateToken, async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const userId = Number(req.user.userId);
+    const isAdmin = isDefectAdmin(req.user);
+    const defectsResult = await pool.request()
+      .input("UserId", sql.Int, userId)
+      .input("IsAdmin", sql.Bit, isAdmin)
+      .query(`
+        SELECT d.*, creator.FullName AS CreatedByName, approver.FullName AS ApprovedByName,
+               updater.FullName AS UpdatedByName
+        FROM dbo.DM_DEFECT d
+        LEFT JOIN dbo.USERS creator ON creator.Id=d.CreatedBy
+        LEFT JOIN dbo.USERS approver ON approver.Id=d.ApprovedBy
+        LEFT JOIN dbo.USERS updater ON updater.Id=d.UpdatedBy
+        WHERE @IsAdmin=1 OR d.CreatedBy=@UserId
+        ORDER BY ISNULL(d.UpdatedAt, d.CreatedAt) DESC, d.Id DESC
+      `);
+    const requestsResult = await pool.request()
+      .input("UserId", sql.Int, userId)
+      .input("IsAdmin", sql.Bit, isAdmin)
+      .query(`
+        SELECT r.*, creator.FullName AS CreatedByName, reviewer.FullName AS ReviewedByName
+        FROM dbo.DM_DEFECT_REQUEST r
+        LEFT JOIN dbo.USERS creator ON creator.Id=r.CreatedBy
+        LEFT JOIN dbo.USERS reviewer ON reviewer.Id=r.ReviewedBy
+        WHERE @IsAdmin=1 OR r.CreatedBy=@UserId
+        ORDER BY CASE WHEN r.Status='PENDING' THEN 0 ELSE 1 END, r.CreatedAt DESC, r.Id DESC
+      `);
+
+    const requests = (requestsResult.recordset || []).map((row) => ({
+      ...row,
+      ProposedData: JSON.parse(row.ProposedData || "{}"),
+      RowVersion: row.RowVersion?.toString("base64") || null
+    }));
+    const defects = (defectsResult.recordset || []).map((row) => ({
+      ...row,
+      RowVersion: row.RowVersion?.toString("base64") || null
+    }));
+    res.json({
+      capabilities: { isAdmin, canCreate: true, canImport: true, canApprove: isAdmin, canChangeStatus: isAdmin },
+      defects,
+      requests
+    });
+  } catch (err) {
+    console.error("Get defect management error:", err);
+    res.status(500).json({ message: "Không lấy được dữ liệu quản lý danh mục lỗi" });
+  }
+});
+
+router.post("/defect-requests", authenticateToken, async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const defectId = Number(req.body?.defectId || 0) || null;
+    const row = await createDefectRequest(pool, req.user, req.body?.data || req.body, defectId);
+    res.status(201).json({ message: "Đã gửi đề xuất chờ duyệt", request: row });
+  } catch (err) {
+    console.error("Create defect request error:", err);
+    res.status(err.statusCode || 500).json({ message: err.message || "Không tạo được đề xuất" });
+  }
+});
+
+router.put("/defect-requests/:id", authenticateToken, async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const userId = Number(req.user.userId);
+    const payload = normalizeDefectPayload(req.body?.data || req.body);
+    const validationError = validateDefectPayload(payload);
+    if (validationError) return res.status(400).json({ message: validationError });
+
+    const rowVersion = decodeRowVersion(req.body?.rowVersion);
+    if (!rowVersion) return res.status(400).json({ message: "Thiếu phiên bản dữ liệu đề xuất, vui lòng tải lại" });
+    const request = pool.request()
+      .input("Id", sql.Int, req.params.id)
+      .input("UserId", sql.Int, userId)
+      .input("ProposedData", sql.NVarChar(sql.MAX), JSON.stringify(payload))
+      .input("RowVersion", sql.VarBinary(8), rowVersion);
+    const result = await request.query(`
+      UPDATE dbo.DM_DEFECT_REQUEST
+      SET ProposedData=@ProposedData, Status='PENDING', UpdatedBy=@UserId,
+          UpdatedAt=SYSDATETIME(), ReviewedBy=NULL, ReviewedAt=NULL, ReviewNote=NULL
+      OUTPUT INSERTED.Id, INSERTED.Status, INSERTED.RowVersion
+      WHERE Id=@Id AND CreatedBy=@UserId
+        AND Status IN ('PENDING','REJECTED')
+        AND (@RowVersion IS NULL OR RowVersion=@RowVersion)
+    `);
+    if (!result.recordset.length) {
+      return res.status(409).json({ message: "Đề xuất đã thay đổi hoặc bạn không có quyền cập nhật" });
+    }
+    const row = result.recordset[0];
+    res.json({ message: "Đã cập nhật và gửi lại đề xuất", request: { ...row, RowVersion: row.RowVersion.toString("base64") } });
+  } catch (err) {
+    console.error("Update defect request error:", err);
+    res.status(500).json({ message: "Không cập nhật được đề xuất" });
+  }
+});
+
+router.delete("/defect-requests/:id", authenticateToken, async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const rowVersion = decodeRowVersion(req.body?.rowVersion);
+    if (!rowVersion) return res.status(400).json({ message: "Thiếu phiên bản dữ liệu đề xuất, vui lòng tải lại" });
+    const result = await pool.request()
+      .input("Id", sql.Int, req.params.id)
+      .input("UserId", sql.Int, req.user.userId)
+      .input("RowVersion", sql.VarBinary(8), rowVersion)
+      .query(`
+        UPDATE dbo.DM_DEFECT_REQUEST
+        SET Status='CANCELLED', UpdatedBy=@UserId, UpdatedAt=SYSDATETIME()
+        OUTPUT INSERTED.Id
+        WHERE Id=@Id AND CreatedBy=@UserId
+          AND Status IN ('PENDING','REJECTED')
+          AND (@RowVersion IS NULL OR RowVersion=@RowVersion)
+      `);
+    if (!result.recordset.length) return res.status(409).json({ message: "Không thể rút đề xuất này" });
+    res.json({ message: "Đã rút đề xuất" });
+  } catch (err) {
+    console.error("Cancel defect request error:", err);
+    res.status(500).json({ message: "Không rút được đề xuất" });
+  }
+});
+
+router.post("/defect-requests/:id/approve", authenticateToken, authorize("QUAN_TRI_DM"), async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await approveDefectRequest(pool, req.params.id, req.user.userId, req.body?.rowVersion);
+    res.json({ message: "Đã duyệt đề xuất", ...result });
+  } catch (err) {
+    console.error("Approve defect request error:", err);
+    res.status(err.statusCode || 500).json({ message: err.message || "Không duyệt được đề xuất" });
+  }
+});
+
+router.post("/defect-requests/:id/reject", authenticateToken, authorize("QUAN_TRI_DM"), async (req, res) => {
+  const reviewNote = trimValue(req.body?.reviewNote);
+  if (!reviewNote) return res.status(400).json({ message: "Vui lòng nhập lý do từ chối" });
+  try {
+    const pool = await poolPromise;
+    const rowVersion = decodeRowVersion(req.body?.rowVersion);
+    if (!rowVersion) return res.status(400).json({ message: "Thiếu phiên bản dữ liệu đề xuất, vui lòng tải lại" });
+    const result = await pool.request()
+      .input("Id", sql.Int, req.params.id)
+      .input("ReviewerId", sql.Int, req.user.userId)
+      .input("ReviewNote", sql.NVarChar(1000), reviewNote)
+      .input("RowVersion", sql.VarBinary(8), rowVersion)
+      .query(`
+        UPDATE dbo.DM_DEFECT_REQUEST
+        SET Status='REJECTED', ReviewedBy=@ReviewerId, ReviewedAt=SYSDATETIME(), ReviewNote=@ReviewNote
+        OUTPUT INSERTED.Id
+        WHERE Id=@Id AND Status='PENDING'
+          AND (@RowVersion IS NULL OR RowVersion=@RowVersion)
+      `);
+    if (!result.recordset.length) return res.status(409).json({ message: "Đề xuất đã được xử lý hoặc dữ liệu đã thay đổi" });
+    res.json({ message: "Đã từ chối đề xuất" });
+  } catch (err) {
+    console.error("Reject defect request error:", err);
+    res.status(500).json({ message: "Không từ chối được đề xuất" });
+  }
+});
+
+router.post("/defect-requests/batch-approve", authenticateToken, authorize("QUAN_TRI_DM"), async (req, res) => {
+  const items = Array.isArray(req.body?.items) ? req.body.items : [];
+  if (!items.length) return res.status(400).json({ message: "Vui lòng chọn đề xuất cần duyệt" });
+  const pool = await poolPromise;
+  const approved = [];
+  const errors = [];
+  for (const item of items) {
+    try {
+      approved.push(await approveDefectRequest(pool, item.id, req.user.userId, item.rowVersion));
+    } catch (err) {
+      errors.push({ id: item.id, message: err.message || "Không duyệt được" });
+    }
+  }
+  res.status(errors.length ? 207 : 200).json({ message: `Đã duyệt ${approved.length}/${items.length} đề xuất`, approved, errors });
+});
+
+router.patch("/defect/:id/status", authenticateToken, authorize("QUAN_TRI_DM"), async (req, res) => {
+  if (typeof req.body?.trangThai !== "boolean") return res.status(400).json({ message: "Trạng thái không hợp lệ" });
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("Id", sql.Int, req.params.id)
+      .input("TrangThai", sql.Bit, req.body.trangThai)
+      .input("UserId", sql.Int, req.user.userId)
+      .query(`
+        UPDATE dbo.DM_DEFECT
+        SET TrangThai=@TrangThai, UpdatedBy=@UserId, UpdatedAt=SYSDATETIME()
+        OUTPUT INSERTED.Id, INSERTED.TrangThai
+        WHERE Id=@Id
+      `);
+    if (!result.recordset.length) return res.status(404).json({ message: "Không tìm thấy danh mục lỗi" });
+    res.json({ message: req.body.trangThai ? "Đã kích hoạt danh mục lỗi" : "Đã tạm ngưng danh mục lỗi", defect: result.recordset[0] });
+  } catch (err) {
+    console.error("Change defect status error:", err);
+    res.status(500).json({ message: "Không cập nhật được trạng thái" });
+  }
+});
+
 router.post(
   "/defect-image",
   authenticateToken,
-  authorize("QUAN_TRI_DM"),
   defectImageUpload.single("image"),
   async (req, res) => {
     try {
@@ -587,7 +1046,6 @@ router.post(
 router.post(
   "/defect-images",
   authenticateToken,
-  authorize("QUAN_TRI_DM"),
   defectImageUpload.array("images", 10),
   async (req, res) => {
     try {
@@ -641,7 +1099,6 @@ router.post(
 router.get(
   "/import-defect/template",
   authenticateToken,
-  authorize("QUAN_TRI_DM"),
   async (req, res) => {
     const rows = [
       {
@@ -726,7 +1183,6 @@ router.get(
 router.post(
   "/import-defect",
   authenticateToken,
-  authorize("QUAN_TRI_DM"),
   (req, res, next) => {
     defectExcelUpload.single("file")(req, res, (err) => {
       if (err) {
@@ -812,18 +1268,20 @@ router.post(
     }
 
     const savedFiles = [];
+    const rowErrors = [];
 
     try {
       const pool = await poolPromise;
       const transaction = new sql.Transaction(pool);
       await transaction.begin();
-
+      const userId = Number(req.user.userId);
+      const isAdmin = isDefectAdmin(req.user);
       const summary = {
         totalRows: rows.length,
         created: 0,
         updated: 0,
         withImages: imageResult.prepared.size,
-        skippedImages: 0
+        requestIds: []
       };
 
       try {
@@ -832,10 +1290,39 @@ router.post(
         for (const row of rows) {
           const existingResult = await requestWithTransaction(transaction)
             .input("MaLoi", sql.NVarChar(50), row.MaLoi)
-            .query("SELECT Id, ImageUrl, ImageUrls, TrangThai FROM dbo.DM_DEFECT WHERE MaLoi = @MaLoi");
+            .query(`
+              SELECT Id, CreatedBy, ImageUrl, ImageUrls
+              FROM dbo.DM_DEFECT WITH (UPDLOCK, HOLDLOCK)
+              WHERE MaLoi = @MaLoi
+            `);
           const existing = existingResult.recordset?.[0] || null;
 
-          let imageUrl = existing?.ImageUrl || null;
+          if (existing && !isAdmin && Number(existing.CreatedBy) !== userId) {
+            rowErrors.push({ line: row.line, message: `Bạn không được cập nhật mã lỗi ${row.MaLoi}` });
+            continue;
+          }
+
+          if (existing) {
+            const pending = await requestWithTransaction(transaction)
+              .input("DefectId", sql.Int, existing.Id)
+              .query("SELECT Id FROM dbo.DM_DEFECT_REQUEST WHERE DefectId=@DefectId AND Status='PENDING'");
+            if (pending.recordset.length) {
+              rowErrors.push({ line: row.line, message: `Mã lỗi ${row.MaLoi} đang có đề xuất chờ duyệt` });
+              continue;
+            }
+          }
+
+          const pendingCode = await requestWithTransaction(transaction)
+            .input("MaLoi", sql.NVarChar(50), row.MaLoi)
+            .query(`
+              SELECT Id FROM dbo.DM_DEFECT_REQUEST
+              WHERE Status='PENDING' AND JSON_VALUE(ProposedData, '$.MaLoi')=@MaLoi
+            `);
+          if (pendingCode.recordset.length) {
+            rowErrors.push({ line: row.line, message: `Mã lỗi ${row.MaLoi} đang có đề xuất chờ duyệt` });
+            continue;
+          }
+
           let imageUrls = normalizeImageUrls(existing?.ImageUrls, existing?.ImageUrl);
           const imageBuffer = imageResult.prepared.get(row.line);
           if (imageBuffer) {
@@ -843,98 +1330,42 @@ router.post(
             const outputPath = path.join(defectImportUploadDir, fileName);
             fs.writeFileSync(outputPath, imageBuffer);
             savedFiles.push(outputPath);
-            imageUrl = `${publicDefectImportUploadDir}/${fileName}`;
-            imageUrls = [imageUrl];
+            imageUrls = [`${publicDefectImportUploadDir}/${fileName}`];
           }
 
-          const statusFallback = existing
-            ? existing.TrangThai !== false && existing.TrangThai !== 0
-            : true;
-          const trangThai = parseImportStatus(row.TrangThai, statusFallback);
-          const normalizedDefectType = normalizeDefectType(row.LoaiLoiSXBT, row.DefectType);
-          const thuTu = parseOptionalOrder(row.ThuTu);
-
-          if (existing) {
-            await requestWithTransaction(transaction)
-              .input("Id", sql.Int, existing.Id)
-              .input("TenLoi", sql.NVarChar(255), row.TenLoi)
-              .input("DefectType", sql.NVarChar(20), normalizedDefectType)
-              .input("TrangThai", sql.Bit, trangThai)
-              .input("MoTa", sql.NVarChar(sql.MAX), row.MoTa || row.TenLoi || null)
-              .input("GhiChu", sql.NVarChar(sql.MAX), row.GhiChu || null)
-              .input("PhuongAnXuLy", sql.NVarChar(sql.MAX), row.PhuongAnXuLy || null)
-              .input("MaLoi", sql.NVarChar(50), row.MaLoi)
-              .input("PhanHe", sql.NVarChar(20), row.PhanHe || null)
-              .input("MaNhomLoi", sql.NVarChar(20), row.MaNhomLoi || null)
-              .input("LoaiLoiSXBT", sql.NVarChar(10), row.LoaiLoiSXBT || null)
-              .input("TenSanPham", sql.NVarChar(255), row.TenSanPham || null)
-              .input("ChungLoai", sql.NVarChar(255), row.ChungLoai || null)
-              .input("PhamViApDung", sql.NVarChar(500), row.PhamViApDung || null)
-              .input("ThiTruong", sql.NVarChar(255), row.ThiTruong || null)
-              .input("ImageUrl", sql.NVarChar(500), imageUrl)
-              .input("ImageUrls", sql.NVarChar(sql.MAX), stringifyImageUrls(imageUrls))
-              .input("ThuTu", sql.Int, thuTu)
-              .execute("sp_DM_UpdateDefect");
-            summary.updated += 1;
-          } else {
-            await requestWithTransaction(transaction)
-              .input("TenLoi", sql.NVarChar(255), row.TenLoi)
-              .input("DefectType", sql.NVarChar(20), normalizedDefectType)
-              .input("MoTa", sql.NVarChar(sql.MAX), row.MoTa || row.TenLoi || null)
-              .input("GhiChu", sql.NVarChar(sql.MAX), row.GhiChu || null)
-              .input("PhuongAnXuLy", sql.NVarChar(sql.MAX), row.PhuongAnXuLy || null)
-              .input("MaLoi", sql.NVarChar(50), row.MaLoi)
-              .input("PhanHe", sql.NVarChar(20), row.PhanHe || null)
-              .input("MaNhomLoi", sql.NVarChar(20), row.MaNhomLoi || null)
-              .input("LoaiLoiSXBT", sql.NVarChar(10), row.LoaiLoiSXBT || null)
-              .input("TenSanPham", sql.NVarChar(255), row.TenSanPham || null)
-              .input("ChungLoai", sql.NVarChar(255), row.ChungLoai || null)
-              .input("PhamViApDung", sql.NVarChar(500), row.PhamViApDung || null)
-              .input("ThiTruong", sql.NVarChar(255), row.ThiTruong || null)
-              .input("ImageUrl", sql.NVarChar(500), imageUrl)
-              .input("ImageUrls", sql.NVarChar(sql.MAX), stringifyImageUrls(imageUrls))
-              .input("ThuTu", sql.Int, thuTu)
-              .execute("sp_DM_CreateDefect");
-
-            if (!trangThai) {
-              const createdResult = await requestWithTransaction(transaction)
-                .input("MaLoi", sql.NVarChar(50), row.MaLoi)
-                .query("SELECT Id FROM dbo.DM_DEFECT WHERE MaLoi = @MaLoi");
-              const created = createdResult.recordset?.[0] || null;
-
-              if (created) {
-                await requestWithTransaction(transaction)
-                  .input("Id", sql.Int, created.Id)
-                  .input("TenLoi", sql.NVarChar(255), row.TenLoi)
-                  .input("DefectType", sql.NVarChar(20), normalizedDefectType)
-                  .input("TrangThai", sql.Bit, trangThai)
-                  .input("MoTa", sql.NVarChar(sql.MAX), row.MoTa || row.TenLoi || null)
-                  .input("GhiChu", sql.NVarChar(sql.MAX), row.GhiChu || null)
-                  .input("PhuongAnXuLy", sql.NVarChar(sql.MAX), row.PhuongAnXuLy || null)
-                  .input("MaLoi", sql.NVarChar(50), row.MaLoi)
-                  .input("PhanHe", sql.NVarChar(20), row.PhanHe || null)
-                  .input("MaNhomLoi", sql.NVarChar(20), row.MaNhomLoi || null)
-                  .input("LoaiLoiSXBT", sql.NVarChar(10), row.LoaiLoiSXBT || null)
-                  .input("TenSanPham", sql.NVarChar(255), row.TenSanPham || null)
-                  .input("ChungLoai", sql.NVarChar(255), row.ChungLoai || null)
-                  .input("PhamViApDung", sql.NVarChar(500), row.PhamViApDung || null)
-                  .input("ThiTruong", sql.NVarChar(255), row.ThiTruong || null)
-                  .input("ImageUrl", sql.NVarChar(500), imageUrl)
-                  .input("ImageUrls", sql.NVarChar(sql.MAX), stringifyImageUrls(imageUrls))
-                  .input("ThuTu", sql.Int, thuTu)
-                  .execute("sp_DM_UpdateDefect");
-              }
-            }
-
-            summary.created += 1;
+          const payload = normalizeDefectPayload({
+            ...row,
+            MoTa: row.MoTa || row.TenLoi || null,
+            ImageUrl: imageUrls[0] || null,
+            ImageUrls: imageUrls
+          });
+          const payloadError = validateDefectPayload(payload);
+          if (payloadError) {
+            rowErrors.push({ line: row.line, message: payloadError });
+            continue;
           }
+
+          const inserted = await requestWithTransaction(transaction)
+            .input("DefectId", sql.Int, existing?.Id || null)
+            .input("RequestType", sql.VarChar(10), existing ? "UPDATE" : "CREATE")
+            .input("ProposedData", sql.NVarChar(sql.MAX), JSON.stringify(payload))
+            .input("CreatedBy", sql.Int, userId)
+            .query(`
+              INSERT dbo.DM_DEFECT_REQUEST (DefectId, RequestType, ProposedData, Status, CreatedBy)
+              OUTPUT INSERTED.Id
+              VALUES (@DefectId, @RequestType, @ProposedData, 'PENDING', @CreatedBy)
+            `);
+          summary.requestIds.push(inserted.recordset[0].Id);
+          if (existing) summary.updated += 1;
+          else summary.created += 1;
         }
 
         await transaction.commit();
         return res.json({
           success: true,
-          message: "Import danh mục lỗi thành công",
-          summary
+          message: "Đã tạo các đề xuất từ file import",
+          summary,
+          errors: rowErrors
         });
       } catch (err) {
         await transaction.rollback();
@@ -942,17 +1373,12 @@ router.post(
       }
     } catch (err) {
       savedFiles.forEach((filePath) => {
-        try {
-          fs.unlinkSync(filePath);
-        } catch (unlinkErr) {
+        try { fs.unlinkSync(filePath); } catch (unlinkErr) {
           console.warn("Cannot cleanup imported defect image:", unlinkErr.message);
         }
       });
-      console.error("Import defect error:", err);
-      return res.status(500).json({
-        message: "Import danh mục lỗi thất bại",
-        error: err.message
-      });
+      console.error("Import defect request error:", err);
+      return res.status(500).json({ message: "Import đề xuất lỗi thất bại", error: err.message });
     }
   }
 );
@@ -973,57 +1399,14 @@ router.get('/kcs', authenticateToken, async (req, res) => {
 router.post(
   "/defect",
   authenticateToken,
-  authorize("QUAN_TRI_DM"),
   async (req, res) => {
-    const {
-      TenLoi,
-      DefectType,
-      MoTa,
-      GhiChu,
-      PhuongAnXuLy,
-      MaLoi,
-      PhanHe,
-      MaNhomLoi,
-      LoaiLoiSXBT,
-      TenSanPham,
-      ChungLoai,
-      PhamViApDung,
-      ThiTruong,
-      ImageUrl,
-      ImageUrls,
-      ThuTu
-    } = req.body;
-
     try {
       const pool = await poolPromise;
-      const normalizedDefectType = normalizeDefectType(LoaiLoiSXBT, DefectType);
-      const normalizedImageUrls = normalizeImageUrls(ImageUrls, ImageUrl).slice(0, 10);
-      const primaryImageUrl = normalizedImageUrls[0] || null;
-
-      await pool.request()
-        .input("TenLoi", sql.NVarChar(255), TenLoi)
-        .input("DefectType", sql.NVarChar(20), normalizedDefectType)
-        .input("MoTa", sql.NVarChar(sql.MAX), MoTa)
-        .input("GhiChu", sql.NVarChar(sql.MAX), GhiChu)
-        .input("PhuongAnXuLy", sql.NVarChar(sql.MAX), PhuongAnXuLy || null)
-        .input("MaLoi", sql.NVarChar(50), MaLoi || null)
-        .input("PhanHe", sql.NVarChar(20), PhanHe || null)
-        .input("MaNhomLoi", sql.NVarChar(20), MaNhomLoi || null)
-        .input("LoaiLoiSXBT", sql.NVarChar(10), LoaiLoiSXBT || null)
-        .input("TenSanPham", sql.NVarChar(255), TenSanPham || null)
-        .input("ChungLoai", sql.NVarChar(255), ChungLoai || null)
-        .input("PhamViApDung", sql.NVarChar(500), PhamViApDung || null)
-        .input("ThiTruong", sql.NVarChar(255), ThiTruong || null)
-        .input("ImageUrl", sql.NVarChar(500), primaryImageUrl)
-        .input("ImageUrls", sql.NVarChar(sql.MAX), stringifyImageUrls(normalizedImageUrls))
-        .input("ThuTu", sql.Int, ThuTu ?? null)
-        .execute("sp_DM_CreateDefect");
-
-      res.json({ message: "Tạo lỗi thành công" });
-
+      const row = await createDefectRequest(pool, req.user, req.body, null);
+      res.status(201).json({ message: "Đã gửi đề xuất lỗi mới chờ duyệt", request: row });
     } catch (err) {
       console.error("Create defect error:", err);
-      res.status(500).json({ message: "Tạo lỗi thất bại" });
+      res.status(err.statusCode || 500).json({ message: err.message || "Tạo đề xuất thất bại" });
     }
   }
 );
@@ -1031,61 +1414,14 @@ router.post(
 router.put(
   "/defect/:id",
   authenticateToken,
-  authorize("QUAN_TRI_DM"),
   async (req, res) => {
-    const { id } = req.params;
-    const {
-      TenLoi,
-      DefectType,
-      TrangThai,
-      MoTa,
-      GhiChu,
-      PhuongAnXuLy,
-      MaLoi,
-      PhanHe,
-      MaNhomLoi,
-      LoaiLoiSXBT,
-      TenSanPham,
-      ChungLoai,
-      PhamViApDung,
-      ThiTruong,
-      ImageUrl,
-      ImageUrls,
-      ThuTu
-    } = req.body;
-
     try {
       const pool = await poolPromise;
-      const normalizedDefectType = normalizeDefectType(LoaiLoiSXBT, DefectType);
-      const normalizedImageUrls = normalizeImageUrls(ImageUrls, ImageUrl).slice(0, 10);
-      const primaryImageUrl = normalizedImageUrls[0] || null;
-
-      await pool.request()
-        .input("Id", sql.Int, id)
-        .input("TenLoi", sql.NVarChar(255), TenLoi)
-        .input("DefectType", sql.NVarChar(20), normalizedDefectType)
-        .input("TrangThai", sql.Bit, TrangThai)
-        .input("MoTa", sql.NVarChar(sql.MAX), MoTa)
-        .input("GhiChu", sql.NVarChar(sql.MAX), GhiChu)
-        .input("PhuongAnXuLy", sql.NVarChar(sql.MAX), PhuongAnXuLy || null)
-        .input("MaLoi", sql.NVarChar(50), MaLoi || null)
-        .input("PhanHe", sql.NVarChar(20), PhanHe || null)
-        .input("MaNhomLoi", sql.NVarChar(20), MaNhomLoi || null)
-        .input("LoaiLoiSXBT", sql.NVarChar(10), LoaiLoiSXBT || null)
-        .input("TenSanPham", sql.NVarChar(255), TenSanPham || null)
-        .input("ChungLoai", sql.NVarChar(255), ChungLoai || null)
-        .input("PhamViApDung", sql.NVarChar(500), PhamViApDung || null)
-        .input("ThiTruong", sql.NVarChar(255), ThiTruong || null)
-        .input("ImageUrl", sql.NVarChar(500), primaryImageUrl)
-        .input("ImageUrls", sql.NVarChar(sql.MAX), stringifyImageUrls(normalizedImageUrls))
-        .input("ThuTu", sql.Int, ThuTu ?? null)
-        .execute("sp_DM_UpdateDefect");
-
-      res.json({ message: "Cập nhật thành công" });
-
+      const row = await createDefectRequest(pool, req.user, req.body, Number(req.params.id));
+      res.status(201).json({ message: "Đã gửi nội dung sửa đổi chờ duyệt", request: row });
     } catch (err) {
       console.error("Update defect error:", err);
-      res.status(500).json({ message: "Cập nhật thất bại" });
+      res.status(err.statusCode || 500).json({ message: err.message || "Tạo đề xuất sửa thất bại" });
     }
   }
 );

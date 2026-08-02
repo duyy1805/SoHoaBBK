@@ -848,6 +848,9 @@
                 <input id="keyword" type="search" placeholder="Nhập mã lỗi, tên lỗi, mô tả, phạm vi, thị trường...">
             </div>
             <button id="reloadButton" class="btn btn-ghost" type="button">Tải lại</button>
+            <button id="mineButton" class="btn btn-primary" type="button">Danh mục của tôi</button>
+            <button id="pendingButton" class="btn btn-ghost hidden" type="button">Chờ duyệt</button>
+            <button id="batchApproveButton" class="btn btn-ghost hidden" type="button">Duyệt tất cả đang chờ</button>
             <button id="clearFiltersButton" class="btn btn-ghost" type="button">Xóa lọc</button>
             <button id="downloadTemplateButton" class="btn btn-ghost" type="button">Tải file mẫu</button>
             <button id="importButton" class="btn btn-ghost" type="button">Import Excel</button>
@@ -1066,6 +1069,9 @@
 
         const emptyForm = {
             Id: null,
+            RequestId: null,
+            RequestRowVersion: null,
+            IsRequest: false,
             TenLoi: "",
             MaLoi: "",
             DefectType: "MAJOR",
@@ -1086,6 +1092,7 @@
 
         const state = {
             defects: [],
+            capabilities: {},
             filtered: [],
             keyword: "",
             filters: {
@@ -1114,7 +1121,8 @@
                 PhamViApDung: [],
                 ThiTruong: []
             },
-            activeFilterField: ""
+            activeFilterField: "",
+            view: "mine"
         };
 
         const els = {
@@ -1128,6 +1136,9 @@
             appAlert: document.getElementById("appAlert"),
             keyword: document.getElementById("keyword"),
             reloadButton: document.getElementById("reloadButton"),
+            mineButton: document.getElementById("mineButton"),
+            pendingButton: document.getElementById("pendingButton"),
+            batchApproveButton: document.getElementById("batchApproveButton"),
             downloadTemplateButton: document.getElementById("downloadTemplateButton"),
             importButton: document.getElementById("importButton"),
             createButton: document.getElementById("createButton"),
@@ -1412,7 +1423,30 @@
         async function loadDefects(options = {}) {
             setLoading(true);
             try {
-                state.defects = await apiFetch("/lookup/defect-list");
+                const result = await apiFetch("/lookup/defect-management");
+                state.capabilities = result.capabilities || {};
+                els.pendingButton.classList.toggle("hidden", !state.capabilities.canApprove);
+                els.batchApproveButton.classList.toggle("hidden", !state.capabilities.canApprove);
+                const requests = (result.requests || [])
+                    .filter((request) => request.Status !== "APPROVED")
+                    .map((request) => ({
+                        ...(request.ProposedData || {}),
+                        RequestId: request.Id,
+                        RequestRowVersion: request.RowVersion,
+                        IsRequest: true,
+                        ApprovalStatus: request.Status,
+                        CreatedBy: request.CreatedBy,
+                        CreatedByName: request.CreatedByName,
+                        CreatedAt: request.CreatedAt,
+                        ReviewedByName: request.ReviewedByName,
+                        ReviewedAt: request.ReviewedAt,
+                        ReviewNote: request.ReviewNote,
+                        DefectId: request.DefectId,
+                        ManagementKey: `request-${request.Id}`
+                    }));
+                const defects = (result.defects || [])
+                    .map((defect) => ({ ...defect, ApprovalStatus: "APPROVED", ManagementKey: `defect-${defect.Id}` }));
+                state.defects = [...requests, ...defects];
                 renderFilterOptions();
                 applyFilter();
                 if (options.showSuccess) {
@@ -1514,7 +1548,13 @@
 
         function applyFilter() {
             const keyword = state.keyword.trim().toLowerCase();
+            const currentUserId = Number(getUser()?.id || getUser()?.userId || 0);
             state.filtered = state.defects.filter((row) => {
+                const matchesView = state.view === "pending"
+                    ? row.ApprovalStatus === "PENDING"
+                    : (state.capabilities.isAdmin
+                        ? !row.IsRequest || Number(row.CreatedBy) === currentUserId
+                        : (!currentUserId || Number(row.CreatedBy) === currentUserId));
                 const matchesKeyword = !keyword || [
                         row.MaLoi,
                         row.TenLoi,
@@ -1545,7 +1585,7 @@
                     (!state.filters.ThiTruong || row.ThiTruong === state.filters.ThiTruong) &&
                     (!state.filters.TrangThai || String(row.TrangThai !== false && row.TrangThai !== 0) === state.filters.TrangThai);
 
-                return matchesKeyword && matchesFilters;
+                return matchesView && matchesKeyword && matchesFilters;
             });
 
             renderTable();
@@ -1624,6 +1664,7 @@
                 const primaryImageUrl = imageUrls[0] || "";
                 const imageUrl = getAssetUrl(primaryImageUrl);
                 const type = row.DefectType || "MAJOR";
+                const isOwner = Number(row.CreatedBy) === Number(getUser()?.id || getUser()?.userId || 0);
                 return `
                     <tr>
                         <td><span class="strong muted">${escapeHtml(row.ThuTu || index + 1)}</span></td>
@@ -1634,6 +1675,8 @@
                             <div class="strong line-clamp" title="${escapeHtml(row.TenLoi || "")}">${escapeHtml(row.TenLoi || "")}</div>
                             ${row.MoTa && row.MoTa !== row.TenLoi ? `<div class="muted line-clamp" style="font-size: 12px;">${escapeHtml(row.MoTa)}</div>` : ""}
                             ${row.GhiChu ? `<div class="line-clamp" style="font-size: 12px; color: var(--primary);">${escapeHtml(row.GhiChu)}</div>` : ""}
+                            <div class="muted" style="font-size: 11px; margin-top: 4px;">Người thêm: ${escapeHtml(row.CreatedByName || "Dữ liệu hệ thống")}</div>
+                            ${row.ReviewNote ? `<div style="font-size: 11px; color: var(--danger);">Từ chối: ${escapeHtml(row.ReviewNote)}</div>` : ""}
                         </td>
                         <td><span class="chip ${getDefectTypeClass(type)}">${escapeHtml(type)}</span></td>
                         <td class="center">${row.LoaiLoiSXBT ? `<span class="chip chip-major">${escapeHtml(row.LoaiLoiSXBT)}</span>` : "--"}</td>
@@ -1657,11 +1700,13 @@
                             ` : `<span class="muted">Không có</span>`}
                         </td>
                         <td class="center">
-                            <span class="chip ${row.TrangThai ? "chip-success" : ""}">${row.TrangThai ? "Hoạt động" : "Tạm ngưng"}</span>
+                            <span class="chip ${row.ApprovalStatus === "APPROVED" ? "chip-success" : row.ApprovalStatus === "PENDING" ? "chip-major" : ""}">${row.ApprovalStatus === "PENDING" ? "Chờ duyệt" : row.ApprovalStatus === "REJECTED" ? "Từ chối" : row.ApprovalStatus === "CANCELLED" ? "Đã rút" : (row.TrangThai ? "Đã duyệt" : "Tạm ngưng")}</span>
                         </td>
                         <td class="right">
-                            <button class="btn btn-icon" type="button" data-edit="${escapeHtml(row.Id)}" title="Chỉnh sửa">✎</button>
-                            <button class="btn btn-icon" type="button" data-delete="${escapeHtml(row.Id)}" title="Xóa">×</button>
+                            ${(!row.IsRequest && (isOwner || state.capabilities.isAdmin)) || (row.IsRequest && isOwner && (row.ApprovalStatus === "PENDING" || row.ApprovalStatus === "REJECTED")) ? `<button class="btn btn-icon" type="button" data-edit="${escapeHtml(row.ManagementKey)}" title="Chỉnh sửa">✎</button>` : ""}
+                            ${row.IsRequest && isOwner && (row.ApprovalStatus === "PENDING" || row.ApprovalStatus === "REJECTED") ? `<button class="btn btn-icon" type="button" data-cancel-request="${escapeHtml(row.RequestId)}" title="Rút đề xuất">×</button>` : ""}
+                            ${row.IsRequest && row.ApprovalStatus === "PENDING" && state.capabilities.canApprove ? `<button class="btn btn-icon" type="button" data-approve-request="${escapeHtml(row.RequestId)}" title="Duyệt">✓</button><button class="btn btn-icon" type="button" data-reject-request="${escapeHtml(row.RequestId)}" title="Từ chối">!</button>` : ""}
+                            ${!row.IsRequest && state.capabilities.canChangeStatus ? `<button class="btn btn-icon" type="button" data-status-id="${escapeHtml(row.Id)}" data-next-status="${row.TrangThai ? "false" : "true"}" title="${row.TrangThai ? "Tạm ngưng" : "Kích hoạt"}">${row.TrangThai ? "⊘" : "✓"}</button>` : ""}
                         </td>
                     </tr>
                 `;
@@ -1712,8 +1757,8 @@
             document.getElementById("TenLoi").focus();
         }
 
-        function openEditModal(id) {
-            const row = state.defects.find((item) => String(item.Id) === String(id));
+        function openEditModal(managementKey) {
+            const row = state.defects.find((item) => String(item.ManagementKey) === String(managementKey));
             if (!row) return;
 
             clearImageSelection();
@@ -1862,18 +1907,24 @@
                 payload.ImageUrls = imageUrls;
                 payload.ImageUrl = imageUrls[0] || null;
 
-                if (state.form.Id) {
+                if (state.form.IsRequest) {
+                    await apiFetch(`/lookup/defect-requests/${state.form.RequestId}`, {
+                        method: "PUT",
+                        body: JSON.stringify({ data: payload, rowVersion: state.form.RequestRowVersion })
+                    });
+                    showAlert("Đã cập nhật và gửi lại đề xuất.", "success");
+                } else if (state.form.Id) {
                     await apiFetch(`/lookup/defect/${state.form.Id}`, {
                         method: "PUT",
                         body: JSON.stringify(payload)
                     });
-                    showAlert("Đã cập nhật danh mục lỗi.", "success");
+                    showAlert("Đã gửi nội dung sửa đổi chờ duyệt.", "success");
                 } else {
                     await apiFetch("/lookup/defect", {
                         method: "POST",
                         body: JSON.stringify(payload)
                     });
-                    showAlert("Đã tạo danh mục lỗi.", "success");
+                    showAlert("Đã gửi đề xuất lỗi mới chờ duyệt.", "success");
                 }
 
                 closeDefectModal();
@@ -1885,21 +1936,88 @@
             }
         }
 
-        async function deleteDefect(id) {
+        async function changeDefectStatus(id, nextStatus) {
             const row = state.defects.find((item) => String(item.Id) === String(id));
             const label = row?.MaLoi || row?.TenLoi || `ID ${id}`;
-            if (!window.confirm(`Bạn có chắc chắn muốn xóa lỗi "${label}"?`)) return;
+            const action = nextStatus ? "kích hoạt" : "tạm ngưng";
+            if (!window.confirm(`Bạn có chắc chắn muốn ${action} lỗi "${label}"?`)) return;
 
             setLoading(true);
             try {
-                await apiFetch(`/lookup/defect/${id}`, { method: "DELETE" });
-                showAlert("Đã xóa danh mục lỗi.", "success");
+                await apiFetch(`/lookup/defect/${id}/status`, {
+                    method: "PATCH",
+                    body: JSON.stringify({ trangThai: nextStatus })
+                });
+                showAlert(`Đã ${action} danh mục lỗi.`, "success");
                 await loadDefects();
             } catch (error) {
                 showAlert(error.message);
             } finally {
                 setLoading(false);
             }
+        }
+
+        async function cancelDefectRequest(id) {
+            const row = state.defects.find((item) => String(item.RequestId) === String(id));
+            if (!row || !window.confirm("Rút đề xuất này khỏi hàng chờ duyệt?")) return;
+            try {
+                await apiFetch(`/lookup/defect-requests/${id}`, {
+                    method: "DELETE",
+                    body: JSON.stringify({ rowVersion: row.RequestRowVersion })
+                });
+                showAlert("Đã rút đề xuất.", "success");
+                await loadDefects();
+            } catch (error) { showAlert(error.message); }
+        }
+
+        async function approveDefectRequest(id) {
+            const row = state.defects.find((item) => String(item.RequestId) === String(id));
+            const current = row?.DefectId
+                ? state.defects.find((item) => !item.IsRequest && Number(item.Id) === Number(row.DefectId))
+                : null;
+            const fields = [["MaLoi", "Mã lỗi"], ["TenLoi", "Tên lỗi"], ["DefectType", "Phân loại"], ["MoTa", "Mô tả"], ["PhamViApDung", "Phạm vi"]];
+            const changes = current ? fields
+                .filter(([field]) => String(current[field] || "") !== String(row[field] || ""))
+                .map(([field, label]) => `${label}: ${current[field] || "---"} → ${row[field] || "---"}`)
+                .join("\n") : "Đề xuất tạo danh mục lỗi mới.";
+            if (!row || !window.confirm(`Duyệt đề xuất "${row.TenLoi || id}"?\n\n${changes || "Không có nội dung thay đổi."}`)) return;
+            try {
+                await apiFetch(`/lookup/defect-requests/${id}/approve`, {
+                    method: "POST",
+                    body: JSON.stringify({ rowVersion: row.RequestRowVersion })
+                });
+                showAlert("Đã duyệt đề xuất.", "success");
+                await loadDefects();
+            } catch (error) { showAlert(error.message); }
+        }
+
+        async function rejectDefectRequest(id) {
+            const row = state.defects.find((item) => String(item.RequestId) === String(id));
+            if (!row) return;
+            const reviewNote = window.prompt("Nhập lý do từ chối đề xuất:");
+            if (!reviewNote || !reviewNote.trim()) return;
+            try {
+                await apiFetch(`/lookup/defect-requests/${id}/reject`, {
+                    method: "POST",
+                    body: JSON.stringify({ reviewNote: reviewNote.trim(), rowVersion: row.RequestRowVersion })
+                });
+                showAlert("Đã từ chối đề xuất.", "success");
+                await loadDefects();
+            } catch (error) { showAlert(error.message); }
+        }
+
+        async function approveAllPendingRequests() {
+            const requests = state.defects.filter((item) => item.IsRequest && item.ApprovalStatus === "PENDING");
+            if (!requests.length) return showAlert("Không có đề xuất đang chờ duyệt.");
+            if (!window.confirm(`Duyệt toàn bộ ${requests.length} đề xuất đang chờ?`)) return;
+            try {
+                const result = await apiFetch("/lookup/defect-requests/batch-approve", {
+                    method: "POST",
+                    body: JSON.stringify({ items: requests.map((item) => ({ id: item.RequestId, rowVersion: item.RequestRowVersion })) })
+                });
+                showAlert(result.message || "Đã duyệt hàng loạt.", result.errors?.length ? "error" : "success");
+                await loadDefects();
+            } catch (error) { showAlert(error.message); }
         }
 
         function renderPreviewImage() {
@@ -1995,6 +2113,7 @@
 
             if (result.type === "success") {
                 const summary = result.summary || {};
+                const errors = result.errors || [];
                 els.importResult.innerHTML = `
                     <div class="alert alert-success" style="margin: 0; max-width: none;">
                         <div>${escapeHtml(result.message)}</div>
@@ -2004,6 +2123,7 @@
                             <div><span class="muted">Cập nhật</span><br><strong>${escapeHtml(summary.updated ?? 0)}</strong></div>
                             <div><span class="muted">Có ảnh</span><br><strong>${escapeHtml(summary.withImages ?? 0)}</strong></div>
                         </div>
+                        ${errors.length ? `<div style="margin-top: 10px;"><strong>${errors.length} dòng không tạo được đề xuất:</strong>${errors.map((item) => `<div>Dòng ${escapeHtml(item.line)}: ${escapeHtml(item.message)}</div>`).join("")}</div>` : ""}
                     </div>
                 `;
                 return;
@@ -2052,7 +2172,8 @@
                 renderImportResult({
                     type: "success",
                     message: result?.message || "Import thành công",
-                    summary: result?.summary
+                    summary: result?.summary,
+                    errors: result?.errors || []
                 });
                 setImportFile(null);
                 await loadDefects();
@@ -2121,6 +2242,19 @@
         els.clearFiltersButton.addEventListener("click", clearFilters);
 
         els.reloadButton.addEventListener("click", () => loadDefects({ showSuccess: true }));
+        els.mineButton.addEventListener("click", () => {
+            state.view = "mine";
+            els.mineButton.className = "btn btn-primary";
+            els.pendingButton.className = state.capabilities.canApprove ? "btn btn-ghost" : "btn btn-ghost hidden";
+            applyFilter();
+        });
+        els.pendingButton.addEventListener("click", () => {
+            state.view = "pending";
+            els.pendingButton.className = "btn btn-primary";
+            els.mineButton.className = "btn btn-ghost";
+            applyFilter();
+        });
+        els.batchApproveButton.addEventListener("click", approveAllPendingRequests);
         els.downloadTemplateButton.addEventListener("click", downloadDefectTemplate);
         els.downloadTemplateInModalButton.addEventListener("click", downloadDefectTemplate);
         els.importButton.addEventListener("click", openImportModal);
@@ -2190,11 +2324,17 @@
 
         els.defectTableBody.addEventListener("click", (event) => {
             const editButton = event.target.closest("[data-edit]");
-            const deleteButton = event.target.closest("[data-delete]");
+            const statusButton = event.target.closest("[data-status-id]");
+            const cancelRequestButton = event.target.closest("[data-cancel-request]");
+            const approveRequestButton = event.target.closest("[data-approve-request]");
+            const rejectRequestButton = event.target.closest("[data-reject-request]");
             const previewButton = event.target.closest("[data-preview-list]");
 
             if (editButton) openEditModal(editButton.dataset.edit);
-            if (deleteButton) deleteDefect(deleteButton.dataset.delete);
+            if (statusButton) changeDefectStatus(statusButton.dataset.statusId, statusButton.dataset.nextStatus === "true");
+            if (cancelRequestButton) cancelDefectRequest(cancelRequestButton.dataset.cancelRequest);
+            if (approveRequestButton) approveDefectRequest(approveRequestButton.dataset.approveRequest);
+            if (rejectRequestButton) rejectDefectRequest(rejectRequestButton.dataset.rejectRequest);
             if (previewButton) {
                 openPreview(
                     parsePreviewList(previewButton.dataset.previewList),
