@@ -16,7 +16,8 @@ const isDepartmentLead = (user) => Array.isArray(user?.roles) && user.roles.some
 
 const KPH_V01_CUSTOM_FIELDS = new Set([
     "TenBoPhan", "MaBoPhan", "TenSanPham", "MaSanPham", "MaTruyNguyen",
-    "DonHang", "Lot", "SoLuongKPH", "DauTuan", "PhatHienTu", "MucDo"
+    "DonHang", "Lot", "SoLuongKPH", "DauTuan", "PhatHienTu", "MucDo",
+    "SxbtMucCChuyenTraKH", "SxbtMucCXuLyTaiNhaMay"
 ]);
 
 const hasStrictLeadRole = (user) => Array.isArray(user?.roles) &&
@@ -1561,7 +1562,7 @@ router.post('/custom-fields', authenticateToken, async (req, res) => {
         const normalizedFields = Object.fromEntries(
             Object.entries(fields || {}).filter(([key]) => KPH_V01_CUSTOM_FIELDS.has(key))
         );
-        if (Object.keys(normalizedFields).length === 0) return res.status(400).json({ message: "Không có trường hợp lệ để lưu" });
+        if (Object.keys(normalizedFields).length === 0) return res.status(400).json({ message: "Không có trường dữ liệu hợp lệ để lưu" });
         const jsonString = JSON.stringify(normalizedFields);
         await pool.request()
             .input('BienBanId', sql.Int, bienBanId)
