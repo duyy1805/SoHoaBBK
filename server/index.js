@@ -17,6 +17,7 @@ app.use(express.json());
 app.use(cors());
 
 app.use('/api/auth', authRouter);
+app.use('/api/admin', require('./routes/admin'));
 app.use('/api/hr', hrRouter);
 app.use('/api/phieu-kiem/cong-doan', require('./routes/phieuKiemCongDoan'));
 app.use('/api/phieu-kiem', require('./routes/phieuKiem'));

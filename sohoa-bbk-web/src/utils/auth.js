@@ -128,6 +128,13 @@ export const hasPermission = (permission) => {
     return user.permissions.includes(permission);
 };
 
+export const canManageUsers = (user = getCurrentUser()) => {
+    const roles = Array.isArray(user?.roles) ? user.roles : [];
+    const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+    return roles.some((role) => String(role || "").toUpperCase() === "ADMIN")
+        || permissions.includes("QUAN_TRI_NGUOI_DUNG");
+};
+
 /* ================================
    LOGOUT
    ================================ */

@@ -17,6 +17,8 @@ import PhieuXuLyKhongPhuHopList from '../features/BienBan/PhieuXuLyKhongPhuHopLi
 import PhieuXuLyKhongPhuHopDetail from '../features/BienBan/PhieuXuLyKhongPhuHopDetail';
 import CongDoanList from '../features/PhieuKiem/pages/CongDoanList';
 import CongDoanDetail from '../features/PhieuKiem/pages/CongDoanDetail';
+import UserAdminPage from '../features/UserAdmin/UserAdminPage';
+import UserAdminRoute from './UserAdminRoute';
 
 export default function AppRoutes() {
     return (
@@ -42,6 +44,9 @@ export default function AppRoutes() {
                     <Route path="/bien-ban/:id" element={<BienBanDetail />} />
                     <Route path="/phieu-xu-ly-khong-phu-hop" element={<PhieuXuLyKhongPhuHopList />} />
                     <Route path="/phieu-xu-ly-khong-phu-hop/:id" element={<PhieuXuLyKhongPhuHopDetail />} />
+                    <Route element={<UserAdminRoute />}>
+                        <Route path="/quan-ly-nguoi-dung" element={<UserAdminPage />} />
+                    </Route>
                 </Route>
             </Route>
 

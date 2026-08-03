@@ -14,7 +14,9 @@ import AssignmentIcon from '@mui/icons-material/Assignment';
 import DescriptionIcon from '@mui/icons-material/Description';
 import FactoryIcon from '@mui/icons-material/Factory';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
+import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { canManageUsers, getCurrentUser } from '../../utils/auth';
 
 export default function Sidebar({
     collapsed,
@@ -25,14 +27,16 @@ export default function Sidebar({
 }) {
     const location = useLocation();
     const navigate = useNavigate();
+    const showUserAdmin = canManageUsers(getCurrentUser());
 
     const menus = [
         { label: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
         { label: 'Phiếu kiểm', icon: <AssignmentIcon />, path: '/phieu-kiem' },
         { label: 'Biên bản', icon: <DescriptionIcon />, path: '/bien-ban' },
         { label: 'Phiếu xử lý không phù hợp', icon: <ReportProblemIcon />, path: '/phieu-xu-ly-khong-phu-hop' },
-        { label: 'Danh mục', icon: <FactoryIcon />, path: '/danh-muc' }
-    ];
+        { label: 'Danh mục', icon: <FactoryIcon />, path: '/danh-muc' },
+        { label: 'Quản lý người dùng', icon: <ManageAccountsIcon />, path: '/quan-ly-nguoi-dung', visible: showUserAdmin }
+    ].filter((menu) => menu.visible !== false);
 
     const renderContent = () => (
         <Box

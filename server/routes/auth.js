@@ -1,11 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const argon2 = require('argon2');
 const jwt = require('jsonwebtoken');
 const sql = require('mssql');
 const crypto = require('crypto');
 const authenticateToken = require('../middlewares/auth.middleware');
-const authorize = require('../middlewares/permission.middleware');
+const { requireUserAdministrator } = require('../middlewares/userAdmin.middleware');
 
 const { poolPromise } = require('../db');
 
@@ -15,54 +14,10 @@ const md5 = (text) => {
 /* =========================================================
    POST /auth/register
    ========================================================= */
-router.post('/register', async (req, res) => {
-    const { username, password, fullName, email, boPhan, roleId } = req.body;
-
-    if (!username || !password) {
-        return res.status(400).json({
-            message: 'Missing username or password'
-        });
-    }
-
-    try {
-        const pool = await poolPromise;
-        // const passwordHash = await argon2.hash(password);
-        const passwordHash = await md5(password);
-
-        const request = pool.request()
-            .input('Username', sql.NVarChar, username)
-            .input('PasswordHash', sql.NVarChar, passwordHash)
-            .input('FullName', sql.NVarChar, fullName)
-            .input('Email', sql.NVarChar, email)
-            .input('BoPhan', sql.NVarChar, boPhan);
-
-        // roleId là optional
-        if (roleId) {
-            request.input('RoleId', sql.Int, roleId);
-        } else {
-            request.input('RoleId', sql.Int, null);
-        }
-
-        const result = await request.execute('sp_User_Register_WithRole');
-
-        res.json({
-            success: true,
-            userId: result.recordset[0].UserId,
-            roleId: result.recordset[0].RoleId
-        });
-
-    } catch (err) {
-        if (err.message && err.message.includes('USERNAME_EXISTS')) {
-            return res.status(400).json({
-                message: 'Username already exists'
-            });
-        }
-
-        console.error('Register error:', err);
-        res.status(500).json({
-            message: 'Register failed'
-        });
-    }
+router.post('/register', authenticateToken, requireUserAdministrator, async (req, res) => {
+    res.status(410).json({
+        message: 'Endpoint đăng ký cũ đã ngừng sử dụng. Vui lòng tạo tài khoản tại /api/admin/users.'
+    });
 });
 
 /* =========================================================
@@ -103,14 +58,28 @@ router.post('/login', async (req, res) => {
         /* 3️⃣ Lấy roles */
         const rolesResult = await pool.request()
             .input('UserId', sql.Int, user.Id)
-            .execute('sp_User_GetRoles');
+            .query(`
+                SELECT DISTINCT r.RoleCode
+                FROM dbo.USER_ROLE ur
+                JOIN dbo.ROLES r ON r.Id=ur.RoleId
+                WHERE ur.UserId=@UserId AND ISNULL(r.TrangThai,1)=1
+                ORDER BY r.RoleCode
+            `);
 
         const roles = rolesResult.recordset.map(r => r.RoleCode);
 
         /* 4️⃣ Lấy permissions */
         const permResult = await pool.request()
             .input('UserId', sql.Int, user.Id)
-            .execute('sp_User_GetPermissions');
+            .query(`
+                SELECT DISTINCT p.PermissionCode
+                FROM dbo.USER_ROLE ur
+                JOIN dbo.ROLES r ON r.Id=ur.RoleId AND ISNULL(r.TrangThai,1)=1
+                JOIN dbo.ROLE_PERMISSION rp ON rp.RoleId=r.Id
+                JOIN dbo.PERMISSIONS p ON p.Id=rp.PermissionId
+                WHERE ur.UserId=@UserId
+                ORDER BY p.PermissionCode
+            `);
 
         const permissions = permResult.recordset.map(p => p.PermissionCode);
 
