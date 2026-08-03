@@ -504,6 +504,25 @@ flowchart TD
 
 ---
 
+## 14.1. Luồng bổ sung danh mục lỗi
+
+```mermaid
+flowchart LR
+    A["Người dùng báo tên và mô tả lỗi"] --> B["Chờ B7 bổ sung"]
+    B --> C["Nhân viên B7 hoàn thiện thông tin"]
+    C --> D["TP B7 có quyền duyệt"]
+    D -->|"Từ chối"| B
+    D -->|"Duyệt"| E["Lỗi xuất hiện trong danh mục phục vụ kiểm"]
+```
+
+- Mọi tài khoản đăng nhập xem được danh mục lỗi đã duyệt và được báo lỗi mới.
+- Người báo bắt buộc nhập tên và mô tả; nhóm lỗi, phân loại và các thông tin khác có thể để trống nếu chưa biết.
+- Nhân viên B7 chọn nhóm nghiệp vụ `L01` đến `L05`, bổ sung thông tin và gửi TP B7 duyệt. Mã lỗi được tự sinh khi duyệt nếu chưa có.
+- Người thuộc B7 cần role `TP_BP` và permission `DUYET_DANH_MUC_LOI` để duyệt/từ chối; role `ADMIN` được thực hiện toàn bộ thao tác quản trị luồng này.
+- Đề xuất chưa duyệt không xuất hiện trong các màn ghi nhận lỗi của phiếu kiểm.
+
+---
+
 ## 15. Các lỗi thường gặp và cách tự kiểm tra
 
 | Thông báo/hiện tượng | Nguyên nhân thường gặp | Cách xử lý |
@@ -596,6 +615,7 @@ Các trạng thái `CHO_TP_B8`, `DA_KET_LUAN`, `DA_XAC_NHAN` vẫn xuất hiện
 | `XAC_NHAN_NGUOI_XU_LY` | Quản lý phân công/xử lý biên bản theo luồng được phép |
 | `KET_LUAN` | Kết luận/hoàn tất các bước quản lý và biên bản SXBT |
 | `THEO_DOI_KPH` | Ghi đánh giá hiệu lực KPH |
+| `DUYET_DANH_MUC_LOI` | Duyệt/từ chối đề xuất danh mục lỗi; người thường phải thuộc B7 và có role `TP_BP`; `ADMIN` được phép thao tác toàn bộ |
 | `QUAN_TRI_DM` | Quản trị danh mục; có thể được xem như quyền quản lý ở một số luồng |
 
 > Permission chỉ là điều kiện cần. Nhiều thao tác còn kiểm tra bộ phận, người tạo, người hoàn tất và trạng thái hiện tại.

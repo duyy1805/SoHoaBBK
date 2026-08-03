@@ -9,6 +9,7 @@ dist/
 build/
 
 *.sql
+!server/sql/migrations/20260803_defect_b7_approval_workflow.sql
 # !server/sql/update_phieu_kiem_tbp_flow.sql
 # !server/sql/migrations/
 # !server/sql/migrations/*.sql

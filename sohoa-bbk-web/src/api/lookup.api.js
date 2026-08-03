@@ -28,6 +28,10 @@ export const updateDefectRequest = (id, data, rowVersion) => {
     return axiosClient.put(`/lookup/defect-requests/${id}`, { data, rowVersion });
 };
 
+export const submitDefectRequest = (id, rowVersion) => {
+    return axiosClient.post(`/lookup/defect-requests/${id}/submit`, { rowVersion });
+};
+
 export const cancelDefectRequest = (id, rowVersion) => {
     return axiosClient.delete(`/lookup/defect-requests/${id}`, { data: { rowVersion } });
 };

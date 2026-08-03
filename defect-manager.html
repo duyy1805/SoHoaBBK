@@ -557,6 +557,38 @@
             width: min(640px, 100%);
         }
 
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .detail-card {
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface-soft);
+        }
+
+        .detail-card .muted {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+
+        .detail-text {
+            margin-top: 16px;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .detail-images {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
         .modal-header,
         .modal-footer {
             padding: 16px 20px;
@@ -787,7 +819,8 @@
 
             .form-grid,
             .image-picker,
-            .import-summary {
+            .import-summary,
+            .detail-grid {
                 grid-template-columns: 1fr;
             }
 
@@ -848,13 +881,14 @@
                 <input id="keyword" type="search" placeholder="Nhập mã lỗi, tên lỗi, mô tả, phạm vi, thị trường...">
             </div>
             <button id="reloadButton" class="btn btn-ghost" type="button">Tải lại</button>
-            <button id="mineButton" class="btn btn-primary" type="button">Toàn bộ danh mục</button>
-            <button id="pendingButton" class="btn btn-ghost hidden" type="button">Chờ duyệt</button>
-            <button id="batchApproveButton" class="btn btn-ghost hidden" type="button">Duyệt tất cả đang chờ</button>
+            <button id="mineButton" class="btn btn-primary" type="button">Danh mục và báo lỗi của tôi</button>
+            <button id="waitingB7Button" class="btn btn-ghost hidden" type="button">Chờ B7 bổ sung</button>
+            <button id="pendingButton" class="btn btn-ghost hidden" type="button">Chờ TP B7 duyệt</button>
+            <button id="batchApproveButton" class="btn btn-ghost hidden" type="button" disabled>Duyệt đã chọn (0)</button>
             <button id="clearFiltersButton" class="btn btn-ghost" type="button">Xóa lọc</button>
             <button id="downloadTemplateButton" class="btn btn-ghost" type="button">Tải file mẫu</button>
             <button id="importButton" class="btn btn-ghost" type="button">Import Excel</button>
-            <button id="createButton" class="btn btn-primary" type="button">Thêm lỗi mới</button>
+            <button id="createButton" class="btn btn-primary" type="button">Báo lỗi mới</button>
         </section>
 
         <section class="main-card">
@@ -865,6 +899,7 @@
                 <table>
                     <thead>
                         <tr>
+                            <th class="center" style="width: 48px;"><input id="selectAllPending" type="checkbox" class="hidden" aria-label="Chọn tất cả đề xuất đang hiển thị"></th>
                             <th style="width: 76px;">STT</th>
                             <th style="width: 130px;">
                                 Mã lỗi <button class="th-filter-toggle" type="button" data-toggle-filter="MaLoi" aria-label="Lọc mã lỗi">⌕</button>
@@ -915,14 +950,24 @@
 
             <div class="modal-body">
                 <div class="form-grid">
+                    <div class="field">
+                        <label for="MaLoi">Mã lỗi</label>
+                        <input id="MaLoi" name="MaLoi" readonly placeholder="Tự sinh khi duyệt">
+                    </div>
+
+                    <div class="field">
+                        <label for="ThuTu">Thứ tự</label>
+                        <input id="ThuTu" name="ThuTu" type="number" min="0">
+                    </div>
+
                     <div class="field span-2">
                         <label for="TenLoi">Tên lỗi *</label>
                         <textarea id="TenLoi" name="TenLoi" required placeholder="Ví dụ: Thùng móp méo, Vải không đạt yêu cầu..."></textarea>
                     </div>
 
                     <div class="field span-2">
-                        <label for="MoTa">Mô tả chi tiết</label>
-                        <textarea id="MoTa" name="MoTa"></textarea>
+                        <label for="MoTa">Mô tả chi tiết *</label>
+                        <textarea id="MoTa" name="MoTa" required></textarea>
                     </div>
 
                     <div class="field span-2">
@@ -945,21 +990,20 @@
                     </div>
 
                     <div class="field">
-                        <label for="DefectType">Phân loại độ nghiêm trọng *</label>
-                        <select id="DefectType" name="DefectType" required></select>
-                    </div>
-
-                    <div id="TrangThaiField" class="field">
-                        <label for="TrangThai">Trạng thái</label>
-                        <select id="TrangThai" name="TrangThai">
-                            <option value="1">Hoạt động</option>
-                            <option value="0">Tạm ngưng</option>
-                        </select>
+                        <label for="DefectType">Phân loại độ nghiêm trọng</label>
+                        <select id="DefectType" name="DefectType"></select>
                     </div>
 
                     <div class="field">
-                        <label for="MaNhomLoi">Mã nhóm lỗi *</label>
-                        <input id="MaNhomLoi" name="MaNhomLoi" required placeholder="Ví dụ: L05">
+                        <label for="MaNhomLoi">Mã nhóm lỗi</label>
+                        <select id="MaNhomLoi" name="MaNhomLoi">
+                            <option value="">Chưa xác định</option>
+                            <option value="L01">L01</option>
+                            <option value="L02">L02</option>
+                            <option value="L03">L03</option>
+                            <option value="L04">L04</option>
+                            <option value="L05">L05</option>
+                        </select>
                     </div>
 
                     <div class="field">
@@ -1011,6 +1055,19 @@
                 <button id="saveButton" class="btn btn-primary" type="submit">Lưu dữ liệu</button>
             </div>
         </form>
+    </section>
+
+    <section id="detailModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="detailTitle">Chi tiết lỗi</h2>
+                <button class="btn btn-icon" type="button" data-close-detail aria-label="Đóng">×</button>
+            </div>
+            <div id="detailContent" class="modal-body"></div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" type="button" data-close-detail>Đóng</button>
+            </div>
+        </div>
     </section>
 
     <section id="importModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="importTitle">
@@ -1074,7 +1131,7 @@
             IsRequest: false,
             TenLoi: "",
             MaLoi: "",
-            DefectType: "MAJOR",
+            DefectType: "",
             MoTa: "",
             GhiChu: "",
             PhuongAnXuLy: "",
@@ -1108,6 +1165,7 @@
                 TrangThai: ""
             },
             form: { ...emptyForm },
+            formMode: "create",
             imageFiles: [],
             imagePreviewUrls: [],
             previewUrls: [],
@@ -1115,6 +1173,7 @@
             loading: false,
             importFile: null,
             importing: false,
+            selectedRequestIds: new Set(),
             filterOptions: {
                 TenSanPham: [],
                 ChungLoai: [],
@@ -1137,8 +1196,10 @@
             keyword: document.getElementById("keyword"),
             reloadButton: document.getElementById("reloadButton"),
             mineButton: document.getElementById("mineButton"),
+            waitingB7Button: document.getElementById("waitingB7Button"),
             pendingButton: document.getElementById("pendingButton"),
             batchApproveButton: document.getElementById("batchApproveButton"),
+            selectAllPending: document.getElementById("selectAllPending"),
             downloadTemplateButton: document.getElementById("downloadTemplateButton"),
             importButton: document.getElementById("importButton"),
             createButton: document.getElementById("createButton"),
@@ -1149,6 +1210,8 @@
             defectModal: document.getElementById("defectModal"),
             defectForm: document.getElementById("defectForm"),
             modalTitle: document.getElementById("modalTitle"),
+            detailModal: document.getElementById("detailModal"),
+            detailContent: document.getElementById("detailContent"),
             saveButton: document.getElementById("saveButton"),
             imageFile: document.getElementById("ImageFile"),
             imagePreviewBox: document.getElementById("imagePreviewBox"),
@@ -1364,7 +1427,7 @@
                 }
 
                 if (response.status === 403) {
-                    throw new Error("Tài khoản không có quyền QUAN_TRI_DM để thực hiện thao tác này.");
+                    throw new Error(data?.message || "Tài khoản không có quyền thực hiện thao tác này.");
                 }
 
                 const error = new Error(data?.message || data || "Có lỗi xảy ra khi gọi API.");
@@ -1421,12 +1484,15 @@
         }
 
         async function loadDefects(options = {}) {
-            setLoading(true);
+            if (!options.background) setLoading(true);
             try {
                 const result = await apiFetch("/lookup/defect-management");
                 state.capabilities = result.capabilities || {};
+                els.waitingB7Button.classList.toggle("hidden", !state.capabilities.canPrepare);
                 els.pendingButton.classList.toggle("hidden", !state.capabilities.canApprove);
                 els.batchApproveButton.classList.toggle("hidden", !state.capabilities.canApprove);
+                els.downloadTemplateButton.classList.toggle("hidden", !state.capabilities.canImport);
+                els.importButton.classList.toggle("hidden", !state.capabilities.canImport);
                 const requests = (result.requests || [])
                     .filter((request) => request.Status !== "APPROVED")
                     .map((request) => ({
@@ -1442,11 +1508,13 @@
                         ReviewedAt: request.ReviewedAt,
                         ReviewNote: request.ReviewNote,
                         DefectId: request.DefectId,
+                        RequestType: request.RequestType,
                         ManagementKey: `request-${request.Id}`
                     }));
                 const defects = (result.defects || [])
                     .map((defect) => ({ ...defect, ApprovalStatus: "APPROVED", ManagementKey: `defect-${defect.Id}` }));
                 state.defects = [...requests, ...defects];
+                state.selectedRequestIds.clear();
                 renderFilterOptions();
                 applyFilter();
                 if (options.showSuccess) {
@@ -1455,8 +1523,75 @@
             } catch (error) {
                 showAlert(error.message);
             } finally {
-                setLoading(false);
+                if (!options.background) setLoading(false);
             }
+        }
+
+        function refreshLocalView() {
+            renderFilterOptions();
+            applyFilter();
+        }
+
+        function updateBatchControls() {
+            const visiblePendingIds = state.filtered
+                .filter((item) => item.IsRequest && item.ApprovalStatus === "PENDING")
+                .map((item) => Number(item.RequestId));
+            const selectedCount = state.selectedRequestIds.size;
+            els.batchApproveButton.disabled = selectedCount === 0;
+            els.batchApproveButton.textContent = `Duyệt đã chọn (${selectedCount})`;
+            els.selectAllPending.classList.toggle("hidden", state.view !== "pending" || !visiblePendingIds.length);
+            els.selectAllPending.checked = visiblePendingIds.length > 0 && visiblePendingIds.every((id) => state.selectedRequestIds.has(id));
+            els.selectAllPending.indeterminate = visiblePendingIds.some((id) => state.selectedRequestIds.has(id)) && !els.selectAllPending.checked;
+        }
+
+        function upsertLocalRequest(request, payload, base = {}) {
+            if (!request?.Id) return;
+            const currentUser = getUser() || {};
+            const existingIndex = state.defects.findIndex((item) => item.IsRequest && Number(item.RequestId) === Number(request.Id));
+            const existing = existingIndex >= 0 ? state.defects[existingIndex] : {};
+            const next = {
+                ...existing,
+                ...base,
+                ...payload,
+                RequestId: request.Id,
+                RequestRowVersion: request.RowVersion || existing.RequestRowVersion,
+                IsRequest: true,
+                ApprovalStatus: request.Status || existing.ApprovalStatus || "WAITING_B7",
+                CreatedBy: existing.CreatedBy || base.CreatedBy || currentUser.id || currentUser.userId,
+                CreatedByName: existing.CreatedByName || base.CreatedByName || currentUser.fullName || currentUser.username || "Bạn",
+                CreatedAt: existing.CreatedAt || base.CreatedAt || new Date().toISOString(),
+                ManagementKey: `request-${request.Id}`
+            };
+            if (existingIndex >= 0) state.defects.splice(existingIndex, 1, next);
+            else state.defects.unshift(next);
+            refreshLocalView();
+        }
+
+        function applyLocalApprovals(approvedItems) {
+            (approvedItems || []).forEach((approved) => {
+                const requestIndex = state.defects.findIndex((item) => item.IsRequest && Number(item.RequestId) === Number(approved.requestId));
+                if (requestIndex < 0) return;
+                const request = state.defects[requestIndex];
+                const defectIndex = state.defects.findIndex((item) => !item.IsRequest && Number(item.Id) === Number(approved.defectId));
+                const catalogRow = {
+                    ...(defectIndex >= 0 ? state.defects[defectIndex] : {}),
+                    ...request,
+                    Id: approved.defectId,
+                    MaLoi: approved.maLoi,
+                    TrangThai: true,
+                    IsRequest: false,
+                    ApprovalStatus: "APPROVED",
+                    ManagementKey: `defect-${approved.defectId}`,
+                    RequestId: null,
+                    RequestRowVersion: null
+                };
+                state.defects.splice(requestIndex, 1);
+                state.selectedRequestIds.delete(Number(approved.requestId));
+                const currentDefectIndex = state.defects.findIndex((item) => !item.IsRequest && Number(item.Id) === Number(approved.defectId));
+                if (currentDefectIndex >= 0) state.defects.splice(currentDefectIndex, 1, catalogRow);
+                else state.defects.unshift(catalogRow);
+            });
+            refreshLocalView();
         }
 
         function getUniqueOptions(field) {
@@ -1552,6 +1687,8 @@
             state.filtered = state.defects.filter((row) => {
                 const matchesView = state.view === "pending"
                     ? row.ApprovalStatus === "PENDING"
+                    : state.view === "waiting-b7"
+                        ? row.IsRequest && ["WAITING_B7", "REJECTED"].includes(row.ApprovalStatus)
                     : !row.IsRequest || Number(row.CreatedBy) === currentUserId;
                 const matchesKeyword = !keyword || [
                         row.MaLoi,
@@ -1625,7 +1762,7 @@
             const type = String(defectType || "").trim().toUpperCase();
             if (loai === "C") return "CRITICAL";
             if (loai === "B" && type === "CRITICAL") return "MAJOR";
-            return type || "MAJOR";
+            return type || "";
         }
 
         function renderDefectTypeOptions() {
@@ -1634,10 +1771,10 @@
             const current = normalizeDefectType(loai, select.value || state.form.DefectType);
             const options = loai === "C"
                 ? [["CRITICAL", "CRITICAL (Nghiêm trọng)"]]
-                : [["MAJOR", "MAJOR (Nặng)"], ["MINOR", "MINOR (Nhẹ)"]];
+                : [["", "Chưa xác định"], ["MAJOR", "MAJOR (Nặng)"], ["MINOR", "MINOR (Nhẹ)"]];
 
             select.innerHTML = options.map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
-            select.value = options.some(([value]) => value === current) ? current : options[0][0];
+            select.value = options.some(([value]) => value === current) ? current : "";
             select.disabled = loai === "C";
         }
 
@@ -1645,7 +1782,7 @@
             if (!state.filtered.length) {
                 els.defectTableBody.innerHTML = `
                     <tr>
-                        <td colspan="13">
+                        <td colspan="14">
                             <div class="empty-state">
                                 <div class="icon">!</div>
                                 <div class="strong">Chưa có dữ liệu lỗi</div>
@@ -1654,6 +1791,7 @@
                         </td>
                     </tr>
                 `;
+                updateBatchControls();
                 return;
             }
 
@@ -1661,10 +1799,11 @@
                 const imageUrls = getDefectImageUrls(row);
                 const primaryImageUrl = imageUrls[0] || "";
                 const imageUrl = getAssetUrl(primaryImageUrl);
-                const type = row.DefectType || "MAJOR";
+                const type = row.DefectType || "";
                 const isOwner = Number(row.CreatedBy) === Number(getUser()?.id || getUser()?.userId || 0);
                 return `
-                    <tr>
+                    <tr data-detail-key="${escapeHtml(row.ManagementKey)}" tabindex="0" title="Nhấn để xem chi tiết">
+                        <td class="center">${row.IsRequest && row.ApprovalStatus === "PENDING" && state.capabilities.canApprove ? `<input type="checkbox" data-select-request="${escapeHtml(row.RequestId)}" aria-label="Chọn đề xuất ${escapeHtml(row.TenLoi || row.RequestId)}" ${state.selectedRequestIds.has(Number(row.RequestId)) ? "checked" : ""}>` : ""}</td>
                         <td><span class="strong muted">${escapeHtml(row.ThuTu || index + 1)}</span></td>
                         <td>
                             <span class="chip" title="${escapeHtml(row.MaLoi || "")}">${escapeHtml(row.MaLoi || "--")}</span>
@@ -1676,7 +1815,7 @@
                             <div class="muted" style="font-size: 11px; margin-top: 4px;">Người thêm: ${escapeHtml(row.CreatedByName || "Dữ liệu hệ thống")}</div>
                             ${row.ReviewNote ? `<div style="font-size: 11px; color: var(--danger);">Từ chối: ${escapeHtml(row.ReviewNote)}</div>` : ""}
                         </td>
-                        <td><span class="chip ${getDefectTypeClass(type)}">${escapeHtml(type)}</span></td>
+                        <td><span class="chip ${type ? getDefectTypeClass(type) : ""}">${escapeHtml(type || "Chưa phân loại")}</span></td>
                         <td class="center">${row.LoaiLoiSXBT ? `<span class="chip chip-major">${escapeHtml(row.LoaiLoiSXBT)}</span>` : "--"}</td>
                         <td><span class="${row.TenSanPham ? "" : "muted"}">${escapeHtml(row.TenSanPham || "--")}</span></td>
                         <td><span class="${row.ChungLoai ? "" : "muted"}">${escapeHtml(row.ChungLoai || "--")}</span></td>
@@ -1698,17 +1837,84 @@
                             ` : `<span class="muted">Không có</span>`}
                         </td>
                         <td class="center">
-                            <span class="chip ${row.ApprovalStatus === "APPROVED" ? "chip-success" : row.ApprovalStatus === "PENDING" ? "chip-major" : ""}">${row.ApprovalStatus === "PENDING" ? "Chờ duyệt" : row.ApprovalStatus === "REJECTED" ? "Từ chối" : row.ApprovalStatus === "CANCELLED" ? "Đã rút" : (row.TrangThai ? "Đã duyệt" : "Tạm ngưng")}</span>
+                            <span class="chip ${row.ApprovalStatus === "APPROVED" ? "chip-success" : row.ApprovalStatus === "PENDING" ? "chip-major" : ""}">${row.ApprovalStatus === "WAITING_B7" ? "Chờ B7 bổ sung" : row.ApprovalStatus === "PENDING" ? "Chờ TP B7 duyệt" : row.ApprovalStatus === "REJECTED" ? "B7 cần bổ sung lại" : row.ApprovalStatus === "CANCELLED" ? "Đã rút" : (row.TrangThai ? "Đã duyệt" : "Tạm ngưng")}</span>
                         </td>
                         <td class="right">
-                            ${(!row.IsRequest && (isOwner || state.capabilities.isAdmin)) || (row.IsRequest && isOwner && (row.ApprovalStatus === "PENDING" || row.ApprovalStatus === "REJECTED")) ? `<button class="btn btn-icon" type="button" data-edit="${escapeHtml(row.ManagementKey)}" title="Chỉnh sửa">✎</button>` : ""}
-                            ${row.IsRequest && isOwner && (row.ApprovalStatus === "PENDING" || row.ApprovalStatus === "REJECTED") ? `<button class="btn btn-icon" type="button" data-cancel-request="${escapeHtml(row.RequestId)}" title="Rút đề xuất">×</button>` : ""}
+                            ${state.capabilities.canPrepare && ((!row.IsRequest) || (row.IsRequest && ["WAITING_B7", "REJECTED"].includes(row.ApprovalStatus))) ? `<button class="btn btn-icon" type="button" data-edit="${escapeHtml(row.ManagementKey)}" title="B7 bổ sung thông tin">✎</button>` : ""}
+                            ${row.IsRequest && state.capabilities.canPrepare && ["WAITING_B7", "REJECTED"].includes(row.ApprovalStatus) ? `<button class="btn btn-icon" type="button" data-submit-request="${escapeHtml(row.RequestId)}" title="Gửi TP B7 duyệt">➜</button>` : ""}
+                            ${row.IsRequest && (isOwner || state.capabilities.isAdmin) && ["WAITING_B7", "PENDING", "REJECTED"].includes(row.ApprovalStatus) ? `<button class="btn btn-icon" type="button" data-cancel-request="${escapeHtml(row.RequestId)}" title="Rút đề xuất">×</button>` : ""}
                             ${row.IsRequest && row.ApprovalStatus === "PENDING" && state.capabilities.canApprove ? `<button class="btn btn-icon" type="button" data-approve-request="${escapeHtml(row.RequestId)}" title="Duyệt">✓</button><button class="btn btn-icon" type="button" data-reject-request="${escapeHtml(row.RequestId)}" title="Từ chối">!</button>` : ""}
                             ${!row.IsRequest && state.capabilities.canChangeStatus ? `<button class="btn btn-icon" type="button" data-status-id="${escapeHtml(row.Id)}" data-next-status="${row.TrangThai ? "false" : "true"}" title="${row.TrangThai ? "Tạm ngưng" : "Kích hoạt"}">${row.TrangThai ? "⊘" : "✓"}</button>` : ""}
                         </td>
                     </tr>
                 `;
             }).join("");
+            updateBatchControls();
+        }
+
+        function formatDateTime(value) {
+            if (!value) return "---";
+            const date = new Date(value);
+            return Number.isNaN(date.getTime()) ? "---" : date.toLocaleString("vi-VN");
+        }
+
+        function getBusinessStatus(row) {
+            if (row.ApprovalStatus === "WAITING_B7") return "Chờ B7 bổ sung";
+            if (row.ApprovalStatus === "PENDING") return "Chờ TP B7 duyệt";
+            if (row.ApprovalStatus === "REJECTED") return "B7 cần bổ sung lại";
+            if (row.ApprovalStatus === "CANCELLED") return "Đã rút";
+            return row.TrangThai === false || row.TrangThai === 0 ? "Tạm ngưng" : "Đã duyệt";
+        }
+
+        function openDetail(managementKey) {
+            const row = state.defects.find((item) => String(item.ManagementKey) === String(managementKey));
+            if (!row) return;
+            const fields = [
+                ["MaLoi", "Mã lỗi"], ["MaNhomLoi", "Mã nhóm"], ["DefectType", "Phân loại"],
+                ["LoaiLoiSXBT", "Loại B/C"], ["TenSanPham", "Sản phẩm"], ["ChungLoai", "Chủng loại"],
+                ["PhamViApDung", "Phạm vi áp dụng"], ["ThiTruong", "Thị trường"], ["ThuTu", "Thứ tự"]
+            ];
+            const images = getDefectImageUrls(row);
+            els.detailContent.innerHTML = `
+                <div class="actions" style="margin-bottom: 12px;">
+                    <span class="chip">${escapeHtml(row.MaLoi || "Mã sinh khi duyệt")}</span>
+                    <span class="chip chip-success">${escapeHtml(getBusinessStatus(row))}</span>
+                    <span class="chip">${escapeHtml(row.DefectType || "Chưa phân loại")}</span>
+                </div>
+                <h2 style="margin: 0 0 8px;">${escapeHtml(row.TenLoi || "Chưa có tên lỗi")}</h2>
+                <div class="muted detail-text" style="margin-top: 0;">${escapeHtml(row.MoTa || "Chưa có mô tả")}</div>
+                <div class="detail-grid" style="margin-top: 18px;">
+                    ${fields.map(([field, label]) => `
+                        <div class="detail-card">
+                            <span class="muted">${escapeHtml(label)}</span>
+                            <strong>${escapeHtml(row[field] ?? "---") || "---"}</strong>
+                        </div>
+                    `).join("")}
+                </div>
+                <div class="detail-text"><strong>Ghi chú / Lưu ý</strong><br>${escapeHtml(row.GhiChu || "---")}</div>
+                <div class="detail-text"><strong>Phương án xử lý</strong><br>${escapeHtml(row.PhuongAnXuLy || "---")}</div>
+                <div class="detail-text"><strong>Ảnh lỗi</strong></div>
+                <div class="detail-images">
+                    ${images.length ? images.map((url, index) => `
+                        <button class="image-thumb" type="button" data-detail-preview="${index}" aria-label="Xem ảnh lỗi ${index + 1}">
+                            <img src="${escapeHtml(getAssetUrl(url))}" alt="Ảnh lỗi ${index + 1}">
+                        </button>
+                    `).join("") : `<span class="muted">Không có ảnh</span>`}
+                </div>
+                <div class="detail-text muted">Người thêm: ${escapeHtml(row.CreatedByName || "Dữ liệu hệ thống")} · ${escapeHtml(formatDateTime(row.CreatedAt))}</div>
+                ${row.ReviewedByName ? `<div class="detail-text muted">Người duyệt: ${escapeHtml(row.ReviewedByName)} · ${escapeHtml(formatDateTime(row.ReviewedAt))}</div>` : ""}
+                ${row.ApprovedByName ? `<div class="detail-text muted">Người duyệt: ${escapeHtml(row.ApprovedByName)} · ${escapeHtml(formatDateTime(row.ApprovedAt))}</div>` : ""}
+                ${row.ReviewNote ? `<div class="alert alert-error" style="margin-top: 16px;">Lý do từ chối: ${escapeHtml(row.ReviewNote)}</div>` : ""}
+            `;
+            els.detailContent.querySelectorAll("[data-detail-preview]").forEach((button) => {
+                button.addEventListener("click", () => openPreview(images, Number(button.dataset.detailPreview || 0)));
+            });
+            els.detailModal.classList.remove("hidden");
+        }
+
+        function closeDetail() {
+            els.detailModal.classList.add("hidden");
+            els.detailContent.innerHTML = "";
         }
 
         function setFormValues(row) {
@@ -1726,6 +1932,11 @@
                 PhamViApDung: row.PhamViApDung || "",
                 PhuongAnXuLy: row.PhuongAnXuLy || ""
             };
+
+            const groupSelect = document.getElementById("MaNhomLoi");
+            if (state.form.MaNhomLoi && !Array.from(groupSelect.options).some((option) => option.value === state.form.MaNhomLoi)) {
+                groupSelect.add(new Option(`${state.form.MaNhomLoi} (dữ liệu cũ)`, state.form.MaNhomLoi));
+            }
 
             Object.entries(state.form).forEach(([key, value]) => {
                 const input = document.getElementById(key);
@@ -1746,11 +1957,10 @@
 
         function openCreateModal() {
             clearImageSelection();
+            state.formMode = "create";
             setFormValues({ ...emptyForm });
-            els.modalTitle.textContent = "Thêm mã lỗi mới";
-            els.saveButton.textContent = "Lưu dữ liệu";
-            document.getElementById("TrangThaiField").classList.add("hidden");
-            document.getElementById("TrangThai").value = "1";
+            els.modalTitle.textContent = "Báo lỗi mới";
+            els.saveButton.textContent = "Gửi báo lỗi";
             els.defectModal.classList.remove("hidden");
             document.getElementById("TenLoi").focus();
         }
@@ -1760,10 +1970,10 @@
             if (!row) return;
 
             clearImageSelection();
+            state.formMode = row.IsRequest ? "request" : "catalog";
             setFormValues(row);
             els.modalTitle.textContent = "Cập nhật thông tin lỗi";
             els.saveButton.textContent = "Cập nhật";
-            document.getElementById("TrangThaiField").classList.remove("hidden");
             els.defectModal.classList.remove("hidden");
             document.getElementById("TenLoi").focus();
         }
@@ -1848,7 +2058,7 @@
                 MaLoi: maLoi || null,
                 TenLoi: String(formData.get("TenLoi") || "").trim(),
                 DefectType: normalizeDefectType(formData.get("LoaiLoiSXBT"), formData.get("DefectType")),
-                MoTa: formData.get("MoTa") || String(formData.get("TenLoi") || "").trim() || null,
+                MoTa: String(formData.get("MoTa") || "").trim() || null,
                 GhiChu: formData.get("GhiChu") || null,
                 PhuongAnXuLy: formData.get("PhuongAnXuLy") || null,
                 MaNhomLoi: formData.get("MaNhomLoi") || null,
@@ -1888,13 +2098,13 @@
             event.preventDefault();
 
             const payload = collectPayload();
-            if (!payload.TenLoi || !payload.DefectType) {
-                showAlert("Vui lòng nhập tên lỗi và phân loại độ nghiêm trọng.");
+            if (!payload.TenLoi || !payload.MoTa) {
+                showAlert("Vui lòng nhập tên lỗi và mô tả lỗi.");
                 return;
             }
 
-            if (!payload.MaNhomLoi) {
-                showAlert("Vui lòng nhập mã nhóm lỗi để hệ thống tự sinh mã lỗi.");
+            if (state.formMode === "catalog" && (!payload.MaNhomLoi || !payload.DefectType)) {
+                showAlert("Vui lòng chọn mã nhóm lỗi và phân loại trước khi gửi sửa đổi.");
                 document.getElementById("MaNhomLoi").focus();
                 return;
             }
@@ -1905,28 +2115,30 @@
                 payload.ImageUrls = imageUrls;
                 payload.ImageUrl = imageUrls[0] || null;
 
-                if (state.form.IsRequest) {
-                    await apiFetch(`/lookup/defect-requests/${state.form.RequestId}`, {
+                if (state.formMode === "request") {
+                    const result = await apiFetch(`/lookup/defect-requests/${state.form.RequestId}`, {
                         method: "PUT",
                         body: JSON.stringify({ data: payload, rowVersion: state.form.RequestRowVersion })
                     });
-                    showAlert("Đã cập nhật và gửi lại đề xuất.", "success");
-                } else if (state.form.Id) {
-                    await apiFetch(`/lookup/defect/${state.form.Id}`, {
-                        method: "PUT",
-                        body: JSON.stringify(payload)
+                    upsertLocalRequest(result.request, payload);
+                    showAlert("Đã lưu thông tin B7 bổ sung.", "success");
+                } else if (state.formMode === "catalog") {
+                    const result = await apiFetch("/lookup/defect-requests", {
+                        method: "POST",
+                        body: JSON.stringify({ defectId: state.form.Id, data: payload })
                     });
+                    upsertLocalRequest(result.request, payload, { DefectId: state.form.Id, RequestType: "UPDATE" });
                     showAlert("Đã gửi nội dung sửa đổi chờ duyệt.", "success");
                 } else {
-                    await apiFetch("/lookup/defect", {
+                    const result = await apiFetch("/lookup/defect-requests", {
                         method: "POST",
-                        body: JSON.stringify(payload)
+                        body: JSON.stringify({ data: payload })
                     });
-                    showAlert("Đã gửi đề xuất lỗi mới chờ duyệt.", "success");
+                    upsertLocalRequest(result.request, payload, { DefectId: null, RequestType: "CREATE" });
+                    showAlert("Đã báo lỗi, đang chờ B7 bổ sung.", "success");
                 }
 
                 closeDefectModal();
-                await loadDefects();
             } catch (error) {
                 showAlert(error.message);
             } finally {
@@ -1940,18 +2152,19 @@
             const action = nextStatus ? "kích hoạt" : "tạm ngưng";
             if (!window.confirm(`Bạn có chắc chắn muốn ${action} lỗi "${label}"?`)) return;
 
-            setLoading(true);
             try {
-                await apiFetch(`/lookup/defect/${id}/status`, {
+                const result = await apiFetch(`/lookup/defect/${id}/status`, {
                     method: "PATCH",
                     body: JSON.stringify({ trangThai: nextStatus })
                 });
+                const defectIndex = state.defects.findIndex((item) => !item.IsRequest && Number(item.Id) === Number(id));
+                if (defectIndex >= 0) {
+                    state.defects[defectIndex] = { ...state.defects[defectIndex], ...(result.defect || { TrangThai: nextStatus }) };
+                    applyFilter();
+                }
                 showAlert(`Đã ${action} danh mục lỗi.`, "success");
-                await loadDefects();
             } catch (error) {
                 showAlert(error.message);
-            } finally {
-                setLoading(false);
             }
         }
 
@@ -1963,8 +2176,24 @@
                     method: "DELETE",
                     body: JSON.stringify({ rowVersion: row.RequestRowVersion })
                 });
+                row.ApprovalStatus = "CANCELLED";
+                applyFilter();
                 showAlert("Đã rút đề xuất.", "success");
-                await loadDefects();
+            } catch (error) { showAlert(error.message); }
+        }
+
+        async function submitDefectRequest(id) {
+            const row = state.defects.find((item) => String(item.RequestId) === String(id));
+            if (!row || !window.confirm(`Gửi đề xuất "${row.TenLoi || id}" cho TP B7 duyệt?`)) return;
+            try {
+                const result = await apiFetch(`/lookup/defect-requests/${id}/submit`, {
+                    method: "POST",
+                    body: JSON.stringify({ rowVersion: row.RequestRowVersion })
+                });
+                row.ApprovalStatus = result.request?.Status || "PENDING";
+                row.RequestRowVersion = result.request?.RowVersion || row.RequestRowVersion;
+                applyFilter();
+                showAlert("Đã gửi TP B7 duyệt.", "success");
             } catch (error) { showAlert(error.message); }
         }
 
@@ -1980,12 +2209,12 @@
                 .join("\n") : "Đề xuất tạo danh mục lỗi mới.";
             if (!row || !window.confirm(`Duyệt đề xuất "${row.TenLoi || id}"?\n\n${changes || "Không có nội dung thay đổi."}`)) return;
             try {
-                await apiFetch(`/lookup/defect-requests/${id}/approve`, {
+                const result = await apiFetch(`/lookup/defect-requests/${id}/approve`, {
                     method: "POST",
                     body: JSON.stringify({ rowVersion: row.RequestRowVersion })
                 });
+                applyLocalApprovals([result]);
                 showAlert("Đã duyệt đề xuất.", "success");
-                await loadDefects();
             } catch (error) { showAlert(error.message); }
         }
 
@@ -1995,26 +2224,30 @@
             const reviewNote = window.prompt("Nhập lý do từ chối đề xuất:");
             if (!reviewNote || !reviewNote.trim()) return;
             try {
-                await apiFetch(`/lookup/defect-requests/${id}/reject`, {
+                const result = await apiFetch(`/lookup/defect-requests/${id}/reject`, {
                     method: "POST",
                     body: JSON.stringify({ reviewNote: reviewNote.trim(), rowVersion: row.RequestRowVersion })
                 });
+                row.ApprovalStatus = result.request?.Status || "REJECTED";
+                row.RequestRowVersion = result.request?.RowVersion || row.RequestRowVersion;
+                row.ReviewNote = result.request?.ReviewNote || reviewNote.trim();
+                row.ReviewedAt = result.request?.ReviewedAt || new Date().toISOString();
+                applyFilter();
                 showAlert("Đã từ chối đề xuất.", "success");
-                await loadDefects();
             } catch (error) { showAlert(error.message); }
         }
 
-        async function approveAllPendingRequests() {
-            const requests = state.defects.filter((item) => item.IsRequest && item.ApprovalStatus === "PENDING");
-            if (!requests.length) return showAlert("Không có đề xuất đang chờ duyệt.");
-            if (!window.confirm(`Duyệt toàn bộ ${requests.length} đề xuất đang chờ?`)) return;
+        async function approveSelectedRequests() {
+            const requests = state.defects.filter((item) => item.IsRequest && item.ApprovalStatus === "PENDING" && state.selectedRequestIds.has(Number(item.RequestId)));
+            if (!requests.length) return showAlert("Vui lòng chọn đề xuất cần duyệt.");
+            if (!window.confirm(`Duyệt ${requests.length} đề xuất đã chọn?`)) return;
             try {
                 const result = await apiFetch("/lookup/defect-requests/batch-approve", {
                     method: "POST",
                     body: JSON.stringify({ items: requests.map((item) => ({ id: item.RequestId, rowVersion: item.RequestRowVersion })) })
                 });
+                applyLocalApprovals(result.approved || []);
                 showAlert(result.message || "Đã duyệt hàng loạt.", result.errors?.length ? "error" : "success");
-                await loadDefects();
             } catch (error) { showAlert(error.message); }
         }
 
@@ -2174,7 +2407,7 @@
                     errors: result?.errors || []
                 });
                 setImportFile(null);
-                await loadDefects();
+                await loadDefects({ background: true });
                 showAlert("Import danh mục lỗi thành công.", "success");
             } catch (error) {
                 renderImportResult({
@@ -2243,6 +2476,14 @@
         els.mineButton.addEventListener("click", () => {
             state.view = "mine";
             els.mineButton.className = "btn btn-primary";
+            els.waitingB7Button.className = state.capabilities.canPrepare ? "btn btn-ghost" : "btn btn-ghost hidden";
+            els.pendingButton.className = state.capabilities.canApprove ? "btn btn-ghost" : "btn btn-ghost hidden";
+            applyFilter();
+        });
+        els.waitingB7Button.addEventListener("click", () => {
+            state.view = "waiting-b7";
+            els.waitingB7Button.className = "btn btn-primary";
+            els.mineButton.className = "btn btn-ghost";
             els.pendingButton.className = state.capabilities.canApprove ? "btn btn-ghost" : "btn btn-ghost hidden";
             applyFilter();
         });
@@ -2250,9 +2491,20 @@
             state.view = "pending";
             els.pendingButton.className = "btn btn-primary";
             els.mineButton.className = "btn btn-ghost";
+            els.waitingB7Button.className = state.capabilities.canPrepare ? "btn btn-ghost" : "btn btn-ghost hidden";
             applyFilter();
         });
-        els.batchApproveButton.addEventListener("click", approveAllPendingRequests);
+        els.batchApproveButton.addEventListener("click", approveSelectedRequests);
+        els.selectAllPending.addEventListener("change", (event) => {
+            state.filtered
+                .filter((item) => item.IsRequest && item.ApprovalStatus === "PENDING")
+                .forEach((item) => {
+                    const id = Number(item.RequestId);
+                    if (event.target.checked) state.selectedRequestIds.add(id);
+                    else state.selectedRequestIds.delete(id);
+                });
+            renderTable();
+        });
         els.downloadTemplateButton.addEventListener("click", downloadDefectTemplate);
         els.downloadTemplateInModalButton.addEventListener("click", downloadDefectTemplate);
         els.importButton.addEventListener("click", openImportModal);
@@ -2279,6 +2531,9 @@
 
         document.querySelectorAll("[data-close-preview]").forEach((button) => {
             button.addEventListener("click", closePreview);
+        });
+        document.querySelectorAll("[data-close-detail]").forEach((button) => {
+            button.addEventListener("click", closeDetail);
         });
         els.previewPrevButton.addEventListener("click", () => movePreview(-1));
         els.previewNextButton.addEventListener("click", () => movePreview(1));
@@ -2324,13 +2579,16 @@
             const editButton = event.target.closest("[data-edit]");
             const statusButton = event.target.closest("[data-status-id]");
             const cancelRequestButton = event.target.closest("[data-cancel-request]");
+            const submitRequestButton = event.target.closest("[data-submit-request]");
             const approveRequestButton = event.target.closest("[data-approve-request]");
             const rejectRequestButton = event.target.closest("[data-reject-request]");
             const previewButton = event.target.closest("[data-preview-list]");
+            const detailRow = event.target.closest("[data-detail-key]");
 
             if (editButton) openEditModal(editButton.dataset.edit);
             if (statusButton) changeDefectStatus(statusButton.dataset.statusId, statusButton.dataset.nextStatus === "true");
             if (cancelRequestButton) cancelDefectRequest(cancelRequestButton.dataset.cancelRequest);
+            if (submitRequestButton) submitDefectRequest(submitRequestButton.dataset.submitRequest);
             if (approveRequestButton) approveDefectRequest(approveRequestButton.dataset.approveRequest);
             if (rejectRequestButton) rejectDefectRequest(rejectRequestButton.dataset.rejectRequest);
             if (previewButton) {
@@ -2339,12 +2597,33 @@
                     Number(previewButton.dataset.previewIndex || 0)
                 );
             }
+            if (detailRow && !event.target.closest("button, input, select, a")) {
+                openDetail(detailRow.dataset.detailKey);
+            }
         });
 
-        [els.defectModal, els.previewModal, els.importModal].forEach((modal) => {
+        els.defectTableBody.addEventListener("change", (event) => {
+            const checkbox = event.target.closest("[data-select-request]");
+            if (!checkbox) return;
+            const id = Number(checkbox.dataset.selectRequest);
+            if (checkbox.checked) state.selectedRequestIds.add(id);
+            else state.selectedRequestIds.delete(id);
+            updateBatchControls();
+        });
+
+        els.defectTableBody.addEventListener("keydown", (event) => {
+            if (!["Enter", " "].includes(event.key) || event.target.closest("button, input, select, a")) return;
+            const detailRow = event.target.closest("[data-detail-key]");
+            if (!detailRow) return;
+            event.preventDefault();
+            openDetail(detailRow.dataset.detailKey);
+        });
+
+        [els.defectModal, els.detailModal, els.previewModal, els.importModal].forEach((modal) => {
             modal.addEventListener("click", (event) => {
                 if (event.target === modal) {
                     if (modal === els.defectModal) closeDefectModal();
+                    if (modal === els.detailModal) closeDetail();
                     if (modal === els.previewModal) closePreview();
                     if (modal === els.importModal) closeImportModal();
                 }
@@ -2354,6 +2633,7 @@
         document.addEventListener("keydown", (event) => {
             if (event.key !== "Escape") return;
             if (!els.previewModal.classList.contains("hidden")) closePreview();
+            else if (!els.detailModal.classList.contains("hidden")) closeDetail();
             if (!els.importModal.classList.contains("hidden")) closeImportModal();
             if (!els.defectModal.classList.contains("hidden")) closeDefectModal();
         });

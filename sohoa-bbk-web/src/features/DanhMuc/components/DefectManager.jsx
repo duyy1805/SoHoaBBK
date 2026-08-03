@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
     Alert, Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions,
     DialogContent, DialogTitle, Divider, IconButton, MenuItem, Paper, Stack, Tab,
-    Tabs, TextField, Tooltip, Typography
+    Tabs, TextField, Tooltip, Typography, LinearProgress
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import ApprovalIcon from "@mui/icons-material/Approval";
@@ -17,14 +17,15 @@ import {
     approveDefectRequest, batchApproveDefectRequests, cancelDefectRequest,
     changeDefectStatus, createDefectRequest, downloadDefectTemplate,
     getAssetUrl, getDefectManagement, importDefectExcel, rejectDefectRequest,
-    updateDefectRequest, uploadDefectImages
+    submitDefectRequest, updateDefectRequest, uploadDefectImages
 } from "../../../api/lookup.api";
 import { getCurrentUser } from "../../../utils/auth";
 
 const MAX_DEFECT_IMAGES = 10;
 const scopes = ["Kiểm đầu vào", "Kiểm công đoạn", "Kiểm hoàn chỉnh"];
+const defectGroups = ["L01", "L02", "L03", "L04", "L05"];
 const emptyForm = {
-    TenLoi: "", MaLoi: "", DefectType: "MAJOR", MoTa: "", GhiChu: "",
+    TenLoi: "", MaLoi: "", DefectType: "", MoTa: "", GhiChu: "",
     PhuongAnXuLy: "", MaNhomLoi: "", LoaiLoiSXBT: "", TenSanPham: "",
     ChungLoai: "", PhamViApDung: "", ThiTruong: "", ImageUrl: "",
     ImageUrls: [], ThuTu: ""
@@ -34,6 +35,11 @@ const compareFields = [
     ["MoTa", "Mô tả"], ["GhiChu", "Ghi chú"], ["PhuongAnXuLy", "Phương án xử lý"],
     ["MaNhomLoi", "Mã nhóm"], ["LoaiLoiSXBT", "Loại B/C"], ["TenSanPham", "Sản phẩm"],
     ["ChungLoai", "Chủng loại"], ["PhamViApDung", "Phạm vi"], ["ThiTruong", "Thị trường"]
+];
+const detailFields = [
+    ["MaLoi", "Mã lỗi"], ["MaNhomLoi", "Mã nhóm"], ["DefectType", "Phân loại"],
+    ["LoaiLoiSXBT", "Loại B/C"], ["TenSanPham", "Sản phẩm"], ["ChungLoai", "Chủng loại"],
+    ["PhamViApDung", "Phạm vi áp dụng"], ["ThiTruong", "Thị trường"], ["ThuTu", "Thứ tự"]
 ];
 
 const parseImages = (value) => {
@@ -47,8 +53,9 @@ const parseImages = (value) => {
 const getImages = (row = {}) => [...new Set([...parseImages(row.ImageUrls), ...parseImages(row.ImageUrl)])];
 const splitScopes = (value) => String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
 const formatDate = (value) => value ? new Date(value).toLocaleString("vi-VN") : "---";
-const normalizeType = (loai, type) => loai === "C" ? "CRITICAL" : (loai === "B" && type === "CRITICAL" ? "MAJOR" : type || "MAJOR");
+const normalizeType = (loai, type) => loai === "C" ? "CRITICAL" : (loai === "B" && type === "CRITICAL" ? "MAJOR" : type || "");
 const statusMeta = {
+    WAITING_B7: { label: "Chờ B7 bổ sung", color: "info" },
     PENDING: { label: "Chờ duyệt", color: "warning" },
     APPROVED: { label: "Đã duyệt", color: "success" },
     REJECTED: { label: "Từ chối", color: "error" },
@@ -74,9 +81,11 @@ export default function DefectManager() {
     const user = getCurrentUser() || {};
     const userId = Number(user.id || user.userId || 0);
     const [management, setManagement] = useState({ capabilities: {}, defects: [], requests: [] });
-    const [tab, setTab] = useState("mine");
+    const [tab, setTab] = useState("catalog");
     const [keyword, setKeyword] = useState("");
+    const deferredKeyword = useDeferredValue(keyword);
     const [loading, setLoading] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
     const [notice, setNotice] = useState("");
@@ -93,16 +102,21 @@ export default function DefectManager() {
     const [importFile, setImportFile] = useState(null);
     const [importResult, setImportResult] = useState(null);
     const [gallery, setGallery] = useState({ images: [], index: 0 });
+    const [detailTarget, setDetailTarget] = useState(null);
 
-    const loadData = useCallback(async () => {
-        setLoading(true);
+    const loadData = useCallback(async ({ background = false } = {}) => {
+        if (background) setRefreshing(true);
+        else setLoading(true);
         try {
             const res = await getDefectManagement();
             setManagement(res.data || { capabilities: {}, defects: [], requests: [] });
             setError("");
         } catch (err) {
             setError(err.response?.data?.message || "Không tải được dữ liệu quản lý lỗi");
-        } finally { setLoading(false); }
+        } finally {
+            if (background) setRefreshing(false);
+            else setLoading(false);
+        }
     }, []);
 
     useEffect(() => { loadData(); }, [loadData]);
@@ -111,26 +125,22 @@ export default function DefectManager() {
 
     const defectMap = useMemo(() => new Map(management.defects.map((item) => [Number(item.Id), item])), [management.defects]);
     const pending = useMemo(() => management.requests.filter((item) => item.Status === "PENDING"), [management.requests]);
+    const waitingB7 = useMemo(() => management.requests.filter((item) => ["WAITING_B7", "REJECTED"].includes(item.Status)), [management.requests]);
+    const myRequests = useMemo(() => management.requests.filter((item) => Number(item.CreatedBy) === userId && item.Status !== "APPROVED"), [management.requests, userId]);
     const rows = useMemo(() => {
-        const search = keyword.trim().toLowerCase();
+        const search = deferredKeyword.trim().toLowerCase();
         let values;
         if (tab === "pending") values = pending;
-        else {
-            const ownRequests = management.requests.filter((item) =>
-                (!userId || Number(item.CreatedBy) === userId) && item.Status !== "APPROVED"
-            );
-            values = [
-                ...ownRequests,
-                ...management.defects
-            ];
-        }
+        else if (tab === "waiting-b7") values = waitingB7;
+        else if (tab === "mine") values = myRequests;
+        else values = management.defects;
         if (!search) return values;
         return values.filter((item) => {
             const data = item.ProposedData || item;
             return [data.MaLoi, data.TenLoi, data.MoTa, item.CreatedByName, item.ReviewNote]
                 .some((value) => String(value || "").toLowerCase().includes(search));
         });
-    }, [keyword, management.defects, management.requests, pending, tab, userId]);
+    }, [deferredKeyword, management.defects, myRequests, pending, tab, waitingB7]);
 
     const openImages = (images, index = 0) => setGallery({ images: images.map(getAssetUrl), index });
     const cleanupFormImages = () => {
@@ -149,6 +159,38 @@ export default function DefectManager() {
     };
     const closeForm = () => { cleanupFormImages(); setFormOpen(false); setEditTarget(null); };
     const updateForm = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+    const patchRequest = (requestId, changes) => {
+        setManagement((prev) => ({
+            ...prev,
+            requests: prev.requests.map((item) => Number(item.Id) === Number(requestId) ? { ...item, ...changes } : item)
+        }));
+    };
+    const applyApprovals = (approvedItems) => {
+        setManagement((prev) => {
+            const defects = [...prev.defects];
+            const approvedIds = new Set();
+            approvedItems.forEach((approved) => {
+                const request = prev.requests.find((item) => Number(item.Id) === Number(approved.requestId));
+                if (!request) return;
+                approvedIds.add(Number(request.Id));
+                const data = { ...(request.ProposedData || {}), MaLoi: approved.maLoi, TrangThai: true };
+                const defectIndex = defects.findIndex((item) => Number(item.Id) === Number(approved.defectId));
+                if (defectIndex >= 0) defects[defectIndex] = { ...defects[defectIndex], ...data };
+                else defects.unshift({
+                    ...data,
+                    Id: approved.defectId,
+                    CreatedBy: request.CreatedBy,
+                    CreatedByName: request.CreatedByName,
+                    CreatedAt: request.CreatedAt
+                });
+            });
+            return {
+                ...prev,
+                defects,
+                requests: prev.requests.filter((item) => !approvedIds.has(Number(item.Id)))
+            };
+        });
+    };
 
     const handleFiles = (event) => {
         const files = Array.from(event.target.files || []);
@@ -172,8 +214,11 @@ export default function DefectManager() {
     });
 
     const saveForm = async () => {
-        if (!form.TenLoi || (!form.MaLoi && !form.MaNhomLoi)) {
-            setError("Vui lòng nhập tên lỗi và mã nhóm lỗi"); return;
+        if (!String(form.TenLoi || "").trim() || !String(form.MoTa || "").trim()) {
+            setError("Vui lòng nhập tên lỗi và mô tả lỗi"); return;
+        }
+        if (editTarget && !editTarget.ProposedData && (!form.MaLoi && !form.MaNhomLoi || !normalizeType(form.LoaiLoiSXBT, form.DefectType))) {
+            setError("Vui lòng nhập mã nhóm lỗi và phân loại trước khi gửi sửa đổi"); return;
         }
         setSaving(true);
         try {
@@ -183,32 +228,78 @@ export default function DefectManager() {
                 images = [...images, ...(upload.data?.imageUrls || [])].slice(0, MAX_DEFECT_IMAGES);
             }
             const payload = buildPayload(images);
+            let res;
             if (editTarget?.ProposedData) {
-                await updateDefectRequest(editTarget.Id, payload, editTarget.RowVersion);
+                res = await updateDefectRequest(editTarget.Id, payload, editTarget.RowVersion);
+                patchRequest(editTarget.Id, { ...res.data?.request, ProposedData: payload });
             } else {
-                await createDefectRequest(payload, editTarget?.Id || null);
+                res = await createDefectRequest(payload, editTarget?.Id || null);
+                const request = res.data?.request;
+                if (request) {
+                    setManagement((prev) => ({
+                        ...prev,
+                        requests: [{
+                            ...request,
+                            DefectId: editTarget?.Id || null,
+                            RequestType: editTarget ? "UPDATE" : "CREATE",
+                            ProposedData: payload,
+                            CreatedBy: userId,
+                            CreatedByName: user.fullName || user.FullName || user.name || "Bạn",
+                            CreatedAt: new Date().toISOString()
+                        }, ...prev.requests]
+                    }));
+                }
             }
-            setNotice(editTarget ? "Đã gửi nội dung sửa đổi chờ duyệt" : "Đã gửi đề xuất lỗi mới chờ duyệt");
-            closeForm(); await loadData();
+            setNotice(editTarget?.ProposedData
+                ? "Đã lưu thông tin B7 bổ sung"
+                : editTarget
+                    ? "Đã gửi nội dung sửa đổi chờ TP B7 duyệt"
+                    : "Đã báo lỗi, đang chờ B7 bổ sung");
+            closeForm();
         } catch (err) { setError(err.response?.data?.message || "Không lưu được đề xuất"); }
         finally { setSaving(false); }
     };
 
     const cancelRequest = async (request) => {
         if (!window.confirm("Rút đề xuất này khỏi hàng chờ duyệt?")) return;
-        try { await cancelDefectRequest(request.Id, request.RowVersion); await loadData(); }
+        try {
+            await cancelDefectRequest(request.Id, request.RowVersion);
+            patchRequest(request.Id, { Status: "CANCELLED" });
+            setNotice("Đã rút đề xuất");
+        }
         catch (err) { setError(err.response?.data?.message || "Không rút được đề xuất"); }
+    };
+    const submitForApproval = async (request) => {
+        if (!window.confirm("Gửi đề xuất này cho TP B7 duyệt?")) return;
+        setSaving(true);
+        try {
+            const res = await submitDefectRequest(request.Id, request.RowVersion);
+            setNotice(res.data?.message || "Đã gửi TP B7 duyệt");
+            patchRequest(request.Id, res.data?.request || { Status: "PENDING" });
+        } catch (err) { setError(err.response?.data?.message || "Không gửi được đề xuất duyệt"); }
+        finally { setSaving(false); }
     };
     const approve = async (request) => {
         setSaving(true);
-        try { await approveDefectRequest(request.Id, request.RowVersion); setReviewRequest(null); await loadData(); }
+        try {
+            const res = await approveDefectRequest(request.Id, request.RowVersion);
+            applyApprovals([res.data]);
+            setReviewRequest(null);
+            setNotice(res.data?.message || "Đã duyệt đề xuất");
+        }
         catch (err) { setError(err.response?.data?.message || "Không duyệt được đề xuất"); }
         finally { setSaving(false); }
     };
     const reject = async () => {
         if (!rejectNote.trim()) return;
         setSaving(true);
-        try { await rejectDefectRequest(reviewRequest.Id, rejectNote.trim(), reviewRequest.RowVersion); setReviewRequest(null); setRejectNote(""); await loadData(); }
+        try {
+            const res = await rejectDefectRequest(reviewRequest.Id, rejectNote.trim(), reviewRequest.RowVersion);
+            patchRequest(reviewRequest.Id, res.data?.request || { Status: "REJECTED", ReviewNote: rejectNote.trim() });
+            setReviewRequest(null);
+            setRejectNote("");
+            setNotice(res.data?.message || "Đã từ chối đề xuất");
+        }
         catch (err) { setError(err.response?.data?.message || "Không từ chối được đề xuất"); }
         finally { setSaving(false); }
     };
@@ -216,12 +307,25 @@ export default function DefectManager() {
         const items = pending.filter((item) => selected.includes(item.Id)).map((item) => ({ id: item.Id, rowVersion: item.RowVersion }));
         if (!items.length) return;
         setSaving(true);
-        try { const res = await batchApproveDefectRequests(items); setNotice(res.data?.message || "Đã duyệt đề xuất"); setSelected([]); await loadData(); }
+        try {
+            const res = await batchApproveDefectRequests(items);
+            applyApprovals(res.data?.approved || []);
+            setNotice(res.data?.message || "Đã duyệt đề xuất");
+            setSelected([]);
+        }
         catch (err) { setError(err.response?.data?.message || "Không duyệt được các đề xuất"); }
         finally { setSaving(false); }
     };
     const toggleStatus = async (defect) => {
-        try { await changeDefectStatus(defect.Id, !(defect.TrangThai !== false && defect.TrangThai !== 0)); await loadData(); }
+        try {
+            const nextStatus = !(defect.TrangThai !== false && defect.TrangThai !== 0);
+            const res = await changeDefectStatus(defect.Id, nextStatus);
+            const updated = res.data?.defect || { Id: defect.Id, TrangThai: nextStatus };
+            setManagement((prev) => ({
+                ...prev,
+                defects: prev.defects.map((item) => Number(item.Id) === Number(defect.Id) ? { ...item, ...updated } : item)
+            }));
+        }
         catch (err) { setError(err.response?.data?.message || "Không đổi được trạng thái"); }
     };
 
@@ -236,7 +340,7 @@ export default function DefectManager() {
     const doImport = async () => {
         if (!importFile) return;
         setSaving(true);
-        try { const res = await importDefectExcel(importFile); setImportResult(res.data); setImportFile(null); await loadData(); }
+        try { const res = await importDefectExcel(importFile); setImportResult(res.data); setImportFile(null); await loadData({ background: true }); }
         catch (err) { setImportResult({ message: err.response?.data?.message || "Import thất bại", errors: err.response?.data?.errors || [] }); }
         finally { setSaving(false); }
     };
@@ -245,17 +349,31 @@ export default function DefectManager() {
         const isRequest = Boolean(item.ProposedData);
         const data = item.ProposedData || item;
         const meta = statusMeta[item.Status] || { label: data.TrangThai === false || data.TrangThai === 0 ? "Tạm ngưng" : "Đã duyệt", color: data.TrangThai === false || data.TrangThai === 0 ? "default" : "success" };
-        const canEditRequest = isRequest && ["PENDING", "REJECTED"].includes(item.Status) && Number(item.CreatedBy) === userId;
-        const canEditDefect = !isRequest && (Number(item.CreatedBy) === userId || management.capabilities.isAdmin);
+        const canEditRequest = isRequest && management.capabilities.canPrepare && ["WAITING_B7", "REJECTED"].includes(item.Status);
+        const canEditDefect = !isRequest && management.capabilities.canPrepare;
+        const canCancelRequest = isRequest && (Number(item.CreatedBy) === userId || management.capabilities.isAdmin) && ["WAITING_B7", "PENDING", "REJECTED"].includes(item.Status);
         return (
-            <Paper key={`${isRequest ? "request" : "defect"}-${item.Id}`} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+            <Paper
+                key={`${isRequest ? "request" : "defect"}-${item.Id}`}
+                variant="outlined"
+                role="button"
+                tabIndex={0}
+                onClick={() => setDetailTarget(item)}
+                onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setDetailTarget(item);
+                    }
+                }}
+                sx={{ p: 1.5, borderRadius: 2, cursor: "pointer", "&:hover": { borderColor: "primary.main", bgcolor: "action.hover" } }}
+            >
                 <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ md: "center" }}>
-                    {tab === "pending" && <Checkbox checked={selected.includes(item.Id)} onChange={(event) => setSelected((prev) => event.target.checked ? [...prev, item.Id] : prev.filter((id) => id !== item.Id))} />}
+                    {tab === "pending" && <Checkbox onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} checked={selected.includes(item.Id)} onChange={(event) => setSelected((prev) => event.target.checked ? [...prev, item.Id] : prev.filter((id) => id !== item.Id))} />}
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" alignItems="center">
                             <Chip size="small" variant="outlined" label={data.MaLoi || "Mã sinh khi duyệt"} />
                             <Chip size="small" color={meta.color} label={meta.label} />
-                            <Chip size="small" variant="outlined" label={data.DefectType || "MAJOR"} />
+                            <Chip size="small" variant="outlined" label={data.DefectType || "Chưa phân loại"} />
                         </Stack>
                         <Typography fontWeight={800} sx={{ mt: 0.75 }}>{data.TenLoi || "Chưa có tên lỗi"}</Typography>
                         <Typography variant="body2" color="text.secondary">{data.MoTa || "Không có mô tả"}</Typography>
@@ -264,13 +382,16 @@ export default function DefectManager() {
                         </Typography>
                         {item.ReviewNote && <Alert severity="error" sx={{ mt: 1, py: 0 }}>Lý do từ chối: {item.ReviewNote}</Alert>}
                     </Box>
-                    <ImageStrip data={data} onOpen={openImages} />
-                    <Stack direction="row" spacing={0.5} flexWrap="wrap" justifyContent="flex-end">
+                    <Box onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}><ImageStrip data={data} onOpen={openImages} /></Box>
+                    <Stack direction="row" spacing={0.5} flexWrap="wrap" justifyContent="flex-end" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                         {isRequest && management.capabilities.canApprove && item.Status === "PENDING" && (
                             <Button size="small" startIcon={<ApprovalIcon />} onClick={() => { setReviewRequest(item); setRejectNote(""); }}>Xem duyệt</Button>
                         )}
+                        {isRequest && management.capabilities.canPrepare && ["WAITING_B7", "REJECTED"].includes(item.Status) && (
+                            <Button size="small" color="success" startIcon={<CheckCircleOutlineIcon />} disabled={saving} onClick={() => submitForApproval(item)}>Gửi duyệt</Button>
+                        )}
                         {(canEditRequest || canEditDefect) && <Tooltip title="Sửa"><IconButton onClick={() => openEdit(item)}><EditIcon /></IconButton></Tooltip>}
-                        {canEditRequest && <Tooltip title="Rút đề xuất"><IconButton color="error" onClick={() => cancelRequest(item)}><CancelOutlinedIcon /></IconButton></Tooltip>}
+                        {canCancelRequest && <Tooltip title="Rút đề xuất"><IconButton color="error" onClick={() => cancelRequest(item)}><CancelOutlinedIcon /></IconButton></Tooltip>}
                         {!isRequest && management.capabilities.canChangeStatus && (
                             <Button size="small" color={data.TrangThai === false || data.TrangThai === 0 ? "success" : "warning"} onClick={() => toggleStatus(data)}>
                                 {data.TrangThai === false || data.TrangThai === 0 ? "Kích hoạt" : "Tạm ngưng"}
@@ -282,25 +403,39 @@ export default function DefectManager() {
         );
     };
 
+    const renderedRows = useMemo(
+        () => rows.map(renderRow),
+        // Danh sách chỉ cần dựng lại khi dữ liệu hoặc trạng thái thao tác trên dòng đổi.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [rows, tab, selected, saving, management.capabilities, userId]
+    );
+
     const currentReviewData = reviewRequest?.DefectId ? defectMap.get(Number(reviewRequest.DefectId)) : null;
     const proposedReviewData = reviewRequest?.ProposedData || {};
+    const detailData = detailTarget?.ProposedData || detailTarget || {};
+    const detailStatus = detailTarget?.Status
+        ? statusMeta[detailTarget.Status]?.label || detailTarget.Status
+        : detailData.TrangThai === false || detailData.TrangThai === 0 ? "Tạm ngưng" : "Đã duyệt";
 
     return (
         <Box sx={{ width: "100%", minWidth: 0 }}>
             <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={2} sx={{ mb: 2 }}>
                 <Box><Typography variant="h5" fontWeight={800}>Danh mục lỗi dùng chung</Typography><Typography color="text.secondary">Đề xuất theo người thêm và chỉ sử dụng sau khi được duyệt.</Typography></Box>
                 <Stack direction="row" spacing={1} flexWrap="wrap">
-                    <Button startIcon={<DownloadIcon />} onClick={downloadTemplate}>File mẫu</Button>
-                    <Button startIcon={<UploadFileIcon />} onClick={() => { setImportOpen(true); setImportResult(null); }}>Import</Button>
-                    <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>Thêm lỗi mới</Button>
+                    {management.capabilities.canImport && <Button startIcon={<DownloadIcon />} onClick={downloadTemplate}>File mẫu</Button>}
+                    {management.capabilities.canImport && <Button startIcon={<UploadFileIcon />} onClick={() => { setImportOpen(true); setImportResult(null); }}>Import</Button>}
+                    <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>Báo lỗi mới</Button>
                 </Stack>
             </Stack>
             {error && <Alert severity="error" onClose={() => setError("")} sx={{ mb: 2 }}>{error}</Alert>}
             {notice && <Alert severity="success" onClose={() => setNotice("")} sx={{ mb: 2 }}>{notice}</Alert>}
+            {refreshing && <LinearProgress aria-label="Đang đồng bộ dữ liệu" sx={{ mb: 1, borderRadius: 1 }} />}
             <Paper variant="outlined" sx={{ mb: 2, borderRadius: 2 }}>
                 <Tabs value={tab} onChange={(_, value) => setTab(value)}>
-                    <Tab value="mine" label="Toàn bộ danh mục" />
-                    {management.capabilities.canApprove && <Tab value="pending" label={`Chờ duyệt (${pending.length})`} />}
+                    <Tab value="catalog" label="Danh mục đã duyệt" />
+                    <Tab value="mine" label={`Báo lỗi của tôi (${myRequests.length})`} />
+                    {management.capabilities.canPrepare && <Tab value="waiting-b7" label={`Chờ B7 bổ sung (${waitingB7.length})`} />}
+                    {management.capabilities.canApprove && <Tab value="pending" label={`Chờ TP B7 duyệt (${pending.length})`} />}
                 </Tabs>
             </Paper>
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 2 }}>
@@ -308,25 +443,29 @@ export default function DefectManager() {
                 {tab === "pending" && <Button variant="contained" disabled={!selected.length || saving} startIcon={<CheckCircleOutlineIcon />} onClick={approveSelected}>Duyệt đã chọn ({selected.length})</Button>}
             </Stack>
             {loading ? <Box sx={{ display: "grid", placeItems: "center", py: 8 }}><CircularProgress /></Box> : (
-                <Stack spacing={1}>{rows.length ? rows.map(renderRow) : <Paper variant="outlined" sx={{ p: 5, textAlign: "center" }}><Typography color="text.secondary">Không có dữ liệu phù hợp.</Typography></Paper>}</Stack>
+                <Stack spacing={1}>{rows.length ? renderedRows : <Paper variant="outlined" sx={{ p: 5, textAlign: "center" }}><Typography color="text.secondary">Không có dữ liệu phù hợp.</Typography></Paper>}</Stack>
             )}
 
             <Dialog open={formOpen} onClose={closeForm} maxWidth="md" fullWidth>
-                <DialogTitle>{editTarget ? "Gửi đề xuất chỉnh sửa" : "Thêm đề xuất lỗi mới"}</DialogTitle>
+                <DialogTitle>{editTarget ? "Bổ sung thông tin lỗi" : "Báo lỗi mới"}</DialogTitle>
                 <DialogContent dividers>
                     <Stack spacing={2} sx={{ mt: 1 }}>
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                            <TextField label="Mã lỗi" fullWidth placeholder="Tự sinh khi duyệt nếu để trống" value={form.MaLoi || ""} onChange={(e) => updateForm("MaLoi", e.target.value)} />
-                            <TextField label="Mã nhóm lỗi" required fullWidth value={form.MaNhomLoi || ""} onChange={(e) => updateForm("MaNhomLoi", e.target.value)} />
+                            <TextField label="Mã lỗi" fullWidth placeholder="Tự sinh khi duyệt" value={form.MaLoi || ""} InputProps={{ readOnly: true }} />
+                            <TextField select label="Mã nhóm lỗi" fullWidth value={form.MaNhomLoi || ""} onChange={(e) => updateForm("MaNhomLoi", e.target.value)}>
+                                <MenuItem value="">Chưa xác định</MenuItem>
+                                {form.MaNhomLoi && !defectGroups.includes(form.MaNhomLoi) && <MenuItem value={form.MaNhomLoi}>{form.MaNhomLoi} (dữ liệu cũ)</MenuItem>}
+                                {defectGroups.map((group) => <MenuItem key={group} value={group}>{group}</MenuItem>)}
+                            </TextField>
                             <TextField label="STT" type="number" sx={{ width: { sm: 130 } }} value={form.ThuTu ?? ""} onChange={(e) => updateForm("ThuTu", e.target.value)} />
                         </Stack>
                         <TextField label="Tên lỗi" required multiline minRows={2} value={form.TenLoi || ""} onChange={(e) => updateForm("TenLoi", e.target.value)} />
-                        <TextField label="Mô tả chi tiết" multiline minRows={2} value={form.MoTa || ""} onChange={(e) => updateForm("MoTa", e.target.value)} />
+                        <TextField label="Mô tả chi tiết" required multiline minRows={2} value={form.MoTa || ""} onChange={(e) => updateForm("MoTa", e.target.value)} />
                         <TextField label="Ghi chú / Lưu ý" value={form.GhiChu || ""} onChange={(e) => updateForm("GhiChu", e.target.value)} />
                         <TextField label="Phương án xử lý" multiline minRows={2} value={form.PhuongAnXuLy || ""} onChange={(e) => updateForm("PhuongAnXuLy", e.target.value)} />
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                             <TextField select label="Loại B/C" fullWidth value={form.LoaiLoiSXBT || ""} onChange={(e) => { updateForm("LoaiLoiSXBT", e.target.value); updateForm("DefectType", normalizeType(e.target.value, form.DefectType)); }}><MenuItem value="">Chưa phân loại</MenuItem><MenuItem value="B">B</MenuItem><MenuItem value="C">C</MenuItem></TextField>
-                            <TextField select label="Phân loại" fullWidth value={normalizeType(form.LoaiLoiSXBT, form.DefectType)} onChange={(e) => updateForm("DefectType", e.target.value)} disabled={form.LoaiLoiSXBT === "C"}><MenuItem value="CRITICAL">CRITICAL</MenuItem>{form.LoaiLoiSXBT !== "C" && <MenuItem value="MAJOR">MAJOR</MenuItem>}{form.LoaiLoiSXBT !== "C" && <MenuItem value="MINOR">MINOR</MenuItem>}</TextField>
+                            <TextField select label="Phân loại" fullWidth value={normalizeType(form.LoaiLoiSXBT, form.DefectType)} onChange={(e) => updateForm("DefectType", e.target.value)} disabled={form.LoaiLoiSXBT === "C"}><MenuItem value="">Chưa xác định</MenuItem><MenuItem value="CRITICAL">CRITICAL</MenuItem>{form.LoaiLoiSXBT !== "C" && <MenuItem value="MAJOR">MAJOR</MenuItem>}{form.LoaiLoiSXBT !== "C" && <MenuItem value="MINOR">MINOR</MenuItem>}</TextField>
                         </Stack>
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                             <TextField label="Tên sản phẩm" fullWidth value={form.TenSanPham || ""} onChange={(e) => updateForm("TenSanPham", e.target.value)} />
@@ -343,7 +482,50 @@ export default function DefectManager() {
                         </Paper>
                     </Stack>
                 </DialogContent>
-                <DialogActions><Button onClick={closeForm}>Hủy</Button><Button variant="contained" disabled={saving} onClick={saveForm}>Gửi chờ duyệt</Button></DialogActions>
+                <DialogActions><Button onClick={closeForm}>Hủy</Button><Button variant="contained" disabled={saving} onClick={saveForm}>{editTarget?.ProposedData ? "Lưu bổ sung" : editTarget ? "Gửi sửa đổi chờ duyệt" : "Gửi báo lỗi"}</Button></DialogActions>
+            </Dialog>
+
+            <Dialog open={Boolean(detailTarget)} onClose={() => setDetailTarget(null)} maxWidth="md" fullWidth>
+                <DialogTitle>Chi tiết lỗi</DialogTitle>
+                <DialogContent dividers>
+                    <Stack spacing={2}>
+                        <Box>
+                            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center">
+                                <Chip size="small" variant="outlined" label={detailData.MaLoi || "Mã sinh khi duyệt"} />
+                                <Chip size="small" label={detailStatus} />
+                                <Chip size="small" variant="outlined" label={detailData.DefectType || "Chưa phân loại"} />
+                            </Stack>
+                            <Typography variant="h6" fontWeight={800} sx={{ mt: 1 }}>{detailData.TenLoi || "Chưa có tên lỗi"}</Typography>
+                            <Typography color="text.secondary" sx={{ whiteSpace: "pre-wrap" }}>{detailData.MoTa || "Chưa có mô tả"}</Typography>
+                        </Box>
+                        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", md: "1fr 1fr 1fr" }, gap: 1.25 }}>
+                            {detailFields.map(([field, label]) => (
+                                <Paper key={field} variant="outlined" sx={{ p: 1.25 }}>
+                                    <Typography variant="caption" color="text.secondary">{label}</Typography>
+                                    <Typography variant="body2" fontWeight={600} sx={{ whiteSpace: "pre-wrap" }}>{String(detailData[field] ?? "---") || "---"}</Typography>
+                                </Paper>
+                            ))}
+                        </Box>
+                        {[['GhiChu', 'Ghi chú / Lưu ý'], ['PhuongAnXuLy', 'Phương án xử lý']].map(([field, label]) => (
+                            <Box key={field}>
+                                <Typography fontWeight={700}>{label}</Typography>
+                                <Typography color="text.secondary" sx={{ whiteSpace: "pre-wrap" }}>{detailData[field] || "---"}</Typography>
+                            </Box>
+                        ))}
+                        <Box>
+                            <Typography fontWeight={700} sx={{ mb: 1 }}>Ảnh lỗi</Typography>
+                            <ImageStrip data={detailData} onOpen={openImages} />
+                        </Box>
+                        <Divider />
+                        <Typography variant="body2" color="text.secondary">
+                            Người thêm: {detailTarget?.CreatedByName || "Dữ liệu hệ thống"} · {formatDate(detailTarget?.CreatedAt)}
+                        </Typography>
+                        {detailTarget?.ReviewedByName && <Typography variant="body2" color="text.secondary">Người duyệt: {detailTarget.ReviewedByName} · {formatDate(detailTarget.ReviewedAt)}</Typography>}
+                        {detailTarget?.ApprovedByName && <Typography variant="body2" color="text.secondary">Người duyệt: {detailTarget.ApprovedByName} · {formatDate(detailTarget.ApprovedAt)}</Typography>}
+                        {detailTarget?.ReviewNote && <Alert severity="error">Lý do từ chối: {detailTarget.ReviewNote}</Alert>}
+                    </Stack>
+                </DialogContent>
+                <DialogActions><Button onClick={() => setDetailTarget(null)}>Đóng</Button></DialogActions>
             </Dialog>
 
             <Dialog open={Boolean(reviewRequest)} onClose={() => setReviewRequest(null)} maxWidth="lg" fullWidth>

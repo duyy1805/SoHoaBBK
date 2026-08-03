@@ -100,7 +100,7 @@ const normalizeDefectType = (loaiLoiSXBT, defectType) => {
 
   if (loai === "C") return "CRITICAL";
   if (loai === "B" && type === "CRITICAL") return "MAJOR";
-  return type || "MAJOR";
+  return type || null;
 };
 
 const trimValue = (value) => String(value ?? "").trim();
@@ -132,7 +132,42 @@ const stringifyImageUrls = (urls) => {
   return normalized.length ? JSON.stringify(normalized) : null;
 };
 const isDefectAdmin = (user) =>
-  Array.isArray(user?.permissions) && user.permissions.includes("QUAN_TRI_DM");
+  (Array.isArray(user?.permissions) && user.permissions.includes("QUAN_TRI_DM")) ||
+  (Array.isArray(user?.roles) && user.roles.some((role) => String(role || "").toUpperCase() === "ADMIN"));
+const DEFECT_APPROVE_PERMISSION = "DUYET_DANH_MUC_LOI";
+const DEFECT_B7_DEPARTMENT_CODE = "B7";
+const DEFECT_GROUP_CODES = new Set(["L01", "L02", "L03", "L04", "L05"]);
+const hasDefectRole = (user, roleCode) =>
+  Array.isArray(user?.roles) && user.roles.some((role) => String(role || "").toUpperCase() === roleCode);
+const hasDefectPermission = (user, permissionCode) =>
+  Array.isArray(user?.permissions) && user.permissions.includes(permissionCode);
+const getDefectWorkflowAccess = async (pool, user) => {
+  const departmentResult = await pool.request()
+    .input("BoPhanId", sql.Int, Number(user?.boPhanId) || null)
+    .query("SELECT TOP 1 MaBoPhan FROM dbo.DM_BO_PHAN WHERE Id=@BoPhanId");
+  const isB7 = String(departmentResult.recordset?.[0]?.MaBoPhan || "").toUpperCase() === DEFECT_B7_DEPARTMENT_CODE;
+  const isB7Lead = isB7 && hasDefectRole(user, "TP_BP");
+  const isAdmin = isDefectAdmin(user);
+  return {
+    isB7,
+    isB7Lead,
+    canPrepare: isAdmin || isB7,
+    canApprove: isAdmin || (isB7Lead && hasDefectPermission(user, DEFECT_APPROVE_PERMISSION))
+  };
+};
+const requireDefectB7 = async (req, res, next) => {
+  try {
+    const pool = await poolPromise;
+    const workflowAccess = await getDefectWorkflowAccess(pool, req.user);
+    if (!workflowAccess.canPrepare) {
+      return res.status(403).json({ message: "Chỉ nhân viên B7 được import danh mục lỗi" });
+    }
+    req.defectWorkflowAccess = workflowAccess;
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
 const defectPayloadFields = [
   "MaLoi", "TenLoi", "DefectType", "MoTa", "GhiChu", "PhuongAnXuLy",
   "PhanHe", "MaNhomLoi", "LoaiLoiSXBT", "TenSanPham", "ChungLoai",
@@ -155,6 +190,19 @@ const validateDefectPayload = (payload) => {
   if (!payload.MaLoi && !payload.MaNhomLoi) return "Vui lòng nhập mã nhóm lỗi để tự sinh mã lỗi";
   if (!["CRITICAL", "MAJOR", "MINOR"].includes(payload.DefectType)) {
     return "Phân loại lỗi không hợp lệ";
+  }
+  return null;
+};
+const validateDefectReport = (payload) => {
+  if (!payload.TenLoi) return "Vui lòng nhập tên lỗi";
+  if (!trimValue(payload.MoTa)) return "Vui lòng nhập mô tả lỗi";
+  return null;
+};
+const validateDefectSubmission = (payload, requestType) => {
+  const validationError = validateDefectPayload(payload);
+  if (validationError) return validationError;
+  if (requestType === "CREATE" && !DEFECT_GROUP_CODES.has(payload.MaNhomLoi)) {
+    return "Vui lòng chọn mã nhóm lỗi từ L01 đến L05";
   }
   return null;
 };
@@ -463,9 +511,12 @@ const requestWithTransaction = (transaction) => new sql.Request(transaction);
 
 async function createDefectRequest(pool, user, rawPayload, defectId = null) {
   const userId = Number(user.userId);
-  const isAdmin = isDefectAdmin(user);
+  const workflowAccess = await getDefectWorkflowAccess(pool, user);
   const payload = normalizeDefectPayload(rawPayload);
-  const validationError = validateDefectPayload(payload);
+  if (!defectId) payload.MaLoi = null;
+  const validationError = defectId
+    ? validateDefectPayload(payload)
+    : validateDefectReport(payload);
   if (validationError) {
     const error = new Error(validationError);
     error.statusCode = 400;
@@ -477,6 +528,11 @@ async function createDefectRequest(pool, user, rawPayload, defectId = null) {
   try {
     let target = null;
     if (defectId) {
+      if (!workflowAccess.canPrepare) {
+        const error = new Error("Chỉ nhân viên B7 được đề xuất cập nhật danh mục lỗi");
+        error.statusCode = 403;
+        throw error;
+      }
       const targetResult = await requestWithTransaction(transaction)
         .input("DefectId", sql.Int, defectId)
         .query("SELECT Id, CreatedBy FROM dbo.DM_DEFECT WITH (UPDLOCK, HOLDLOCK) WHERE Id=@DefectId");
@@ -484,11 +540,6 @@ async function createDefectRequest(pool, user, rawPayload, defectId = null) {
       if (!target) {
         const error = new Error("Không tìm thấy danh mục lỗi cần sửa");
         error.statusCode = 404;
-        throw error;
-      }
-      if (!isAdmin && Number(target.CreatedBy) !== userId) {
-        const error = new Error("Bạn chỉ được sửa danh mục lỗi do mình tạo");
-        error.statusCode = 403;
         throw error;
       }
       const pendingResult = await requestWithTransaction(transaction)
@@ -527,12 +578,13 @@ async function createDefectRequest(pool, user, rawPayload, defectId = null) {
     const inserted = await requestWithTransaction(transaction)
       .input("DefectId", sql.Int, defectId || null)
       .input("RequestType", sql.VarChar(10), defectId ? "UPDATE" : "CREATE")
+      .input("Status", sql.VarChar(12), defectId ? "PENDING" : "WAITING_B7")
       .input("ProposedData", sql.NVarChar(sql.MAX), JSON.stringify(payload))
       .input("CreatedBy", sql.Int, userId)
       .query(`
         INSERT dbo.DM_DEFECT_REQUEST (DefectId, RequestType, ProposedData, Status, CreatedBy)
         OUTPUT INSERTED.Id, INSERTED.Status, INSERTED.RowVersion
-        VALUES (@DefectId, @RequestType, @ProposedData, 'PENDING', @CreatedBy)
+        VALUES (@DefectId, @RequestType, @ProposedData, @Status, @CreatedBy)
       `);
     await transaction.commit();
     const row = inserted.recordset[0];
@@ -569,7 +621,7 @@ async function approveDefectRequest(pool, requestId, reviewerId, expectedRowVers
     }
 
     const payload = normalizeDefectPayload(JSON.parse(requestRow.ProposedData));
-    const validationError = validateDefectPayload(payload);
+    const validationError = validateDefectSubmission(payload, requestRow.RequestType);
     if (validationError) {
       const error = new Error(validationError);
       error.statusCode = 400;
@@ -817,6 +869,7 @@ router.get("/defect-management", authenticateToken, async (req, res) => {
     const pool = await poolPromise;
     const userId = Number(req.user.userId);
     const isAdmin = isDefectAdmin(req.user);
+    const workflowAccess = await getDefectWorkflowAccess(pool, req.user);
     const defectsResult = await pool.request()
       .query(`
         SELECT d.*, creator.FullName AS CreatedByName, approver.FullName AS ApprovedByName,
@@ -829,13 +882,16 @@ router.get("/defect-management", authenticateToken, async (req, res) => {
       `);
     const requestsResult = await pool.request()
       .input("UserId", sql.Int, userId)
-      .input("IsAdmin", sql.Bit, isAdmin)
+      .input("IsB7", sql.Bit, workflowAccess.canPrepare)
+      .input("CanApprove", sql.Bit, workflowAccess.canApprove)
       .query(`
         SELECT r.*, creator.FullName AS CreatedByName, reviewer.FullName AS ReviewedByName
         FROM dbo.DM_DEFECT_REQUEST r
         LEFT JOIN dbo.USERS creator ON creator.Id=r.CreatedBy
         LEFT JOIN dbo.USERS reviewer ON reviewer.Id=r.ReviewedBy
-        WHERE @IsAdmin=1 OR r.CreatedBy=@UserId
+        WHERE r.CreatedBy=@UserId
+           OR (@IsB7=1 AND r.Status IN ('WAITING_B7','REJECTED'))
+           OR (@CanApprove=1 AND r.Status='PENDING')
         ORDER BY CASE WHEN r.Status='PENDING' THEN 0 ELSE 1 END, r.CreatedAt DESC, r.Id DESC
       `);
 
@@ -849,7 +905,14 @@ router.get("/defect-management", authenticateToken, async (req, res) => {
       RowVersion: row.RowVersion?.toString("base64") || null
     }));
     res.json({
-      capabilities: { isAdmin, canCreate: true, canImport: true, canApprove: isAdmin, canChangeStatus: isAdmin },
+      capabilities: {
+        isAdmin,
+        canCreate: true,
+        canPrepare: workflowAccess.canPrepare,
+        canImport: workflowAccess.canPrepare,
+        canApprove: workflowAccess.canApprove,
+        canChangeStatus: isAdmin
+      },
       defects,
       requests
     });
@@ -864,7 +927,7 @@ router.post("/defect-requests", authenticateToken, async (req, res) => {
     const pool = await poolPromise;
     const defectId = Number(req.body?.defectId || 0) || null;
     const row = await createDefectRequest(pool, req.user, req.body?.data || req.body, defectId);
-    res.status(201).json({ message: "Đã gửi đề xuất chờ duyệt", request: row });
+    res.status(201).json({ message: defectId ? "Đã gửi đề xuất chờ TP B7 duyệt" : "Đã báo lỗi, đang chờ B7 bổ sung", request: row });
   } catch (err) {
     console.error("Create defect request error:", err);
     res.status(err.statusCode || 500).json({ message: err.message || "Không tạo được đề xuất" });
@@ -874,9 +937,13 @@ router.post("/defect-requests", authenticateToken, async (req, res) => {
 router.put("/defect-requests/:id", authenticateToken, async (req, res) => {
   try {
     const pool = await poolPromise;
+    const workflowAccess = await getDefectWorkflowAccess(pool, req.user);
+    if (!workflowAccess.canPrepare) {
+      return res.status(403).json({ message: "Chỉ nhân viên B7 được bổ sung thông tin lỗi" });
+    }
     const userId = Number(req.user.userId);
     const payload = normalizeDefectPayload(req.body?.data || req.body);
-    const validationError = validateDefectPayload(payload);
+    const validationError = validateDefectReport(payload);
     if (validationError) return res.status(400).json({ message: validationError });
 
     const rowVersion = decodeRowVersion(req.body?.rowVersion);
@@ -888,39 +955,114 @@ router.put("/defect-requests/:id", authenticateToken, async (req, res) => {
       .input("RowVersion", sql.VarBinary(8), rowVersion);
     const result = await request.query(`
       UPDATE dbo.DM_DEFECT_REQUEST
-      SET ProposedData=@ProposedData, Status='PENDING', UpdatedBy=@UserId,
-          UpdatedAt=SYSDATETIME(), ReviewedBy=NULL, ReviewedAt=NULL, ReviewNote=NULL
+      SET ProposedData=@ProposedData, UpdatedBy=@UserId, UpdatedAt=SYSDATETIME()
       OUTPUT INSERTED.Id, INSERTED.Status, INSERTED.RowVersion
-      WHERE Id=@Id AND CreatedBy=@UserId
-        AND Status IN ('PENDING','REJECTED')
-        AND (@RowVersion IS NULL OR RowVersion=@RowVersion)
+      WHERE Id=@Id AND Status IN ('WAITING_B7','REJECTED')
+        AND RowVersion=@RowVersion
     `);
     if (!result.recordset.length) {
       return res.status(409).json({ message: "Đề xuất đã thay đổi hoặc bạn không có quyền cập nhật" });
     }
     const row = result.recordset[0];
-    res.json({ message: "Đã cập nhật và gửi lại đề xuất", request: { ...row, RowVersion: row.RowVersion.toString("base64") } });
+    res.json({ message: "Đã lưu thông tin B7 bổ sung", request: { ...row, RowVersion: row.RowVersion.toString("base64") } });
   } catch (err) {
     console.error("Update defect request error:", err);
     res.status(500).json({ message: "Không cập nhật được đề xuất" });
   }
 });
 
+router.post("/defect-requests/:id/submit", authenticateToken, async (req, res) => {
+  const pool = await poolPromise;
+  const workflowAccess = await getDefectWorkflowAccess(pool, req.user);
+  if (!workflowAccess.canPrepare) {
+    return res.status(403).json({ message: "Chỉ nhân viên B7 được gửi đề xuất duyệt" });
+  }
+
+  const rowVersion = decodeRowVersion(req.body?.rowVersion);
+  if (!rowVersion) return res.status(400).json({ message: "Thiếu phiên bản dữ liệu đề xuất, vui lòng tải lại" });
+
+  const transaction = new sql.Transaction(pool);
+  await transaction.begin();
+  try {
+    const requestResult = await requestWithTransaction(transaction)
+      .input("Id", sql.Int, req.params.id)
+      .input("RowVersion", sql.VarBinary(8), rowVersion)
+      .query(`
+        SELECT * FROM dbo.DM_DEFECT_REQUEST WITH (UPDLOCK, HOLDLOCK)
+        WHERE Id=@Id AND Status IN ('WAITING_B7','REJECTED') AND RowVersion=@RowVersion
+      `);
+    const requestRow = requestResult.recordset?.[0];
+    if (!requestRow) {
+      const error = new Error("Đề xuất đã thay đổi hoặc không còn ở bước B7 bổ sung");
+      error.statusCode = 409;
+      throw error;
+    }
+
+    const payload = normalizeDefectPayload(JSON.parse(requestRow.ProposedData || "{}"));
+    const validationError = validateDefectSubmission(payload, requestRow.RequestType);
+    if (validationError) {
+      const error = new Error(validationError);
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (payload.MaLoi) {
+      const duplicateResult = await requestWithTransaction(transaction)
+        .input("MaLoi", sql.NVarChar(50), payload.MaLoi)
+        .input("DefectId", sql.Int, requestRow.DefectId || 0)
+        .input("RequestId", sql.Int, requestRow.Id)
+        .query(`
+          SELECT Id FROM dbo.DM_DEFECT WHERE MaLoi=@MaLoi AND Id<>@DefectId;
+          SELECT Id FROM dbo.DM_DEFECT_REQUEST
+          WHERE Id<>@RequestId AND Status='PENDING'
+            AND JSON_VALUE(ProposedData, '$.MaLoi')=@MaLoi;
+        `);
+      if (duplicateResult.recordsets.some((rows) => rows.length > 0)) {
+        const error = new Error(`Mã lỗi ${payload.MaLoi} đã tồn tại hoặc đang chờ duyệt`);
+        error.statusCode = 409;
+        throw error;
+      }
+    }
+
+    const submitted = await requestWithTransaction(transaction)
+      .input("Id", sql.Int, requestRow.Id)
+      .input("UserId", sql.Int, req.user.userId)
+      .query(`
+        UPDATE dbo.DM_DEFECT_REQUEST
+        SET Status='PENDING', UpdatedBy=@UserId, UpdatedAt=SYSDATETIME(),
+            ReviewedBy=NULL, ReviewedAt=NULL, ReviewNote=NULL
+        OUTPUT INSERTED.Id, INSERTED.Status, INSERTED.RowVersion
+        WHERE Id=@Id AND Status IN ('WAITING_B7','REJECTED')
+      `);
+    await transaction.commit();
+    const row = submitted.recordset[0];
+    res.json({
+      message: "Đã gửi TP B7 duyệt",
+      request: { ...row, RowVersion: row.RowVersion.toString("base64") }
+    });
+  } catch (err) {
+    await transaction.rollback();
+    res.status(err.statusCode || 500).json({ message: err.message || "Không gửi được đề xuất duyệt" });
+  }
+});
+
 router.delete("/defect-requests/:id", authenticateToken, async (req, res) => {
   try {
     const pool = await poolPromise;
+    const isAdmin = isDefectAdmin(req.user);
     const rowVersion = decodeRowVersion(req.body?.rowVersion);
     if (!rowVersion) return res.status(400).json({ message: "Thiếu phiên bản dữ liệu đề xuất, vui lòng tải lại" });
     const result = await pool.request()
       .input("Id", sql.Int, req.params.id)
       .input("UserId", sql.Int, req.user.userId)
+      .input("IsAdmin", sql.Bit, isAdmin)
       .input("RowVersion", sql.VarBinary(8), rowVersion)
       .query(`
         UPDATE dbo.DM_DEFECT_REQUEST
         SET Status='CANCELLED', UpdatedBy=@UserId, UpdatedAt=SYSDATETIME()
         OUTPUT INSERTED.Id
-        WHERE Id=@Id AND CreatedBy=@UserId
-          AND Status IN ('PENDING','REJECTED')
+        WHERE Id=@Id AND (CreatedBy=@UserId OR @IsAdmin=1)
+          AND Status IN ('WAITING_B7','PENDING','REJECTED')
           AND (@RowVersion IS NULL OR RowVersion=@RowVersion)
       `);
     if (!result.recordset.length) return res.status(409).json({ message: "Không thể rút đề xuất này" });
@@ -931,9 +1073,13 @@ router.delete("/defect-requests/:id", authenticateToken, async (req, res) => {
   }
 });
 
-router.post("/defect-requests/:id/approve", authenticateToken, authorize("QUAN_TRI_DM"), async (req, res) => {
+router.post("/defect-requests/:id/approve", authenticateToken, async (req, res) => {
   try {
     const pool = await poolPromise;
+    const workflowAccess = await getDefectWorkflowAccess(pool, req.user);
+    if (!workflowAccess.canApprove) {
+      return res.status(403).json({ message: "Chỉ TP B7 được cấp quyền duyệt danh mục lỗi" });
+    }
     const result = await approveDefectRequest(pool, req.params.id, req.user.userId, req.body?.rowVersion);
     res.json({ message: "Đã duyệt đề xuất", ...result });
   } catch (err) {
@@ -942,11 +1088,15 @@ router.post("/defect-requests/:id/approve", authenticateToken, authorize("QUAN_T
   }
 });
 
-router.post("/defect-requests/:id/reject", authenticateToken, authorize("QUAN_TRI_DM"), async (req, res) => {
+router.post("/defect-requests/:id/reject", authenticateToken, async (req, res) => {
   const reviewNote = trimValue(req.body?.reviewNote);
   if (!reviewNote) return res.status(400).json({ message: "Vui lòng nhập lý do từ chối" });
   try {
     const pool = await poolPromise;
+    const workflowAccess = await getDefectWorkflowAccess(pool, req.user);
+    if (!workflowAccess.canApprove) {
+      return res.status(403).json({ message: "Chỉ TP B7 được cấp quyền duyệt danh mục lỗi" });
+    }
     const rowVersion = decodeRowVersion(req.body?.rowVersion);
     if (!rowVersion) return res.status(400).json({ message: "Thiếu phiên bản dữ liệu đề xuất, vui lòng tải lại" });
     const result = await pool.request()
@@ -957,22 +1107,31 @@ router.post("/defect-requests/:id/reject", authenticateToken, authorize("QUAN_TR
       .query(`
         UPDATE dbo.DM_DEFECT_REQUEST
         SET Status='REJECTED', ReviewedBy=@ReviewerId, ReviewedAt=SYSDATETIME(), ReviewNote=@ReviewNote
-        OUTPUT INSERTED.Id
+        OUTPUT INSERTED.Id, INSERTED.Status, INSERTED.ReviewedBy, INSERTED.ReviewedAt,
+               INSERTED.ReviewNote, INSERTED.RowVersion
         WHERE Id=@Id AND Status='PENDING'
           AND (@RowVersion IS NULL OR RowVersion=@RowVersion)
       `);
     if (!result.recordset.length) return res.status(409).json({ message: "Đề xuất đã được xử lý hoặc dữ liệu đã thay đổi" });
-    res.json({ message: "Đã từ chối đề xuất" });
+    const row = result.recordset[0];
+    res.json({
+      message: "Đã từ chối đề xuất",
+      request: { ...row, RowVersion: row.RowVersion.toString("base64") }
+    });
   } catch (err) {
     console.error("Reject defect request error:", err);
     res.status(500).json({ message: "Không từ chối được đề xuất" });
   }
 });
 
-router.post("/defect-requests/batch-approve", authenticateToken, authorize("QUAN_TRI_DM"), async (req, res) => {
+router.post("/defect-requests/batch-approve", authenticateToken, async (req, res) => {
   const items = Array.isArray(req.body?.items) ? req.body.items : [];
   if (!items.length) return res.status(400).json({ message: "Vui lòng chọn đề xuất cần duyệt" });
   const pool = await poolPromise;
+  const workflowAccess = await getDefectWorkflowAccess(pool, req.user);
+  if (!workflowAccess.canApprove) {
+    return res.status(403).json({ message: "Chỉ TP B7 được cấp quyền duyệt danh mục lỗi" });
+  }
   const approved = [];
   const errors = [];
   for (const item of items) {
@@ -1099,7 +1258,7 @@ router.get(
   async (req, res) => {
     const rows = [
       {
-        MaLoi: "LOI-001",
+        MaLoi: "",
         TenLoi: "Đường may không đều",
         DefectType: "MAJOR",
         LoaiLoiSXBT: "B",
@@ -1117,7 +1276,7 @@ router.get(
         Anh: ""
       },
       {
-        MaLoi: "LOI-002",
+        MaLoi: "",
         TenLoi: "Bề mặt vải bẩn",
         DefectType: "MINOR",
         LoaiLoiSXBT: "B",
@@ -1180,6 +1339,7 @@ router.get(
 router.post(
   "/import-defect",
   authenticateToken,
+  requireDefectB7,
   (req, res, next) => {
     defectExcelUpload.single("file")(req, res, (err) => {
       if (err) {
@@ -1229,11 +1389,11 @@ router.post(
     const errors = [];
     const maLoiInFile = new Set();
     rows.forEach((row) => {
-      if (!row.MaLoi) {
-        errors.push({ line: row.line, message: "Thiếu MaLoi" });
-      } else if (maLoiInFile.has(normalizeKey(row.MaLoi))) {
+      if (!row.MaLoi && !row.MaNhomLoi) {
+        errors.push({ line: row.line, message: "Thiếu MaLoi hoặc MaNhomLoi" });
+      } else if (row.MaLoi && maLoiInFile.has(normalizeKey(row.MaLoi))) {
         errors.push({ line: row.line, message: `MaLoi bị trùng trong file: ${row.MaLoi}` });
-      } else {
+      } else if (row.MaLoi) {
         maLoiInFile.add(normalizeKey(row.MaLoi));
       }
 
@@ -1272,7 +1432,6 @@ router.post(
       const transaction = new sql.Transaction(pool);
       await transaction.begin();
       const userId = Number(req.user.userId);
-      const isAdmin = isDefectAdmin(req.user);
       const summary = {
         totalRows: rows.length,
         created: 0,
@@ -1293,11 +1452,6 @@ router.post(
               WHERE MaLoi = @MaLoi
             `);
           const existing = existingResult.recordset?.[0] || null;
-
-          if (existing && !isAdmin && Number(existing.CreatedBy) !== userId) {
-            rowErrors.push({ line: row.line, message: `Bạn không được cập nhật mã lỗi ${row.MaLoi}` });
-            continue;
-          }
 
           if (existing) {
             const pending = await requestWithTransaction(transaction)
@@ -1332,11 +1486,13 @@ router.post(
 
           const payload = normalizeDefectPayload({
             ...row,
+            MaLoi: existing ? row.MaLoi : null,
             MoTa: row.MoTa || row.TenLoi || null,
             ImageUrl: imageUrls[0] || null,
             ImageUrls: imageUrls
           });
-          const payloadError = validateDefectPayload(payload);
+          const requestType = existing ? "UPDATE" : "CREATE";
+          const payloadError = validateDefectSubmission(payload, requestType);
           if (payloadError) {
             rowErrors.push({ line: row.line, message: payloadError });
             continue;
@@ -1344,7 +1500,7 @@ router.post(
 
           const inserted = await requestWithTransaction(transaction)
             .input("DefectId", sql.Int, existing?.Id || null)
-            .input("RequestType", sql.VarChar(10), existing ? "UPDATE" : "CREATE")
+            .input("RequestType", sql.VarChar(10), requestType)
             .input("ProposedData", sql.NVarChar(sql.MAX), JSON.stringify(payload))
             .input("CreatedBy", sql.Int, userId)
             .query(`
@@ -1400,7 +1556,7 @@ router.post(
     try {
       const pool = await poolPromise;
       const row = await createDefectRequest(pool, req.user, req.body, null);
-      res.status(201).json({ message: "Đã gửi đề xuất lỗi mới chờ duyệt", request: row });
+      res.status(201).json({ message: "Đã báo lỗi, đang chờ B7 bổ sung", request: row });
     } catch (err) {
       console.error("Create defect error:", err);
       res.status(err.statusCode || 500).json({ message: err.message || "Tạo đề xuất thất bại" });
