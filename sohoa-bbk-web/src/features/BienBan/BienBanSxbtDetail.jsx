@@ -53,6 +53,7 @@ import { getCurrentUser } from "../../utils/auth";
 import { useToast } from "../../components/common/ToastContext";
 import { useReactToPrint } from "react-to-print";
 import { BienBanSxbtPrintTemplate } from "./components/BienBanSxbtPrintTemplate";
+import BienBanAttachments from "./components/BienBanAttachments";
 
 const LEVEL_OPTIONS = ["B", "C"];
 
@@ -391,6 +392,8 @@ export default function BienBanSxbtDetail() {
                             </Stack>
                         </CardContent>
                     </Card>
+
+                    <BienBanAttachments bienBanId={bienBanId} />
 
                     <Grid container spacing={2} alignItems="flex-start">
                         <Grid size={{ xs: 12, lg: 8.5 }}>

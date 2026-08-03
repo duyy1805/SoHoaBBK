@@ -87,6 +87,7 @@ import { PhieuXuLyKhongPhuHopPrintTemplate } from "./components/PhieuXuLyKhongPh
 import KphV01WorkflowSections from "./components/KphV01WorkflowSections";
 import BienBanWorkflowGuide from "./components/BienBanWorkflowGuide";
 import DefectImageGalleryDialog from "./components/DefectImageGalleryDialog";
+import BienBanAttachments from "./components/BienBanAttachments";
 import DefectPickerDialog from "../PhieuKiem/components/DefectPickerDialog";
 import {
     buildBienBanWorkflow,
@@ -1526,6 +1527,10 @@ export default function BienBanDetail({ standalone = false }) {
                         </Stack>
                     </Grid>
                 </Grid>
+
+                <Box sx={{ mt: 3 }}>
+                    <BienBanAttachments bienBanId={bienBanId} />
+                </Box>
 
                 {/* Floating Bottom Action Bar */}
                 {(canConfirmProcessing || canSubmitCompletion) && (

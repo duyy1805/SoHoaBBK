@@ -1,9 +1,12 @@
 const express = require("express");
 const router = express.Router();
 const sql = require("mssql");
+const fs = require("fs");
+const path = require("path");
 
 const { poolPromise } = require("../db");
 const authenticateToken = require("../middlewares/auth.middleware");
+const bienBanAttachmentDir = path.join(__dirname, "..", "private-uploads", "bien-ban");
 
 const hasStrictLeadRole = (user) => Array.isArray(user?.roles) &&
     user.roles.some((role) => String(role || "").toUpperCase().startsWith("TP_"));
@@ -303,6 +306,14 @@ router.delete("/:id", authenticateToken, async (req, res) => {
     try {
         const bienBanId = Number(req.params.id);
         const pool = await poolPromise;
+        const attachmentResult = await pool.request()
+            .input("BienBanId", sql.Int, bienBanId)
+            .query(`
+                IF OBJECT_ID(N'dbo.BIEN_BAN_DINH_KEM', N'U') IS NOT NULL
+                    SELECT StoredName FROM dbo.BIEN_BAN_DINH_KEM WHERE BienBanId = @BienBanId;
+                ELSE
+                    SELECT CAST(NULL AS NVARCHAR(255)) AS StoredName WHERE 1 = 0;
+            `);
         const transaction = new sql.Transaction(pool);
         await transaction.begin();
         try {
@@ -324,6 +335,15 @@ router.delete("/:id", authenticateToken, async (req, res) => {
             await transaction.rollback();
             throw error;
         }
+
+        await Promise.all((attachmentResult.recordset || []).map(async ({ StoredName }) => {
+            if (!StoredName || path.basename(StoredName) !== StoredName) return;
+            try {
+                await fs.promises.unlink(path.join(bienBanAttachmentDir, StoredName));
+            } catch (error) {
+                if (error.code !== "ENOENT") console.error("Delete standalone attachment file error:", error);
+            }
+        }));
 
         res.json({ success: true, message: "Đã xóa phiếu xử lý không phù hợp" });
     } catch (err) {

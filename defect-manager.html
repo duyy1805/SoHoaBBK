@@ -848,7 +848,7 @@
                 <input id="keyword" type="search" placeholder="Nhập mã lỗi, tên lỗi, mô tả, phạm vi, thị trường...">
             </div>
             <button id="reloadButton" class="btn btn-ghost" type="button">Tải lại</button>
-            <button id="mineButton" class="btn btn-primary" type="button">Danh mục của tôi</button>
+            <button id="mineButton" class="btn btn-primary" type="button">Toàn bộ danh mục</button>
             <button id="pendingButton" class="btn btn-ghost hidden" type="button">Chờ duyệt</button>
             <button id="batchApproveButton" class="btn btn-ghost hidden" type="button">Duyệt tất cả đang chờ</button>
             <button id="clearFiltersButton" class="btn btn-ghost" type="button">Xóa lọc</button>
@@ -1552,9 +1552,7 @@
             state.filtered = state.defects.filter((row) => {
                 const matchesView = state.view === "pending"
                     ? row.ApprovalStatus === "PENDING"
-                    : (state.capabilities.isAdmin
-                        ? !row.IsRequest || Number(row.CreatedBy) === currentUserId
-                        : (!currentUserId || Number(row.CreatedBy) === currentUserId));
+                    : !row.IsRequest || Number(row.CreatedBy) === currentUserId;
                 const matchesKeyword = !keyword || [
                         row.MaLoi,
                         row.TenLoi,

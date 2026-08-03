@@ -818,8 +818,6 @@ router.get("/defect-management", authenticateToken, async (req, res) => {
     const userId = Number(req.user.userId);
     const isAdmin = isDefectAdmin(req.user);
     const defectsResult = await pool.request()
-      .input("UserId", sql.Int, userId)
-      .input("IsAdmin", sql.Bit, isAdmin)
       .query(`
         SELECT d.*, creator.FullName AS CreatedByName, approver.FullName AS ApprovedByName,
                updater.FullName AS UpdatedByName
@@ -827,7 +825,6 @@ router.get("/defect-management", authenticateToken, async (req, res) => {
         LEFT JOIN dbo.USERS creator ON creator.Id=d.CreatedBy
         LEFT JOIN dbo.USERS approver ON approver.Id=d.ApprovedBy
         LEFT JOIN dbo.USERS updater ON updater.Id=d.UpdatedBy
-        WHERE @IsAdmin=1 OR d.CreatedBy=@UserId
         ORDER BY ISNULL(d.UpdatedAt, d.CreatedAt) DESC, d.Id DESC
       `);
     const requestsResult = await pool.request()

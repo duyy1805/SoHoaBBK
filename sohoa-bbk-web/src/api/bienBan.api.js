@@ -151,6 +151,29 @@ export const deleteStandaloneBienBan = (bienBanId) => {
 };
 
 /* ================================
+   File đính kèm biên bản
+================================ */
+export const getBienBanAttachments = (bienBanId) =>
+    axiosClient.get(`/bien-ban/${bienBanId}/attachments`);
+
+export const uploadBienBanAttachments = (bienBanId, files = []) => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append("files", file));
+    return axiosClient.post(`/bien-ban/${bienBanId}/attachments`, formData, {
+        timeout: 120000
+    });
+};
+
+export const downloadBienBanAttachment = (bienBanId, attachmentId) =>
+    axiosClient.get(`/bien-ban/${bienBanId}/attachments/${attachmentId}/download`, {
+        responseType: "blob",
+        timeout: 120000
+    });
+
+export const deleteBienBanAttachment = (bienBanId, attachmentId) =>
+    axiosClient.delete(`/bien-ban/${bienBanId}/attachments/${attachmentId}`);
+
+/* ================================
    Biên bản SXBT
 ================================ */
 export const getBienBanSxbtDetail = (bienBanId) => {

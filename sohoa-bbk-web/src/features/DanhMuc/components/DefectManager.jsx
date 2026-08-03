@@ -116,15 +116,12 @@ export default function DefectManager() {
         let values;
         if (tab === "pending") values = pending;
         else {
-            const ownDefects = management.capabilities.isAdmin
-                ? management.defects
-                : management.defects.filter((item) => !userId || Number(item.CreatedBy) === userId);
             const ownRequests = management.requests.filter((item) =>
                 (!userId || Number(item.CreatedBy) === userId) && item.Status !== "APPROVED"
             );
             values = [
                 ...ownRequests,
-                ...ownDefects
+                ...management.defects
             ];
         }
         if (!search) return values;
@@ -133,7 +130,7 @@ export default function DefectManager() {
             return [data.MaLoi, data.TenLoi, data.MoTa, item.CreatedByName, item.ReviewNote]
                 .some((value) => String(value || "").toLowerCase().includes(search));
         });
-    }, [keyword, management.capabilities.isAdmin, management.defects, management.requests, pending, tab, userId]);
+    }, [keyword, management.defects, management.requests, pending, tab, userId]);
 
     const openImages = (images, index = 0) => setGallery({ images: images.map(getAssetUrl), index });
     const cleanupFormImages = () => {
@@ -302,7 +299,7 @@ export default function DefectManager() {
             {notice && <Alert severity="success" onClose={() => setNotice("")} sx={{ mb: 2 }}>{notice}</Alert>}
             <Paper variant="outlined" sx={{ mb: 2, borderRadius: 2 }}>
                 <Tabs value={tab} onChange={(_, value) => setTab(value)}>
-                    <Tab value="mine" label="Danh mục của tôi" />
+                    <Tab value="mine" label="Toàn bộ danh mục" />
                     {management.capabilities.canApprove && <Tab value="pending" label={`Chờ duyệt (${pending.length})`} />}
                 </Tabs>
             </Paper>

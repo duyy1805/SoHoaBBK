@@ -20,6 +20,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/hr', hrRouter);
 app.use('/api/phieu-kiem/cong-doan', require('./routes/phieuKiemCongDoan'));
 app.use('/api/phieu-kiem', require('./routes/phieuKiem'));
+app.use('/api/bien-ban', require('./routes/bienBanAttachments'));
 app.use('/api/bien-ban', require('./routes/bienBan'));
 app.use('/api/bien-ban-sxbt', require('./routes/bienBanSxbt'));
 app.use('/api/phieu-xu-ly-khong-phu-hop', require('./routes/phieuXuLyKhongPhuHop'));

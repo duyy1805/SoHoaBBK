@@ -398,6 +398,8 @@ flowchart TD
 - Mỗi yêu cầu ý kiến chỉ được xác nhận một lần.
 - Sau xác nhận cuối của bộ phận tạo, nội dung chuyển sang theo dõi và bị khóa theo luồng.
 - Kết quả theo dõi chỉ ghi một lần; `Không thỏa mãn` bắt buộc có số phiếu KPH mới.
+- File đính kèm là phần hồ sơ bổ sung và không bị khóa theo trạng thái: mọi tài khoản đã đăng nhập đều có thể thêm, xem và tải file trên Web.
+- Chỉ người đã tải file lên hoặc Admin mới được xóa file đó.
 
 ---
 
@@ -436,6 +438,7 @@ flowchart TD
 - **Mức B:** B8 → SXBT.
 - **Mức C:** B8 → SXBT → B7 → Giám đốc.
 - Sau khi xác nhận mức độ, không thể đổi từ B sang C hoặc ngược lại.
+- File đính kèm không phụ thuộc lượt xác nhận: mọi tài khoản đã đăng nhập đều có thể thêm, xem và tải file trên Web; chỉ chủ file hoặc Admin được xóa.
 
 ---
 
@@ -471,6 +474,15 @@ flowchart TD
 - Số lượng lỗi phải không âm.
 - Nếu có số lượng kiểm, số lượng lỗi không được vượt số lượng kiểm.
 - Chỉ người có quyền với phần đầu phiếu mới sửa thông tin KPH V01.
+- Quyền sửa phần đầu phiếu không ảnh hưởng file đính kèm: mọi tài khoản đã đăng nhập đều có thể thêm, xem và tải file; chỉ người tải lên hoặc Admin được xóa.
+
+### File đính kèm dùng chung cho biên bản
+
+- Hỗ trợ ảnh, PDF, Word, Excel và PowerPoint; tối đa **20 MB mỗi file** và **10 file mỗi lần tải lên**.
+- File được tải xuống qua API có xác thực, không có đường dẫn public trực tiếp.
+- Có thể tiếp tục đính kèm khi biên bản đã hoàn tất.
+- Phiên bản hiện tại chỉ có giao diện đính kèm trên **Web**; ứng dụng Mobile chưa có chức năng chọn file.
+- File đính kèm không được đưa vào bản in/PDF của biên bản.
 
 ---
 
@@ -587,6 +599,8 @@ Các trạng thái `CHO_TP_B8`, `DA_KET_LUAN`, `DA_XAC_NHAN` vẫn xuất hiện
 | `QUAN_TRI_DM` | Quản trị danh mục; có thể được xem như quyền quản lý ở một số luồng |
 
 > Permission chỉ là điều kiện cần. Nhiều thao tác còn kiểm tra bộ phận, người tạo, người hoàn tất và trạng thái hiện tại.
+
+File đính kèm không yêu cầu permission nghiệp vụ: mọi người dùng đã đăng nhập được thêm/xem/tải; quyền xóa được tính theo người tải lên hoặc vai trò `ADMIN`.
 
 ## F. Nguồn dữ liệu và quy tắc chống trùng
 

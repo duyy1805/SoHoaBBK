@@ -3,6 +3,7 @@ node_modules
 server/.env
 server/db.js
 server/uploads
+server/private-uploads
 # Build output
 dist/
 build/
