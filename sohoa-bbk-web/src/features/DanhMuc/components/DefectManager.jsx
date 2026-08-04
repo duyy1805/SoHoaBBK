@@ -58,7 +58,8 @@ const statusMeta = {
     WAITING_B7: { label: "Chờ B7 bổ sung", color: "info" },
     PENDING: { label: "Chờ duyệt", color: "warning" },
     APPROVED: { label: "Đã duyệt", color: "success" },
-    REJECTED: { label: "Từ chối", color: "error" },
+    REJECTED: { label: "B7 cần bổ sung lại", color: "error" },
+    RETURNED: { label: "B7 đã trả lại", color: "error" },
     CANCELLED: { label: "Đã rút", color: "default" }
 };
 
@@ -96,6 +97,7 @@ export default function DefectManager() {
     const [previewUrls, setPreviewUrls] = useState([]);
     const previewUrlsRef = useRef([]);
     const [reviewRequest, setReviewRequest] = useState(null);
+    const [returnRequest, setReturnRequest] = useState(null);
     const [rejectNote, setRejectNote] = useState("");
     const [selected, setSelected] = useState([]);
     const [importOpen, setImportOpen] = useState(false);
@@ -251,7 +253,7 @@ export default function DefectManager() {
                 }
             }
             setNotice(editTarget?.ProposedData
-                ? "Đã lưu thông tin B7 bổ sung"
+                ? editTarget.Status === "RETURNED" ? "Đã lưu nội dung điều chỉnh" : "Đã lưu thông tin B7 bổ sung"
                 : editTarget
                     ? "Đã gửi nội dung sửa đổi chờ TP B7 duyệt"
                     : "Đã báo lỗi, đang chờ B7 bổ sung");
@@ -270,12 +272,18 @@ export default function DefectManager() {
         catch (err) { setError(err.response?.data?.message || "Không rút được đề xuất"); }
     };
     const submitForApproval = async (request) => {
-        if (!window.confirm("Gửi đề xuất này cho TP B7 duyệt?")) return;
+        const isReporterResubmission = request.Status === "RETURNED";
+        if (!window.confirm(isReporterResubmission ? "Gửi lại báo lỗi này cho B7 xử lý?" : "Gửi đề xuất này cho TP B7 duyệt?")) return;
         setSaving(true);
         try {
             const res = await submitDefectRequest(request.Id, request.RowVersion);
-            setNotice(res.data?.message || "Đã gửi TP B7 duyệt");
-            patchRequest(request.Id, res.data?.request || { Status: "PENDING" });
+            setNotice(res.data?.message || (isReporterResubmission ? "Đã gửi lại B7 xử lý" : "Đã gửi TP B7 duyệt"));
+            patchRequest(request.Id, {
+                ...(res.data?.request || { Status: isReporterResubmission ? "WAITING_B7" : "PENDING" }),
+                ReviewNote: null,
+                ReviewedByName: null,
+                ReviewedAt: null
+            });
         } catch (err) { setError(err.response?.data?.message || "Không gửi được đề xuất duyệt"); }
         finally { setSaving(false); }
     };
@@ -290,17 +298,19 @@ export default function DefectManager() {
         catch (err) { setError(err.response?.data?.message || "Không duyệt được đề xuất"); }
         finally { setSaving(false); }
     };
-    const reject = async () => {
+    const returnForChanges = async (request) => {
         if (!rejectNote.trim()) return;
         setSaving(true);
         try {
-            const res = await rejectDefectRequest(reviewRequest.Id, rejectNote.trim(), reviewRequest.RowVersion);
-            patchRequest(reviewRequest.Id, res.data?.request || { Status: "REJECTED", ReviewNote: rejectNote.trim() });
+            const res = await rejectDefectRequest(request.Id, rejectNote.trim(), request.RowVersion);
+            const fallbackStatus = request.Status === "WAITING_B7" ? "RETURNED" : "REJECTED";
+            patchRequest(request.Id, res.data?.request || { Status: fallbackStatus, ReviewNote: rejectNote.trim() });
             setReviewRequest(null);
+            setReturnRequest(null);
             setRejectNote("");
-            setNotice(res.data?.message || "Đã từ chối đề xuất");
+            setNotice(res.data?.message || (fallbackStatus === "RETURNED" ? "Đã trả lại người báo lỗi" : "Đã trả lại B7 bổ sung"));
         }
-        catch (err) { setError(err.response?.data?.message || "Không từ chối được đề xuất"); }
+        catch (err) { setError(err.response?.data?.message || "Không trả lại được đề xuất"); }
         finally { setSaving(false); }
     };
     const approveSelected = async () => {
@@ -349,9 +359,17 @@ export default function DefectManager() {
         const isRequest = Boolean(item.ProposedData);
         const data = item.ProposedData || item;
         const meta = statusMeta[item.Status] || { label: data.TrangThai === false || data.TrangThai === 0 ? "Tạm ngưng" : "Đã duyệt", color: data.TrangThai === false || data.TrangThai === 0 ? "default" : "success" };
-        const canEditRequest = isRequest && management.capabilities.canPrepare && ["WAITING_B7", "REJECTED"].includes(item.Status);
+        const isOwner = Number(item.CreatedBy) === userId;
+        const canEditRequest = isRequest && (
+            (management.capabilities.canPrepare && ["WAITING_B7", "REJECTED"].includes(item.Status))
+            || (isOwner && item.Status === "RETURNED")
+        );
         const canEditDefect = !isRequest && management.capabilities.canPrepare;
-        const canCancelRequest = isRequest && (Number(item.CreatedBy) === userId || management.capabilities.isAdmin) && ["WAITING_B7", "PENDING", "REJECTED"].includes(item.Status);
+        const canSubmitRequest = isRequest && (
+            (management.capabilities.canPrepare && ["WAITING_B7", "REJECTED"].includes(item.Status))
+            || (isOwner && item.Status === "RETURNED")
+        );
+        const canCancelRequest = isRequest && (isOwner || management.capabilities.isAdmin) && ["WAITING_B7", "PENDING", "REJECTED", "RETURNED"].includes(item.Status);
         return (
             <Paper
                 key={`${isRequest ? "request" : "defect"}-${item.Id}`}
@@ -380,15 +398,18 @@ export default function DefectManager() {
                         <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
                             Người thêm: {item.CreatedByName || "Dữ liệu hệ thống"} · {formatDate(item.CreatedAt)}
                         </Typography>
-                        {item.ReviewNote && <Alert severity="error" sx={{ mt: 1, py: 0 }}>Lý do từ chối: {item.ReviewNote}</Alert>}
+                        {item.ReviewNote && <Alert severity="error" sx={{ mt: 1, py: 0 }}>Lý do trả lại: {item.ReviewNote}</Alert>}
                     </Box>
                     <Box onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}><ImageStrip data={data} onOpen={openImages} /></Box>
                     <Stack direction="row" spacing={0.5} flexWrap="wrap" justifyContent="flex-end" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                         {isRequest && management.capabilities.canApprove && item.Status === "PENDING" && (
                             <Button size="small" startIcon={<ApprovalIcon />} onClick={() => { setReviewRequest(item); setRejectNote(""); }}>Xem duyệt</Button>
                         )}
-                        {isRequest && management.capabilities.canPrepare && ["WAITING_B7", "REJECTED"].includes(item.Status) && (
-                            <Button size="small" color="success" startIcon={<CheckCircleOutlineIcon />} disabled={saving} onClick={() => submitForApproval(item)}>Gửi duyệt</Button>
+                        {isRequest && management.capabilities.canPrepare && item.Status === "WAITING_B7" && (
+                            <Button size="small" color="error" startIcon={<CancelOutlinedIcon />} disabled={saving} onClick={() => { setReturnRequest(item); setRejectNote(""); }}>Trả lại</Button>
+                        )}
+                        {canSubmitRequest && (
+                            <Button size="small" color="success" startIcon={<CheckCircleOutlineIcon />} disabled={saving} onClick={() => submitForApproval(item)}>{item.Status === "RETURNED" ? "Gửi lại B7" : "Gửi duyệt"}</Button>
                         )}
                         {(canEditRequest || canEditDefect) && <Tooltip title="Sửa"><IconButton onClick={() => openEdit(item)}><EditIcon /></IconButton></Tooltip>}
                         {canCancelRequest && <Tooltip title="Rút đề xuất"><IconButton color="error" onClick={() => cancelRequest(item)}><CancelOutlinedIcon /></IconButton></Tooltip>}
@@ -447,7 +468,7 @@ export default function DefectManager() {
             )}
 
             <Dialog open={formOpen} onClose={closeForm} maxWidth="md" fullWidth>
-                <DialogTitle>{editTarget ? "Bổ sung thông tin lỗi" : "Báo lỗi mới"}</DialogTitle>
+                <DialogTitle>{editTarget?.Status === "RETURNED" ? "Điều chỉnh báo lỗi" : editTarget ? "Bổ sung thông tin lỗi" : "Báo lỗi mới"}</DialogTitle>
                 <DialogContent dividers>
                     <Stack spacing={2} sx={{ mt: 1 }}>
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
@@ -482,7 +503,7 @@ export default function DefectManager() {
                         </Paper>
                     </Stack>
                 </DialogContent>
-                <DialogActions><Button onClick={closeForm}>Hủy</Button><Button variant="contained" disabled={saving} onClick={saveForm}>{editTarget?.ProposedData ? "Lưu bổ sung" : editTarget ? "Gửi sửa đổi chờ duyệt" : "Gửi báo lỗi"}</Button></DialogActions>
+                <DialogActions><Button onClick={closeForm}>Hủy</Button><Button variant="contained" disabled={saving} onClick={saveForm}>{editTarget?.Status === "RETURNED" ? "Lưu điều chỉnh" : editTarget?.ProposedData ? "Lưu bổ sung" : editTarget ? "Gửi sửa đổi chờ duyệt" : "Gửi báo lỗi"}</Button></DialogActions>
             </Dialog>
 
             <Dialog open={Boolean(detailTarget)} onClose={() => setDetailTarget(null)} maxWidth="md" fullWidth>
@@ -522,7 +543,7 @@ export default function DefectManager() {
                         </Typography>
                         {detailTarget?.ReviewedByName && <Typography variant="body2" color="text.secondary">Người duyệt: {detailTarget.ReviewedByName} · {formatDate(detailTarget.ReviewedAt)}</Typography>}
                         {detailTarget?.ApprovedByName && <Typography variant="body2" color="text.secondary">Người duyệt: {detailTarget.ApprovedByName} · {formatDate(detailTarget.ApprovedAt)}</Typography>}
-                        {detailTarget?.ReviewNote && <Alert severity="error">Lý do từ chối: {detailTarget.ReviewNote}</Alert>}
+                        {detailTarget?.ReviewNote && <Alert severity="error">Lý do trả lại: {detailTarget.ReviewNote}</Alert>}
                     </Stack>
                 </DialogContent>
                 <DialogActions><Button onClick={() => setDetailTarget(null)}>Đóng</Button></DialogActions>
@@ -535,9 +556,18 @@ export default function DefectManager() {
                         {currentReviewData && <Paper variant="outlined" sx={{ p: 2, flex: 1 }}><Typography fontWeight={800} sx={{ mb: 1 }}>Dữ liệu đang hiệu lực</Typography>{compareFields.map(([field, label]) => <Box key={field} sx={{ mb: 1 }}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="body2">{String(currentReviewData[field] ?? "---")}</Typography></Box>)}</Paper>}
                         <Paper variant="outlined" sx={{ p: 2, flex: 1, borderColor: "primary.light" }}><Typography fontWeight={800} sx={{ mb: 1 }}>Dữ liệu đề xuất</Typography>{compareFields.map(([field, label]) => { const changed = currentReviewData && String(currentReviewData[field] ?? "") !== String(proposedReviewData[field] ?? ""); return <Box key={field} sx={{ mb: 1, bgcolor: changed ? "warning.50" : "transparent", px: changed ? 1 : 0 }}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="body2" fontWeight={changed ? 700 : 400}>{String(proposedReviewData[field] ?? "---")}</Typography></Box>; })}<Divider sx={{ my: 1 }} /><ImageStrip data={proposedReviewData} onOpen={openImages} /></Paper>
                     </Stack>
-                    <TextField label="Lý do từ chối" fullWidth multiline minRows={2} value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} sx={{ mt: 2 }} />
+                    <TextField label="Lý do trả lại" required fullWidth multiline minRows={2} value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} sx={{ mt: 2 }} />
                 </DialogContent>
-                <DialogActions><Button onClick={() => setReviewRequest(null)}>Đóng</Button><Button color="error" disabled={!rejectNote.trim() || saving} onClick={reject}>Từ chối</Button><Button variant="contained" disabled={saving} onClick={() => approve(reviewRequest)}>Duyệt</Button></DialogActions>
+                <DialogActions><Button onClick={() => setReviewRequest(null)}>Đóng</Button><Button color="error" disabled={!rejectNote.trim() || saving} onClick={() => returnForChanges(reviewRequest)}>Trả lại</Button><Button variant="contained" disabled={saving} onClick={() => approve(reviewRequest)}>Duyệt</Button></DialogActions>
+            </Dialog>
+
+            <Dialog open={Boolean(returnRequest)} onClose={() => saving ? null : setReturnRequest(null)} maxWidth="sm" fullWidth>
+                <DialogTitle>Trả lại báo lỗi cho người tạo</DialogTitle>
+                <DialogContent dividers>
+                    <Alert severity="info" sx={{ mb: 2 }}>Ghi rõ nội dung cần điều chỉnh để người báo lỗi có thể sửa và gửi lại B7.</Alert>
+                    <TextField autoFocus label="Lý do trả lại" required fullWidth multiline minRows={3} value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} />
+                </DialogContent>
+                <DialogActions><Button disabled={saving} onClick={() => { setReturnRequest(null); setRejectNote(""); }}>Hủy</Button><Button color="error" variant="contained" disabled={!rejectNote.trim() || saving} onClick={() => returnForChanges(returnRequest)}>Trả lại</Button></DialogActions>
             </Dialog>
 
             <Dialog open={importOpen} onClose={() => setImportOpen(false)} maxWidth="sm" fullWidth>

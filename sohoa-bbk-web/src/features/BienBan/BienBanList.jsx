@@ -44,7 +44,7 @@ const getWorkBucket = (item, currentUser, isManager, isSxbt) => {
         Number(item.NguoiXuLyId) === Number(currentUser.userId) ||
         Number(item.BoPhanId) === Number(currentUser.boPhanId) ||
         Number(item.BoPhanDangChoId) === Number(currentUser.boPhanId);
-    const managerTurn = isManager && ["BB_MOI", "CHO_PHAN_BO_XU_LY", "CHO_PHAN_BO_XY_LY", "CHO_TP_B8"].includes(item.TrangThai);
+    const managerTurn = isManager && ["BB_MOI", "CHO_PHAN_BO_XU_LY", "CHO_PHAN_BO_XY_LY", "CHO_TP_B8", "TRA_LAI_CHINH_SUA"].includes(item.TrangThai);
     return explicitMyTurn || managerTurn ? "action" : "waiting";
 };
 
@@ -178,7 +178,7 @@ export default function BienBanList() {
         ? item.SoBoPhan > 0
             ? `Xác nhận ${item.DaCoYKien}/${item.SoBoPhan} bộ phận`
             : "Chưa mở luồng"
-        : `Phản hồi ${item.DaCoYKien}/${item.SoBoPhan} bộ phận`;
+        : `Xác nhận ${item.DaCoYKien}/${item.SoBoPhan} bộ phận`;
 
     const renderProgress = (item) => (
         <Box sx={{ minWidth: 0 }}>
@@ -272,6 +272,7 @@ export default function BienBanList() {
                             <MenuItem value="CHO_TP_B8">Chờ kết luận</MenuItem>
                             <MenuItem value="DA_KET_LUAN">Đã kết luận</MenuItem>
                             <MenuItem value="CHO_XAC_NHAN">Chờ xác nhận</MenuItem>
+                            <MenuItem value="TRA_LAI_CHINH_SUA">Trả lại chỉnh sửa</MenuItem>
                             <MenuItem value="DA_XAC_NHAN">Đã xác nhận</MenuItem>
                             <MenuItem value="CHO_THEO_DOI">Chờ theo dõi đánh giá</MenuItem>
                             <MenuItem value="HOAN_TAT">Hoàn tất</MenuItem>

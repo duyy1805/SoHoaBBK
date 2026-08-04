@@ -7,6 +7,7 @@ export const BIEN_BAN_STATUS = {
     CHO_XAC_NHAN: { label: "Đang xử lý và xác nhận", color: "info" },
     DA_XAC_NHAN: { label: "Đã xác nhận", color: "success" },
     CHO_THEO_DOI: { label: "Chờ theo dõi đánh giá", color: "warning" },
+    TRA_LAI_CHINH_SUA: { label: "Trả lại chỉnh sửa", color: "error" },
     HOAN_THANH: { label: "Hoàn thành", color: "success" },
     HOAN_TAT: { label: "Hoàn tất", color: "success" }
 };
@@ -30,7 +31,6 @@ export function buildBienBanWorkflow({
     info,
     defects = [],
     assigns = [],
-    xuLy = [],
     xacNhan = [],
     opinions = [],
     evaluation,
@@ -51,9 +51,9 @@ export function buildBienBanWorkflow({
     const ownPendingOpinion = opinions.some((item) =>
         sameDepartment(item.BoPhanId, currentUserBoPhanId) && !item.HasResponded
     );
-    const allProcessingDone = !isV01 || xuLy.length > 0;
+    const allProcessingDone = true;
     const allOpinionsAnswered = !isV01 ||
-        (opinions.length > 0 && opinions.every((item) => item.HasResponded));
+        (opinions.length > 0 && opinions.every((item) => item.HasConfirmed));
     const allConfirmed = assigns.length > 0 && assigns.every((assign) =>
         xacNhan.some((item) => sameDepartment(item.BoPhanId, assign.BoPhanId))
     );
@@ -117,20 +117,20 @@ export function buildBienBanWorkflow({
             description: "Bạn sẽ nhận được thao tác xử lý khi danh sách bộ phận được xác nhận.",
             tone: "info"
         };
-    } else if (isV01 && isManagerOrQA && xuLy.length === 0) {
+    } else if (status === "TRA_LAI_CHINH_SUA") {
         guidance = {
-            eyebrow: "VIỆC BẠN CẦN LÀM",
-            title: "Nhập đề xuất xử lý",
-            description: "Ghi rõ đề xuất, người thực hiện và thời hạn xử lý.",
-            actionLabel: "Nhập phương án xử lý",
-            onAction: actions.addProcessing,
+            eyebrow: "CẦN CHỈNH SỬA",
+            title: "Biên bản đã được trả lại",
+            description: "Bộ phận lập chỉnh sửa nội dung và gửi lại để bắt đầu vòng xác nhận mới.",
+            actionLabel: "Xem nội dung cần sửa",
+            onAction: actions.editInfo,
             tone: "warning"
         };
     } else if (ownPendingOpinion) {
         guidance = {
             eyebrow: "VIỆC BẠN CẦN LÀM",
-            title: "Phản hồi và xác nhận chuyên môn",
-            description: "Nhập nội dung nếu cần và xác nhận ý kiến chuyên môn của bộ phận.",
+            title: "Nhập ý kiến chuyên môn",
+            description: "Lưu một ý kiến chung của bộ phận để Trưởng bộ phận xác nhận hoặc trả lại.",
             actionLabel: "Đến phần ý kiến chuyên môn",
             onAction: actions.openOpinions,
             tone: "warning"

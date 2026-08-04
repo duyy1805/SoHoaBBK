@@ -60,7 +60,7 @@ Hiểu ngắn gọn:
 | **Trưởng bộ phận/PX** | Xác nhận hoặc duyệt phiếu sau khi KCS hoàn tất. Với luồng trên chuyền/cuối chuyền/công đoạn, người duyệt phải thuộc bộ phận duyệt của phiếu. |
 | **Kho** | Xác nhận số lượng thực nhập theo từng dòng LOT trong luồng SXBT. |
 | **TP B8/người quản lý chất lượng** | Quản lý nội dung KPH, đề xuất xử lý, xác nhận mức độ biên bản SXBT hoặc hoàn tất bước được phân quyền. |
-| **Bộ phận được lấy ý kiến** | Trưởng bộ phận nhập và xác nhận phản hồi chuyên môn cho KPH V01. |
+| **Bộ phận được lấy ý kiến** | Nhân viên nhập ý kiến chung; TBP xác nhận hoặc trả lại KPH V01. |
 | **Người theo dõi KPH** | Đánh giá hiệu lực sau xử lý và đóng biên bản; nếu không thỏa mãn phải ghi số phiếu KPH mới. |
 
 > Một người có thể mang nhiều vai trò nếu tài khoản có nhiều quyền. Hệ thống vẫn kiểm tra thêm bộ phận và trạng thái hiện tại của phiếu.
@@ -366,14 +366,14 @@ flowchart TD
 flowchart TD
     A["Biên bản mới: thông tin và danh sách lỗi"] --> B["Bộ phận tạo chọn các bộ phận cần lấy ý kiến"]
     B --> C["Xác nhận danh sách lấy ý kiến"]
-    C --> D["Nhập ít nhất một đề xuất xử lý"]
-    D --> E["Các trưởng bộ phận phản hồi ý kiến"]
-    E --> F{"Đã đủ mọi phản hồi?"}
-    F -->|"Chưa"| E
-    F -->|"Đủ"| G{"Có yêu cầu chi phí hoặc hành động?"}
-    G -->|"Có"| H["Nhập đủ mục chi phí/hành động bắt buộc"]
-    G -->|"Không"| I["Bộ phận tạo xác nhận cuối"]
-    H --> I
+    C --> D["Bộ phận lập và các bộ phận được chọn bổ sung mục 5, 6, 7 nếu có"]
+    D --> E["Nhân viên từng bộ phận lưu một ý kiến chung"]
+    E --> F{"TBP xác nhận hay trả lại?"}
+    F -->|"Trả lại"| G["Bộ phận lập chỉnh sửa và gửi lại"]
+    G --> E
+    F -->|"Xác nhận"| H{"Đủ xác nhận của mọi bộ phận?"}
+    H -->|"Chưa"| E
+    H -->|"Đủ"| I["TBP bộ phận lập xác nhận cuối"]
     I --> J["Chờ theo dõi hiệu lực"]
     J --> K{"Kết quả theo dõi"}
     K -->|"Thỏa mãn"| L["Hoàn tất biên bản"]
@@ -387,19 +387,25 @@ flowchart TD
 |---|---|---|---|---|
 | Hoàn thiện thông tin | Bộ phận tạo | Thông tin đầu phiếu, mô tả và ít nhất một lỗi | Biên bản chưa khóa; đúng bộ phận tạo hoặc admin theo quyền | Sẵn sàng phân công/lấy ý kiến |
 | Chọn bộ phận | Bộ phận tạo | Ít nhất một bộ phận cần lấy ý kiến | Chưa xác nhận cuối | Danh sách ý kiến được chốt |
-| Đề xuất xử lý | Người quản lý luồng | Nội dung đề xuất; người/bộ phận, thời hạn nếu nghiệp vụ yêu cầu | Danh sách ý kiến đã được xác nhận | Có phương án xử lý |
-| Phản hồi | Trưởng bộ phận được chọn | Một nội dung ý kiến không rỗng | Đúng bộ phận, đúng vai trò; yêu cầu còn hiệu lực; chưa phản hồi trước đó | Ý kiến được xác nhận một lần |
-| Xác nhận cuối | Bộ phận tạo | Đủ phản hồi, ít nhất một đề xuất; đủ chi phí/hành động nếu đã bật yêu cầu | Chưa xác nhận trước đó | Chuyển sang chờ theo dõi |
+| Mục 5/6/7 | Bộ phận lập hoặc nhân viên thuộc bộ phận được xin ý kiến | Có thể để trống hoặc nhập nội dung phát sinh | Trong vòng xin ý kiến: các bộ phận được chọn đều được nhập; khi trả lại: chỉ bộ phận lập được chỉnh sửa; sau xác nhận cuối thì khóa | Không dùng làm điều kiện hoàn tất |
+| Lưu ý kiến | Bất kỳ nhân viên đúng bộ phận | Một nội dung không rỗng; dùng “Không có ý kiến” nếu không góp ý | Đang ở vòng xin ý kiến hiện tại và chưa được TBP ký | Chờ TBP xác nhận |
+| Xác nhận/trả lại | TBP đúng bộ phận hoặc Admin | Phải có ý kiến; trả lại bắt buộc có lý do | Đúng vòng hiện tại | Ghi chữ ký hoặc mở lại phiếu cho bộ phận lập |
+| Gửi lại | Người lập, TBP bộ phận lập hoặc Admin | Thông tin cơ bản, ít nhất một lỗi và ít nhất một bộ phận | Phiếu đang ở `TRA_LAI_CHINH_SUA` | Tăng vòng và yêu cầu mọi bộ phận lưu/ký lại |
+| Xác nhận cuối | TBP bộ phận lập hoặc Admin | Mọi bộ phận có ý kiến và chữ ký TBP trong vòng hiện tại | Chưa xác nhận trước đó | Chuyển sang chờ theo dõi |
 | Theo dõi | Người có quyền theo dõi/Kết luận | Kết quả và ghi chú; số phiếu KPH mới nếu không thỏa mãn | Biên bản đang chờ theo dõi và chưa được đánh giá | Hoàn tất, khóa đánh giá |
 
 ### Quy tắc khóa quan trọng
 
-- Không thể bỏ một bộ phận khỏi danh sách lấy ý kiến sau khi bộ phận đó đã phản hồi.
-- Mỗi yêu cầu ý kiến chỉ được xác nhận một lần.
+- Sau khi gửi xin ý kiến, thông tin đầu phiếu, lỗi và danh sách bộ phận bị khóa; mục 5/6/7 vẫn mở cho bộ phận lập và các bộ phận được xin ý kiến.
+- Mục 5/6/7 chỉ bị khóa sau xác nhận cuối của TBP bộ phận lập. Việc có hay không có nội dung ở ba mục này không chặn luồng.
+- Trả lại làm mất hiệu lực toàn bộ chữ ký của vòng hiện tại nhưng giữ ý kiến cũ làm nháp/lịch sử.
+- Sau khi gửi lại, mọi bộ phận phải lưu ý kiến và được TBP xác nhận lại.
+- Với biên bản sinh từ phiếu kiểm, sửa danh sách lỗi tạo một bản hiệu chỉnh riêng cho biên bản; dữ liệu và ảnh trên phiếu kiểm nguồn không bị sửa ngược.
 - Sau xác nhận cuối của bộ phận tạo, nội dung chuyển sang theo dõi và bị khóa theo luồng.
 - Kết quả theo dõi chỉ ghi một lần; `Không thỏa mãn` bắt buộc có số phiếu KPH mới.
 - File đính kèm là phần hồ sơ bổ sung và không bị khóa theo trạng thái: mọi tài khoản đã đăng nhập đều có thể thêm, xem và tải file trên Web.
 - Chỉ người đã tải file lên hoặc Admin mới được xóa file đó.
+- Trên bản in V01, cột ý kiến ghi nội dung/ngày lưu của nhân viên; cột xác nhận chỉ ghi TBP đã ký trong vòng hiện tại. Chữ ký cuối lấy từ TBP bộ phận lập.
 
 ---
 
@@ -498,7 +504,8 @@ flowchart TD
 | **Chờ Kho xác nhận** | SXBT đã hoàn tất bước KCS | Kho nhập đủ số lượng từng LOT rồi xác nhận. |
 | **Hoàn thành / Hoàn tất** | Phiếu đã kết thúc và bị khóa | Xem/in; nếu không đạt và chưa có biên bản thì kiểm tra nút sinh biên bản. |
 | **Biên bản mới** | Chưa đủ thông tin và lỗi | Hoàn thiện phần đầu và ít nhất một dòng lỗi. |
-| **Chờ xác nhận / lấy ý kiến** | Đang đợi bộ phận liên quan | Theo dõi bộ phận chưa phản hồi; trưởng bộ phận nhập ý kiến. |
+| **Chờ xác nhận / lấy ý kiến** | Đang đợi bộ phận liên quan | Nhân viên nhập ý kiến; TBP xác nhận hoặc trả lại. |
+| **Trả lại chỉnh sửa** | Một TBP đã trả lại kèm lý do | Bộ phận lập chỉnh sửa và gửi lại để mở vòng xác nhận mới. |
 | **Chờ theo dõi** | KPH đã xử lý xong phần nội dung | Người theo dõi đánh giá hiệu lực. |
 | **Biên bản hoàn tất** | Đã có đánh giá cuối | Chỉ xem/in; không sửa lại đánh giá. |
 
@@ -537,8 +544,9 @@ flowchart LR
 | Không thể hoàn tất phiếu thường | Còn section chưa có kết luận hoặc cỡ mẫu quá lớn | Chốt AQL mọi section và cấu hình lại cỡ mẫu. |
 | Không thấy nút duyệt | Sai quyền, sai bộ phận hoặc phiếu chưa ở trạng thái chờ duyệt | Kiểm tra tài khoản và trạng thái phiếu. |
 | Không sinh được biên bản | Phiếu chưa kết luận không đạt, chưa có lỗi hoặc đã có biên bản | Bổ sung/chốt dữ liệu; nếu đã có thì chọn Xem biên bản. |
-| KPH chưa thể xác nhận cuối | Thiếu phản hồi, đề xuất, chi phí hoặc hành động bắt buộc | Hoàn thành toàn bộ mục hệ thống đang báo thiếu. |
-| Không thể phản hồi ý kiến | Không đúng bộ phận/trưởng bộ phận, yêu cầu chưa chốt hoặc đã trả lời | Đăng nhập đúng tài khoản và kiểm tra yêu cầu còn hiệu lực. |
+| KPH chưa thể xác nhận cuối | Còn bộ phận chưa có chữ ký TBP trong vòng hiện tại | Kiểm tra tiến độ xác nhận từng bộ phận. Mục 5/6/7 không chặn bước này. |
+| Không thể lưu ý kiến | Không đúng bộ phận, nội dung rỗng, phiếu đang chỉnh sửa hoặc đã ký | Nhập nội dung hợp lệ và kiểm tra trạng thái vòng hiện tại. |
+| Không thể xác nhận/trả lại | Chưa lưu ý kiến hoặc tài khoản không phải TBP đúng bộ phận | Lưu ý kiến trước, sau đó đăng nhập tài khoản TBP để thao tác. |
 | Không thể đổi mức độ biên bản SXBT | Mức B/C đã được xác nhận | Tiếp tục chuỗi xác nhận; mức độ đã khóa. |
 | KPH không thỏa mãn nhưng không lưu được | Chưa nhập số phiếu KPH mới | Nhập số phiếu mới trước khi lưu đánh giá. |
 
@@ -592,6 +600,7 @@ flowchart LR
 | `BB_MOI` | Biên bản mới |
 | `CHO_PHAN_BO_XY_LY` / `CHO_PHAN_BO_XU_LY` | Chờ phân công; hai cách viết đang được hỗ trợ |
 | `CHO_XAC_NHAN` | Đang xử lý/lấy ý kiến/xác nhận |
+| `TRA_LAI_CHINH_SUA` | Một bộ phận đã trả lại; bộ phận lập được mở sửa và gửi lại |
 | `CHO_THEO_DOI` | Đã được bộ phận tạo xác nhận cuối, chờ đánh giá hiệu lực |
 | `HOAN_TAT` / `HOAN_THANH` | Luồng biên bản đã kết thúc |
 | `BB_SXBT_MOI` | Biên bản SXBT mới |

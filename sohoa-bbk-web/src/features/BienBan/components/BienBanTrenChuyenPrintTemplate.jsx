@@ -133,22 +133,21 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
             boxSizing: 'border-box',
             boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
         },
-        text: { fontSize: '12pt', marginBottom: '4px' },
+        text: { fontSize: '12pt', marginBottom: '4px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' },
         boldText: { fontSize: '12pt', fontWeight: 'bold' },
         sectionTitle: { fontWeight: 'bold', fontSize: '12pt', marginTop: '15px', marginBottom: '8px' },
-        dottedLine: { flexGrow: 1, borderBottom: '2px dotted #000', marginLeft: '8px', marginRight: '8px', textAlign: 'center', position: 'relative', top: '-4px' },
-        table: { border: '1px solid #000', borderCollapse: 'collapse', width: '100%', marginBottom: '10px' },
+        table: { border: '1px solid #000', borderCollapse: 'collapse', tableLayout: 'fixed', width: '100%', marginBottom: '10px' },
         th: { border: '1px solid #000', padding: '4px', fontWeight: 'bold', textAlign: 'center', fontSize: '11pt' },
-        td: { border: '1px solid #000', padding: '4px', fontSize: '11pt' },
+        td: { border: '1px solid #000', padding: '4px', fontSize: '11pt', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' },
         headerTable: { width: '100%', borderCollapse: 'collapse', marginBottom: '15px', border: '1px solid #000' },
         headerTd: { border: '1px solid #000', padding: '6px', textAlign: 'center', verticalAlign: 'middle' },
         signatureBlock: { display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', rowGap: '20px', marginTop: '15px', textAlign: 'center', width: '100%' },
         signatureCol: { flex: 1, minWidth: '30%', padding: '0 10px' },
-        signatureDepartment: { fontSize: '11pt', fontWeight: 'bold', whiteSpace: 'nowrap' },
+        signatureDepartment: { fontSize: '11pt', fontWeight: 'bold', whiteSpace: 'normal', overflowWrap: 'anywhere' },
         layoutTable: { width: '100%', borderCollapse: 'collapse', border: 'none' },
         layoutTd: { border: 'none', padding: '4px 0', verticalAlign: 'middle' },
         flexBetween: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-        inputField: { width: '100%', border: 'none', outline: 'none', backgroundColor: 'transparent', fontSize: 'inherit', fontFamily: 'inherit', padding: 0, margin: 0, color: 'inherit', textAlign: 'center' }
+        inputField: { width: '100%', border: 'none', outline: 'none', backgroundColor: 'transparent', fontSize: 'inherit', fontFamily: 'inherit', padding: 0, margin: 0, color: 'inherit', textAlign: 'left', resize: 'none', overflow: 'hidden', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap', fieldSizing: 'content' }
     };
 
     // Ô vuông to dùng cho Mục 2 và Mục 3
@@ -178,7 +177,22 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
             {label}
         </span>
     );
-    console.log(phatHienTu);
+    const getFieldRows = (value) => Math.max(1, String(value ?? '').split('\n')
+        .reduce((total, line) => total + Math.max(1, Math.ceil(line.length / 32)), 0));
+    const renderInfoLine = (fields) => (
+        <div style={{ display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '8px', gap: '8px 16px', ...styles.text }}>
+            {fields.map((field) => (
+                <div key={field.name} style={{ display: 'flex', alignItems: 'flex-start', flex: `${field.grow || 1} 1 ${fields.length > 2 ? '28%' : '45%'}`, minWidth: 0 }}>
+                    <span style={{ whiteSpace: 'nowrap', marginRight: '6px' }}>{field.label}:</span>
+                    <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
+                        {canEditCustomFields ? (
+                            <textarea name={field.name} className="custom-field" rows={getFieldRows(field.value)} defaultValue={field.value ?? ''} style={{ ...styles.inputField, cursor: 'text' }} />
+                        ) : (field.value ?? '')}
+                    </span>
+                </div>
+            ))}
+        </div>
+    );
     // Cập nhật Ô check cho phần 2 (Chỉ chọn 1 - Radio)
     const renderRadioRight = (label, value) => (
         <div
@@ -202,7 +216,7 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
     );
 
     const formatSignatureDate = (value) => {
-        if (!value) return 'Ngày..................';
+        if (!value) return 'Ngày';
         return `Ngày ${new Date(value).toLocaleDateString('vi-VN')
             .replace(/\//g, ' tháng ')
             .replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm '))}`;
@@ -286,7 +300,7 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                                 <div style={{ fontSize: '11pt' }}>Mã số: BM.01-QT.02-B8</div>
                                                 <div style={{ fontSize: '11pt' }}>Ngày HL: 20/01/2026</div>
                                                 <div style={{ fontSize: '11pt' }}>Phiên bản: 00</div>
-                                                <div style={{ fontSize: '11pt' }}>Trang: ....................</div>
+                                                <div style={{ fontSize: '11pt' }}>Trang:</div>
                                             </td>
                                         </tr>
                                         <tr>
@@ -312,7 +326,6 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                         <Box style={{ display: 'flex', justifyContent: 'space-between', width: '450px' }}>
                                             <div style={{ ...styles.text, fontStyle: 'italic', display: 'flex', alignItems: 'center' }}>
                                                 {/* <span style={{ whiteSpace: 'nowrap' }}>Số: </span> */}
-                                                {/* <input name="SoPhieuBienBan" className="custom-field" type="text" defaultValue={customData.SoPhieuBienBan || info.SoPhieu || ''} placeholder=".........." style={{ ...styles.inputField, width: '100px', borderBottom: '1px dotted #000', marginLeft: 4 }} /> /KN. */}
                                             </div>
                                             <div style={{ ...styles.text, fontStyle: 'italic' }}>
                                                 Ngày {info.NgayKiem ? new Date(info.NgayKiem).toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm ')) : new Date().toLocaleDateString('vi-VN').replace(/\//g, ' tháng ').replace(/ tháng \d{4}/, (match) => match.replace(' tháng ', ' năm '))}
@@ -324,50 +337,23 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                 {/* 1. Thông tin */}
                                 <Box mb={2} className="avoid-break">
                                     <div style={styles.sectionTitle}>1. Thông tin sự không phù hợp</div>
-                                    <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: '12px', ...styles.text }}>
-                                        <span style={{ whiteSpace: 'nowrap' }}>Đơn vị sản xuất:</span>
-                                        <span style={styles.dottedLine}>
-                                            <input name="TenBoPhan" className="custom-field" type="text" defaultValue={bienBanDonViSanXuat} readOnly={!canEditCustomFields} style={styles.inputField} />
-                                        </span>
-                                        <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Mã ĐVSX:</span>
-                                        <span style={{ ...styles.dottedLine, flexGrow: 0.6 }}>
-                                            <input name="MaBoPhan" className="custom-field" type="text" defaultValue={bienBanMaDonViSanXuat} readOnly={!canEditCustomFields} style={styles.inputField} />
-                                        </span>
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: '12px', ...styles.text }}>
-                                        <span style={{ whiteSpace: 'nowrap' }}>Tên VT/BTP/TP:</span>
-                                        <span style={styles.dottedLine}>
-                                            <input name="TenSanPham" className="custom-field" type="text" defaultValue={customData.TenSanPham || info.TenSanPham || ''} readOnly={!canEditCustomFields} style={styles.inputField} />
-                                        </span>
-                                        <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Mã Item:</span>
-                                        <span style={{ ...styles.dottedLine, flexGrow: 0.6 }}>
-                                            <input name="MaSanPham" className="custom-field" type="text" defaultValue={customData.MaSanPham || customData.MaItem || info.MaSanPham || ''} readOnly={!canEditCustomFields} style={styles.inputField} />
-                                        </span>
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: '12px', ...styles.text }}>
-                                        <span style={{ whiteSpace: 'nowrap' }}>Mã truy nguyên:</span>
-                                        <span style={styles.dottedLine}>
-                                            <input name="MaTruyNguyen" className="custom-field" type="text" defaultValue={customData.MaTruyNguyen || ''} readOnly={!canEditCustomFields} style={styles.inputField} />
-                                        </span>
-                                        <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Đơn hàng:</span>
-                                        <span style={{ ...styles.dottedLine, flexGrow: 0.5 }}>
-                                            <input name="DonHang" className="custom-field" type="text" defaultValue={customData.DonHang || ''} readOnly={!canEditCustomFields} style={styles.inputField} />
-                                        </span>
-                                        <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Lô SX:</span>
-                                        <span style={{ ...styles.dottedLine, flexGrow: 0.3 }}>
-                                            <input name="Lot" className="custom-field" type="text" defaultValue={customData.Lot || info.Lot || ''} readOnly={!canEditCustomFields} style={styles.inputField} />
-                                        </span>
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'flex-end', marginTop: '24px', marginBottom: '12px', ...styles.text }}>
-                                        <span style={{ whiteSpace: 'nowrap' }}>Số lượng:</span>
-                                        <span style={styles.dottedLine}>
-                                            <input name="SoLuongKPH" className="custom-field" type="text" defaultValue={bienBanSoLuongKhongPhuHop} readOnly={!canEditCustomFields} style={styles.inputField} />
-                                        </span>
-                                        <span style={{ whiteSpace: 'nowrap', marginLeft: '5px' }}>Dấu tuần:</span>
-                                        <span style={{ ...styles.dottedLine, flexGrow: 0.4 }}>
-                                            <input name="DauTuan" className="custom-field" type="text" defaultValue={customData.DauTuan || ''} readOnly={!canEditCustomFields} style={styles.inputField} />
-                                        </span>
-                                    </div>
+                                    {renderInfoLine([
+                                        { label: 'Đơn vị sản xuất', name: 'TenBoPhan', value: bienBanDonViSanXuat },
+                                        { label: 'Mã ĐVSX', name: 'MaBoPhan', value: bienBanMaDonViSanXuat, grow: 0.6 }
+                                    ])}
+                                    {renderInfoLine([
+                                        { label: 'Tên VT/BTP/TP', name: 'TenSanPham', value: customData.TenSanPham || info.TenSanPham },
+                                        { label: 'Mã Item', name: 'MaSanPham', value: customData.MaSanPham || customData.MaItem || info.MaSanPham, grow: 0.6 }
+                                    ])}
+                                    {renderInfoLine([
+                                        { label: 'Mã truy nguyên', name: 'MaTruyNguyen', value: customData.MaTruyNguyen },
+                                        { label: 'Đơn hàng', name: 'DonHang', value: customData.DonHang, grow: 0.5 },
+                                        { label: 'Lô SX', name: 'Lot', value: customData.Lot || info.Lot, grow: 0.3 }
+                                    ])}
+                                    {renderInfoLine([
+                                        { label: 'Số lượng', name: 'SoLuongKPH', value: bienBanSoLuongKhongPhuHop },
+                                        { label: 'Dấu tuần', name: 'DauTuan', value: customData.DauTuan, grow: 0.4 }
+                                    ])}
                                 </Box>
 
                                 {/* 2. Phát hiện từ */}
@@ -458,7 +444,7 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                         <div style={styles.text}>{kphBpsxSignature?.FullName || '(Ký, họ tên)'}</div>
                                     </Box>
                                     <Box style={styles.signatureCol}>
-                                        <div style={styles.text}>Ngày..................</div>
+                                        <div style={styles.text}>Ngày</div>
                                         <div style={styles.boldText}>NGƯỜI LẬP</div>
                                         <Box height="60px"></Box>
                                         <div style={styles.text}>{info.NguoiLap || '(Ký, họ tên)'}</div>
@@ -472,7 +458,7 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                         <thead>
                                             <tr>
                                                 <th style={{ ...styles.th, width: '35%' }}>Nội dung</th>
-                                                <th style={styles.th}>Đề nghị xử lý</th>
+                                                <th style={styles.th}>Hình thức xử lý</th>
                                                 <th style={styles.th}>Trách nhiệm</th>
                                                 <th style={styles.th}>Thời hạn</th>
                                                 <th style={styles.th}>Theo dõi</th>
@@ -493,17 +479,6 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                         </tbody>
                                     </table>
 
-                                    <Box className="avoid-break" mt={1} pl={1}>
-                                        <div style={{ ...styles.text, fontStyle: 'italic', marginBottom: '5px' }}>Các nội dung mục đề nghị xử lý:</div>
-                                        <div style={{ display: 'flex', flexWrap: 'wrap' }}>
-                                            <div style={{ width: '33.33%' }}>{renderCheckbox('a) Cho vào SX', false)}</div>
-                                            <div style={{ width: '33.33%' }}>{renderCheckbox('b) Trả lại NCC/DVSX', false)}</div>
-                                            <div style={{ width: '33.33%' }}>{renderCheckbox('c) Loại bỏ', false)}</div>
-                                            <div style={{ width: '33.33%' }}>{renderCheckbox('d) Sửa chữa', false)}</div>
-                                            <div style={{ width: '33.33%' }}>{renderCheckbox('e) Giảm giá/ hạ cấp', false)}</div>
-                                            <div style={{ width: '33.33%' }}>{renderCheckbox('f) Hình thức khác:', false)}</div>
-                                        </div>
-                                    </Box>
                                 </Box>
 
                                 {/* 6. Chi phí phát sinh */}
@@ -590,10 +565,10 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                                 {printOpinions.map((opinion, index) => (
                                                     <tr key={opinion.Id || index}>
                                                         <td style={styles.td}>{opinion.MaBoPhan || opinion.TenBoPhan}</td>
-                                                        <td style={{ ...styles.td, whiteSpace: 'pre-wrap' }}>{opinion.NoiDung}</td>
+                                                        <td style={{ ...styles.td, whiteSpace: 'pre-wrap' }}>{opinion.HasOpinion ? opinion.NoiDung : ''}</td>
                                                         <td style={styles.td}>
-                                                            {opinion.NguoiTraLoi}
-                                                            {opinion.ThoiGian ? ` · ${new Date(opinion.ThoiGian).toLocaleDateString('vi-VN')}` : ''}
+                                                            {opinion.HasConfirmed ? (opinion.ConfirmedByName || '') : ''}
+                                                            {opinion.HasConfirmed && opinion.ConfirmedAt ? ` · ${new Date(opinion.ConfirmedAt).toLocaleDateString('vi-VN')}` : ''}
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -624,10 +599,10 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                     <div style={{ display: 'flex', marginTop: '8px' }}>
                                         {renderCheckbox('Thỏa mãn', followUpEvaluation?.KetQua === 'THOA_MAN')}
                                         {renderCheckbox('Không thỏa mãn', followUpEvaluation?.KetQua === 'KHONG_THOA_MAN')}
-                                        <span style={{ marginLeft: '40px' }}>Phiếu KPH mới số: {followUpEvaluation?.PhieuKphMoiSo || '................................................'}</span>
+                                        <span style={{ marginLeft: '40px', overflowWrap: 'anywhere' }}>Phiếu KPH mới số: {followUpEvaluation?.PhieuKphMoiSo || ''}</span>
                                     </div>
                                     <div style={{ marginTop: '16px' }}>
-                                        <div style={styles.text}>Ghi chú: {followUpEvaluation?.GhiChu || '..........................................................................................................................................................'}</div>
+                                        <div style={{ ...styles.text, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>Ghi chú: {followUpEvaluation?.GhiChu || ''}</div>
                                     </div>
 
                                     <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -636,7 +611,7 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                             <div style={styles.text}>- Lưu</div>
                                         </div>
                                         <div style={{ textAlign: 'center', width: '250px' }}>
-                                            <div style={styles.text}>Ngày..................</div>
+                                            <div style={styles.text}>Ngày</div>
                                             <div style={styles.boldText}>NGƯỜI THEO DÕI</div>
                                             <Box height="60px"></Box>
                                             <div style={styles.text}>(Ký, họ tên)</div>

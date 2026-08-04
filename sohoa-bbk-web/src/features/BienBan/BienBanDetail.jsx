@@ -66,6 +66,7 @@ import {
     assignDepartments,
     saveStandaloneBienBanHeader,
     saveStandaloneBienBanDefects,
+    saveBienBanDefects,
     addXuLy,
     addChiPhi,
     addHanhDong,
@@ -74,9 +75,9 @@ import {
     getAssignableUsers,
     assignUser,
     deleteStandaloneBienBan,
-    updateKphRequirements,
     confirmOpinionDepartments,
-    confirmKphByCreatorDepartment
+    confirmKphByCreatorDepartment,
+    resubmitKphReview
 } from "../../api/bienBan.api";
 import { getDefectList } from "../../api/lookup.api";
 import { decodeToken } from "../../utils/auth";
@@ -119,11 +120,6 @@ export default function BienBanDetail({ standalone = false }) {
     const hasLoadedRef = useRef(false);
     const serverDraftSnapshotRef = useRef(null);
     const confirmSavingRef = useRef(false);
-    const requirementVersionRef = useRef(0);
-    const requirementPendingRef = useRef({
-        yeuCauChiPhi: false,
-        yeuCauHanhDong: false
-    });
     const { showToast } = useToast();
 
     const [info, setInfo] = useState(null);
@@ -142,10 +138,6 @@ export default function BienBanDetail({ standalone = false }) {
 
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState("");
-    const [requirementSaving, setRequirementSaving] = useState({
-        yeuCauChiPhi: false,
-        yeuCauHanhDong: false
-    });
     const [actionSaving, setActionSaving] = useState({
         header: false,
         description: false,
@@ -207,8 +199,6 @@ export default function BienBanDetail({ standalone = false }) {
     }, [bienBanId]);
 
     useEffect(() => {
-        if (!standalone) return;
-
         const loadDefects = async () => {
             try {
                 const res = await getDefectList();
@@ -223,7 +213,6 @@ export default function BienBanDetail({ standalone = false }) {
 
     const loadData = async ({ background = hasLoadedRef.current } = {}) => {
         const requestId = ++latestLoadRequestRef.current;
-        const requirementVersion = requirementVersionRef.current;
         try {
             if (!background) {
                 setLoading(true);
@@ -234,19 +223,7 @@ export default function BienBanDetail({ standalone = false }) {
                 : await getBienBanDetail(bienBanId);
             if (requestId !== latestLoadRequestRef.current) return;
 
-            setInfo((current) => {
-                const shouldPreserveRequirements = background && (
-                    requirementVersion !== requirementVersionRef.current ||
-                    requirementPendingRef.current.yeuCauChiPhi ||
-                    requirementPendingRef.current.yeuCauHanhDong
-                );
-                if (!shouldPreserveRequirements || !current) return res.data.info;
-                return {
-                    ...res.data.info,
-                    YeuCauChiPhi: current.YeuCauChiPhi,
-                    YeuCauHanhDong: current.YeuCauHanhDong
-                };
-            });
+            setInfo(res.data.info);
             const parsedDefects = (res.data.defects || []).map(d => {
                 let images = [];
                 if (d.ImageUrls) {
@@ -309,7 +286,9 @@ export default function BienBanDetail({ standalone = false }) {
                 setMoTaConfirmed(Boolean(moTa));
             }
             if (!background) {
-                setIsEditingStandaloneDefects((res.data.defects || []).length === 0);
+                setIsEditingStandaloneDefects(
+                    (res.data.defects || []).length === 0 && Boolean(res.data.info?.CanManageKphFlow)
+                );
             }
             hasLoadedRef.current = true;
             setLoadError("");
@@ -496,7 +475,8 @@ export default function BienBanDetail({ standalone = false }) {
 
         try {
             setActionSaving((current) => ({ ...current, defects: true }));
-            await saveStandaloneBienBanDefects(bienBanId, payload);
+            if (isStandaloneBienBan) await saveStandaloneBienBanDefects(bienBanId, payload);
+            else await saveBienBanDefects(bienBanId, payload);
             setIsEditingStandaloneDefects(false);
             showToast("Đã lưu danh sách lỗi", "success");
             await refreshData();
@@ -609,6 +589,101 @@ export default function BienBanDetail({ standalone = false }) {
         });
     };
 
+    const patchSpecialistOpinion = (opinionId, changes) => {
+        const next = specialistOpinions.map((item) =>
+            Number(item.Id) === Number(opinionId) ? { ...item, ...changes } : item
+        );
+        setSpecialistOpinions(next);
+        if (Object.prototype.hasOwnProperty.call(changes, "HasConfirmed")) {
+            const canCreatorRole = currentUserRoles.some((role) => String(role || "").toUpperCase() === "ADMIN") ||
+                (Number(info?.BoPhanTaoId) === Number(currentUserBoPhanId) &&
+                    currentUserRoles.some((role) => String(role || "").toUpperCase().startsWith("TP_")));
+            setInfo((currentInfo) => ({
+                ...currentInfo,
+                CanCreatorConfirm: canCreatorRole && next.length > 0 &&
+                    next.every((item) => Boolean(item.HasConfirmed)) &&
+                    !["TRA_LAI_CHINH_SUA", "CHO_THEO_DOI", "HOAN_TAT"].includes(currentInfo.TrangThai)
+            }));
+        }
+    };
+
+    const handleReviewReturned = ({ reason, returnedByName, returnedAt }) => {
+        const decoded = decodeToken() || {};
+        const canEditAfterReturn = currentUserRoles.some((role) => String(role || "").toUpperCase() === "ADMIN") ||
+            Number(info?.NguoiLapId) === Number(decoded.userId) ||
+            (Number(info?.BoPhanTaoId) === Number(currentUserBoPhanId) &&
+                currentUserRoles.some((role) => String(role || "").toUpperCase().startsWith("TP_")));
+        setInfo((current) => ({
+            ...current,
+            TrangThai: "TRA_LAI_CHINH_SUA",
+            LastReturnReason: reason,
+            LastReturnedByName: returnedByName,
+            LastReturnedAt: returnedAt,
+            CreatorConfirmedAt: null,
+            CanManageKphFlow: canEditAfterReturn,
+            CanEditReturned: canEditAfterReturn,
+            CanResubmit: canEditAfterReturn,
+            CanContributeKphSections: canEditAfterReturn,
+            CanCreatorConfirm: false
+        }));
+        setCanEditKphCustomFields(canEditAfterReturn);
+        setSpecialistOpinions((current) => current.map((item) => ({
+            ...item,
+            HasConfirmed: false,
+            HasResponded: false,
+            ConfirmedBy: null,
+            ConfirmedByName: null,
+            ConfirmedAt: null,
+            TrangThai: "CHO_GUI_LAI",
+            CanSaveOpinion: false,
+            CanConfirmOpinion: false,
+            CanReturn: false
+        })));
+    };
+
+    const handleResubmit = () => {
+        setConfirmDialog({
+            open: true,
+            title: "Gửi lại các bộ phận xác nhận",
+            message: "Nội dung sẽ bị khóa và tất cả bộ phận phải lưu ý kiến, xác nhận lại trong vòng mới.",
+            type: "warning",
+            onConfirm: async () => {
+                try {
+                    const response = await resubmitKphReview(bienBanId);
+                    setInfo((current) => ({
+                        ...current,
+                        TrangThai: "CHO_XAC_NHAN",
+                        ReviewRound: response.data?.reviewRound || Number(current.ReviewRound || 1) + 1,
+                        CanManageKphFlow: false,
+                        CanEditReturned: false,
+                        CanResubmit: false,
+                        CanContributeKphSections: true,
+                        CanCreatorConfirm: false
+                    }));
+                    setCanEditKphCustomFields(false);
+                    setSpecialistOpinions((current) => current.map((item) => ({
+                        ...item,
+                        HasOpinion: false,
+                        HasConfirmed: false,
+                        HasResponded: false,
+                        OpinionSavedByName: null,
+                        OpinionSavedAt: null,
+                        ConfirmedByName: null,
+                        ConfirmedAt: null,
+                        TrangThai: "CHO_Y_KIEN",
+                        CanSaveOpinion: isAdminUser || Number(item.BoPhanId) === Number(currentUserBoPhanId),
+                        CanConfirmOpinion: false,
+                        CanReturn: false
+                    })));
+                    setConfirmDialog((current) => ({ ...current, open: false }));
+                    showToast(response.data?.message || "Đã gửi lại các bộ phận xác nhận", "success");
+                } catch (error) {
+                    showToast(error?.response?.data?.message || "Không thể gửi lại biên bản", "error");
+                }
+            }
+        });
+    };
+
     const handleDeleteStandalone = () => {
         setConfirmDialog({
             open: true,
@@ -682,61 +757,31 @@ export default function BienBanDetail({ standalone = false }) {
     const isTrenChuyenBienBan = Number(info?.LoaiKiemId) === 6 && !info?.IsCongDoan;
 
     const isV01 = info?.MauPhieuVersion === "V01";
+    const canEditKphDefects = isV01 && Boolean(info?.CanManageKphFlow);
     const workflowDepartments = isV01 ? specialistOpinions : assigns;
     const isAssigned = workflowDepartments.some(a => Number(a.BoPhanId) === Number(currentUserBoPhanId));
     const canAddProposal = isV01
-        ? Boolean(info?.CanManageKphFlow)
+        ? Boolean(info?.CanContributeKphSections)
         : isAssigned;
     const hasXuLy = xuLy.some(x => Number(x.BoPhanId) === Number(currentUserBoPhanId));
     const isConfirmed = xacNhan.some(x => Number(x.BoPhanId) === Number(currentUserBoPhanId));
     const allConfirmed = assigns.length > 0 && assigns.every(a =>
         xacNhan.some(x => Number(x.BoPhanId) === Number(a.BoPhanId))
     );
-    const allOpinionsAnswered = specialistOpinions.length > 0 &&
-        specialistOpinions.every(item => Boolean(item.HasResponded));
+    const allOpinionsConfirmed = specialistOpinions.length > 0 &&
+        specialistOpinions.every(item => Boolean(item.HasConfirmed));
     const requiredSectionsReady = xuLy.length > 0 &&
         (!info?.YeuCauChiPhi || chiPhi.length > 0) && (!info?.YeuCauHanhDong || hanhDong.length > 0);
     const hasCompletionPermission = isAdminUser ||
         currentUserPermissions.includes("QUAN_TRI_DM") ||
         currentUserPermissions.includes("KET_LUAN");
-    const canSubmitCompletion = (isV01
-        ? Boolean(info?.CanManageKphFlow) && Boolean(info?.OpinionDepartmentsConfirmed) && allOpinionsAnswered
-        : hasCompletionPermission && allConfirmed) && requiredSectionsReady &&
-        !["CHO_THEO_DOI", "HOAN_TAT"].includes(info?.TrangThai);
+    const canSubmitCompletion = isV01
+        ? Boolean(info?.CanCreatorConfirm) && Boolean(info?.OpinionDepartmentsConfirmed) && allOpinionsConfirmed &&
+            !["TRA_LAI_CHINH_SUA", "CHO_THEO_DOI", "HOAN_TAT"].includes(info?.TrangThai)
+        : hasCompletionPermission && allConfirmed && requiredSectionsReady &&
+            !["CHO_THEO_DOI", "HOAN_TAT"].includes(info?.TrangThai);
     const canConfirmProcessing = !isV01 && Boolean(info?.AssignConfirmed) &&
         isAssigned && !isConfirmed && hasXuLy;
-    const isRequirementSaving = requirementSaving.yeuCauChiPhi || requirementSaving.yeuCauHanhDong;
-    const updateRequirement = async (field, value) => {
-        if (requirementPendingRef.current.yeuCauChiPhi || requirementPendingRef.current.yeuCauHanhDong) return;
-        const infoField = field === "yeuCauChiPhi" ? "YeuCauChiPhi" : "YeuCauHanhDong";
-        const previousValue = Boolean(info?.[infoField]);
-        requirementVersionRef.current += 1;
-        requirementPendingRef.current[field] = true;
-        setInfo((current) => ({ ...current, [infoField]: value }));
-        setRequirementSaving((current) => ({ ...current, [field]: true }));
-        try {
-            const response = await updateKphRequirements(bienBanId, { [field]: value });
-            setInfo((current) => {
-                const next = {
-                    ...current,
-                    [infoField]: Boolean(response.data[field])
-                };
-                if (field !== "yeuCauChiPhi" && !requirementPendingRef.current.yeuCauChiPhi) {
-                    next.YeuCauChiPhi = Boolean(response.data.yeuCauChiPhi);
-                }
-                if (field !== "yeuCauHanhDong" && !requirementPendingRef.current.yeuCauHanhDong) {
-                    next.YeuCauHanhDong = Boolean(response.data.yeuCauHanhDong);
-                }
-                return next;
-            });
-        } catch (err) {
-            setInfo((current) => ({ ...current, [infoField]: previousValue }));
-            showToast(err?.response?.data?.message || "Không thể cập nhật yêu cầu", "error");
-        } finally {
-            requirementPendingRef.current[field] = false;
-            setRequirementSaving((current) => ({ ...current, [field]: false }));
-        }
-    };
     const defectCount = defects.length;
     const totalDefectQty = defects.reduce((sum, item) => sum + (Number(item.SoLuong) || 0), 0);
     const scrollToSection = (sectionId) => {
@@ -842,6 +887,23 @@ export default function BienBanDetail({ standalone = false }) {
 
             <Box sx={{ px: { xs: 2, md: 4 } }}>
                 <BienBanWorkflowGuide workflow={workflow} status={info.TrangThai} />
+                {info.TrangThai === "TRA_LAI_CHINH_SUA" && (
+                    <Paper variant="outlined" sx={{ mb: 3, p: 2, borderColor: "error.main", bgcolor: "#fff5f5" }}>
+                        <Stack direction={{ xs: "column", md: "row" }} spacing={2} justifyContent="space-between" alignItems={{ md: "center" }}>
+                            <Box>
+                                <Typography color="error.main" fontWeight={800}>Biên bản đã được trả lại để chỉnh sửa</Typography>
+                                <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: "pre-wrap" }}>{info.LastReturnReason || "Chưa ghi nhận lý do"}</Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                    {info.LastReturnedByName || "Trưởng bộ phận"}
+                                    {info.LastReturnedAt ? ` · ${new Date(info.LastReturnedAt).toLocaleString("vi-VN")}` : ""}
+                                </Typography>
+                            </Box>
+                            {info.CanResubmit && <Button variant="contained" color="warning" startIcon={<AssignmentTurnedInIcon />} onClick={handleResubmit}>
+                                Gửi lại các bộ phận xác nhận
+                            </Button>}
+                        </Stack>
+                    </Paper>
+                )}
                 {/* <Container > */}
                 <Grid container spacing={3}>
                     {/* Thông tin chung & lỗi: dùng toàn chiều rộng theo bố cục hồ sơ một cột. */}
@@ -951,9 +1013,31 @@ export default function BienBanDetail({ standalone = false }) {
                                                         fullWidth
                                                         size="small"
                                                         label={label}
+                                                        disabled={!info.CanManageKphFlow}
                                                         value={headerFields[field] || ""}
                                                         onChange={(e) => handleHeaderFieldChange(field, e.target.value)}
                                                     />
+                                                </Grid>
+                                            ))}
+                                            {[
+                                                ["2. Sự không phù hợp được phát hiện từ", "PhatHienTu", PHAT_HIEN_TU_OPTIONS],
+                                                ["3. Mức độ không phù hợp", "MucDo", MUC_DO_KPH_OPTIONS]
+                                            ].map(([label, field, options]) => (
+                                                <Grid size={{ xs: 12, md: 6 }} key={field}>
+                                                    <TextField
+                                                        fullWidth
+                                                        select
+                                                        size="small"
+                                                        label={label}
+                                                        disabled={!info.CanManageKphFlow}
+                                                        value={headerFields[field] || ""}
+                                                        onChange={(event) => handleHeaderFieldChange(field, event.target.value)}
+                                                    >
+                                                        <MenuItem value="">Chưa chọn</MenuItem>
+                                                        {options.map(([value, text]) => (
+                                                            <MenuItem value={value} key={value}>{text}</MenuItem>
+                                                        ))}
+                                                    </TextField>
                                                 </Grid>
                                             ))}
                                             <Grid size={{ xs: 12 }}>
@@ -969,6 +1053,7 @@ export default function BienBanDetail({ standalone = false }) {
                                                     fullWidth
                                                     multiline
                                                     minRows={4}
+                                                    disabled={!info.CanManageKphFlow}
                                                     label="Mô tả chung"
                                                     placeholder="Nhập mô tả chi tiết về tình trạng không phù hợp..."
                                                     value={moTaChung}
@@ -980,19 +1065,24 @@ export default function BienBanDetail({ standalone = false }) {
                                                 />
                                             </Grid>
                                         </Grid>
-                                        <Box sx={{ mt: 2, textAlign: 'right' }}>
+                                        {info.CanManageKphFlow && <Box sx={{ mt: 2, textAlign: 'right' }}>
                                             <Button disabled={actionSaving.description} variant="contained" startIcon={<SaveIcon />} onClick={handleSaveStandaloneHeader}>
                                                 {actionSaving.description ? "Đang lưu..." : "Lưu thông tin phiếu"}
                                             </Button>
-                                        </Box>
+                                        </Box>}
                                     </CardContent>
                                 </Card>
                             ) : (
                                 <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
                                     <CardContent>
-                                        <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                                            <DescriptionIcon color="action" /> Mô tả chung
-                                        </Typography>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+                                            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                <DescriptionIcon color="action" /> Mô tả chung
+                                            </Typography>
+                                            {moTaConfirmed && info.CanManageKphFlow && (
+                                                <Button size="small" variant="outlined" onClick={() => setMoTaConfirmed(false)}>Chỉnh sửa</Button>
+                                            )}
+                                        </Stack>
                                         {moTaConfirmed ? (
                                             <Box sx={{ px: 1 }}>
                                                 <Typography
@@ -1033,7 +1123,7 @@ export default function BienBanDetail({ standalone = false }) {
 
                             {/* Card Danh Sách Lỗi */}
                             <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
-                                {isStandaloneBienBan ? (
+                                {(isStandaloneBienBan || canEditKphDefects) ? (
                                     <CardContent>
                                         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
                                             <Box>
@@ -1044,7 +1134,7 @@ export default function BienBanDetail({ standalone = false }) {
                                                     Có thể chọn lỗi từ danh mục chuẩn hoặc nhập tay một nội dung không phù hợp phát sinh thực tế.
                                                 </Typography>
                                             </Box>
-                                            {isEditingStandaloneDefects ? (
+                                            {isEditingStandaloneDefects && canEditKphDefects ? (
                                                 <Stack direction="row" spacing={1}>
                                                     <Button size="small" variant="contained" onClick={addCatalogDefectRow}>
                                                         Thêm từ danh mục
@@ -1053,13 +1143,13 @@ export default function BienBanDetail({ standalone = false }) {
                                                         Thêm nhập tay
                                                     </Button>
                                                 </Stack>
-                                            ) : (
+                                            ) : canEditKphDefects ? (
                                                 <Stack direction="row" spacing={1}>
                                                     <Button size="small" variant="outlined" onClick={() => setIsEditingStandaloneDefects(true)}>
                                                         Chỉnh sửa
                                                     </Button>
                                                 </Stack>
-                                            )}
+                                            ) : null}
                                         </Stack>
                                         {!isEditingStandaloneDefects ? (
                                             defects.length === 0 ? (
@@ -1281,7 +1371,7 @@ export default function BienBanDetail({ standalone = false }) {
                                                             <TableRow key={i} hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                                                                 <TableCell>
                                                                     <Typography variant="body2" fontWeight="bold" color="primary">
-                                                                        {d.TenLoi}
+                                                                        {d.TenLoi || d.TenLoiTuNhap || d.MaLoi || `Dòng lỗi ${i + 1}`}
                                                                     </Typography>
                                                                     {d.MoTa && (
                                                                         <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -1357,7 +1447,7 @@ export default function BienBanDetail({ standalone = false }) {
                                             <TableContainer sx={{ border: '1px solid #e5e7eb', borderRadius: 1 }}>
                                                 <Table size="small">
                                                     <TableHead sx={{ bgcolor: '#f8fafc' }}><TableRow><TableCell>Bộ phận</TableCell><TableCell>Mã bộ phận</TableCell><TableCell align="right">Trạng thái</TableCell></TableRow></TableHead>
-                                                    <TableBody>{workflowDepartments.map((a, i) => <TableRow key={a.Id || i} hover><TableCell sx={{ fontWeight: 700 }}>{a.TenBoPhan || '—'}</TableCell><TableCell>{a.MaBoPhan || '—'}</TableCell><TableCell align="right"><Chip size="small" label={isV01 ? (a.HasResponded ? "Đã phản hồi" : "Chờ phản hồi") : getStatusText(a.BoPhanId)} color={isV01 ? (a.HasResponded ? "success" : "warning") : getStatusColor(a.BoPhanId)} /></TableCell></TableRow>)}</TableBody>
+                                                    <TableBody>{workflowDepartments.map((a, i) => <TableRow key={a.Id || i} hover><TableCell sx={{ fontWeight: 700 }}>{a.TenBoPhan || '—'}</TableCell><TableCell>{a.MaBoPhan || '—'}</TableCell><TableCell align="right"><Chip size="small" label={isV01 ? (a.HasConfirmed ? "Đã xác nhận" : a.HasOpinion ? "Chờ TBP xác nhận" : "Chờ ý kiến") : getStatusText(a.BoPhanId)} color={isV01 ? (a.HasConfirmed ? "success" : a.HasOpinion ? "warning" : "default") : getStatusColor(a.BoPhanId)} /></TableCell></TableRow>)}</TableBody>
                                                 </Table>
                                             </TableContainer>
                                         )}
@@ -1428,17 +1518,11 @@ export default function BienBanDetail({ standalone = false }) {
                                                     <AttachMoneyIcon color="success" /> Chi phí phát sinh
                                                 </Typography>
                                                 <Stack direction="row" spacing={1} alignItems="center">
-                                                    <Chip size="small" color={info.YeuCauChiPhi ? "success" : "default"} label={info.YeuCauChiPhi ? "Yêu cầu" : "Không yêu cầu"} />
-                                                    {info.CanConfigureRequirements && (
-                                                        <Button
-                                                            size="small"
-                                                            disabled={isRequirementSaving}
-                                                            onClick={() => updateRequirement("yeuCauChiPhi", !info.YeuCauChiPhi)}
-                                                        >
-                                                            {requirementSaving.yeuCauChiPhi ? "Đang lưu..." : (info.YeuCauChiPhi ? "Bỏ yêu cầu" : "Yêu cầu")}
-                                                        </Button>
-                                                    )}
-                                                    {info.YeuCauChiPhi && info.CanManageKphFlow && !["CHO_THEO_DOI", "HOAN_TAT"].includes(info.TrangThai) && (
+                                                    <Chip size="small"
+                                                        color={(isV01 ? chiPhi.length > 0 : info.YeuCauChiPhi) ? "success" : "default"}
+                                                        label={isV01 ? (chiPhi.length > 0 ? "Có ghi nhận" : "Tùy chọn") : (info.YeuCauChiPhi ? "Yêu cầu" : "Không yêu cầu")}
+                                                    />
+                                                    {info.CanContributeKphSections && !["CHO_THEO_DOI", "HOAN_TAT"].includes(info.TrangThai) && (
                                                         <Button size="small" color="success" startIcon={<AddIcon />} onClick={() => setOpenChiPhiModal(true)}>
                                                             Thêm chi phí
                                                         </Button>
@@ -1464,17 +1548,11 @@ export default function BienBanDetail({ standalone = false }) {
                                                     <BuildCircleIcon color="info" /> Hành động khắc phục
                                                 </Typography>
                                                 <Stack direction="row" spacing={1} alignItems="center">
-                                                    <Chip size="small" color={info.YeuCauHanhDong ? "success" : "default"} label={info.YeuCauHanhDong ? "Yêu cầu" : "Không yêu cầu"} />
-                                                    {info.CanConfigureRequirements && (
-                                                        <Button
-                                                            size="small"
-                                                            disabled={isRequirementSaving}
-                                                            onClick={() => updateRequirement("yeuCauHanhDong", !info.YeuCauHanhDong)}
-                                                        >
-                                                            {requirementSaving.yeuCauHanhDong ? "Đang lưu..." : (info.YeuCauHanhDong ? "Bỏ yêu cầu" : "Yêu cầu")}
-                                                        </Button>
-                                                    )}
-                                                    {info.YeuCauHanhDong && info.CanManageKphFlow && !["CHO_THEO_DOI", "HOAN_TAT"].includes(info.TrangThai) && (
+                                                    <Chip size="small"
+                                                        color={(isV01 ? hanhDong.length > 0 : info.YeuCauHanhDong) ? "success" : "default"}
+                                                        label={isV01 ? (hanhDong.length > 0 ? "Có ghi nhận" : "Tùy chọn") : (info.YeuCauHanhDong ? "Yêu cầu" : "Không yêu cầu")}
+                                                    />
+                                                    {info.CanContributeKphSections && !["CHO_THEO_DOI", "HOAN_TAT"].includes(info.TrangThai) && (
                                                         <Button size="small" color="info" startIcon={<AddIcon />} onClick={() => setOpenHanhDongModal(true)}>
                                                             Thêm hành động
                                                         </Button>
@@ -1500,6 +1578,8 @@ export default function BienBanDetail({ standalone = false }) {
                                     currentUserBoPhanId={currentUserBoPhanId} permissions={currentUserPermissions}
                                     roles={currentUserRoles}
                                     isAdmin={Boolean(info?.IsAdmin) || isAdminUser}
+                                    onPatchOpinion={patchSpecialistOpinion}
+                                    onReturned={handleReviewReturned}
                                     reload={refreshData} showToast={showToast}
                                 />
                             </Box>

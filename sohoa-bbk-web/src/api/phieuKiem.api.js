@@ -57,6 +57,9 @@ export const createPhieuKiemSXBT = (data) => {
     return axiosClient.post("/phieu-kiem/create-sxbt", normalizeCreatePayload(data));
 };
 
+export const previewSxbtGroups = (keHoachNhapIds) =>
+    axiosClient.post("/phieu-kiem/sxbt/group-preview", { keHoachNhapIds });
+
 export const getLichDongContChuaKiem = () =>
     axiosClient.get("/phieu-kiem/lich-dong-cont/chua-kiem");
 

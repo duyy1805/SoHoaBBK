@@ -117,7 +117,8 @@ const formatQuantity = (value) =>
 
 const getLotContextText = (item = {}, lotRow = {}) => {
     const parts = [];
-    if (item.SourceID_KeHoachSanXuat) parts.push(`KH #${item.SourceID_KeHoachSanXuat}`);
+    if (item.KeHoachNhapId) parts.push(`KH nhập #${item.KeHoachNhapId}`);
+    if (item.SourceID_KeHoachSanXuat) parts.push(`KHSX #${item.SourceID_KeHoachSanXuat}`);
     if (lotRow.SoLotSX) parts.push(`Lot SX: ${lotRow.SoLotSX}`);
     if (lotRow.SoLuongNhap !== undefined && lotRow.SoLuongNhap !== null && lotRow.SoLuongNhap !== "") {
         parts.push(`SL nhập: ${formatQuantity(lotRow.SoLuongNhap)}`);
@@ -498,7 +499,9 @@ export default function SxbtDetail() {
                                     <InfoItem label="Nguồn SXBT">
                                         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                                             <Typography fontWeight={600}>
-                                                {phieu?.SxbtSourceType === "KE_HOACH_NHAP"
+                                                {phieu?.SxbtSourceCount > 1
+                                                    ? `${phieu.SxbtSourceCount} kế hoạch nhập`
+                                                    : phieu?.SxbtSourceType === "KE_HOACH_NHAP"
                                                     ? `Kế hoạch nhập #${phieu?.KeHoachNhapId || "—"}`
                                                     : (phieu?.So_PhieuNhapBTP || `Phiếu nhập #${phieu?.PhieuNhapBtpId || "—"}`)}
                                             </Typography>
@@ -521,8 +524,12 @@ export default function SxbtDetail() {
                                     </InfoItem>
                                 </Grid>
                                 <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                                    <InfoItem label="Số lượng KH">
-                                        <Typography fontWeight={600}>{phieu?.SoLuong?.toLocaleString("vi-VN") || "—"}</Typography>
+                                    <InfoItem label={phieu?.SxbtSourceCount > 1 ? "Số kế hoạch" : "Số lượng KH"}>
+                                        <Typography fontWeight={600}>
+                                            {phieu?.SxbtSourceCount > 1
+                                                ? phieu.SxbtSourceCount
+                                                : phieu?.SoLuong?.toLocaleString("vi-VN") || "—"}
+                                        </Typography>
                                     </InfoItem>
                                 </Grid>
                                 <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -609,6 +616,8 @@ export default function SxbtDetail() {
                                     <Table size="small">
                                         <TableHead>
                                             <TableRow sx={{ bgcolor: "grey.50" }}>
+                                                <TableCell sx={{ fontWeight: 700 }}>ID KH nhập</TableCell>
+                                                <TableCell sx={{ fontWeight: 700 }}>ID KHSX</TableCell>
                                                 <TableCell sx={{ fontWeight: 700 }}>Tên sản phẩm</TableCell>
                                                 <TableCell align="right" sx={{ fontWeight: 700 }}>Số lượng</TableCell>
                                                 <TableCell sx={{ fontWeight: 700 }}>ĐVT</TableCell>
@@ -624,6 +633,8 @@ export default function SxbtDetail() {
                                             {btpItems.flatMap((item) =>
                                                 getBtpLotRows(item).map((lotRow, lotIndex) => (
                                                     <TableRow key={`${item.Id}-${lotIndex}`} hover>
+                                                        <TableCell>#{item.KeHoachNhapId || "—"}</TableCell>
+                                                        <TableCell>#{item.SourceID_KeHoachSanXuat || "—"}</TableCell>
                                                         <TableCell sx={{ fontWeight: 600 }}>{item.TenSanPham}</TableCell>
                                                         <TableCell align="right">{item.SoLuong?.toLocaleString("vi-VN")}</TableCell>
                                                         <TableCell>{item.DonViTinh}</TableCell>

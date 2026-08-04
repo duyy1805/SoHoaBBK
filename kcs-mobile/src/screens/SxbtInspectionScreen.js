@@ -243,7 +243,8 @@ export default function SxbtInspectionScreen({ route, navigation }) {
 
     const getLotContextText = (item = {}, lotRow = {}) => {
         const parts = [];
-        if (item.SourceID_KeHoachSanXuat) parts.push(`KH #${item.SourceID_KeHoachSanXuat}`);
+        if (item.KeHoachNhapId) parts.push(`KH nhập #${item.KeHoachNhapId}`);
+        if (item.SourceID_KeHoachSanXuat) parts.push(`KHSX #${item.SourceID_KeHoachSanXuat}`);
         if (lotRow.SoLotSX) parts.push(`Lot SX: ${lotRow.SoLotSX}`);
         if (lotRow.SoLuongNhap !== undefined && lotRow.SoLuongNhap !== null && lotRow.SoLuongNhap !== "") {
             parts.push(`SL nhập: ${formatQuantity(lotRow.SoLuongNhap)}`);
@@ -755,7 +756,9 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                         <View style={[styles.infoItem, { width: '100%', marginBottom: 10 }]}>
                             <Text style={styles.infoLabel}>Nguồn SXBT</Text>
                             <Text style={styles.infoValue}>
-                                {phieu?.SxbtSourceType === "KE_HOACH_NHAP"
+                                {phieu?.SxbtSourceCount > 1
+                                    ? `${phieu.SxbtSourceCount} kế hoạch nhập`
+                                    : phieu?.SxbtSourceType === "KE_HOACH_NHAP"
                                     ? `Kế hoạch nhập #${phieu?.KeHoachNhapId || "---"}`
                                     : (phieu?.So_PhieuNhapBTP || `Phiếu nhập #${phieu?.PhieuNhapBtpId || "---"}`)}
                             </Text>
@@ -766,8 +769,8 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                         </View>
                         <View style={{ flexDirection: 'row', width: '100%' }}>
                             <View style={styles.infoItem}>
-                                <Text style={styles.infoLabel}>Số lượng KH</Text>
-                                <Text style={styles.infoValue}>{phieu?.SoLuong || 0}</Text>
+                                <Text style={styles.infoLabel}>{phieu?.SxbtSourceCount > 1 ? "Số kế hoạch" : "Số lượng KH"}</Text>
+                                <Text style={styles.infoValue}>{phieu?.SxbtSourceCount > 1 ? phieu.SxbtSourceCount : (phieu?.SoLuong || 0)}</Text>
                             </View>
                             <View style={styles.infoItem}>
                                 <Text style={styles.infoLabel}>Ngày nhập</Text>
@@ -848,7 +851,8 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                                 <View style={{ flex: 1 }}>
                                     <Text style={styles.itemName}>{item.TenSanPham}</Text>
                                     <Text style={styles.itemSub}>
-                                        {item.SourceID_KeHoachSanXuat ? `KH #${item.SourceID_KeHoachSanXuat} • ` : ""}
+                                        {item.KeHoachNhapId ? `KH nhập #${item.KeHoachNhapId} • ` : ""}
+                                        {item.SourceID_KeHoachSanXuat ? `KHSX #${item.SourceID_KeHoachSanXuat} • ` : ""}
                                         SL phiếu: {formatQuantity(item.SoLuong)} {item.DonViTinh || ""}
                                         {item.MaDonHang ? ` • Đơn hàng: ${item.MaDonHang}` : ""}
                                     </Text>

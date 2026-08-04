@@ -938,9 +938,6 @@ router.put("/defect-requests/:id", authenticateToken, async (req, res) => {
   try {
     const pool = await poolPromise;
     const workflowAccess = await getDefectWorkflowAccess(pool, req.user);
-    if (!workflowAccess.canPrepare) {
-      return res.status(403).json({ message: "Chỉ nhân viên B7 được bổ sung thông tin lỗi" });
-    }
     const userId = Number(req.user.userId);
     const payload = normalizeDefectPayload(req.body?.data || req.body);
     const validationError = validateDefectReport(payload);
@@ -951,20 +948,28 @@ router.put("/defect-requests/:id", authenticateToken, async (req, res) => {
     const request = pool.request()
       .input("Id", sql.Int, req.params.id)
       .input("UserId", sql.Int, userId)
+      .input("CanPrepare", sql.Bit, workflowAccess.canPrepare)
       .input("ProposedData", sql.NVarChar(sql.MAX), JSON.stringify(payload))
       .input("RowVersion", sql.VarBinary(8), rowVersion);
     const result = await request.query(`
       UPDATE dbo.DM_DEFECT_REQUEST
       SET ProposedData=@ProposedData, UpdatedBy=@UserId, UpdatedAt=SYSDATETIME()
       OUTPUT INSERTED.Id, INSERTED.Status, INSERTED.RowVersion
-      WHERE Id=@Id AND Status IN ('WAITING_B7','REJECTED')
+      WHERE Id=@Id
+        AND (
+          (@CanPrepare=1 AND Status IN ('WAITING_B7','REJECTED'))
+          OR (CreatedBy=@UserId AND Status='RETURNED')
+        )
         AND RowVersion=@RowVersion
     `);
     if (!result.recordset.length) {
       return res.status(409).json({ message: "Đề xuất đã thay đổi hoặc bạn không có quyền cập nhật" });
     }
     const row = result.recordset[0];
-    res.json({ message: "Đã lưu thông tin B7 bổ sung", request: { ...row, RowVersion: row.RowVersion.toString("base64") } });
+    res.json({
+      message: row.Status === "RETURNED" ? "Đã lưu nội dung điều chỉnh" : "Đã lưu thông tin B7 bổ sung",
+      request: { ...row, RowVersion: row.RowVersion.toString("base64") }
+    });
   } catch (err) {
     console.error("Update defect request error:", err);
     res.status(500).json({ message: "Không cập nhật được đề xuất" });
@@ -974,9 +979,7 @@ router.put("/defect-requests/:id", authenticateToken, async (req, res) => {
 router.post("/defect-requests/:id/submit", authenticateToken, async (req, res) => {
   const pool = await poolPromise;
   const workflowAccess = await getDefectWorkflowAccess(pool, req.user);
-  if (!workflowAccess.canPrepare) {
-    return res.status(403).json({ message: "Chỉ nhân viên B7 được gửi đề xuất duyệt" });
-  }
+  const userId = Number(req.user.userId);
 
   const rowVersion = decodeRowVersion(req.body?.rowVersion);
   if (!rowVersion) return res.status(400).json({ message: "Thiếu phiên bản dữ liệu đề xuất, vui lòng tải lại" });
@@ -986,20 +989,30 @@ router.post("/defect-requests/:id/submit", authenticateToken, async (req, res) =
   try {
     const requestResult = await requestWithTransaction(transaction)
       .input("Id", sql.Int, req.params.id)
+      .input("UserId", sql.Int, userId)
+      .input("CanPrepare", sql.Bit, workflowAccess.canPrepare)
       .input("RowVersion", sql.VarBinary(8), rowVersion)
       .query(`
         SELECT * FROM dbo.DM_DEFECT_REQUEST WITH (UPDLOCK, HOLDLOCK)
-        WHERE Id=@Id AND Status IN ('WAITING_B7','REJECTED') AND RowVersion=@RowVersion
+        WHERE Id=@Id
+          AND (
+            (@CanPrepare=1 AND Status IN ('WAITING_B7','REJECTED'))
+            OR (CreatedBy=@UserId AND Status='RETURNED')
+          )
+          AND RowVersion=@RowVersion
       `);
     const requestRow = requestResult.recordset?.[0];
     if (!requestRow) {
-      const error = new Error("Đề xuất đã thay đổi hoặc không còn ở bước B7 bổ sung");
+      const error = new Error("Đề xuất đã thay đổi hoặc không còn ở bước được phép gửi");
       error.statusCode = 409;
       throw error;
     }
 
+    const isReporterResubmission = requestRow.Status === "RETURNED";
     const payload = normalizeDefectPayload(JSON.parse(requestRow.ProposedData || "{}"));
-    const validationError = validateDefectSubmission(payload, requestRow.RequestType);
+    const validationError = isReporterResubmission
+      ? validateDefectReport(payload)
+      : validateDefectSubmission(payload, requestRow.RequestType);
     if (validationError) {
       const error = new Error(validationError);
       error.statusCode = 400;
@@ -1026,18 +1039,19 @@ router.post("/defect-requests/:id/submit", authenticateToken, async (req, res) =
 
     const submitted = await requestWithTransaction(transaction)
       .input("Id", sql.Int, requestRow.Id)
-      .input("UserId", sql.Int, req.user.userId)
+      .input("UserId", sql.Int, userId)
+      .input("NextStatus", sql.VarChar(12), isReporterResubmission ? "WAITING_B7" : "PENDING")
       .query(`
         UPDATE dbo.DM_DEFECT_REQUEST
-        SET Status='PENDING', UpdatedBy=@UserId, UpdatedAt=SYSDATETIME(),
+        SET Status=@NextStatus, UpdatedBy=@UserId, UpdatedAt=SYSDATETIME(),
             ReviewedBy=NULL, ReviewedAt=NULL, ReviewNote=NULL
         OUTPUT INSERTED.Id, INSERTED.Status, INSERTED.RowVersion
-        WHERE Id=@Id AND Status IN ('WAITING_B7','REJECTED')
+        WHERE Id=@Id
       `);
     await transaction.commit();
     const row = submitted.recordset[0];
     res.json({
-      message: "Đã gửi TP B7 duyệt",
+      message: isReporterResubmission ? "Đã gửi lại B7 xử lý" : "Đã gửi TP B7 duyệt",
       request: { ...row, RowVersion: row.RowVersion.toString("base64") }
     });
   } catch (err) {
@@ -1062,7 +1076,7 @@ router.delete("/defect-requests/:id", authenticateToken, async (req, res) => {
         SET Status='CANCELLED', UpdatedBy=@UserId, UpdatedAt=SYSDATETIME()
         OUTPUT INSERTED.Id
         WHERE Id=@Id AND (CreatedBy=@UserId OR @IsAdmin=1)
-          AND Status IN ('WAITING_B7','PENDING','REJECTED')
+          AND Status IN ('WAITING_B7','PENDING','REJECTED','RETURNED')
           AND (@RowVersion IS NULL OR RowVersion=@RowVersion)
       `);
     if (!result.recordset.length) return res.status(409).json({ message: "Không thể rút đề xuất này" });
@@ -1090,12 +1104,12 @@ router.post("/defect-requests/:id/approve", authenticateToken, async (req, res) 
 
 router.post("/defect-requests/:id/reject", authenticateToken, async (req, res) => {
   const reviewNote = trimValue(req.body?.reviewNote);
-  if (!reviewNote) return res.status(400).json({ message: "Vui lòng nhập lý do từ chối" });
+  if (!reviewNote) return res.status(400).json({ message: "Vui lòng nhập lý do trả lại" });
   try {
     const pool = await poolPromise;
     const workflowAccess = await getDefectWorkflowAccess(pool, req.user);
-    if (!workflowAccess.canApprove) {
-      return res.status(403).json({ message: "Chỉ TP B7 được cấp quyền duyệt danh mục lỗi" });
+    if (!workflowAccess.canPrepare && !workflowAccess.canApprove) {
+      return res.status(403).json({ message: "Bạn không có quyền trả lại đề xuất danh mục lỗi" });
     }
     const rowVersion = decodeRowVersion(req.body?.rowVersion);
     if (!rowVersion) return res.status(400).json({ message: "Thiếu phiên bản dữ liệu đề xuất, vui lòng tải lại" });
@@ -1103,24 +1117,28 @@ router.post("/defect-requests/:id/reject", authenticateToken, async (req, res) =
       .input("Id", sql.Int, req.params.id)
       .input("ReviewerId", sql.Int, req.user.userId)
       .input("ReviewNote", sql.NVarChar(1000), reviewNote)
+      .input("CanPrepare", sql.Bit, workflowAccess.canPrepare)
+      .input("CanApprove", sql.Bit, workflowAccess.canApprove)
       .input("RowVersion", sql.VarBinary(8), rowVersion)
       .query(`
         UPDATE dbo.DM_DEFECT_REQUEST
-        SET Status='REJECTED', ReviewedBy=@ReviewerId, ReviewedAt=SYSDATETIME(), ReviewNote=@ReviewNote
+        SET Status=CASE WHEN Status='WAITING_B7' THEN 'RETURNED' ELSE 'REJECTED' END,
+            ReviewedBy=@ReviewerId, ReviewedAt=SYSDATETIME(), ReviewNote=@ReviewNote
         OUTPUT INSERTED.Id, INSERTED.Status, INSERTED.ReviewedBy, INSERTED.ReviewedAt,
                INSERTED.ReviewNote, INSERTED.RowVersion
-        WHERE Id=@Id AND Status='PENDING'
+        WHERE Id=@Id
+          AND ((Status='WAITING_B7' AND @CanPrepare=1) OR (Status='PENDING' AND @CanApprove=1))
           AND (@RowVersion IS NULL OR RowVersion=@RowVersion)
       `);
     if (!result.recordset.length) return res.status(409).json({ message: "Đề xuất đã được xử lý hoặc dữ liệu đã thay đổi" });
     const row = result.recordset[0];
     res.json({
-      message: "Đã từ chối đề xuất",
+      message: row.Status === "RETURNED" ? "Đã trả lại người báo lỗi" : "Đã trả lại B7 bổ sung",
       request: { ...row, RowVersion: row.RowVersion.toString("base64") }
     });
   } catch (err) {
-    console.error("Reject defect request error:", err);
-    res.status(500).json({ message: "Không từ chối được đề xuất" });
+    console.error("Return defect request error:", err);
+    res.status(500).json({ message: "Không trả lại được đề xuất" });
   }
 });
 

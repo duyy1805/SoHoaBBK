@@ -198,7 +198,9 @@ export default function BienBanSxbtDetailScreen({ route, navigation }) {
                 <Text style={styles.meta}>Bộ phận tạo: {[info?.MaBoPhanTao, info?.TenBoPhanTao].filter(Boolean).join(" - ") || "---"}</Text>
                 <Text style={styles.meta}>Mã đơn vị SXBT: {info?.MaDonVi || "---"}</Text>
                 <Text style={styles.meta}>
-                    Nguồn SXBT: {info?.SxbtSourceType === "KE_HOACH_NHAP"
+                    Nguồn SXBT: {info?.SxbtSourceCount > 1
+                        ? `${info.SxbtSourceCount} kế hoạch: ${(info.SxbtSources || []).map((source) => `#${source.KeHoachNhapId}/KHSX #${source.ID_KeHoachSanXuat}`).join(", ")}`
+                        : info?.SxbtSourceType === "KE_HOACH_NHAP"
                         ? `Kế hoạch nhập #${info?.KeHoachNhapId || "---"}`
                         : (info?.So_PhieuNhapBTP || `Phiếu nhập #${info?.PhieuNhapBtpId || "---"}`)}
                 </Text>

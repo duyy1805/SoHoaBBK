@@ -38,6 +38,9 @@ export const getBienBanDefects = (id) => {
     return axiosClient.get(`/bien-ban/${id}/defects`);
 };
 
+export const saveBienBanDefects = (bienBanId, defects) =>
+    axiosClient.post(`/bien-ban/${bienBanId}/defects`, { defects });
+
 /* ================================
    Lưu thông tin biên bản
 ================================ */
@@ -118,9 +121,17 @@ export const completeBienBan = (bienBanId) => {
     });
 };
 
-export const respondSpecialistOpinion = (bienBanId, opinionId, data) => {
-    return axiosClient.post(`/bien-ban/${bienBanId}/specialist-opinions/${opinionId}/respond`, data);
-};
+export const saveSpecialistOpinionDraft = (bienBanId, opinionId, data) =>
+    axiosClient.put(`/bien-ban/${bienBanId}/specialist-opinions/${opinionId}/draft`, data);
+
+export const confirmSpecialistOpinion = (bienBanId, opinionId) =>
+    axiosClient.post(`/bien-ban/${bienBanId}/specialist-opinions/${opinionId}/confirm`);
+
+export const returnSpecialistOpinion = (bienBanId, opinionId, reason) =>
+    axiosClient.post(`/bien-ban/${bienBanId}/specialist-opinions/${opinionId}/return`, { reason });
+
+export const resubmitKphReview = (bienBanId) =>
+    axiosClient.post(`/bien-ban/${bienBanId}/resubmit`);
 
 export const saveFollowUpEvaluation = (bienBanId, data) => {
     return axiosClient.post(`/bien-ban/${bienBanId}/follow-up-evaluation`, data);

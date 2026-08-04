@@ -377,7 +377,9 @@ export default function BienBanSxbtDetail() {
                                         <InfoTile
                                             icon={<RuleFolderOutlinedIcon />}
                                             label="Nguồn SXBT"
-                                            value={info?.SxbtSourceType === "KE_HOACH_NHAP"
+                                            value={info?.SxbtSourceCount > 1
+                                                ? `${info.SxbtSourceCount} kế hoạch: ${(info.SxbtSources || []).map((source) => `#${source.KeHoachNhapId}/KHSX #${source.ID_KeHoachSanXuat}`).join(", ")}`
+                                                : info?.SxbtSourceType === "KE_HOACH_NHAP"
                                                 ? `Kế hoạch nhập #${info?.KeHoachNhapId || "---"}`
                                                 : (info?.So_PhieuNhapBTP || `Phiếu nhập #${info?.PhieuNhapBtpId || "---"}`)}
                                         />

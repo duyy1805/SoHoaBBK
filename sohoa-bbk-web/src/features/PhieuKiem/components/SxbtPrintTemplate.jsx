@@ -84,7 +84,8 @@ export const SxbtPrintTemplate = React.forwardRef(({
 
         const { item, lotRow } = matched;
         const parts = [item.TenSanPham].filter(Boolean);
-        if (item.SourceID_KeHoachSanXuat) parts.push(`KH #${item.SourceID_KeHoachSanXuat}`);
+        if (item.KeHoachNhapId) parts.push(`KH nhập #${item.KeHoachNhapId}`);
+        if (item.SourceID_KeHoachSanXuat) parts.push(`KHSX #${item.SourceID_KeHoachSanXuat}`);
         if (lotRow.SoLotSX) parts.push(`Lot SX: ${lotRow.SoLotSX}`);
         if (lotRow.SoLuongNhap !== undefined && lotRow.SoLuongNhap !== null && lotRow.SoLuongNhap !== '') {
             parts.push(`SL nhập: ${formatQuantity(lotRow.SoLuongNhap)}`);
@@ -428,7 +429,9 @@ export const SxbtPrintTemplate = React.forwardRef(({
                             <td colSpan={3} style={{ border: 'none', padding: '1px 0' }}>
                                 Nguồn:&nbsp;
                                 <span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '180px' }}>
-                                    {phieu.SxbtSourceType === 'KE_HOACH_NHAP'
+                                    {phieu.SxbtSourceCount > 1
+                                        ? `${phieu.SxbtSourceCount} kế hoạch nhập`
+                                        : phieu.SxbtSourceType === 'KE_HOACH_NHAP'
                                         ? `Kế hoạch nhập #${phieu.KeHoachNhapId || ''}`
                                         : (phieu.So_PhieuNhapBTP || `Phiếu nhập #${phieu.PhieuNhapBtpId || ''}`)}
                                 </span>
@@ -445,7 +448,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
                         )}
                         <tr>
                             <td style={{ border: 'none', padding: '1px 0' }}>
-                                Số lượng nhập (KH):&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '50px' }}>{phieu.SoLuong ?? ''}</span>
+                                {phieu.SxbtSourceCount > 1 ? 'Số kế hoạch' : 'Số lượng nhập (KH)'}:&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '50px' }}>{phieu.SxbtSourceCount > 1 ? phieu.SxbtSourceCount : (phieu.SoLuong ?? '')}</span>
                             </td>
                             <td style={{ border: 'none', padding: '1px 4px' }}>
                                 Mã đơn hàng:&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '70px' }}>{phieu.MaDonHang || '—'}</span>
@@ -502,13 +505,15 @@ export const SxbtPrintTemplate = React.forwardRef(({
                 <table style={s.table}>
                     <thead>
                         <tr>
-                            <th style={{ ...s.th, width: '30%' }}>Tên vật tư, hàng hóa</th>
-                            <th style={{ ...s.th, width: '10%' }}>SL nhập</th>
-                            <th style={{ ...s.th, width: '14%' }}>Dấu tuần/ GS1</th>
-                            <th style={{ ...s.th, width: '7%' }}>TT</th>
-                            <th style={{ ...s.th, width: '14%' }}>LXVT/LOT</th>
-                            <th style={{ ...s.th, width: '12%' }}>Số Lot SX</th>
-                            <th style={{ ...s.th, width: '13%' }}>Tổng cái (Kho xác nhận)</th>
+                            <th style={{ ...s.th, width: '9%' }}>ID KH nhập</th>
+                            <th style={{ ...s.th, width: '9%' }}>ID KHSX</th>
+                            <th style={{ ...s.th, width: '18%' }}>Tên vật tư, hàng hóa</th>
+                            <th style={{ ...s.th, width: '8%' }}>SL nhập</th>
+                            <th style={{ ...s.th, width: '12%' }}>Dấu tuần/ GS1</th>
+                            <th style={{ ...s.th, width: '6%' }}>TT</th>
+                            <th style={{ ...s.th, width: '12%' }}>LXVT/LOT</th>
+                            <th style={{ ...s.th, width: '11%' }}>Số Lot SX</th>
+                            <th style={{ ...s.th, width: '15%' }}>Tổng cái (Kho xác nhận)</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -517,6 +522,8 @@ export const SxbtPrintTemplate = React.forwardRef(({
                                 const itemRowCount = getLotRows(item).length;
                                 return (
                                     <tr key={`${item.Id}-${lotIndex}`}>
+                                        <td style={s.tdc}>{item.KeHoachNhapId || ''}</td>
+                                        <td style={s.tdc}>{item.SourceID_KeHoachSanXuat || ''}</td>
                                         {lotIndex === 0 && (
                                             <td rowSpan={itemRowCount} style={{ ...s.td, fontWeight: 600 }}>
                                                 {item.TenSanPham}
@@ -535,10 +542,10 @@ export const SxbtPrintTemplate = React.forwardRef(({
                                     </tr>
                                 );
                             })
-                            : emptyRows(3, 7)
+                            : emptyRows(3, 9)
                         }
                         {/* Thêm hàng trống nếu chưa đủ 3 */}
-                        {btpPrintRows.length > 0 && btpPrintRows.length < 3 && emptyRows(3 - btpPrintRows.length, 7)}
+                        {btpPrintRows.length > 0 && btpPrintRows.length < 3 && emptyRows(3 - btpPrintRows.length, 9)}
                     </tbody>
                 </table>
 
@@ -866,7 +873,9 @@ export const SxbtPrintTemplate = React.forwardRef(({
                                         <td colSpan={3} style={{ border: 'none', padding: '1px 0' }}>
                                             Nguồn:&nbsp;
                                             <span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '180px' }}>
-                                                {phieu.SxbtSourceType === 'KE_HOACH_NHAP'
+                                                {phieu.SxbtSourceCount > 1
+                                                    ? `${phieu.SxbtSourceCount} kế hoạch nhập`
+                                                    : phieu.SxbtSourceType === 'KE_HOACH_NHAP'
                                                     ? `Kế hoạch nhập #${phieu.KeHoachNhapId || ''}`
                                                     : (phieu.So_PhieuNhapBTP || `Phiếu nhập #${phieu.PhieuNhapBtpId || ''}`)}
                                             </span>
@@ -948,18 +957,22 @@ export const SxbtPrintTemplate = React.forwardRef(({
                             <table style={s.table}>
                                 <thead>
                                     <tr>
-                                        <th style={{ ...s.th, width: '30%' }}>Tên vật tư, hàng hóa</th>
-                                        <th style={{ ...s.th, width: '10%' }}>SL nhập</th>
-                                        <th style={{ ...s.th, width: '14%' }}>Dấu tuần/ GS1</th>
-                                        <th style={{ ...s.th, width: '7%' }}>TT</th>
-                                        <th style={{ ...s.th, width: '14%' }}>LXVT/LOT</th>
-                                        <th style={{ ...s.th, width: '12%' }}>Số Lot SX</th>
-                                        <th style={{ ...s.th, width: '13%' }}>Tổng cái (Kho xác nhận)</th>
+                                        <th style={{ ...s.th, width: '9%' }}>ID KH nhập</th>
+                                        <th style={{ ...s.th, width: '9%' }}>ID KHSX</th>
+                                        <th style={{ ...s.th, width: '18%' }}>Tên vật tư, hàng hóa</th>
+                                        <th style={{ ...s.th, width: '8%' }}>SL nhập</th>
+                                        <th style={{ ...s.th, width: '12%' }}>Dấu tuần/ GS1</th>
+                                        <th style={{ ...s.th, width: '6%' }}>TT</th>
+                                        <th style={{ ...s.th, width: '12%' }}>LXVT/LOT</th>
+                                        <th style={{ ...s.th, width: '11%' }}>Số Lot SX</th>
+                                        <th style={{ ...s.th, width: '15%' }}>Tổng cái (Kho xác nhận)</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {group.rows.map(({ item, lotRow, lotIndex }) => (
                                         <tr key={`appendix-row-${item.Id}-${lotRow.Id || lotIndex}`}>
+                                            <td style={s.tdc}>{item.KeHoachNhapId || ''}</td>
+                                            <td style={s.tdc}>{item.SourceID_KeHoachSanXuat || ''}</td>
                                             <td style={{ ...s.td, fontWeight: 600 }}>{item.TenSanPham || group.tenSanPham}</td>
                                             <td style={s.tdc}>{lotRow.SoLuongNhap != null && lotRow.SoLuongNhap !== '' ? Number(lotRow.SoLuongNhap).toLocaleString('vi-VN') : ''}</td>
                                             <td style={s.tdc}>{lotRow.DauTuanGS1 || ''}</td>
@@ -973,7 +986,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
                                             </td>
                                         </tr>
                                     ))}
-                                    {group.rows.length > 0 && group.rows.length < 3 && emptyRows(3 - group.rows.length, 7)}
+                                    {group.rows.length > 0 && group.rows.length < 3 && emptyRows(3 - group.rows.length, 9)}
                                 </tbody>
                             </table>
 

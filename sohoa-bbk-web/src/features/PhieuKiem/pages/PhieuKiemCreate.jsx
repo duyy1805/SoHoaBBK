@@ -23,7 +23,8 @@ import {
     Chip,
     Divider,
     InputAdornment,
-    Checkbox
+    Checkbox,
+    Alert
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import SearchIcon from "@mui/icons-material/Search";
@@ -44,6 +45,7 @@ import {
     getLichDongCont,
     getSourceChecked,
     getKeHoachNhapBTPChuaKiem,
+    previewSxbtGroups,
 } from "../../../api/phieuKiem.api";
 import {
     getSanPhamList
@@ -51,6 +53,28 @@ import {
 
 const isKeHoachSanXuatLoai = (loai) =>
     loai?.MaLoai === "KIEM_TREN_CHUYEN" || loai?.MaLoai === "CUOI_CHUYEN";
+
+const getLocalDateKey = (value) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+};
+
+const uniquePlanFilterOptions = (rows, valueGetter, labelGetter) => {
+    const optionMap = new Map();
+    rows.forEach((row) => {
+        const value = String(valueGetter(row) || "").trim();
+        const label = String(labelGetter(row) || "").trim();
+        if (value && label && !optionMap.has(value)) optionMap.set(value, label);
+    });
+    return [...optionMap.entries()]
+        .map(([value, label]) => ({ value, label }))
+        .sort((left, right) => left.label.localeCompare(right.label, "vi"));
+};
 
 export default function PhieuKiemCreate() {
     const navigate = useNavigate();
@@ -76,8 +100,35 @@ export default function PhieuKiemCreate() {
     const [displayChungLoaiFilter, setDisplayChungLoaiFilter] = useState("");
 
     const [showChungLoaiFilter, setShowChungLoaiFilter] = useState(false);
+    const [planDateFilter, setPlanDateFilter] = useState("");
+    const [planUnitFilter, setPlanUnitFilter] = useState("");
+    const [planDepartmentFilter, setPlanDepartmentFilter] = useState("");
+    const [planProcessFilter, setPlanProcessFilter] = useState("");
 
     const [openModal, setOpenModal] = useState(false);
+    const [sxbtPreview, setSxbtPreview] = useState(null);
+    const [sxbtPreviewLoading, setSxbtPreviewLoading] = useState(false);
+    const [sxbtPreviewError, setSxbtPreviewError] = useState("");
+
+    const refreshSxbtPreview = async (rows = selectedLichList) => {
+        if (selectedLoai?.Id !== 4 || rows.length === 0) {
+            setSxbtPreview(null);
+            setSxbtPreviewError("");
+            return;
+        }
+        setSxbtPreviewLoading(true);
+        setSxbtPreviewError("");
+        try {
+            const ids = rows.map((row) => row.KeHoachNhapId || row.ID_TuTang);
+            const response = await previewSxbtGroups(ids);
+            setSxbtPreview(response.data);
+        } catch (error) {
+            setSxbtPreview(null);
+            setSxbtPreviewError(error?.response?.data?.message || "Không thể xem trước cách nhóm kế hoạch SXBT.");
+        } finally {
+            setSxbtPreviewLoading(false);
+        }
+    };
 
     // Debounce search term
     useEffect(() => {
@@ -251,8 +302,50 @@ export default function PhieuKiemCreate() {
             );
         }
 
+        if (isKeHoachSanXuatLoai(selectedLoai)) {
+            if (planDateFilter) {
+                result = result.filter((row) => getLocalDateKey(row.Ngay) === planDateFilter);
+            }
+            if (planUnitFilter) {
+                result = result.filter((row) => String(row.ID_DonVi || row.Ten_DonVi || "") === planUnitFilter);
+            }
+            if (planDepartmentFilter) {
+                result = result.filter((row) => String(row.ID_BoPhan || row.Ten_BoPhan || "") === planDepartmentFilter);
+            }
+            if (planProcessFilter) {
+                result = result.filter((row) => String(row.ID_QuyTrinhSanXuat || row.Ten_QuyTrinhSanXuat || row.TenQuyTrinhSanXuat || "") === planProcessFilter);
+            }
+        }
+
         return result;
-    }, [lichList, searchTerm, chungLoaiFilter, selectedLoai]);
+    }, [lichList, searchTerm, chungLoaiFilter, selectedLoai, planDateFilter, planUnitFilter, planDepartmentFilter, planProcessFilter]);
+
+    const planFilterOptions = useMemo(() => ({
+        dates: [...new Set(lichList.map((row) => getLocalDateKey(row.Ngay)).filter(Boolean))]
+            .sort((left, right) => right.localeCompare(left)),
+        units: uniquePlanFilterOptions(
+            lichList,
+            (row) => row.ID_DonVi || row.Ten_DonVi,
+            (row) => row.Ten_DonVi || `Đơn vị #${row.ID_DonVi}`
+        ),
+        departments: uniquePlanFilterOptions(
+            lichList,
+            (row) => row.ID_BoPhan || row.Ten_BoPhan,
+            (row) => row.Ten_BoPhan || `Bộ phận #${row.ID_BoPhan}`
+        ),
+        processes: uniquePlanFilterOptions(
+            lichList,
+            (row) => row.ID_QuyTrinhSanXuat || row.Ten_QuyTrinhSanXuat || row.TenQuyTrinhSanXuat,
+            (row) => row.Ten_QuyTrinhSanXuat || row.TenQuyTrinhSanXuat || `Quy trình #${row.ID_QuyTrinhSanXuat}`
+        )
+    }), [lichList]);
+
+    const clearPlanFilters = () => {
+        setPlanDateFilter("");
+        setPlanUnitFilter("");
+        setPlanDepartmentFilter("");
+        setPlanProcessFilter("");
+    };
 
     const getRowId = (row) => {
         if (selectedLoai?.MaLoai === "KIEM_DONG_CONT") return row.ClosingScheduleDetailGuid;
@@ -267,22 +360,28 @@ export default function PhieuKiemCreate() {
         if (!value) {
             setSelectedLoai(null);
             setSelectedLichList([]);
+            setSxbtPreview(null);
+            setSxbtPreviewError("");
             setSearchTerm("");
             setDisplaySearchTerm("");
             setChungLoaiFilter("");
             setDisplayChungLoaiFilter("");
             setShowChungLoaiFilter(false);
+            clearPlanFilters();
             setForm((prev) => ({ ...prev, loaiKiemId: "" }));
             return;
         }
 
         setSelectedLoai(option);
         setSelectedLichList([]);
+        setSxbtPreview(null);
+        setSxbtPreviewError("");
         setSearchTerm("");
         setDisplaySearchTerm("");
         setChungLoaiFilter("");
         setDisplayChungLoaiFilter("");
         setShowChungLoaiFilter(false);
+        clearPlanFilters();
         setForm((prev) => ({ ...prev, loaiKiemId: value }));
         fetchLichList(option);
     };
@@ -304,6 +403,10 @@ export default function PhieuKiemCreate() {
 
     const handleToggleRow = (row) => {
         const rowId = getRowId(row);
+        if (selectedLoai?.Id === 4) {
+            setSxbtPreview(null);
+            setSxbtPreviewError("");
+        }
         setSelectedLichList(prev => {
             const isSelected = prev.some(item => getRowId(item) === rowId);
             return isSelected ? prev.filter(item => getRowId(item) !== rowId) : [...prev, row];
@@ -311,15 +414,25 @@ export default function PhieuKiemCreate() {
     };
 
     const handleSelectAll = (e) => {
+        if (selectedLoai?.Id === 4) {
+            setSxbtPreview(null);
+            setSxbtPreviewError("");
+        }
         if (e.target.checked) {
-            setSelectedLichList(filteredLichList);
+            setSelectedLichList((prev) => {
+                const selectedIds = new Set(prev.map((item) => getRowId(item)));
+                return [...prev, ...filteredLichList.filter((item) => !selectedIds.has(getRowId(item)))];
+            });
         } else {
-            setSelectedLichList([]);
+            const filteredIds = new Set(filteredLichList.map((item) => getRowId(item)));
+            setSelectedLichList((prev) => prev.filter((item) => !filteredIds.has(getRowId(item))));
         }
     };
 
     const handleRemoveSelected = (rowId) => {
-        setSelectedLichList(prev => prev.filter(item => getRowId(item) !== rowId));
+        const next = selectedLichList.filter(item => getRowId(item) !== rowId);
+        setSelectedLichList(next);
+        if (selectedLoai?.Id === 4) refreshSxbtPreview(next);
     };
 
     const formatDateToISO = (dateStr) => {
@@ -415,6 +528,23 @@ export default function PhieuKiemCreate() {
                 return;
             }
 
+            if (selectedLoai?.Id === 4) {
+                if (!sxbtPreview || sxbtPreview.invalidPlans?.length > 0) {
+                    throw new Error("Danh sách kế hoạch SXBT chưa có bản xem trước hợp lệ.");
+                }
+                const response = await createPhieuKiemSXBT({
+                    loaiKiemId: form.loaiKiemId,
+                    nguoiKiemId: form.nguoiKiemId,
+                    mucDoKiemTra: form.mucDoKiemTra || null,
+                    keHoachNhapIds: selectedLichList.map((row) => row.KeHoachNhapId || row.ID_TuTang),
+                    previewFingerprint: sxbtPreview.fingerprint
+                });
+                const createdCount = response.data?.createdCount || sxbtPreview.groupCount;
+                showToast(`Đã tạo thành công ${createdCount} phiếu từ ${selectedLichList.length} kế hoạch SXBT!`, "success");
+                navigate("/phieu-kiem");
+                return;
+            }
+
             // 3. Tạo Payload và Submit
             const promises = resolvedRows.map(row => {
                 const payload = {
@@ -461,9 +591,6 @@ export default function PhieuKiemCreate() {
                 }
                 console.log(row)
                 console.log(payload)
-                if (selectedLoai?.Id === 4) {
-                    return createPhieuKiemSXBT(payload);
-                }
                 return createPhieuKiem(payload);
             });
             await Promise.all(promises);
@@ -471,13 +598,17 @@ export default function PhieuKiemCreate() {
             showToast(`Đã tạo thành công ${selectedLichList.length} phiếu kiểm!`, "success");
             navigate("/phieu-kiem");
         } catch (err) {
-            showToast(err.message || err?.response?.data?.message || "Có lỗi xảy ra khi tạo hàng loạt", "error");
+            if (selectedLoai?.Id === 4 && err?.response?.status === 409) {
+                await refreshSxbtPreview(selectedLichList);
+            }
+            showToast(err?.response?.data?.message || err.message || "Có lỗi xảy ra khi tạo hàng loạt", "error");
         } finally {
             setLoading(false);
         }
     };
 
-    const isAllSelected = filteredLichList.length > 0 && selectedLichList.length === filteredLichList.length;
+    const isAllSelected = filteredLichList.length > 0
+        && filteredLichList.every((row) => selectedLichList.some((item) => getRowId(item) === getRowId(row)));
 
     return (
         <Fade in timeout={300}>
@@ -618,6 +749,61 @@ export default function PhieuKiemCreate() {
                                     </Typography>
                                 </Paper>
                             )}
+
+                            {selectedLoai?.Id === 4 && selectedLichList.length > 0 && (
+                                <Stack spacing={1.5} sx={{ mt: 2 }}>
+                                    <Typography variant="subtitle1" fontWeight={700}>
+                                        Xem trước phiếu SXBT
+                                    </Typography>
+                                    {sxbtPreviewLoading && (
+                                        <Stack direction="row" spacing={1} alignItems="center">
+                                            <CircularProgress size={18} />
+                                            <Typography color="text.secondary">Đang kiểm tra và nhóm kế hoạch...</Typography>
+                                        </Stack>
+                                    )}
+                                    {sxbtPreviewError && <Alert severity="error">{sxbtPreviewError}</Alert>}
+                                    {sxbtPreview?.invalidPlans?.map((invalid) => (
+                                        <Alert severity="error" key={invalid.keHoachNhapId}>
+                                            KH nhập #{invalid.keHoachNhapId}: {invalid.message}
+                                        </Alert>
+                                    ))}
+                                    {sxbtPreview?.groups?.map((group) => (
+                                        <Paper key={group.groupKey} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+                                            <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={1} sx={{ mb: 1 }}>
+                                                <Box>
+                                                    <Typography fontWeight={800}>Phiếu dự kiến {group.groupIndex}</Typography>
+                                                    <Typography variant="body2" color="text.secondary">
+                                                        {group.header.TenSanPhamGop || group.header.TenSanPham || "---"} · Ngày nhập {group.header.NgayNhap ? new Date(`${group.header.NgayNhap}T00:00:00`).toLocaleDateString("vi-VN") : "---"}
+                                                    </Typography>
+                                                </Box>
+                                                <Chip label={`${group.plans.length} kế hoạch · ${group.header.NgayNhap ? new Date(`${group.header.NgayNhap}T00:00:00`).toLocaleDateString("vi-VN") : "---"}`} color="primary" variant="outlined" />
+                                            </Stack>
+                                            <Table size="small">
+                                                <TableHead>
+                                                    <TableRow>
+                                                        <TableCell>ID KH nhập</TableCell>
+                                                        <TableCell>ID KHSX</TableCell>
+                                                        <TableCell>Tên sản phẩm gốc</TableCell>
+                                                        <TableCell>Nhà thầu / Quy trình</TableCell>
+                                                        <TableCell align="right">Số lượng riêng</TableCell>
+                                                    </TableRow>
+                                                </TableHead>
+                                                <TableBody>
+                                                    {group.plans.map((plan) => (
+                                                        <TableRow key={plan.KeHoachNhapId}>
+                                                            <TableCell>#{plan.KeHoachNhapId}</TableCell>
+                                                            <TableCell>#{plan.ID_KeHoachSanXuat}</TableCell>
+                                                            <TableCell>{plan.Ten_SanPham || "---"}</TableCell>
+                                                            <TableCell>{plan.Ma_NhaThau || plan.Ten_BoPhan || "---"} · {plan.Ten_QuyTrinhSanXuat || "---"}</TableCell>
+                                                            <TableCell align="right"><b>{Number(plan.SoLuong || 0).toLocaleString("vi-VN")}</b></TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
+                                        </Paper>
+                                    ))}
+                                </Stack>
+                            )}
                         </Grid>
 
                         <Grid size={{ xs: 12 }}>
@@ -625,12 +811,14 @@ export default function PhieuKiemCreate() {
                                 <Button
                                     variant="contained"
                                     onClick={handleSubmit}
-                                    disabled={loading || selectedLichList.length === 0}
+                                    disabled={loading || sxbtPreviewLoading || selectedLichList.length === 0 || (selectedLoai?.Id === 4 && (!sxbtPreview || sxbtPreview.invalidPlans?.length > 0))}
                                     startIcon={loading && <CircularProgress size={18} color="inherit" />}
                                 >
                                     {selectedLoai?.MaLoai === "CUOI_CHUYEN"
                                         ? "Tạo 1 phiếu kiểm"
-                                        : `Tạo ${selectedLichList.length > 0 ? selectedLichList.length : ''} phiếu kiểm`}
+                                        : selectedLoai?.Id === 4
+                                            ? `Tạo ${sxbtPreview?.groupCount || 0} phiếu từ ${selectedLichList.length} kế hoạch`
+                                            : `Tạo ${selectedLichList.length > 0 ? selectedLichList.length : ''} phiếu kiểm`}
                                 </Button>
                             </Stack>
                         </Grid>
@@ -673,6 +861,89 @@ export default function PhieuKiemCreate() {
                                         />
                                     )}
                                 </Stack>
+
+                                {isKeHoachSanXuatLoai(selectedLoai) && (
+                                    <Paper variant="outlined" sx={{ p: 1.5, mb: 2, bgcolor: "grey.50", borderRadius: 2 }}>
+                                        <Grid container spacing={1.5} alignItems="center">
+                                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                                                <TextField
+                                                    select
+                                                    fullWidth
+                                                    size="small"
+                                                    label="Ngày kế hoạch"
+                                                    value={planDateFilter}
+                                                    onChange={(event) => setPlanDateFilter(event.target.value)}
+                                                >
+                                                    <MenuItem value="">Tất cả ngày</MenuItem>
+                                                    {planFilterOptions.dates.map((dateValue) => (
+                                                        <MenuItem key={dateValue} value={dateValue}>
+                                                            {new Date(`${dateValue}T00:00:00`).toLocaleDateString("vi-VN")}
+                                                        </MenuItem>
+                                                    ))}
+                                                </TextField>
+                                            </Grid>
+                                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                                                <TextField
+                                                    select
+                                                    fullWidth
+                                                    size="small"
+                                                    label="Đơn vị / Phân xưởng"
+                                                    value={planUnitFilter}
+                                                    onChange={(event) => setPlanUnitFilter(event.target.value)}
+                                                >
+                                                    <MenuItem value="">Tất cả đơn vị</MenuItem>
+                                                    {planFilterOptions.units.map((option) => (
+                                                        <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                                                    ))}
+                                                </TextField>
+                                            </Grid>
+                                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                                                <TextField
+                                                    select
+                                                    fullWidth
+                                                    size="small"
+                                                    label="Bộ phận"
+                                                    value={planDepartmentFilter}
+                                                    onChange={(event) => setPlanDepartmentFilter(event.target.value)}
+                                                >
+                                                    <MenuItem value="">Tất cả bộ phận</MenuItem>
+                                                    {planFilterOptions.departments.map((option) => (
+                                                        <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                                                    ))}
+                                                </TextField>
+                                            </Grid>
+                                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                                                <TextField
+                                                    select
+                                                    fullWidth
+                                                    size="small"
+                                                    label="Quy trình sản xuất"
+                                                    value={planProcessFilter}
+                                                    onChange={(event) => setPlanProcessFilter(event.target.value)}
+                                                >
+                                                    <MenuItem value="">Tất cả quy trình</MenuItem>
+                                                    {planFilterOptions.processes.map((option) => (
+                                                        <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                                                    ))}
+                                                </TextField>
+                                            </Grid>
+                                            <Grid size={{ xs: 12 }}>
+                                                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        Hiển thị {filteredLichList.length}/{lichList.length} kế hoạch · Đã chọn {selectedLichList.length}
+                                                    </Typography>
+                                                    <Button
+                                                        size="small"
+                                                        onClick={clearPlanFilters}
+                                                        disabled={!planDateFilter && !planUnitFilter && !planDepartmentFilter && !planProcessFilter}
+                                                    >
+                                                        Xóa bộ lọc
+                                                    </Button>
+                                                </Stack>
+                                            </Grid>
+                                        </Grid>
+                                    </Paper>
+                                )}
 
                                 <Table stickyHeader size="small">
                                     <TableHead>
@@ -883,7 +1154,14 @@ export default function PhieuKiemCreate() {
                         <Button onClick={() => setOpenModal(false)} color="inherit">
                             Đóng
                         </Button>
-                        <Button onClick={() => setOpenModal(false)} variant="contained" disabled={selectedLichList.length === 0}>
+                        <Button
+                            onClick={() => {
+                                setOpenModal(false);
+                                if (selectedLoai?.Id === 4) refreshSxbtPreview(selectedLichList);
+                            }}
+                            variant="contained"
+                            disabled={selectedLichList.length === 0}
+                        >
                             Xác nhận chọn ({selectedLichList.length})
                         </Button>
                     </DialogActions>

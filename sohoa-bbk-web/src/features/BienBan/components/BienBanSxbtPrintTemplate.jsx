@@ -75,12 +75,12 @@ export const BienBanSxbtPrintTemplate = React.forwardRef(({
             boxSizing: "border-box",
             boxShadow: "0 4px 10px rgba(0,0,0,0.1)"
         },
-        text: { fontSize: "12pt", marginBottom: "4px" },
+        text: { fontSize: "12pt", marginBottom: "4px", whiteSpace: "pre-wrap", overflowWrap: "anywhere" },
         boldText: { fontSize: "12pt", fontWeight: "bold" },
         sectionTitle: { fontWeight: "bold", fontSize: "12pt", marginTop: "15px", marginBottom: "8px" },
-        table: { border: "1px solid #000", borderCollapse: "collapse", width: "100%", marginBottom: "10px" },
+        table: { border: "1px solid #000", borderCollapse: "collapse", tableLayout: "fixed", width: "100%", marginBottom: "10px" },
         th: { border: "1px solid #000", padding: "4px", fontWeight: "bold", textAlign: "center", fontSize: "11pt" },
-        td: { border: "1px solid #000", padding: "4px", fontSize: "11pt", verticalAlign: "top" },
+        td: { border: "1px solid #000", padding: "4px", fontSize: "11pt", verticalAlign: "top", whiteSpace: "pre-wrap", overflowWrap: "anywhere" },
         headerTable: { width: "100%", borderCollapse: "collapse", marginBottom: "15px", border: "1px solid #000" },
         headerTd: { border: "1px solid #000", padding: "6px", textAlign: "center", verticalAlign: "middle" },
         signatureBlock: { display: "flex", justifyContent: "space-between", marginTop: "15px", textAlign: "center", width: "100%" },
@@ -148,7 +148,7 @@ export const BienBanSxbtPrintTemplate = React.forwardRef(({
                 {signatureDisplayFlow.map((maBoPhan, index) => {
                     const originalOrder = signatureFlow.indexOf(maBoPhan) + 1;
                     const step = stepByMaBoPhan.get(maBoPhan) || confirmSteps.find((item) => item?.StepOrder === originalOrder);
-                    const ngayKy = step?.ConfirmedAt ? formatLongDate(step.ConfirmedAt) : "Ngày................";
+                    const ngayKy = step?.ConfirmedAt ? formatLongDate(step.ConfirmedAt) : "Ngày";
                     const nhanKy = SIGNATURE_LABELS[maBoPhan] || maBoPhan;
 
                     return (
@@ -220,7 +220,7 @@ export const BienBanSxbtPrintTemplate = React.forwardRef(({
                                                 <div style={{ fontSize: "11pt" }}>Mã số: BM.01-QT.02-B8</div>
                                                 <div style={{ fontSize: "11pt" }}>Ngày HL: 20/01/2026</div>
                                                 <div style={{ fontSize: "11pt" }}>Phiên bản: 00</div>
-                                                <div style={{ fontSize: "11pt" }}>Trang: ....................</div>
+                                                <div style={{ fontSize: "11pt" }}>Trang:</div>
                                             </td>
                                         </tr>
                                         <tr>
@@ -251,7 +251,9 @@ export const BienBanSxbtPrintTemplate = React.forwardRef(({
                                     <div style={styles.text}><strong>Mã đơn vị SXBT:</strong> {info.MaDonVi || ""}</div>
                                     <div style={styles.text}>
                                         <strong>Nguồn SXBT:</strong>{" "}
-                                        {info.SxbtSourceType === "KE_HOACH_NHAP"
+                                        {info.SxbtSourceCount > 1
+                                            ? `${info.SxbtSourceCount} kế hoạch nhập (${(info.SxbtSources || []).map((source) => `#${source.KeHoachNhapId}/KHSX #${source.ID_KeHoachSanXuat}`).join(", ")})`
+                                            : info.SxbtSourceType === "KE_HOACH_NHAP"
                                             ? `Kế hoạch nhập #${info.KeHoachNhapId || ""}`
                                             : (info.So_PhieuNhapBTP || `Phiếu nhập #${info.PhieuNhapBtpId || ""}`)}
                                     </div>
@@ -266,7 +268,7 @@ export const BienBanSxbtPrintTemplate = React.forwardRef(({
                                     </div>
                                     <div style={styles.text}><strong>Mô tả chung:</strong></div>
                                     <div style={{ ...styles.text, whiteSpace: "pre-wrap", paddingLeft: "8px" }}>
-                                        {moTaChung || "................................................................................"}
+                                        {moTaChung || ""}
                                     </div>
                                 </Box>
 

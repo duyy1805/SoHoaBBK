@@ -117,6 +117,27 @@ router.get("/:id", authenticateToken, async (req, res) => {
         const recordsets = result.recordsets || [];
         const baseInfo = recordsets[0]?.[0] || null;
         const extraInfo = extraInfoResult.recordset?.[0] || {};
+        let sxbtSources = [];
+        if (extraInfo.PhieuKiemId) {
+            const sourcesResult = await pool.request()
+                .input("PhieuKiemId", sql.Int, extraInfo.PhieuKiemId)
+                .query(`
+                    SELECT link.Id AS SxbtPlanLinkId, link.KeHoachNhapId,
+                        link.ID_KeHoachSanXuat, link.SoLuongKeHoach,
+                        link.ItemCode, link.SoLotSX, link.NgayNhap,
+                        link.SortOrder, link.IsPrimary
+                    FROM dbo.PHIEU_KIEM_SXBT_PLAN link
+                    WHERE link.PhieuKiemId = @PhieuKiemId
+                    ORDER BY link.SortOrder, link.Id
+                `);
+            sxbtSources = sourcesResult.recordset || [];
+            if (sxbtSources.length > 0) {
+                extraInfo.SxbtSourceType = "KE_HOACH_NHAP";
+                extraInfo.SxbtSourceCount = sxbtSources.length;
+                extraInfo.SxbtSources = sxbtSources;
+                extraInfo.KeHoachNhapId = sxbtSources[0].KeHoachNhapId;
+            }
+        }
         let dynamicFields = [];
 
         if (extraInfo?.DynamicFieldsJSON) {

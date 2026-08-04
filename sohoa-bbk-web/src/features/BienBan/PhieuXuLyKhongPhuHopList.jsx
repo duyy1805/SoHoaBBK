@@ -32,14 +32,28 @@ const renderTrangThaiChip = (trangThai) => {
     return <Chip label={status.label} color={status.color} size="small" sx={{ fontWeight: 500 }} />;
 };
 
-const getWorkBucket = (item, currentUser, isManager) => {
+const ACTIONABLE_MANAGER_STATUSES = new Set([
+    "BB_MOI",
+    "CHO_PHAN_BO_XU_LY",
+    "CHO_PHAN_BO_XY_LY",
+    "CHO_TP_B8",
+    "CHO_XAC_NHAN",
+    "TRA_LAI_CHINH_SUA"
+]);
+
+const getWorkBucket = (item, currentUser, access) => {
     if (["HOAN_TAT", "HOAN_THANH", "DA_XAC_NHAN"].includes(item.TrangThai)) return "done";
-    const explicitMyTurn = item.CanCurrentUserAct === true || item.CanCurrentUserAct === 1 ||
-        Number(item.NguoiXuLyId) === Number(currentUser.userId) ||
-        Number(item.BoPhanId) === Number(currentUser.boPhanId) ||
-        Number(item.BoPhanDangChoId) === Number(currentUser.boPhanId);
-    const managerTurn = isManager && ["BB_MOI", "CHO_PHAN_BO_XU_LY", "CHO_PHAN_BO_XY_LY", "CHO_TP_B8"].includes(item.TrangThai);
-    return explicitMyTurn || managerTurn ? "action" : "waiting";
+    const hasServerDecision = item.CanCurrentUserAct !== null && item.CanCurrentUserAct !== undefined;
+    const explicitMyTurn = hasServerDecision
+        ? item.CanCurrentUserAct === true || item.CanCurrentUserAct === 1
+        : Number(item.NguoiXuLyId) === Number(currentUser.userId) ||
+            Number(item.BoPhanId) === Number(currentUser.boPhanId) ||
+            Number(item.BoPhanDangChoId) === Number(currentUser.boPhanId);
+    const globalManagerTurn = access.isGlobalManager && ACTIONABLE_MANAGER_STATUSES.has(item.TrangThai);
+    const departmentLeadFallback = !hasServerDecision && access.isDepartmentLead &&
+        Number(item.CreatorBoPhanId) === Number(currentUser.boPhanId) &&
+        ACTIONABLE_MANAGER_STATUSES.has(item.TrangThai);
+    return explicitMyTurn || globalManagerTurn || departmentLeadFallback ? "action" : "waiting";
 };
 
 export default function PhieuXuLyKhongPhuHopList() {
@@ -50,9 +64,16 @@ export default function PhieuXuLyKhongPhuHopList() {
     const [searchText, setSearchText] = useState("");
     const [workFilter, setWorkFilter] = useState("all");
     const currentUser = useMemo(() => decodeToken() || {}, []);
-    const isManager = (currentUser.permissions || []).some((permission) =>
-        ["QUAN_TRI_DM", "XAC_NHAN_NGUOI_XU_LY", "KET_LUAN"].includes(permission)
-    );
+    const access = useMemo(() => {
+        const permissions = currentUser.permissions || [];
+        const roles = (currentUser.roles || []).map((role) => String(role || "").toUpperCase());
+        return {
+            isGlobalManager: roles.includes("ADMIN") || permissions.some((permission) =>
+                ["QUAN_TRI_DM", "XAC_NHAN_NGUOI_XU_LY", "KET_LUAN"].includes(permission)
+            ),
+            isDepartmentLead: roles.includes("TP_BP") || permissions.includes("PHAN_CONG_NGUOI_XU_LY")
+        };
+    }, [currentUser]);
 
     const loadData = useCallback(async () => {
         try {
@@ -60,7 +81,7 @@ export default function PhieuXuLyKhongPhuHopList() {
             const res = await getStandaloneBienBanList();
             const rows = res.data || [];
             setData(rows);
-            if (rows.some((item) => getWorkBucket(item, currentUser, isManager) === "action")) {
+            if (rows.some((item) => getWorkBucket(item, currentUser, access) === "action")) {
                 setWorkFilter("action");
             }
         } catch (err) {
@@ -68,28 +89,28 @@ export default function PhieuXuLyKhongPhuHopList() {
         } finally {
             setLoading(false);
         }
-    }, [currentUser, isManager]);
+    }, [currentUser, access]);
 
     useEffect(() => {
         loadData();
     }, [loadData]);
 
     const counts = useMemo(() => data.reduce((result, item) => {
-        const bucket = getWorkBucket(item, currentUser, isManager);
+        const bucket = getWorkBucket(item, currentUser, access);
         result[bucket] += 1;
         return result;
-    }, { action: 0, waiting: 0, done: 0 }), [data, currentUser, isManager]);
+    }, { action: 0, waiting: 0, done: 0 }), [data, currentUser, access]);
 
     const filteredData = useMemo(() => {
         const keyword = searchText.trim().toLowerCase();
         return data.filter((item) => {
-            if (workFilter !== "all" && getWorkBucket(item, currentUser, isManager) !== workFilter) return false;
+            if (workFilter !== "all" && getWorkBucket(item, currentUser, access) !== workFilter) return false;
             if (!keyword) return true;
             return String(item.SoBienBan || "").toLowerCase().includes(keyword) ||
                 String(item.MoTaChung || "").toLowerCase().includes(keyword) ||
                 String(item.NguoiLap || "").toLowerCase().includes(keyword);
         });
-    }, [data, searchText, workFilter, currentUser, isManager]);
+    }, [data, searchText, workFilter, currentUser, access]);
 
     const handleCreate = async () => {
         try {
@@ -212,14 +233,14 @@ export default function PhieuXuLyKhongPhuHopList() {
                                                 <TableCell align="center">
                                                     <Button
                                                         size="small"
-                                                        variant={getWorkBucket(item, currentUser, isManager) === "action" ? "contained" : "outlined"}
+                                                        variant={getWorkBucket(item, currentUser, access) === "action" ? "contained" : "outlined"}
                                                         endIcon={<ArrowForwardIcon />}
                                                         onClick={() => navigate(`/phieu-xu-ly-khong-phu-hop/${item.BienBanId}`)}
                                                         sx={{ whiteSpace: "nowrap" }}
                                                     >
-                                                        {getWorkBucket(item, currentUser, isManager) === "action"
+                                                        {getWorkBucket(item, currentUser, access) === "action"
                                                             ? "Xử lý ngay"
-                                                            : getWorkBucket(item, currentUser, isManager) === "done" ? "Xem kết quả" : "Xem tiến độ"}
+                                                            : getWorkBucket(item, currentUser, access) === "done" ? "Xem kết quả" : "Xem tiến độ"}
                                                     </Button>
                                                 </TableCell>
                                             </TableRow>

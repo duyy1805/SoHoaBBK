@@ -237,7 +237,7 @@ export default function KiemDacBietScreen({ route, navigation }) {
                                                 status === "DAT" && styles.inputSuccess,
                                                 isReadOnly && styles.inputReadOnly
                                             ]}
-                                            keyboardType="numeric"
+                                            keyboardType="default"
                                             value={value}
                                             onChangeText={(val) => handleValueChange(ts.Id, sampleIdx, val)}
                                             placeholder="-"

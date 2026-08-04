@@ -1813,7 +1813,7 @@
                             ${row.MoTa && row.MoTa !== row.TenLoi ? `<div class="muted line-clamp" style="font-size: 12px;">${escapeHtml(row.MoTa)}</div>` : ""}
                             ${row.GhiChu ? `<div class="line-clamp" style="font-size: 12px; color: var(--primary);">${escapeHtml(row.GhiChu)}</div>` : ""}
                             <div class="muted" style="font-size: 11px; margin-top: 4px;">Người thêm: ${escapeHtml(row.CreatedByName || "Dữ liệu hệ thống")}</div>
-                            ${row.ReviewNote ? `<div style="font-size: 11px; color: var(--danger);">Từ chối: ${escapeHtml(row.ReviewNote)}</div>` : ""}
+                            ${row.ReviewNote ? `<div style="font-size: 11px; color: var(--danger);">Lý do trả lại: ${escapeHtml(row.ReviewNote)}</div>` : ""}
                         </td>
                         <td><span class="chip ${type ? getDefectTypeClass(type) : ""}">${escapeHtml(type || "Chưa phân loại")}</span></td>
                         <td class="center">${row.LoaiLoiSXBT ? `<span class="chip chip-major">${escapeHtml(row.LoaiLoiSXBT)}</span>` : "--"}</td>
@@ -1837,13 +1837,14 @@
                             ` : `<span class="muted">Không có</span>`}
                         </td>
                         <td class="center">
-                            <span class="chip ${row.ApprovalStatus === "APPROVED" ? "chip-success" : row.ApprovalStatus === "PENDING" ? "chip-major" : ""}">${row.ApprovalStatus === "WAITING_B7" ? "Chờ B7 bổ sung" : row.ApprovalStatus === "PENDING" ? "Chờ TP B7 duyệt" : row.ApprovalStatus === "REJECTED" ? "B7 cần bổ sung lại" : row.ApprovalStatus === "CANCELLED" ? "Đã rút" : (row.TrangThai ? "Đã duyệt" : "Tạm ngưng")}</span>
+                            <span class="chip ${row.ApprovalStatus === "APPROVED" ? "chip-success" : row.ApprovalStatus === "PENDING" ? "chip-major" : ""}">${row.ApprovalStatus === "WAITING_B7" ? "Chờ B7 bổ sung" : row.ApprovalStatus === "PENDING" ? "Chờ TP B7 duyệt" : row.ApprovalStatus === "REJECTED" ? "B7 cần bổ sung lại" : row.ApprovalStatus === "RETURNED" ? "B7 đã trả lại" : row.ApprovalStatus === "CANCELLED" ? "Đã rút" : (row.TrangThai ? "Đã duyệt" : "Tạm ngưng")}</span>
                         </td>
                         <td class="right">
-                            ${state.capabilities.canPrepare && ((!row.IsRequest) || (row.IsRequest && ["WAITING_B7", "REJECTED"].includes(row.ApprovalStatus))) ? `<button class="btn btn-icon" type="button" data-edit="${escapeHtml(row.ManagementKey)}" title="B7 bổ sung thông tin">✎</button>` : ""}
-                            ${row.IsRequest && state.capabilities.canPrepare && ["WAITING_B7", "REJECTED"].includes(row.ApprovalStatus) ? `<button class="btn btn-icon" type="button" data-submit-request="${escapeHtml(row.RequestId)}" title="Gửi TP B7 duyệt">➜</button>` : ""}
-                            ${row.IsRequest && (isOwner || state.capabilities.isAdmin) && ["WAITING_B7", "PENDING", "REJECTED"].includes(row.ApprovalStatus) ? `<button class="btn btn-icon" type="button" data-cancel-request="${escapeHtml(row.RequestId)}" title="Rút đề xuất">×</button>` : ""}
-                            ${row.IsRequest && row.ApprovalStatus === "PENDING" && state.capabilities.canApprove ? `<button class="btn btn-icon" type="button" data-approve-request="${escapeHtml(row.RequestId)}" title="Duyệt">✓</button><button class="btn btn-icon" type="button" data-reject-request="${escapeHtml(row.RequestId)}" title="Từ chối">!</button>` : ""}
+                            ${(state.capabilities.canPrepare && ((!row.IsRequest) || (row.IsRequest && ["WAITING_B7", "REJECTED"].includes(row.ApprovalStatus)))) || (row.IsRequest && isOwner && row.ApprovalStatus === "RETURNED") ? `<button class="btn btn-icon" type="button" data-edit="${escapeHtml(row.ManagementKey)}" title="${row.ApprovalStatus === "RETURNED" ? "Điều chỉnh báo lỗi" : "B7 bổ sung thông tin"}">✎</button>` : ""}
+                            ${row.IsRequest && state.capabilities.canPrepare && row.ApprovalStatus === "WAITING_B7" ? `<button class="btn btn-icon" type="button" data-reject-request="${escapeHtml(row.RequestId)}" title="Trả lại người báo lỗi">↩</button>` : ""}
+                            ${row.IsRequest && ((state.capabilities.canPrepare && ["WAITING_B7", "REJECTED"].includes(row.ApprovalStatus)) || (isOwner && row.ApprovalStatus === "RETURNED")) ? `<button class="btn btn-icon" type="button" data-submit-request="${escapeHtml(row.RequestId)}" title="${row.ApprovalStatus === "RETURNED" ? "Gửi lại B7" : "Gửi TP B7 duyệt"}">➜</button>` : ""}
+                            ${row.IsRequest && (isOwner || state.capabilities.isAdmin) && ["WAITING_B7", "PENDING", "REJECTED", "RETURNED"].includes(row.ApprovalStatus) ? `<button class="btn btn-icon" type="button" data-cancel-request="${escapeHtml(row.RequestId)}" title="Rút đề xuất">×</button>` : ""}
+                            ${row.IsRequest && row.ApprovalStatus === "PENDING" && state.capabilities.canApprove ? `<button class="btn btn-icon" type="button" data-approve-request="${escapeHtml(row.RequestId)}" title="Duyệt">✓</button><button class="btn btn-icon" type="button" data-reject-request="${escapeHtml(row.RequestId)}" title="Trả lại B7 bổ sung">↩</button>` : ""}
                             ${!row.IsRequest && state.capabilities.canChangeStatus ? `<button class="btn btn-icon" type="button" data-status-id="${escapeHtml(row.Id)}" data-next-status="${row.TrangThai ? "false" : "true"}" title="${row.TrangThai ? "Tạm ngưng" : "Kích hoạt"}">${row.TrangThai ? "⊘" : "✓"}</button>` : ""}
                         </td>
                     </tr>
@@ -1862,6 +1863,7 @@
             if (row.ApprovalStatus === "WAITING_B7") return "Chờ B7 bổ sung";
             if (row.ApprovalStatus === "PENDING") return "Chờ TP B7 duyệt";
             if (row.ApprovalStatus === "REJECTED") return "B7 cần bổ sung lại";
+            if (row.ApprovalStatus === "RETURNED") return "B7 đã trả lại";
             if (row.ApprovalStatus === "CANCELLED") return "Đã rút";
             return row.TrangThai === false || row.TrangThai === 0 ? "Tạm ngưng" : "Đã duyệt";
         }
@@ -1904,7 +1906,7 @@
                 <div class="detail-text muted">Người thêm: ${escapeHtml(row.CreatedByName || "Dữ liệu hệ thống")} · ${escapeHtml(formatDateTime(row.CreatedAt))}</div>
                 ${row.ReviewedByName ? `<div class="detail-text muted">Người duyệt: ${escapeHtml(row.ReviewedByName)} · ${escapeHtml(formatDateTime(row.ReviewedAt))}</div>` : ""}
                 ${row.ApprovedByName ? `<div class="detail-text muted">Người duyệt: ${escapeHtml(row.ApprovedByName)} · ${escapeHtml(formatDateTime(row.ApprovedAt))}</div>` : ""}
-                ${row.ReviewNote ? `<div class="alert alert-error" style="margin-top: 16px;">Lý do từ chối: ${escapeHtml(row.ReviewNote)}</div>` : ""}
+                ${row.ReviewNote ? `<div class="alert alert-error" style="margin-top: 16px;">Lý do trả lại: ${escapeHtml(row.ReviewNote)}</div>` : ""}
             `;
             els.detailContent.querySelectorAll("[data-detail-preview]").forEach((button) => {
                 button.addEventListener("click", () => openPreview(images, Number(button.dataset.detailPreview || 0)));
@@ -1972,8 +1974,8 @@
             clearImageSelection();
             state.formMode = row.IsRequest ? "request" : "catalog";
             setFormValues(row);
-            els.modalTitle.textContent = "Cập nhật thông tin lỗi";
-            els.saveButton.textContent = "Cập nhật";
+            els.modalTitle.textContent = row.ApprovalStatus === "RETURNED" ? "Điều chỉnh báo lỗi" : "Cập nhật thông tin lỗi";
+            els.saveButton.textContent = row.ApprovalStatus === "RETURNED" ? "Lưu điều chỉnh" : "Cập nhật";
             els.defectModal.classList.remove("hidden");
             document.getElementById("TenLoi").focus();
         }
@@ -2121,7 +2123,7 @@
                         body: JSON.stringify({ data: payload, rowVersion: state.form.RequestRowVersion })
                     });
                     upsertLocalRequest(result.request, payload);
-                    showAlert("Đã lưu thông tin B7 bổ sung.", "success");
+                    showAlert(state.form.ApprovalStatus === "RETURNED" ? "Đã lưu nội dung điều chỉnh." : "Đã lưu thông tin B7 bổ sung.", "success");
                 } else if (state.formMode === "catalog") {
                     const result = await apiFetch("/lookup/defect-requests", {
                         method: "POST",
@@ -2184,16 +2186,21 @@
 
         async function submitDefectRequest(id) {
             const row = state.defects.find((item) => String(item.RequestId) === String(id));
-            if (!row || !window.confirm(`Gửi đề xuất "${row.TenLoi || id}" cho TP B7 duyệt?`)) return;
+            const isReporterResubmission = row?.ApprovalStatus === "RETURNED";
+            const confirmation = isReporterResubmission
+                ? `Gửi lại báo lỗi "${row?.TenLoi || id}" cho B7 xử lý?`
+                : `Gửi đề xuất "${row?.TenLoi || id}" cho TP B7 duyệt?`;
+            if (!row || !window.confirm(confirmation)) return;
             try {
                 const result = await apiFetch(`/lookup/defect-requests/${id}/submit`, {
                     method: "POST",
                     body: JSON.stringify({ rowVersion: row.RequestRowVersion })
                 });
-                row.ApprovalStatus = result.request?.Status || "PENDING";
+                row.ApprovalStatus = result.request?.Status || (isReporterResubmission ? "WAITING_B7" : "PENDING");
                 row.RequestRowVersion = result.request?.RowVersion || row.RequestRowVersion;
+                row.ReviewNote = null;
                 applyFilter();
-                showAlert("Đã gửi TP B7 duyệt.", "success");
+                showAlert(isReporterResubmission ? "Đã gửi lại B7 xử lý." : "Đã gửi TP B7 duyệt.", "success");
             } catch (error) { showAlert(error.message); }
         }
 
@@ -2221,19 +2228,20 @@
         async function rejectDefectRequest(id) {
             const row = state.defects.find((item) => String(item.RequestId) === String(id));
             if (!row) return;
-            const reviewNote = window.prompt("Nhập lý do từ chối đề xuất:");
+            const isB7Return = row.ApprovalStatus === "WAITING_B7";
+            const reviewNote = window.prompt(isB7Return ? "Nhập lý do trả lại người báo lỗi:" : "Nhập lý do trả lại B7 bổ sung:");
             if (!reviewNote || !reviewNote.trim()) return;
             try {
                 const result = await apiFetch(`/lookup/defect-requests/${id}/reject`, {
                     method: "POST",
                     body: JSON.stringify({ reviewNote: reviewNote.trim(), rowVersion: row.RequestRowVersion })
                 });
-                row.ApprovalStatus = result.request?.Status || "REJECTED";
+                row.ApprovalStatus = result.request?.Status || (isB7Return ? "RETURNED" : "REJECTED");
                 row.RequestRowVersion = result.request?.RowVersion || row.RequestRowVersion;
                 row.ReviewNote = result.request?.ReviewNote || reviewNote.trim();
                 row.ReviewedAt = result.request?.ReviewedAt || new Date().toISOString();
                 applyFilter();
-                showAlert("Đã từ chối đề xuất.", "success");
+                showAlert(isB7Return ? "Đã trả lại người báo lỗi." : "Đã trả lại B7 bổ sung.", "success");
             } catch (error) { showAlert(error.message); }
         }
 

@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 
 const attachBtpLotRows = (btpItems = [], lotRows = []) => {
     const rowsByItemId = lotRows.reduce((acc, row) => {
@@ -139,6 +140,204 @@ const attachProductImageToPhieu = async (pool, phieu = null) => {
     return phieu;
 };
 
+const normalizePositiveIds = (values = []) => [...new Set(
+    (Array.isArray(values) ? values : [values])
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0)
+)];
+
+const loadSxbtImportPlans = async (request, keHoachNhapIds, { lockPrimaryLinks = false } = {}) => {
+    const ids = normalizePositiveIds(keHoachNhapIds);
+    if (ids.length === 0) return [];
+
+    const result = await request
+        .input('KeHoachNhapIdsJson', sql.NVarChar(sql.MAX), JSON.stringify(ids))
+        .query(`
+            DECLARE @HasPlanLinkTable BIT = CASE
+                WHEN OBJECT_ID(N'dbo.PHIEU_KIEM_SXBT_PLAN', N'U') IS NULL THEN 0 ELSE 1 END;
+
+            ;WITH ranked_plan AS (
+                SELECT sourceData.*,
+                    MAX(CASE WHEN sourceData.LoaiKH = 2 THEN 1 ELSE 0 END) OVER (
+                        PARTITION BY sourceData.ID_KeHoachSanXuat,
+                            ISNULL(sourceData.ID_DonHang_LoSanXuat, 0),
+                            ISNULL(sourceData.ID_DonHang_SanPham, 0),
+                            sourceData.Ngay_ThucTeSX
+                    ) AS CoDieuChinh,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY sourceData.ID_KeHoachSanXuat,
+                            ISNULL(sourceData.ID_DonHang_LoSanXuat, 0),
+                            ISNULL(sourceData.ID_DonHang_SanPham, 0),
+                            sourceData.Ngay_ThucTeSX,
+                            sourceData.LoaiKH
+                        ORDER BY sourceData.Ngay_Tao DESC, sourceData.ID_TuTang DESC
+                    ) AS ThuTuTrongLoai
+                FROM TAG_QLSX.dbo.KeHoachSanXuat_NhaThau_ThamChieu_Nhap sourceData
+                WHERE sourceData.Ngay_NhapBTP >= DATEADD(DAY, -5, CONVERT(date, GETDATE()))
+            )
+            SELECT
+                sourceRow.ID_TuTang AS KeHoachNhapId,
+                sourceRow.ID_KeHoachSanXuat,
+                sourceRow.Ngay_NhapBTP,
+                sourceRow.Ngay_ThucTeSX,
+                sourceRow.Ngay_Tao,
+                sourceRow.SoLuong,
+                sourceRow.LoaiKH,
+                sourceRow.ID_DonHang_LoSanXuat,
+                COALESCE(NULLIF(sourceRow.ID_DonHang_SanPham, 0), fallbackProduct.ID_DonHang_SanPham) AS ID_DonHang_SanPham,
+                productionPlan.ID_QuyTrinhSanXuat,
+                productionPlan.ID_BoPhan,
+                productionOrder.ID_DonVi,
+                productionOrder.ID_DonHang,
+                unitRow.Ten_DonVi,
+                departmentRow.Ten_BoPhan,
+                contractor.Ma_NhaThau,
+                orderRow.Ma_DonHang,
+                processRow.Ten_QuyTrinhSanXuat,
+                productionLot.So_LoSanXuat,
+                COALESCE(productRow.ItemCode, fallbackProduct.ItemCode) AS ItemCode,
+                COALESCE(productRow.Ten_SanPham, fallbackProduct.Ten_SanPham) AS Ten_SanPham,
+                unitOfMeasure.Ten_DonViTinh AS DonViTinh,
+                localProduct.Id AS SanPhamId,
+                legacyInspection.Id AS LegacyPhieuKiemId,
+                CASE WHEN @HasPlanLinkTable = 1 AND EXISTS (
+                    SELECT 1 FROM dbo.PHIEU_KIEM_SXBT_PLAN AS planLink ${lockPrimaryLinks ? 'WITH (UPDLOCK, HOLDLOCK)' : ''}
+                    WHERE planLink.KeHoachNhapId = sourceRow.ID_TuTang
+                      AND planLink.IsPrimary = 1
+                ) THEN 1 ELSE 0 END AS HasPrimaryLink
+            FROM OPENJSON(@KeHoachNhapIdsJson) WITH (KeHoachNhapId INT '$') requested
+            INNER JOIN ranked_plan sourceRow
+                ON sourceRow.ID_TuTang = requested.KeHoachNhapId
+            INNER JOIN TAG_QLSX.dbo.KeHoachSanXuat productionPlan
+                ON productionPlan.ID_KeHoachSanXuat = sourceRow.ID_KeHoachSanXuat
+            INNER JOIN TAG_QLSX.dbo.LenhSanXuat productionOrder
+                ON productionOrder.ID_LenhSanXuat = productionPlan.ID_LenhSanXuat
+            LEFT JOIN TAG_QTKD.dbo.DonHang orderRow
+                ON orderRow.ID_DonHang = productionOrder.ID_DonHang
+            LEFT JOIN TAG_QTKD.dbo.DonHang_SanPham orderProduct
+                ON orderProduct.ID_DonHang_SanPham = NULLIF(sourceRow.ID_DonHang_SanPham, 0)
+            LEFT JOIN TAG_QTKD.dbo.DM_SanPham productRow
+                ON productRow.ID_SanPham = orderProduct.ID_SanPham
+            OUTER APPLY (
+                SELECT TOP (1) fallbackOrderProduct.ID_DonHang_SanPham,
+                    fallbackOrderProduct.ID_DonViTinh,
+                    fallbackProductRow.ItemCode, fallbackProductRow.Ten_SanPham
+                FROM TAG_QTKD.dbo.DonHang_SanPham fallbackOrderProduct
+                INNER JOIN TAG_QTKD.dbo.DM_SanPham fallbackProductRow
+                    ON fallbackProductRow.ID_SanPham = fallbackOrderProduct.ID_SanPham
+                WHERE fallbackOrderProduct.ID_DonHang = productionOrder.ID_DonHang
+                ORDER BY fallbackOrderProduct.STT_SanPham, fallbackOrderProduct.ID_DonHang_SanPham
+            ) fallbackProduct
+            LEFT JOIN TAG_QTKD.dbo.DonHang_LoSanXuat productionLot
+                ON productionLot.ID_DonHang_LoSanXuat = NULLIF(sourceRow.ID_DonHang_LoSanXuat, 0)
+            LEFT JOIN TAG_QTKD.dbo.DM_QuyTrinhSanXuat processRow
+                ON processRow.ID_QuyTrinhSanXuat = productionPlan.ID_QuyTrinhSanXuat
+            LEFT JOIN TAG_QTKD.dbo.DM_DonViTinh unitOfMeasure
+                ON unitOfMeasure.ID_DonViTinh = COALESCE(orderProduct.ID_DonViTinh, fallbackProduct.ID_DonViTinh, processRow.ID_DonViTinh)
+            LEFT JOIN TAG_System.dbo.DM_DonVi unitRow
+                ON unitRow.ID_DonVi = productionOrder.ID_DonVi
+            LEFT JOIN TAG_System.dbo.DM_BoPhan departmentRow
+                ON departmentRow.ID_BoPhan = productionPlan.ID_BoPhan
+            LEFT JOIN TAG_QTKD.dbo.DM_NhaThau contractor
+                ON contractor.ID_BoPhan = productionPlan.ID_BoPhan
+            LEFT JOIN dbo.DM_SAN_PHAM localProduct
+                ON localProduct.MaSanPham = COALESCE(productRow.ItemCode, fallbackProduct.ItemCode)
+            LEFT JOIN dbo.PHIEU_KIEM legacyInspection
+                ON legacyInspection.SxbtKeHoachNhapId = sourceRow.ID_TuTang
+               AND ISNULL(legacyInspection.SxbtIsSplitChild, 0) = 0
+            WHERE productionOrder.ID_DonVi = 32
+              AND (
+                    (sourceRow.CoDieuChinh = 0 AND sourceRow.LoaiKH = 1)
+                    OR
+                    (sourceRow.CoDieuChinh = 1 AND sourceRow.LoaiKH = 2 AND sourceRow.ThuTuTrongLoai = 1)
+              );
+        `);
+
+    return result.recordset || [];
+};
+
+const getSxbtPlanError = (plan) => {
+    if (Number(plan.HasPrimaryLink) === 1 || plan.LegacyPhieuKiemId) return 'Kế hoạch đã thuộc phiếu SXBT khác.';
+    if (plan.SoLuong === null || Number(plan.SoLuong) < 0) return 'Số lượng kế hoạch không hợp lệ.';
+    if (!plan.ItemCode) return 'Kế hoạch chưa xác định được mã sản phẩm.';
+    if (!normalizeSxbtProductName(plan.Ten_SanPham)) return 'Kế hoạch chưa xác định được tên sản phẩm.';
+    if (!plan.SanPhamId) return `Sản phẩm ${plan.ItemCode} chưa có trong danh mục sản phẩm kiểm.`;
+    if (!plan.Ngay_NhapBTP) return 'Kế hoạch chưa có ngày nhập BTP.';
+    return null;
+};
+
+const stripSxbtMarketSuffix = (value) => String(value || '')
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/\s+(AP|EU|US)$/i, '')
+    .trim();
+
+const normalizeSxbtProductName = (value) =>
+    stripSxbtMarketSuffix(value).toLocaleUpperCase('vi-VN');
+
+const sxbtGroupKey = (plan) => [
+    `NAME:${normalizeSxbtProductName(plan.Ten_SanPham)}`,
+    `DATE:${serializeSqlDateOnly(plan.Ngay_NhapBTP) || ''}`
+].join('|');
+
+const buildSxbtGroupPreview = (requestedIds, plans) => {
+    const byId = new Map(plans.map((plan) => [Number(plan.KeHoachNhapId), plan]));
+    const invalidPlans = [];
+    const groupsByKey = new Map();
+
+    normalizePositiveIds(requestedIds).forEach((id) => {
+        const plan = byId.get(id);
+        const error = plan ? getSxbtPlanError(plan) : 'Không tìm thấy kế hoạch nhập BTP hợp lệ.';
+        if (error) {
+            invalidPlans.push({ keHoachNhapId: id, message: error });
+            return;
+        }
+        const key = sxbtGroupKey(plan);
+        if (!groupsByKey.has(key)) groupsByKey.set(key, []);
+        groupsByKey.get(key).push(plan);
+    });
+
+    const groups = [...groupsByKey.entries()].map(([groupKey, groupPlans], index) => ({
+        groupKey,
+        groupIndex: index + 1,
+        header: {
+            ItemCode: groupPlans[0].ItemCode,
+            TenSanPham: groupPlans[0].Ten_SanPham,
+            TenSanPhamGop: stripSxbtMarketSuffix(groupPlans[0].Ten_SanPham),
+            SoLotSX: groupPlans[0].So_LoSanXuat,
+            NgayNhap: serializeSqlDateOnly(groupPlans[0].Ngay_NhapBTP),
+            TenDonVi: groupPlans[0].Ten_DonVi,
+            TenBoPhan: groupPlans[0].Ten_BoPhan,
+            MaNhaThau: groupPlans[0].Ma_NhaThau,
+            TenQuyTrinhSanXuat: groupPlans[0].Ten_QuyTrinhSanXuat,
+            DonViTinh: groupPlans[0].DonViTinh
+        },
+        plans: groupPlans.map((plan) => ({
+            ...plan,
+            Ngay_NhapBTP: serializeSqlDateOnly(plan.Ngay_NhapBTP),
+            Ngay_ThucTeSX: serializeSqlDateOnly(plan.Ngay_ThucTeSX)
+        }))
+    }));
+
+    const fingerprintPayload = groups.map((group) => ({
+        groupKey: group.groupKey,
+        plans: group.plans.map((plan) => ({
+            KeHoachNhapId: Number(plan.KeHoachNhapId),
+            ID_KeHoachSanXuat: Number(plan.ID_KeHoachSanXuat || 0),
+            SoLuong: Number(plan.SoLuong || 0),
+            LoaiKH: Number(plan.LoaiKH || 0),
+            NgayTao: plan.Ngay_Tao instanceof Date ? plan.Ngay_Tao.toISOString() : String(plan.Ngay_Tao || '')
+        }))
+    }));
+    const fingerprint = crypto
+        .createHash('sha256')
+        .update(JSON.stringify(fingerprintPayload))
+        .digest('hex');
+
+    return { groupCount: groups.length, planCount: plans.length, groups, invalidPlans, fingerprint };
+};
+
 const getSxbtSourceInfo = async (pool, phieuKiemId) => {
     const sourceResult = await pool.request()
         .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
@@ -270,10 +469,74 @@ const getSxbtSourceInfo = async (pool, phieuKiemId) => {
     };
 };
 
+const getSxbtSourcesInfo = async (pool, phieuKiemId) => {
+    const result = await pool.request()
+        .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+        .query(`
+            SELECT
+                link.Id AS SxbtPlanLinkId,
+                link.KeHoachNhapId,
+                link.IsPrimary,
+                sourceRow.ID_KeHoachSanXuat,
+                sourceRow.Ngay_NhapBTP,
+                sourceRow.Ngay_ThucTeSX,
+                sourceRow.Ngay_Tao,
+                sourceRow.SoLuong,
+                sourceRow.LoaiKH,
+                sourceRow.ID_DonHang_LoSanXuat,
+                sourceRow.ID_DonHang_SanPham,
+                productionPlan.ID_QuyTrinhSanXuat,
+                processRow.Ten_QuyTrinhSanXuat,
+                productionOrder.ID_DonVi,
+                productionPlan.ID_BoPhan,
+                unitRow.Ten_DonVi,
+                departmentRow.Ten_BoPhan,
+                contractor.Ma_NhaThau AS MaDonVi,
+                contractor.Ma_NhaThau,
+                orderRow.Ma_DonHang,
+                productionLot.So_LoSanXuat,
+                productRow.ItemCode,
+                productRow.Ten_SanPham,
+                unitOfMeasure.Ten_DonViTinh AS DonViTinh,
+                N'KE_HOACH_NHAP' AS SourceType
+            FROM dbo.PHIEU_KIEM_SXBT_PLAN link
+            INNER JOIN TAG_QLSX.dbo.KeHoachSanXuat_NhaThau_ThamChieu_Nhap sourceRow
+                ON sourceRow.ID_TuTang = link.KeHoachNhapId
+            INNER JOIN TAG_QLSX.dbo.KeHoachSanXuat productionPlan
+                ON productionPlan.ID_KeHoachSanXuat = sourceRow.ID_KeHoachSanXuat
+            INNER JOIN TAG_QLSX.dbo.LenhSanXuat productionOrder
+                ON productionOrder.ID_LenhSanXuat = productionPlan.ID_LenhSanXuat
+            LEFT JOIN TAG_QTKD.dbo.DonHang orderRow
+                ON orderRow.ID_DonHang = productionOrder.ID_DonHang
+            LEFT JOIN TAG_QTKD.dbo.DonHang_SanPham orderProduct
+                ON orderProduct.ID_DonHang_SanPham = NULLIF(sourceRow.ID_DonHang_SanPham, 0)
+            LEFT JOIN TAG_QTKD.dbo.DM_SanPham productRow
+                ON productRow.ID_SanPham = orderProduct.ID_SanPham
+            LEFT JOIN TAG_QTKD.dbo.DonHang_LoSanXuat productionLot
+                ON productionLot.ID_DonHang_LoSanXuat = NULLIF(sourceRow.ID_DonHang_LoSanXuat, 0)
+            LEFT JOIN TAG_QTKD.dbo.DM_QuyTrinhSanXuat processRow
+                ON processRow.ID_QuyTrinhSanXuat = productionPlan.ID_QuyTrinhSanXuat
+            LEFT JOIN TAG_QTKD.dbo.DM_DonViTinh unitOfMeasure
+                ON unitOfMeasure.ID_DonViTinh = ISNULL(orderProduct.ID_DonViTinh, processRow.ID_DonViTinh)
+            LEFT JOIN TAG_System.dbo.DM_DonVi unitRow
+                ON unitRow.ID_DonVi = productionOrder.ID_DonVi
+            LEFT JOIN TAG_System.dbo.DM_BoPhan departmentRow
+                ON departmentRow.ID_BoPhan = productionPlan.ID_BoPhan
+            LEFT JOIN TAG_QTKD.dbo.DM_NhaThau contractor
+                ON contractor.ID_BoPhan = productionPlan.ID_BoPhan
+            WHERE link.PhieuKiemId = @PhieuKiemId
+            ORDER BY link.SortOrder, link.Id;
+        `);
+    return result.recordset || [];
+};
+
 const attachSxbtSourceInfo = async (pool, phieu = null) => {
     if (!phieu?.Id) return { phieu, source: null };
 
-    const source = await getSxbtSourceInfo(pool, phieu.Id);
+    const linkedSources = await getSxbtSourcesInfo(pool, phieu.Id);
+    const legacySource = linkedSources.length === 0 ? await getSxbtSourceInfo(pool, phieu.Id) : null;
+    const sources = linkedSources.length > 0 ? linkedSources : (legacySource ? [legacySource] : []);
+    const source = sources[0] || null;
     if (!source) return { phieu, source: null };
 
     const mappedFields = {
@@ -297,7 +560,9 @@ const attachSxbtSourceInfo = async (pool, phieu = null) => {
     };
 
     Object.assign(phieu, mappedFields);
-    return { phieu, source };
+    phieu.SxbtSourceCount = sources.length;
+    phieu.SxbtSources = sources;
+    return { phieu, source, sources };
 };
 
 const optionalNonNegativeInteger = (value) => {
@@ -1067,7 +1332,7 @@ router.get(
                 const phieu = result.recordsets[0][0] || null;
                 await attachProductImageToPhieu(pool, phieu);
                 await attachPhieuQuantity(pool, phieu);
-                const { source: sxbtSource } = await attachSxbtSourceInfo(pool, phieu);
+                const { source: sxbtSource, sources: sxbtSources = [] } = await attachSxbtSourceInfo(pool, phieu);
                 let dynamicFields = [];
                 if (phieu && phieu.DynamicFieldsJSON) {
                     try {
@@ -1077,7 +1342,30 @@ router.get(
                 }
                 dynamicFields = await enrichSxbtSignatureFields(pool, dynamicFields, phieu);
 
-                const btpItems = attachBtpLotRows(result.recordsets[1] || [], result.recordsets[4] || []);
+                const sourceByLinkId = new Map(
+                    sxbtSources.map((source) => [Number(source.SxbtPlanLinkId), source])
+                );
+                const itemLinkResult = await pool.request()
+                    .input('PhieuKiemId', sql.Int, id)
+                    .query(`
+                        SELECT item.Id AS BtpItemId, item.SxbtPlanLinkId
+                        FROM dbo.PHIEU_KIEM_BTP_ITEM item
+                        WHERE item.PhieuKiemId = @PhieuKiemId
+                    `);
+                const linkIdByItemId = new Map(
+                    (itemLinkResult.recordset || []).map((row) => [Number(row.BtpItemId), Number(row.SxbtPlanLinkId)])
+                );
+                const btpItems = attachBtpLotRows(result.recordsets[1] || [], result.recordsets[4] || [])
+                    .map((item) => {
+                        const sxbtPlanLinkId = Number(item.SxbtPlanLinkId) || linkIdByItemId.get(Number(item.Id));
+                        const source = sourceByLinkId.get(sxbtPlanLinkId);
+                        return source ? {
+                            ...item,
+                            SxbtPlanLinkId: sxbtPlanLinkId,
+                            KeHoachNhapId: source.KeHoachNhapId,
+                            SourceID_KeHoachSanXuat: source.ID_KeHoachSanXuat || item.SourceID_KeHoachSanXuat
+                        } : item;
+                    });
                 const splitResult = await pool.request()
                     .input('PhieuKiemId', sql.Int, id)
                     .query(`
@@ -1112,6 +1400,7 @@ router.get(
                     splitInfo: splitResult.recordset?.[0] || null,
                     sxbtSourceType: sxbtSource?.SourceType || null,
                     sxbtSource,
+                    sxbtSources,
                     phieuNhapBtpId: sxbtSource?.PhieuNhapBtpId || null,
                     capabilities: inspectionCapabilities(req, phieu)
                 });
@@ -2174,6 +2463,32 @@ router.post(
 );
 
 /* =========================================================
+   POST /phieu-kiem/sxbt/group-preview
+========================================================= */
+router.post(
+    '/sxbt/group-preview',
+    authenticateToken,
+    authorize('PHAN_BO_KIEM'),
+    async (req, res) => {
+        const ids = normalizePositiveIds(req.body?.keHoachNhapIds);
+        if (ids.length === 0) {
+            return res.status(400).json({ message: 'Vui lòng chọn ít nhất một kế hoạch nhập BTP.' });
+        }
+
+        try {
+            const pool = await poolPromise;
+            const plans = await loadSxbtImportPlans(pool.request(), ids);
+            return res.json(buildSxbtGroupPreview(ids, plans));
+        } catch (err) {
+            console.error('SXBT group preview error:', err);
+            return res.status(500).json({
+                message: err?.originalError?.info?.message || err.message || 'Không thể nhóm kế hoạch SXBT.'
+            });
+        }
+    }
+);
+
+/* =========================================================
    POST /phieu-kiem/create-sxbt (Sản xuất bổ trợ)
 ========================================================= */
 router.post(
@@ -2185,61 +2500,235 @@ router.post(
             loaiKiemId,
             nguoiKiemId,
             keHoachNhapId,
+            keHoachNhapIds,
+            previewFingerprint,
             sourceId,
             soLuong,
             doiTuong,
             mucDoKiemTra
         } = req.body;
 
-        if (!loaiKiemId || !nguoiKiemId || (!keHoachNhapId && !sourceId)) {
+        const selectedImportPlanIds = normalizePositiveIds(
+            Array.isArray(keHoachNhapIds) && keHoachNhapIds.length > 0
+                ? keHoachNhapIds
+                : keHoachNhapId
+        );
+
+        if (!loaiKiemId || !nguoiKiemId || (selectedImportPlanIds.length === 0 && !sourceId)) {
             return res.status(400).json({
                 message: 'Thiếu loại kiểm, người kiểm hoặc nguồn kế hoạch nhập BTP'
             });
         }
 
-        try {
-            const pool = await poolPromise;
-            const request = pool.request()
-                .input('LoaiKiemId', sql.Int, loaiKiemId)
-                .input('NguoiKiemId', sql.Int, nguoiKiemId)
-                .input('NguoiLapId', sql.Int, req.user.userId)
-                .input('MucDoKiemTra', sql.NVarChar, mucDoKiemTra || null);
-
-            const result = keHoachNhapId
-                ? await request
-                    .input('KeHoachNhapId', sql.Int, keHoachNhapId)
-                    .execute('sp_PhieuKiem_Create_SXBT_FromKeHoachNhap')
-                : await request
+        if (selectedImportPlanIds.length === 0) {
+            try {
+                const pool = await poolPromise;
+                const result = await pool.request()
+                    .input('LoaiKiemId', sql.Int, loaiKiemId)
+                    .input('NguoiKiemId', sql.Int, nguoiKiemId)
+                    .input('NguoiLapId', sql.Int, req.user.userId)
+                    .input('MucDoKiemTra', sql.NVarChar, mucDoKiemTra || null)
                     .input('SourceId', sql.Int, sourceId)
                     .input('SoLuong', sql.Int, soLuong)
                     .input('DoiTuong', sql.NVarChar, doiTuong)
                     .execute('sp_PhieuKiem_Create_SXBT');
+                await pool.request()
+                    .input('UserId', sql.Int, nguoiKiemId)
+                    .input('Title', sql.NVarChar, 'Bạn có phiếu kiểm bổ trợ mới! 📋')
+                    .input('Message', sql.NVarChar, `Tổ trưởng vừa phân công cho bạn phiếu kiểm ${result.recordset[0].SoPhieu}.`)
+                    .input('Type', sql.VarChar, 'NEW_PHIEU')
+                    .input('ReferenceId', sql.Int, result.recordset[0].Id)
+                    .query('INSERT INTO NOTIFICATIONS (UserId, Title, Message, Type, ReferenceId) VALUES (@UserId, @Title, @Message, @Type, @ReferenceId)');
+                return res.json({
+                    success: true,
+                    phieuKiemId: result.recordset[0].Id,
+                    soPhieu: result.recordset[0].SoPhieu,
+                    createdCount: 1,
+                    inspections: [{
+                        phieuKiemId: result.recordset[0].Id,
+                        soPhieu: result.recordset[0].SoPhieu,
+                        keHoachNhapIds: []
+                    }]
+                });
+            } catch (err) {
+                console.error('Create legacy SXBT error:', err);
+                return res.status(500).json({ message: err.message || 'Tạo phiếu kiểm bổ trợ thất bại' });
+            }
+        }
 
-            const newPhieuId = result.recordset[0].Id;
-            const soPhieu = result.recordset[0].SoPhieu;
+        if (selectedImportPlanIds.length > 1 && !previewFingerprint) {
+            return res.status(400).json({ message: 'Cần xem trước nhóm kế hoạch SXBT trước khi tạo phiếu.' });
+        }
 
-            // Gửi thông báo (Lưu vào DB)
-            const title = 'Bạn có phiếu kiểm bổ trợ mới! 📋';
-            const message = `Tổ trưởng vừa phân công cho bạn phiếu kiểm ${soPhieu}.`;
+        let transaction;
+        try {
+            const pool = await poolPromise;
+            transaction = new sql.Transaction(pool);
+            await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
 
-            await pool.request()
-                .input('UserId', sql.Int, nguoiKiemId)
-                .input('Title', sql.NVarChar, title)
-                .input('Message', sql.NVarChar, message)
-                .input('Type', sql.VarChar, 'NEW_PHIEU')
-                .input('ReferenceId', sql.Int, newPhieuId)
-                .query('INSERT INTO NOTIFICATIONS (UserId, Title, Message, Type, ReferenceId) VALUES (@UserId, @Title, @Message, @Type, @ReferenceId)');
+            const plans = await loadSxbtImportPlans(
+                new sql.Request(transaction),
+                selectedImportPlanIds,
+                { lockPrimaryLinks: true }
+            );
+            const preview = buildSxbtGroupPreview(selectedImportPlanIds, plans);
+            if (preview.invalidPlans.length > 0 || plans.length !== selectedImportPlanIds.length) {
+                const error = new Error(preview.invalidPlans[0]?.message || 'Danh sách kế hoạch đã thay đổi. Vui lòng xem trước lại.');
+                error.statusCode = 409;
+                throw error;
+            }
+            if (previewFingerprint && preview.fingerprint !== previewFingerprint) {
+                const error = new Error('Dữ liệu kế hoạch đã thay đổi sau khi xem trước. Vui lòng tải lại bản xem trước.');
+                error.statusCode = 409;
+                throw error;
+            }
 
-            res.json({
+            const sequenceResult = await new sql.Request(transaction).query(`
+                EXEC sys.sp_getapplock
+                    @Resource = N'PHIEU_KIEM_SXBT_NUMBER',
+                    @LockMode = N'Exclusive',
+                    @LockOwner = N'Transaction',
+                    @LockTimeout = 10000;
+                DECLARE @TodayStr CHAR(6) = CONVERT(CHAR(6), GETDATE(), 12);
+                SELECT @TodayStr AS TodayStr,
+                    ISNULL(MAX(TRY_CONVERT(INT, RIGHT(SoPhieu, 3))), 0) AS CurrentSeq
+                FROM dbo.PHIEU_KIEM WITH (UPDLOCK, HOLDLOCK)
+                WHERE SoPhieu LIKE N'BT-' + @TodayStr + N'-%';
+            `);
+            const todayStr = sequenceResult.recordset[0].TodayStr;
+            let nextSeq = Number(sequenceResult.recordset[0].CurrentSeq || 0);
+            const inspections = [];
+
+            for (const group of preview.groups) {
+                nextSeq += 1;
+                const soPhieu = `BT-${todayStr}-${String(nextSeq).padStart(3, '0')}`;
+                const first = group.plans[0];
+                const totalQuantity = group.plans.reduce((sum, plan) => sum + Number(plan.SoLuong || 0), 0);
+                const headerResult = await new sql.Request(transaction)
+                    .input('SoPhieu', sql.NVarChar(50), soPhieu)
+                    .input('SanPhamId', sql.Int, first.SanPhamId)
+                    .input('LoaiKiemId', sql.Int, Number(loaiKiemId))
+                    .input('Lot', sql.NVarChar(100), first.So_LoSanXuat || '')
+                    .input('DoiTuong', sql.NVarChar, [first.Ten_DonVi, first.Ten_BoPhan].filter(Boolean).join(' - '))
+                    .input('NguoiKiemId', sql.Int, Number(nguoiKiemId))
+                    .input('NguoiLapId', sql.Int, req.user.userId)
+                    .input('LegacyKeHoachNhapId', sql.Int, group.plans.length === 1 ? first.KeHoachNhapId : null)
+                    .input('SoLuong', sql.Int, Math.round(totalQuantity))
+                    .input('MucDoKiemTra', sql.NVarChar(50), mucDoKiemTra || null)
+                    .query(`
+                        INSERT INTO dbo.PHIEU_KIEM (
+                            SoPhieu, SanPhamId, LoaiKiemId, Lot, DoiTuong,
+                            NguoiKiemId, NguoiLapId, SourceId, SxbtKeHoachNhapId,
+                            SxbtPhieuNhapBtpId, SxbtIsSplitChild, SoLuong,
+                            CreatedAt, TrangThai, MucDoKiemTra
+                        )
+                        OUTPUT INSERTED.Id
+                        VALUES (
+                            @SoPhieu, @SanPhamId, @LoaiKiemId, @Lot, @DoiTuong,
+                            @NguoiKiemId, @NguoiLapId, NULL, @LegacyKeHoachNhapId,
+                            NULL, 0, @SoLuong, GETDATE(), N'CHUA_KIEM', @MucDoKiemTra
+                        );
+                    `);
+                const newPhieuId = headerResult.recordset[0].Id;
+
+                for (let index = 0; index < group.plans.length; index += 1) {
+                    const plan = group.plans[index];
+                    const linkResult = await new sql.Request(transaction)
+                        .input('PhieuKiemId', sql.Int, newPhieuId)
+                        .input('KeHoachNhapId', sql.Int, plan.KeHoachNhapId)
+                        .input('ID_KeHoachSanXuat', sql.Int, plan.ID_KeHoachSanXuat)
+                        .input('SoLuongKeHoach', sql.Decimal(18, 2), Number(plan.SoLuong || 0))
+                        .input('ItemCode', sql.NVarChar(100), plan.ItemCode)
+                        .input('SoLotSX', sql.NVarChar(100), plan.So_LoSanXuat || null)
+                        .input('NgayNhap', sql.Date, plan.Ngay_NhapBTP)
+                        .input('SortOrder', sql.Int, index + 1)
+                        .query(`
+                            INSERT INTO dbo.PHIEU_KIEM_SXBT_PLAN (
+                                PhieuKiemId, KeHoachNhapId, ID_KeHoachSanXuat,
+                                IsPrimary, SoLuongKeHoach, ItemCode, SoLotSX,
+                                NgayNhap, SortOrder
+                            )
+                            OUTPUT INSERTED.Id
+                            VALUES (
+                                @PhieuKiemId, @KeHoachNhapId, @ID_KeHoachSanXuat,
+                                1, @SoLuongKeHoach, @ItemCode, @SoLotSX,
+                                @NgayNhap, @SortOrder
+                            );
+                        `);
+                    const planLinkId = linkResult.recordset[0].Id;
+                    const itemResult = await new sql.Request(transaction)
+                        .input('PhieuKiemId', sql.Int, newPhieuId)
+                        .input('SxbtPlanLinkId', sql.Int, planLinkId)
+                        .input('ItemCode', sql.NVarChar(100), plan.ItemCode)
+                        .input('TenSanPham', sql.NVarChar(255), plan.Ten_SanPham || plan.Ma_DonHang)
+                        .input('SoLuong', sql.Decimal(18, 2), Number(plan.SoLuong || 0))
+                        .input('DonViTinh', sql.NVarChar(100), plan.DonViTinh || null)
+                        .input('MaDonHang', sql.NVarChar(100), plan.Ma_DonHang || null)
+                        .input('SoLotSX', sql.NVarChar(100), plan.So_LoSanXuat || null)
+                        .input('NgayNhap', sql.Date, plan.Ngay_NhapBTP)
+                        .input('ID_KeHoachSanXuat', sql.Int, plan.ID_KeHoachSanXuat)
+                        .input('ID_DonHang', sql.Int, plan.ID_DonHang)
+                        .input('ID_DonHang_SanPham', sql.Int, plan.ID_DonHang_SanPham || null)
+                        .input('ID_DonHang_LoSanXuat', sql.Int, plan.ID_DonHang_LoSanXuat || null)
+                        .query(`
+                            INSERT INTO dbo.PHIEU_KIEM_BTP_ITEM (
+                                PhieuKiemId, SxbtPlanLinkId, ItemCode, TenSanPham,
+                                SoLuong, DonViTinh, MaDonHang, SoLotSX, NgayNhap,
+                                SoLuongNhap, SourceID_KeHoachSanXuat, SourceID_DonHang,
+                                SourceID_DonHang_SanPham, SourceID_DonHang_LoSanXuat
+                            )
+                            OUTPUT INSERTED.Id
+                            VALUES (
+                                @PhieuKiemId, @SxbtPlanLinkId, @ItemCode, @TenSanPham,
+                                @SoLuong, @DonViTinh, @MaDonHang, @SoLotSX, @NgayNhap,
+                                @SoLuong, @ID_KeHoachSanXuat, @ID_DonHang,
+                                @ID_DonHang_SanPham, @ID_DonHang_LoSanXuat
+                            );
+                        `);
+                    await new sql.Request(transaction)
+                        .input('BtpItemId', sql.Int, itemResult.recordset[0].Id)
+                        .input('SoLotSX', sql.NVarChar(100), plan.So_LoSanXuat || null)
+                        .input('SoLuongNhap', sql.Decimal(18, 2), Number(plan.SoLuong || 0))
+                        .query(`
+                            INSERT INTO dbo.PHIEU_KIEM_BTP_ITEM_LOT
+                                (BtpItemId, SoLotSX, SoLuongNhap, SortOrder)
+                            VALUES (@BtpItemId, @SoLotSX, @SoLuongNhap, 1);
+                        `);
+                }
+
+                await new sql.Request(transaction)
+                    .input('UserId', sql.Int, nguoiKiemId)
+                    .input('Title', sql.NVarChar, 'Bạn có phiếu kiểm bổ trợ mới! 📋')
+                    .input('Message', sql.NVarChar, `Tổ trưởng vừa phân công cho bạn phiếu kiểm ${soPhieu}.`)
+                    .input('Type', sql.VarChar, 'NEW_PHIEU')
+                    .input('ReferenceId', sql.Int, newPhieuId)
+                    .query('INSERT INTO NOTIFICATIONS (UserId, Title, Message, Type, ReferenceId) VALUES (@UserId, @Title, @Message, @Type, @ReferenceId)');
+
+                inspections.push({
+                    phieuKiemId: newPhieuId,
+                    soPhieu,
+                    keHoachNhapIds: group.plans.map((plan) => plan.KeHoachNhapId)
+                });
+            }
+
+            await transaction.commit();
+            return res.json({
                 success: true,
-                phieuKiemId: newPhieuId,
-                soPhieu: soPhieu
+                createdCount: inspections.length,
+                inspections,
+                phieuKiemId: inspections[0]?.phieuKiemId || null,
+                soPhieu: inspections[0]?.soPhieu || null
             });
         } catch (err) {
+            if (transaction) {
+                try { await transaction.rollback(); } catch (rollbackError) {
+                    console.error('Create SXBT rollback error:', rollbackError);
+                }
+            }
             console.error('CreateSXBT error:', err);
             const sqlMessage = err?.originalError?.info?.message || err.message;
             const isConflict = /đã được tạo phiếu kiểm|duplicate|unique/i.test(sqlMessage || '');
-            res.status(isConflict ? 409 : 500).json({
+            res.status(err.statusCode || (isConflict ? 409 : 500)).json({
                 message: sqlMessage || 'Tạo phiếu kiểm bổ trợ thất bại'
             });
         }
@@ -2258,7 +2747,12 @@ router.get(
             const pool = await poolPromise;
             const itemsResult = await pool.request()
                 .input('PhieuKiemId', sql.Int, id)
-                .query('SELECT * FROM PHIEU_KIEM_BTP_ITEM WHERE PhieuKiemId = @PhieuKiemId');
+                .query(`
+                    SELECT item.*, planLink.KeHoachNhapId
+                    FROM dbo.PHIEU_KIEM_BTP_ITEM item
+                    LEFT JOIN dbo.PHIEU_KIEM_SXBT_PLAN planLink ON planLink.Id = item.SxbtPlanLinkId
+                    WHERE item.PhieuKiemId = @PhieuKiemId
+                `);
             const lotResult = await pool.request()
                 .input('PhieuKiemId', sql.Int, id)
                 .query(`
@@ -2619,6 +3113,55 @@ router.post(
                     INNER JOIN dbo.PHIEU_KIEM original
                         ON original.Id = @OriginalPhieuKiemId
                     WHERE rejected.Id = @RejectedPhieuKiemId;
+
+                    IF OBJECT_ID(N'dbo.PHIEU_KIEM_SXBT_PLAN', N'U') IS NOT NULL
+                    BEGIN
+                        UPDATE dbo.PHIEU_KIEM_BTP_ITEM
+                        SET SxbtPlanLinkId = NULL
+                        WHERE PhieuKiemId = @RejectedPhieuKiemId;
+
+                        INSERT INTO dbo.PHIEU_KIEM_SXBT_PLAN (
+                            PhieuKiemId, KeHoachNhapId, ID_KeHoachSanXuat,
+                            IsPrimary, SoLuongKeHoach, ItemCode, SoLotSX,
+                            NgayNhap, SortOrder
+                        )
+                        SELECT DISTINCT
+                            @RejectedPhieuKiemId, originalLink.KeHoachNhapId,
+                            originalLink.ID_KeHoachSanXuat, 0,
+                            originalLink.SoLuongKeHoach, originalLink.ItemCode,
+                            originalLink.SoLotSX, originalLink.NgayNhap,
+                            originalLink.SortOrder
+                        FROM dbo.PHIEU_KIEM_SXBT_PLAN originalLink
+                        INNER JOIN dbo.PHIEU_KIEM_BTP_ITEM rejectedItem
+                            ON rejectedItem.PhieuKiemId = @RejectedPhieuKiemId
+                           AND ISNULL(rejectedItem.SourceID_KeHoachSanXuat, -1)
+                               = ISNULL(originalLink.ID_KeHoachSanXuat, -1)
+                        WHERE originalLink.PhieuKiemId = @OriginalPhieuKiemId
+                          AND NOT EXISTS (
+                              SELECT 1 FROM dbo.PHIEU_KIEM_SXBT_PLAN existing
+                              WHERE existing.PhieuKiemId = @RejectedPhieuKiemId
+                                AND existing.KeHoachNhapId = originalLink.KeHoachNhapId
+                          );
+
+                        ;WITH matched_item AS (
+                            SELECT rejectedItem.Id AS BtpItemId, rejectedLink.Id AS PlanLinkId,
+                                ROW_NUMBER() OVER (
+                                    PARTITION BY rejectedItem.Id
+                                    ORDER BY rejectedLink.SortOrder, rejectedLink.Id
+                                ) AS rn
+                            FROM dbo.PHIEU_KIEM_BTP_ITEM rejectedItem
+                            INNER JOIN dbo.PHIEU_KIEM_SXBT_PLAN rejectedLink
+                                ON rejectedLink.PhieuKiemId = @RejectedPhieuKiemId
+                               AND ISNULL(rejectedLink.ID_KeHoachSanXuat, -1)
+                                   = ISNULL(rejectedItem.SourceID_KeHoachSanXuat, -1)
+                            WHERE rejectedItem.PhieuKiemId = @RejectedPhieuKiemId
+                        )
+                        UPDATE item
+                        SET item.SxbtPlanLinkId = matched_item.PlanLinkId
+                        FROM dbo.PHIEU_KIEM_BTP_ITEM item
+                        INNER JOIN matched_item
+                            ON matched_item.BtpItemId = item.Id AND matched_item.rn = 1;
+                    END;
                 `);
 
             await transaction.commit();
