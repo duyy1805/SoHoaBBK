@@ -58,6 +58,14 @@ const CUOI_CHUYEN_APPROVED_BY_NAME_FIELD = 'CuoiChuyen_ApprovedByName';
 const TREN_CHUYEN_APPROVE_BOPHAN_FIELD = 'TrenChuyen_ApproveBoPhanId';
 const TREN_CHUYEN_COMPLETED_BY_FIELD = 'TrenChuyen_CompletedByUserId';
 const TREN_CHUYEN_COMPLETED_BY_NAME_FIELD = 'TrenChuyen_CompletedByName';
+const UNIFIED_PRINT_DATA_VERSION_FIELD = 'UnifiedPrintDataVersion';
+const UNIFIED_PRINT_DATA_VERSION = '1';
+const TREN_CHUYEN_SOURCE_FIELDS = [
+    'TrenChuyen_MaDonHang',
+    'TrenChuyen_TenQuyTrinhSanXuat',
+    'TrenChuyen_Lot',
+    'TrenChuyen_LenhXuatVatTu'
+];
 
 const isCuoiChuyenLoaiKiem = (loaiKiemId) => Number(loaiKiemId) === CUOI_CHUYEN_LOAI_KIEM_ID;
 const isTrenChuyenLoaiKiem = (loaiKiemId) => Number(loaiKiemId) === TREN_CHUYEN_LOAI_KIEM_ID;
@@ -755,6 +763,9 @@ const normalizeTrenChuyenSlots = (slots = []) => slots.map((slot, slotIndex) => 
         ? slot.entries.map((entry, entryIndex) => ({
             congDoan: String(entry?.congDoan || '').trim(),
             tenCongNhanGayLoi: String(entry?.tenCongNhanGayLoi || '').trim(),
+            soLuongKiem: optionalNonNegativeInteger(entry?.soLuongKiem ?? entry?.SoLuongKiem),
+            soLoiBuiBan: Number(entry?.soLoiBuiBan ?? entry?.SoLoiBuiBan ?? 0),
+            soLoiConTrung: Number(entry?.soLoiConTrung ?? entry?.SoLoiConTrung ?? 0),
             nguoiGhiNhanId: Number(entry?.nguoiGhiNhanId || 0) || null,
             ghiChu: entry?.ghiChu ? String(entry.ghiChu).trim() : '',
             sortOrder: Number(entry?.sortOrder || entryIndex + 1),
@@ -787,6 +798,12 @@ const normalizeCuoiChuyenPlans = (plans = []) => plans.map((plan, planIndex) => 
     tenSanPham: String(plan?.tenSanPham || plan?.TenSanPham || '').trim(),
     tenDonVi: String(plan?.tenDonVi || plan?.Ten_DonVi || plan?.TenDonVi || '').trim(),
     tenBoPhan: String(plan?.tenBoPhan || plan?.Ten_BoPhan || plan?.TenBoPhan || '').trim(),
+    maDonHang: String(plan?.maDonHang || plan?.Ma_DonHang || plan?.MaDonHang || '').trim(),
+    tenQuyTrinhSanXuat: String(plan?.tenQuyTrinhSanXuat || plan?.Ten_QuyTrinhSanXuat || plan?.TenQuyTrinhSanXuat || '').trim(),
+    lot: String(plan?.lot || plan?.Lot || plan?.So_LoSanXuat || '').trim(),
+    lenhXuatVatTu: String(plan?.lenhXuatVatTu || plan?.LenhXuatVatTu || '').trim(),
+    soLoiBuiBan: Number(plan?.soLoiBuiBan ?? plan?.SoLoiBuiBan ?? 0),
+    soLoiConTrung: Number(plan?.soLoiConTrung ?? plan?.SoLoiConTrung ?? 0),
     ngayKeHoach: plan?.ngayKeHoach || plan?.Ngay || plan?.NgayKeHoach || null,
     soLuongKeHoach: plan?.soLuongKeHoach === '' || plan?.soLuongKeHoach == null
         ? null
@@ -810,6 +827,7 @@ const normalizeCuoiChuyenPlans = (plans = []) => plans.map((plan, planIndex) => 
                 ? null
                 : Number(defect.soLuongKhongDatSauSua),
             ghiChu: String(defect?.ghiChu || defect?.GhiChu || '').trim(),
+            tenCongNhan: String(defect?.tenCongNhan || defect?.TenCongNhan || '').trim(),
             imageUrls: Array.isArray(defect?.imageUrls)
                 ? defect.imageUrls.filter((url) => typeof url === 'string' && url.trim() !== '')
                 : [],
@@ -1356,6 +1374,60 @@ router.patch(
     }
 );
 
+router.patch(
+    '/tren-chuyen/:id/source-fields',
+    authenticateToken,
+    authorize('THUC_HIEN_KIEM'),
+    async (req, res) => {
+        const phieuKiemId = Number(req.params.id);
+        if (!Number.isInteger(phieuKiemId) || phieuKiemId <= 0) {
+            return res.status(400).json({ message: 'PhieuKiemId không hợp lệ' });
+        }
+        const incoming = Object.fromEntries(TREN_CHUYEN_SOURCE_FIELDS.map((fieldName) => [
+            fieldName,
+            String(req.body?.[fieldName] ?? '').trim()
+        ]));
+        try {
+            const pool = await poolPromise;
+            const headerResult = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .query(`SELECT Id, LoaiKiemId, TrangThai FROM dbo.PHIEU_KIEM WHERE Id = @PhieuKiemId`);
+            const phieu = headerResult.recordset[0];
+            if (!phieu) return res.status(404).json({ message: 'Không tìm thấy phiếu kiểm' });
+            if (!isTrenChuyenLoaiKiem(phieu.LoaiKiemId)) {
+                return res.status(400).json({ message: 'Phiếu không thuộc loại kiểm trên chuyền' });
+            }
+            if (!['TAO_MOI', 'DANG_KIEM', 'CHUA_KIEM'].includes(String(phieu.TrangThai || '').toUpperCase())) {
+                return res.status(409).json({ message: 'Phiếu đã khóa, không thể bổ sung thông tin nguồn' });
+            }
+            const existingResult = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .query(`
+                    SELECT FieldName, FieldValue FROM dbo.PhieuKiem_CustomFields
+                    WHERE PhieuKiemId = @PhieuKiemId
+                `);
+            const existing = new Map(existingResult.recordset.map((row) => [row.FieldName, String(row.FieldValue || '').trim()]));
+            for (const fieldName of TREN_CHUYEN_SOURCE_FIELDS) {
+                if (existing.get(fieldName) && incoming[fieldName] !== existing.get(fieldName)) {
+                    return res.status(409).json({ message: `${fieldName} đã có dữ liệu và không được sửa` });
+                }
+            }
+            const fieldsToSave = Object.fromEntries(
+                TREN_CHUYEN_SOURCE_FIELDS
+                    .filter((fieldName) => !existing.get(fieldName) && incoming[fieldName])
+                    .map((fieldName) => [fieldName, incoming[fieldName]])
+            );
+            if (Object.keys(fieldsToSave).length) {
+                await upsertPhieuKiemCustomFields(pool, phieuKiemId, fieldsToSave);
+            }
+            res.json({ success: true, fields: { ...Object.fromEntries(existing), ...fieldsToSave } });
+        } catch (err) {
+            console.error('TrenChuyen source fields error:', err);
+            res.status(500).json({ message: err.message || 'Không bổ sung được thông tin nguồn' });
+        }
+    }
+);
+
 /* =========================================================
    GET /phieu-kiem/:id
    Permission : XEM_PHIEU_KIEM
@@ -1504,12 +1576,24 @@ router.get(
                 const actualQuantityResult = await pool.request()
                     .input('PhieuKiemId', sql.Int, Number(id))
                     .query(`
-                        SELECT Id, SoLuongThucTe
+                        SELECT Id, SoLuongThucTe, MaDonHang, TenQuyTrinhSanXuat,
+                            Lot, LenhXuatVatTu, SoLoiBuiBan, SoLoiConTrung
                         FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN
                         WHERE PhieuKiemId = @PhieuKiemId
                     `);
-                const actualQuantityByPlan = new Map(
-                    actualQuantityResult.recordset.map((row) => [Number(row.Id), row.SoLuongThucTe])
+                const extraByPlan = new Map(
+                    actualQuantityResult.recordset.map((row) => [Number(row.Id), row])
+                );
+                const defectExtraResult = await pool.request()
+                    .input('PhieuKiemId', sql.Int, Number(id))
+                    .query(`
+                        SELECT defect.Id, defect.TenCongNhan
+                        FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_DEFECT defect
+                        INNER JOIN dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN planRow ON planRow.Id = defect.PlanId
+                        WHERE planRow.PhieuKiemId = @PhieuKiemId
+                    `);
+                const workerByDefectId = new Map(
+                    defectExtraResult.recordset.map((row) => [Number(row.Id), row.TenCongNhan || ''])
                 );
 
                 const defectsByPlanId = {};
@@ -1545,14 +1629,16 @@ router.get(
                         DefectType: record.DefectType,
                         PhuongAnXuLy: record.PhuongAnXuLy,
                         ImageUrl: record.ImageUrl || null,
-                        ImageUrls: defectImageUrls
+                        ImageUrls: defectImageUrls,
+                        TenCongNhan: workerByDefectId.get(Number(record.DefectRowId)) || ''
                     });
                 });
 
                 const plans = planRecords.map((plan) => ({
                     ...applyQuantityFields({
                         ...plan,
-                        SoLuongThucTe: actualQuantityByPlan.get(Number(plan.Id)) ?? null
+                        ...(extraByPlan.get(Number(plan.Id)) || {}),
+                        SoLuongThucTe: extraByPlan.get(Number(plan.Id))?.SoLuongThucTe ?? null
                     }, 'SoLuongKeHoach'),
                     Defects: [...(defectsByPlanId[plan.Id] || [])]
                         .sort((a, b) => (a.SortOrder || 0) - (b.SortOrder || 0))
@@ -1604,6 +1690,18 @@ router.get(
                 const entryDefectRecords = result.recordsets?.[2] || [];
                 const summary = result.recordsets?.[3]?.[0] || null;
                 const xacNhans = result.recordsets?.[4] || [];
+                const entryExtraResult = await pool.request()
+                    .input('PhieuKiemId', sql.Int, Number(id))
+                    .query(`
+                        SELECT entryRow.Id, entryRow.SoLuongKiem,
+                            entryRow.SoLoiBuiBan, entryRow.SoLoiConTrung
+                        FROM dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY entryRow
+                        INNER JOIN dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT slotRow ON slotRow.Id = entryRow.SlotId
+                        WHERE slotRow.PhieuKiemId = @PhieuKiemId
+                    `);
+                const extraByEntry = new Map(
+                    entryExtraResult.recordset.map((row) => [Number(row.Id), row])
+                );
 
                 const entriesBySlotId = {};
 
@@ -1624,6 +1722,9 @@ router.get(
                             SortOrder: record.EntrySortOrder || 0,
                             CreatedAt: record.EntryCreatedAt || null,
                             UpdatedAt: record.EntryUpdatedAt || null,
+                            SoLuongKiem: extraByEntry.get(Number(record.EntryId))?.SoLuongKiem ?? null,
+                            SoLoiBuiBan: Number(extraByEntry.get(Number(record.EntryId))?.SoLoiBuiBan || 0),
+                            SoLoiConTrung: Number(extraByEntry.get(Number(record.EntryId))?.SoLoiConTrung || 0),
                             Defects: []
                         };
                     }
@@ -1918,6 +2019,12 @@ router.post(
                 await upsertPhieuKiemCustomFields(pool, newPhieuId, req.body.snapshotFields);
             }
 
+            if (isTrenChuyenLoaiKiem(loaiKiemId) || isCuoiChuyenLoaiKiem(loaiKiemId)) {
+                await upsertPhieuKiemCustomFields(pool, newPhieuId, {
+                    [UNIFIED_PRINT_DATA_VERSION_FIELD]: UNIFIED_PRINT_DATA_VERSION
+                });
+            }
+
             if (isCuoiChuyenLoaiKiem(loaiKiemId)) {
                 await pool.request()
                     .input('PhieuKiemId', sql.Int, newPhieuId)
@@ -1935,6 +2042,12 @@ router.post(
                             SoLuongKeHoach,
                             NangSuatDuKien,
                             DaSanXuat,
+                            MaDonHang,
+                            TenQuyTrinhSanXuat,
+                            Lot,
+                            LenhXuatVatTu,
+                            SoLoiBuiBan,
+                            SoLoiConTrung,
                             SortOrder
                         )
                         SELECT
@@ -1949,6 +2062,12 @@ router.post(
                             j.SoLuongKeHoach,
                             j.NangSuatDuKien,
                             j.DaSanXuat,
+                            NULLIF(LTRIM(RTRIM(j.MaDonHang)), ''),
+                            NULLIF(LTRIM(RTRIM(j.TenQuyTrinhSanXuat)), ''),
+                            NULLIF(LTRIM(RTRIM(j.Lot)), ''),
+                            NULLIF(LTRIM(RTRIM(j.LenhXuatVatTu)), ''),
+                            ISNULL(j.SoLoiBuiBan, 0),
+                            ISNULL(j.SoLoiConTrung, 0),
                             j.SortOrder
                         FROM OPENJSON(@PlansJson)
                         WITH (
@@ -1962,6 +2081,12 @@ router.post(
                             SoLuongKeHoach INT '$.soLuongKeHoach',
                             NangSuatDuKien INT '$.nangSuatDuKien',
                             DaSanXuat INT '$.daSanXuat',
+                            MaDonHang NVARCHAR(200) '$.maDonHang',
+                            TenQuyTrinhSanXuat NVARCHAR(255) '$.tenQuyTrinhSanXuat',
+                            Lot NVARCHAR(200) '$.lot',
+                            LenhXuatVatTu NVARCHAR(200) '$.lenhXuatVatTu',
+                            SoLoiBuiBan INT '$.soLoiBuiBan',
+                            SoLoiConTrung INT '$.soLoiConTrung',
                             SortOrder INT '$.sortOrder'
                         ) j;
                     `);
@@ -2057,21 +2182,68 @@ router.post(
 
         try {
             const normalizedSlots = normalizeTrenChuyenSlots(slots);
+            const invalidEntry = normalizedSlots.flatMap((slot) => slot.entries).find((entry) =>
+                Number.isNaN(entry.soLuongKiem)
+                || !Number.isInteger(entry.soLoiBuiBan) || entry.soLoiBuiBan < 0
+                || !Number.isInteger(entry.soLoiConTrung) || entry.soLoiConTrung < 0
+            );
+            if (invalidEntry) {
+                return res.status(400).json({ message: 'Số lượng kiểm và lỗi đặc biệt phải là số nguyên không âm' });
+            }
 
             const pool = await poolPromise;
-            await pool.request()
-                .input('PhieuKiemId', sql.Int, phieuKiemId)
-                .input('UserId', sql.Int, userId)
-                .input('SlotsJson', sql.NVarChar(sql.MAX), JSON.stringify(normalizedSlots))
-                .execute('sp_PhieuKiem_TrenChuyen_SaveEntries');
+            const transaction = new sql.Transaction(pool);
+            await transaction.begin();
+            try {
+                await new sql.Request(transaction)
+                    .input('PhieuKiemId', sql.Int, phieuKiemId)
+                    .input('UserId', sql.Int, userId)
+                    .input('SlotsJson', sql.NVarChar(sql.MAX), JSON.stringify(normalizedSlots))
+                    .execute('sp_PhieuKiem_TrenChuyen_SaveEntries');
 
-            await pool.request()
-                .input('PhieuKiemId', sql.Int, phieuKiemId)
-                .query(`
-                    UPDATE dbo.PHIEU_KIEM
-                    SET TrangThai = CASE WHEN TrangThai = 'TAO_MOI' THEN 'DANG_KIEM' ELSE TrangThai END
-                    WHERE Id = @PhieuKiemId;
-                `);
+                const savedEntries = await new sql.Request(transaction)
+                    .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+                    .query(`
+                        SELECT entryRow.Id, entryRow.SortOrder, slotRow.GioKiem
+                        FROM dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY entryRow
+                        INNER JOIN dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT slotRow ON slotRow.Id = entryRow.SlotId
+                        WHERE slotRow.PhieuKiemId = @PhieuKiemId
+                    `);
+                const entryByKey = new Map(savedEntries.recordset.map((row) => [
+                    `${String(row.GioKiem).trim()}|${Number(row.SortOrder)}`,
+                    Number(row.Id)
+                ]));
+                for (const slot of normalizedSlots) {
+                    for (const entry of slot.entries) {
+                        const entryId = entryByKey.get(`${slot.gioKiem}|${Number(entry.sortOrder)}`);
+                        if (!entryId) throw new Error(`Không đối chiếu được dòng kiểm ${slot.gioKiem}/${entry.sortOrder}`);
+                        await new sql.Request(transaction)
+                            .input('EntryId', sql.Int, entryId)
+                            .input('SoLuongKiem', sql.Int, entry.soLuongKiem)
+                            .input('SoLoiBuiBan', sql.Int, entry.soLoiBuiBan)
+                            .input('SoLoiConTrung', sql.Int, entry.soLoiConTrung)
+                            .query(`
+                                UPDATE dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY
+                                SET SoLuongKiem = @SoLuongKiem,
+                                    SoLoiBuiBan = @SoLoiBuiBan,
+                                    SoLoiConTrung = @SoLoiConTrung
+                                WHERE Id = @EntryId
+                            `);
+                    }
+                }
+
+                await new sql.Request(transaction)
+                    .input('PhieuKiemId', sql.Int, phieuKiemId)
+                    .query(`
+                        UPDATE dbo.PHIEU_KIEM
+                        SET TrangThai = CASE WHEN TrangThai = 'TAO_MOI' THEN 'DANG_KIEM' ELSE TrangThai END
+                        WHERE Id = @PhieuKiemId;
+                    `);
+                await transaction.commit();
+            } catch (error) {
+                await transaction.rollback();
+                throw error;
+            }
 
             res.json({ success: true });
         } catch (err) {
@@ -2097,8 +2269,12 @@ router.post(
 
         try {
             const normalizedPlans = normalizeCuoiChuyenPlans(plans);
-            if (normalizedPlans.some((plan) => Number.isNaN(plan.soLuongThucTe))) {
-                return res.status(400).json({ message: 'Số lượng thực tế phải là số nguyên không âm hoặc để trống' });
+            if (normalizedPlans.some((plan) =>
+                Number.isNaN(plan.soLuongThucTe)
+                || !Number.isInteger(plan.soLoiBuiBan) || plan.soLoiBuiBan < 0
+                || !Number.isInteger(plan.soLoiConTrung) || plan.soLoiConTrung < 0
+            )) {
+                return res.status(400).json({ message: 'Số lượng thực tế và lỗi đặc biệt phải là số nguyên không âm hoặc để trống' });
             }
 
             const pool = await poolPromise;
@@ -2116,11 +2292,34 @@ router.post(
                         .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
                         .input('PlanId', sql.Int, plan.planId)
                         .input('SoLuongThucTe', sql.Int, plan.soLuongThucTe)
+                        .input('MaDonHang', sql.NVarChar(200), plan.maDonHang || null)
+                        .input('TenQuyTrinhSanXuat', sql.NVarChar(255), plan.tenQuyTrinhSanXuat || null)
+                        .input('Lot', sql.NVarChar(200), plan.lot || null)
+                        .input('LenhXuatVatTu', sql.NVarChar(200), plan.lenhXuatVatTu || null)
+                        .input('SoLoiBuiBan', sql.Int, plan.soLoiBuiBan)
+                        .input('SoLoiConTrung', sql.Int, plan.soLoiConTrung)
                         .query(`
                             UPDATE dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN
-                            SET SoLuongThucTe = @SoLuongThucTe
+                            SET SoLuongThucTe = @SoLuongThucTe,
+                                MaDonHang = CASE WHEN NULLIF(LTRIM(RTRIM(MaDonHang)), '') IS NULL THEN @MaDonHang ELSE MaDonHang END,
+                                TenQuyTrinhSanXuat = CASE WHEN NULLIF(LTRIM(RTRIM(TenQuyTrinhSanXuat)), '') IS NULL THEN @TenQuyTrinhSanXuat ELSE TenQuyTrinhSanXuat END,
+                                Lot = CASE WHEN NULLIF(LTRIM(RTRIM(Lot)), '') IS NULL THEN @Lot ELSE Lot END,
+                                LenhXuatVatTu = CASE WHEN NULLIF(LTRIM(RTRIM(LenhXuatVatTu)), '') IS NULL THEN @LenhXuatVatTu ELSE LenhXuatVatTu END,
+                                SoLoiBuiBan = @SoLoiBuiBan,
+                                SoLoiConTrung = @SoLoiConTrung
                             WHERE Id = @PlanId AND PhieuKiemId = @PhieuKiemId
                         `);
+                    for (const defect of plan.defects) {
+                        await new sql.Request(transaction)
+                            .input('PlanId', sql.Int, plan.planId)
+                            .input('DefectId', sql.Int, defect.defectId)
+                            .input('TenCongNhan', sql.NVarChar(255), defect.tenCongNhan || null)
+                            .query(`
+                                UPDATE dbo.PHIEU_KIEM_CUOI_CHUYEN_DEFECT
+                                SET TenCongNhan = @TenCongNhan
+                                WHERE PlanId = @PlanId AND DefectId = @DefectId
+                            `);
+                    }
                 }
 
                 await new sql.Request(transaction)
@@ -2166,23 +2365,38 @@ router.post(
 
         try {
             const pool = await poolPromise;
+            const versionResult = await pool.request()
+                .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+                .input('FieldName', sql.NVarChar(100), UNIFIED_PRINT_DATA_VERSION_FIELD)
+                .query(`
+                    SELECT TOP 1 FieldValue FROM dbo.PhieuKiem_CustomFields
+                    WHERE PhieuKiemId = @PhieuKiemId AND FieldName = @FieldName
+                `);
+            const isUnifiedPrintData = String(versionResult.recordset?.[0]?.FieldValue || '') === UNIFIED_PRINT_DATA_VERSION;
             const quantityValidation = await pool.request()
                 .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
                 .query(`
                     SELECT planRow.Id,
                         COALESCE(planRow.SoLuongThucTe, planRow.SoLuongKeHoach, 0) AS SoLuongHieuLuc,
-                        ISNULL(SUM(defect.SoLuong), 0) AS TongLoi
+                        ISNULL(SUM(defect.SoLuong), 0)
+                            + ISNULL(planRow.SoLoiBuiBan, 0)
+                            + ISNULL(planRow.SoLoiConTrung, 0) AS TongLoi,
+                        SUM(CASE WHEN defect.Id IS NOT NULL AND NULLIF(LTRIM(RTRIM(defect.TenCongNhan)), '') IS NULL THEN 1 ELSE 0 END) AS SoLoiThieuCongNhan
                     FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN planRow
                     LEFT JOIN dbo.PHIEU_KIEM_CUOI_CHUYEN_DEFECT defect ON defect.PlanId = planRow.Id
                     WHERE planRow.PhieuKiemId = @PhieuKiemId
-                    GROUP BY planRow.Id, planRow.SoLuongThucTe, planRow.SoLuongKeHoach
+                    GROUP BY planRow.Id, planRow.SoLuongThucTe, planRow.SoLuongKeHoach,
+                        planRow.SoLoiBuiBan, planRow.SoLoiConTrung
                 `);
             const invalidPlan = quantityValidation.recordset.find((plan) =>
                 Number(plan.TongLoi || 0) > Number(plan.SoLuongHieuLuc || 0)
+                || (isUnifiedPrintData && Number(plan.SoLoiThieuCongNhan || 0) > 0)
             );
             if (invalidPlan) {
                 return res.status(409).json({
-                    message: `Kế hoạch #${invalidPlan.Id} có tổng lỗi vượt số lượng hiệu lực`
+                    message: Number(invalidPlan.SoLoiThieuCongNhan || 0) > 0
+                        ? `Kế hoạch #${invalidPlan.Id} còn lỗi chưa nhập công nhân`
+                        : `Kế hoạch #${invalidPlan.Id} có tổng lỗi vượt số lượng hiệu lực`
                 });
             }
             const completedByName = await getUserDisplayName(pool, userId, completedByNameFallback);
@@ -2410,9 +2624,28 @@ router.post(
 
         try {
             const pool = await poolPromise;
+            const versionResult = await pool.request()
+                .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+                .input('FieldName', sql.NVarChar(100), UNIFIED_PRINT_DATA_VERSION_FIELD)
+                .query(`
+                    SELECT TOP 1 FieldValue FROM dbo.PhieuKiem_CustomFields
+                    WHERE PhieuKiemId = @PhieuKiemId AND FieldName = @FieldName
+                `);
+            const isUnifiedPrintData = String(versionResult.recordset?.[0]?.FieldValue || '') === UNIFIED_PRINT_DATA_VERSION;
             const quantityValidation = await pool.request()
                 .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
-                .query(`
+                .query(isUnifiedPrintData ? `
+                    SELECT entryRow.Id, entryRow.CongDoan, entryRow.TenCongNhanGayLoi,
+                        entryRow.SoLuongKiem,
+                        ISNULL(entryRow.SoLoiBuiBan, 0) + ISNULL(entryRow.SoLoiConTrung, 0)
+                            + ISNULL(SUM(defect.SoLuong), 0) AS TongLoi
+                    FROM dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY entryRow
+                    INNER JOIN dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT slotRow ON slotRow.Id = entryRow.SlotId
+                    LEFT JOIN dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY_DEFECT defect ON defect.EntryId = entryRow.Id
+                    WHERE slotRow.PhieuKiemId = @PhieuKiemId
+                    GROUP BY entryRow.Id, entryRow.CongDoan, entryRow.TenCongNhanGayLoi,
+                        entryRow.SoLuongKiem, entryRow.SoLoiBuiBan, entryRow.SoLoiConTrung
+                ` : `
                     SELECT COALESCE(pk.SoLuongThucTe, pk.SoLuong, 0) AS SoLuongHieuLuc,
                         ISNULL(SUM(defect.SoLuong), 0) AS TongLoi
                     FROM dbo.PHIEU_KIEM pk
@@ -2422,9 +2655,27 @@ router.post(
                     WHERE pk.Id = @PhieuKiemId
                     GROUP BY pk.SoLuongThucTe, pk.SoLuong
                 `);
-            const quantityInfo = quantityValidation.recordset[0];
-            if (quantityInfo && Number(quantityInfo.TongLoi || 0) > Number(quantityInfo.SoLuongHieuLuc || 0)) {
-                return res.status(409).json({ message: 'Tổng số lượng lỗi vượt số lượng hiệu lực của phiếu' });
+            if (isUnifiedPrintData) {
+                if (!quantityValidation.recordset.length) {
+                    return res.status(409).json({ message: 'Phiếu cần ít nhất một dòng kiểm trước khi hoàn tất' });
+                }
+                const invalidEntry = quantityValidation.recordset.find((entry) =>
+                    !String(entry.CongDoan || '').trim()
+                    || !String(entry.TenCongNhanGayLoi || '').trim()
+                    || !Number.isInteger(Number(entry.SoLuongKiem))
+                    || Number(entry.SoLuongKiem) <= 0
+                    || Number(entry.TongLoi || 0) > Number(entry.SoLuongKiem || 0)
+                );
+                if (invalidEntry) {
+                    return res.status(409).json({
+                        message: `Dòng kiểm #${invalidEntry.Id} thiếu công đoạn/công nhân/số lượng kiểm hoặc có tổng lỗi vượt số lượng kiểm`
+                    });
+                }
+            } else {
+                const quantityInfo = quantityValidation.recordset[0];
+                if (quantityInfo && Number(quantityInfo.TongLoi || 0) > Number(quantityInfo.SoLuongHieuLuc || 0)) {
+                    return res.status(409).json({ message: 'Tổng số lượng lỗi vượt số lượng hiệu lực của phiếu' });
+                }
             }
             await upsertPhieuKiemCustomFields(pool, phieuKiemId, {
                 [TREN_CHUYEN_APPROVE_BOPHAN_FIELD]: String(boPhanId),

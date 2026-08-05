@@ -37,6 +37,8 @@ import {
 } from "../../../api/phieuKiem.api";
 import { getCurrentUser } from "../../../utils/auth";
 import CuoiChuyenPrintTemplate from "../components/CuoiChuyenPrintTemplate";
+import InspectionPrintCompareDialog from "../components/InspectionPrintCompareDialog";
+import UnifiedInspectionPrintTemplate from "../components/UnifiedInspectionPrintTemplate";
 import CuoiChuyenPlanEditor from "../components/CuoiChuyenPlanEditor";
 
 const getFieldValue = (dynamicFields = [], name) =>
@@ -104,7 +106,8 @@ export default function CuoiChuyenDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
     const returnToList = () => navigate(location.state?.returnTo || "/phieu-kiem");
-    const printRef = useRef();
+    const oldPrintRef = useRef();
+    const newPrintRef = useRef();
 
     const [loading, setLoading] = useState(true);
     const [creatingBienBan, setCreatingBienBan] = useState(false);
@@ -121,9 +124,13 @@ export default function CuoiChuyenDetail() {
     const [completing, setCompleting] = useState(false);
     const [currentUser] = useState(() => getCurrentUser());
 
-    const handlePrint = useReactToPrint({
-        contentRef: printRef,
-        documentTitle: phieu?.SoPhieu ? `CuoiChuyen_${phieu.SoPhieu}` : "PhieuKiemCuoiChuyen"
+    const handlePrintOld = useReactToPrint({
+        contentRef: oldPrintRef,
+        documentTitle: phieu?.SoPhieu ? `CuoiChuyen_${phieu.SoPhieu}_MauCu` : "PhieuKiemCuoiChuyen_MauCu"
+    });
+    const handlePrintNew = useReactToPrint({
+        contentRef: newPrintRef,
+        documentTitle: phieu?.SoPhieu ? `CuoiChuyen_${phieu.SoPhieu}_MauMoi` : "PhieuKiemCuoiChuyen_MauMoi"
     });
 
     useEffect(() => {
@@ -157,7 +164,8 @@ export default function CuoiChuyenDetail() {
         return {
             planCount: plans.length,
             defectRows: allDefects.length,
-            defectQty: allDefects.reduce((sum, defect) => sum + (Number(defect.SoLuong) || 0), 0),
+            defectQty: allDefects.reduce((sum, defect) => sum + (Number(defect.SoLuong) || 0), 0)
+                + plans.reduce((sum, plan) => sum + Number(plan.SoLoiBuiBan || 0) + Number(plan.SoLoiConTrung || 0), 0),
             repairedPass: allDefects.reduce((sum, defect) => sum + (Number(defect.SoLuongDatSauSua) || 0), 0),
             repairedFail: allDefects.reduce((sum, defect) => sum + (Number(defect.SoLuongKhongDatSauSua) || 0), 0)
         };
@@ -306,7 +314,7 @@ export default function CuoiChuyenDetail() {
                     <StatCard icon={<ReportProblemOutlinedIcon />} label="Dòng lỗi" value={summary?.TotalDefectRows ?? totals.defectRows} accent="#f97316" />
                 </Grid>
                 <Grid size={{ xs: 12, md: 2.4 }}>
-                    <StatCard icon={<ErrorOutlineOutlinedIcon />} label="Tổng lỗi" value={summary?.TotalDefectQuantity ?? totals.defectQty} accent="#dc2626" />
+                    <StatCard icon={<ErrorOutlineOutlinedIcon />} label="Tổng lỗi" value={totals.defectQty} accent="#dc2626" />
                 </Grid>
                 <Grid size={{ xs: 12, md: 2.4 }}>
                     <StatCard icon={<CheckCircleOutlineOutlinedIcon />} label="Đạt sau sửa" value={totals.repairedPass} accent="#16a34a" />
@@ -340,7 +348,8 @@ export default function CuoiChuyenDetail() {
                     </Paper>
                 ) : plans.map((plan, index) => {
                     const defects = Array.isArray(plan.Defects) ? plan.Defects : [];
-                    const defectQty = defects.reduce((sum, defect) => sum + (Number(defect.SoLuong) || 0), 0);
+                    const defectQty = defects.reduce((sum, defect) => sum + (Number(defect.SoLuong) || 0), 0)
+                        + Number(plan.SoLoiBuiBan || 0) + Number(plan.SoLoiConTrung || 0);
                     return (
                         <Card key={plan.Id || index} variant="outlined" sx={{ borderRadius: 2.5 }}>
                             <CardContent>
@@ -358,6 +367,9 @@ export default function CuoiChuyenDetail() {
                                         <Typography variant="body2" color="primary.main" fontWeight={600}>
                                             Quy trình: {plan.Ten_QuyTrinhSanXuat || plan.TenQuyTrinhSanXuat || "---"}
                                         </Typography>
+                                        <Typography variant="body2" color="text.secondary">
+                                            Đơn hàng: {plan.MaDonHang || plan.Ma_DonHang || "---"} • LOT: {plan.Lot || "---"} • LXVT: {plan.LenhXuatVatTu || "---"}
+                                        </Typography>
                                     </Box>
                                     <Stack direction="row" spacing={1} flexWrap="wrap">
                                         <Chip label={`KH: ${plan.SoLuongKeHoach ?? "---"}`} size="small" />
@@ -367,6 +379,8 @@ export default function CuoiChuyenDetail() {
                                         <Chip label={`NSDK: ${plan.NangSuatDuKien ?? "---"}`} size="small" />
                                         <Chip label={`Đã SX: ${plan.DaSanXuat ?? "---"}`} size="small" />
                                         <Chip label={`Lỗi: ${defectQty}`} size="small" color={defectQty > 0 ? "error" : "default"} />
+                                        <Chip label={`Bụi bẩn: ${plan.SoLoiBuiBan || 0}`} size="small" variant="outlined" />
+                                        <Chip label={`Côn trùng: ${plan.SoLoiConTrung || 0}`} size="small" variant="outlined" />
                                         {canEdit && (
                                             <Button
                                                 size="small"
@@ -397,6 +411,9 @@ export default function CuoiChuyenDetail() {
                                                             <Typography variant="body2" color="text.secondary">
                                                                 {defect.MoTa || defect.GhiChu || "---"}
                                                             </Typography>
+                                                            <Typography variant="body2" color="text.secondary">
+                                                                Công nhân: {defect.TenCongNhan || "---"}
+                                                            </Typography>
                                                         </Box>
                                                         <Chip label={defect.SoLuong} color="error" size="small" />
                                                     </Stack>
@@ -414,26 +431,32 @@ export default function CuoiChuyenDetail() {
                 })}
             </Stack>
 
-            <Dialog open={openPrint} onClose={() => setOpenPrint(false)} maxWidth="xl" fullWidth>
-                <DialogTitle>Bản in phiếu kiểm cuối chuyền</DialogTitle>
-                <DialogContent dividers sx={{ bgcolor: "#e5e7eb", overflow: "auto" }}>
-                    <Box sx={{ width: "fit-content", mx: "auto", boxShadow: "0 10px 30px rgba(15,23,42,0.18)" }}>
-                        <CuoiChuyenPrintTemplate
-                            ref={printRef}
-                            phieu={phieu}
-                            plans={plans}
-                            dynamicFields={dynamicFields}
-                            xacNhans={xacNhans}
-                        />
-                    </Box>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setOpenPrint(false)}>Đóng</Button>
-                    <Button startIcon={<PrintIcon />} variant="contained" onClick={handlePrint}>
-                        In
-                    </Button>
-                </DialogActions>
-            </Dialog>
+            <InspectionPrintCompareDialog
+                open={openPrint}
+                onClose={() => setOpenPrint(false)}
+                title="Bản in phiếu kiểm cuối chuyền"
+                onPrintNew={handlePrintNew}
+                onPrintOld={handlePrintOld}
+                newContent={(
+                    <UnifiedInspectionPrintTemplate
+                        ref={newPrintRef}
+                        kind="cuoi-chuyen"
+                        phieu={phieu}
+                        plans={plans}
+                        dynamicFields={dynamicFields}
+                        xacNhans={xacNhans}
+                    />
+                )}
+                oldContent={(
+                    <CuoiChuyenPrintTemplate
+                        ref={oldPrintRef}
+                        phieu={phieu}
+                        plans={plans}
+                        dynamicFields={dynamicFields}
+                        xacNhans={xacNhans}
+                    />
+                )}
+            />
             <Dialog open={completeOpen} onClose={completing ? undefined : () => setCompleteOpen(false)} fullWidth maxWidth="xs">
                 <DialogTitle>Hoàn tất phiếu cuối chuyền</DialogTitle>
                 <DialogContent dividers>

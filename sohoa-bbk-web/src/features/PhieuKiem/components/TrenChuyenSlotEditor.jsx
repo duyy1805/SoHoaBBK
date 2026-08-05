@@ -43,6 +43,9 @@ const mapSlot = (slot, slotIndex) => ({
         tenCongNhanGayLoi: entry.TenCongNhanGayLoi || "",
         nguoiGhiNhanId: entry.NguoiGhiNhanId || null,
         tenNguoiGhiNhan: entry.TenNguoiGhiNhan || "",
+        soLuongKiem: entry.SoLuongKiem == null ? "" : String(entry.SoLuongKiem),
+        soLoiBuiBan: String(entry.SoLoiBuiBan || ""),
+        soLoiConTrung: String(entry.SoLoiConTrung || ""),
         ghiChu: entry.GhiChu || "",
         sortOrder: entry.SortOrder || entryIndex + 1,
         defects: (entry.Defects || []).map((defect, defectIndex) => ({
@@ -66,6 +69,9 @@ const newEntry = (index, user) => ({
     tenCongNhanGayLoi: "",
     nguoiGhiNhanId: user?.id || user?.userId || null,
     tenNguoiGhiNhan: user?.fullName || user?.FullName || "",
+    soLuongKiem: "",
+    soLoiBuiBan: "",
+    soLoiConTrung: "",
     ghiChu: "",
     sortOrder: index + 1,
     defects: []
@@ -150,11 +156,16 @@ export default function TrenChuyenSlotEditor({ open, phieuId, gioKiem, slots = [
 
     const validate = () => {
         if (!TREN_CHUYEN_HOURS.includes(slot.gioKiem)) return "Khung giờ không hợp lệ.";
-        const entriesWithDefects = slot.entries.filter((entry) => entry.defects.some((defect) => Number(defect.soLuong) > 0));
-        if (!entriesWithDefects.length) return "Cần ít nhất một công đoạn có lỗi để lưu.";
-        for (const entry of entriesWithDefects) {
+        if (!slot.entries.length) return "Cần ít nhất một công đoạn để lưu.";
+        for (const entry of slot.entries) {
             if (!entry.congDoan.trim()) return "Có công đoạn chưa nhập tên.";
-            if (!entry.tenCongNhanGayLoi.trim()) return "Có công đoạn chưa nhập công nhân gây lỗi.";
+            if (!entry.tenCongNhanGayLoi.trim()) return "Có công đoạn chưa nhập công nhân.";
+            if (!Number.isInteger(Number(entry.soLuongKiem)) || Number(entry.soLuongKiem) <= 0) {
+                return "Số lượng kiểm của mỗi công đoạn phải là số nguyên dương.";
+            }
+            const specialTotal = Number(entry.soLoiBuiBan || 0) + Number(entry.soLoiConTrung || 0);
+            const total = entry.defects.reduce((sum, defect) => sum + Number(defect.soLuong || 0), specialTotal);
+            if (total > Number(entry.soLuongKiem)) return "Tổng lỗi của một công đoạn vượt số lượng kiểm.";
         }
         return "";
     };
@@ -193,6 +204,9 @@ export default function TrenChuyenSlotEditor({ open, phieuId, gioKiem, slots = [
                     entries: item.entries.map((entry, entryIndex) => ({
                         congDoan: entry.congDoan.trim(),
                         tenCongNhanGayLoi: entry.tenCongNhanGayLoi.trim(),
+                        soLuongKiem: Number(entry.soLuongKiem),
+                        soLoiBuiBan: Number(entry.soLoiBuiBan || 0),
+                        soLoiConTrung: Number(entry.soLoiConTrung || 0),
                         nguoiGhiNhanId: entry.nguoiGhiNhanId || user?.id || user?.userId || null,
                         ghiChu: entry.ghiChu.trim(),
                         sortOrder: entry.sortOrder || entryIndex + 1,
@@ -252,7 +266,12 @@ export default function TrenChuyenSlotEditor({ open, phieuId, gioKiem, slots = [
                                     </Stack>
                                     <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                                         <TextField fullWidth label="Tên công đoạn" value={entry.congDoan} onChange={(event) => setEntry(entryIndex, { congDoan: event.target.value })} />
-                                        <TextField fullWidth label="Công nhân gây lỗi" value={entry.tenCongNhanGayLoi} onChange={(event) => setEntry(entryIndex, { tenCongNhanGayLoi: event.target.value })} />
+                                        <TextField fullWidth label="Công nhân" value={entry.tenCongNhanGayLoi} onChange={(event) => setEntry(entryIndex, { tenCongNhanGayLoi: event.target.value })} />
+                                    </Stack>
+                                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                                        <TextField fullWidth required label="Số lượng kiểm" type="number" value={entry.soLuongKiem} onChange={(event) => setEntry(entryIndex, { soLuongKiem: event.target.value.replace(/\D/g, "") })} />
+                                        <TextField fullWidth label="Bụi bẩn" type="number" value={entry.soLoiBuiBan} onChange={(event) => setEntry(entryIndex, { soLoiBuiBan: event.target.value.replace(/\D/g, "") })} />
+                                        <TextField fullWidth label="Côn trùng" type="number" value={entry.soLoiConTrung} onChange={(event) => setEntry(entryIndex, { soLoiConTrung: event.target.value.replace(/\D/g, "") })} />
                                     </Stack>
                                     <TextField label="Ghi chú công đoạn" multiline minRows={2} value={entry.ghiChu} onChange={(event) => setEntry(entryIndex, { ghiChu: event.target.value })} />
                                     <DefectPickerDialog

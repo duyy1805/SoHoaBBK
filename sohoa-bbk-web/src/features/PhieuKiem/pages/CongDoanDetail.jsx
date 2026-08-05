@@ -27,6 +27,8 @@ import {
 } from "../../../api/phieuKiem.api";
 import { getCurrentUser } from "../../../utils/auth";
 import CongDoanPrintTemplate from "../components/CongDoanPrintTemplate";
+import InspectionPrintCompareDialog from "../components/InspectionPrintCompareDialog";
+import UnifiedInspectionPrintTemplate from "../components/UnifiedInspectionPrintTemplate";
 import CongDoanPlanEditor from "../components/CongDoanPlanEditor";
 import ResponsiveInspectionDialog from "../components/ResponsiveInspectionDialog";
 import DefectImageGalleryDialog from "../../BienBan/components/DefectImageGalleryDialog";
@@ -224,7 +226,8 @@ function PlanDefectDetails({ plan, onOpenImages }) {
 export default function CongDoanDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
-    const printRef = useRef(null);
+    const oldPrintRef = useRef(null);
+    const newPrintRef = useRef(null);
     const [data, setData] = useState({ phieu: null, plans: [], xacNhans: [], capabilities: {} });
     const [loading, setLoading] = useState(true);
     const [approving, setApproving] = useState(false);
@@ -314,9 +317,13 @@ export default function CongDoanDetail() {
         ["TAO_MOI", "DANG_KIEM", "CHUA_KIEM"].includes(data.phieu?.TrangThai)
         && user?.permissions?.includes("THUC_HIEN_KIEM")
     );
-    const handlePrint = useReactToPrint({
-        contentRef: printRef,
-        documentTitle: data.phieu?.SoPhieu ? `CongDoan_${data.phieu.SoPhieu}` : "PhieuKiemCongDoan"
+    const handlePrintOld = useReactToPrint({
+        contentRef: oldPrintRef,
+        documentTitle: data.phieu?.SoPhieu ? `CongDoan_${data.phieu.SoPhieu}_MauCu` : "PhieuKiemCongDoan_MauCu"
+    });
+    const handlePrintNew = useReactToPrint({
+        contentRef: newPrintRef,
+        documentTitle: data.phieu?.SoPhieu ? `CongDoan_${data.phieu.SoPhieu}_MauMoi` : "PhieuKiemCongDoan_MauMoi"
     });
     const approve = async () => {
         if (!window.confirm("Duyệt phiếu kiểm công đoạn này?")) return;
@@ -724,13 +731,30 @@ export default function CongDoanDetail() {
                 </Table>
             </TableContainer>
 
-            <Dialog open={printOpen} onClose={() => setPrintOpen(false)} fullWidth maxWidth={false} PaperProps={{ sx: { width: "96vw", maxWidth: "none" } }}>
-                <DialogTitle>Xem trước phiếu công đoạn</DialogTitle>
-                <DialogContent dividers sx={{ overflow: "auto", bgcolor: "#e5e7eb" }}>
-                    <Box sx={{ width: "fit-content", mx: "auto", boxShadow: 3 }}><CongDoanPrintTemplate ref={printRef} phieu={phieu} plans={data.plans} xacNhans={data.xacNhans} /></Box>
-                </DialogContent>
-                <DialogActions><Button onClick={() => setPrintOpen(false)}>Đóng</Button><Button variant="contained" startIcon={<PrintIcon />} onClick={handlePrint}>In</Button></DialogActions>
-            </Dialog>
+            <InspectionPrintCompareDialog
+                open={printOpen}
+                onClose={() => setPrintOpen(false)}
+                title="Xem trước phiếu công đoạn"
+                onPrintNew={handlePrintNew}
+                onPrintOld={handlePrintOld}
+                newContent={(
+                    <UnifiedInspectionPrintTemplate
+                        ref={newPrintRef}
+                        kind="cong-doan"
+                        phieu={phieu}
+                        plans={data.plans}
+                        xacNhans={data.xacNhans}
+                    />
+                )}
+                oldContent={(
+                    <CongDoanPrintTemplate
+                        ref={oldPrintRef}
+                        phieu={phieu}
+                        plans={data.plans}
+                        xacNhans={data.xacNhans}
+                    />
+                )}
+            />
             <ResponsiveInspectionDialog
                 open={addPlanOpen}
                 onClose={addingPlan ? undefined : () => setAddPlanOpen(false)}

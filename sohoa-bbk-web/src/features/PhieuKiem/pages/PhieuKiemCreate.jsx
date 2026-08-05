@@ -533,6 +533,12 @@ export default function PhieuKiemCreate() {
                     tenSanPham: row.TenSanPham || "",
                     tenDonVi: row.Ten_DonVi || "",
                     tenBoPhan: row.Ten_BoPhan || "",
+                    maDonHang: row.Ma_DonHang || row.MaDonHang || "",
+                    tenQuyTrinhSanXuat: row.Ten_QuyTrinhSanXuat || row.TenQuyTrinhSanXuat || "",
+                    lot: row.So_LoSanXuat || row.Lot || "",
+                    lenhXuatVatTu: row.LenhXuatVatTu || "",
+                    soLoiBuiBan: 0,
+                    soLoiConTrung: 0,
                     ngayKeHoach: row.Ngay || "",
                     soLuongKeHoach: row.SoLuongKeHoach ?? null,
                     nangSuatDuKien: row.NangSuat_DuKien ?? null,
@@ -611,7 +617,11 @@ export default function PhieuKiemCreate() {
                         TrenChuyen_DaSanXuat: row.DaSanXuat ?? "",
                         TrenChuyen_TenSanPham: row.TenSanPham || "",
                         TrenChuyen_MaSanPham: row.MaSanPham || "",
-                        TrenChuyen_IDKeHoachSanXuat: row.ID_KeHoachSanXuat ?? ""
+                        TrenChuyen_IDKeHoachSanXuat: row.ID_KeHoachSanXuat ?? "",
+                        TrenChuyen_MaDonHang: row.Ma_DonHang || row.MaDonHang || "",
+                        TrenChuyen_TenQuyTrinhSanXuat: row.Ten_QuyTrinhSanXuat || row.TenQuyTrinhSanXuat || "",
+                        TrenChuyen_Lot: row.So_LoSanXuat || row.Lot || "",
+                        TrenChuyen_LenhXuatVatTu: row.LenhXuatVatTu || ""
                     };
                 } else if (selectedLoai?.Id === 4) {
                     payload.keHoachNhapId = row.KeHoachNhapId || row.ID_TuTang;

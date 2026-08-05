@@ -34,10 +34,12 @@ import ErrorOutlineOutlinedIcon from "@mui/icons-material/ErrorOutlineOutlined";
 import CheckCircleOutlineOutlinedIcon from "@mui/icons-material/CheckCircleOutlineOutlined";
 import AddIcon from "@mui/icons-material/Add";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
-import { approveTrenChuyen, completeTrenChuyen, createTrenChuyenBienBan, getPhieuKiemDetail, updatePhieuKiemActualQuantity } from "../../../api/phieuKiem.api";
+import { approveTrenChuyen, completeTrenChuyen, createTrenChuyenBienBan, getPhieuKiemDetail, updatePhieuKiemActualQuantity, updateTrenChuyenSourceFields } from "../../../api/phieuKiem.api";
 import { updateSanPhamImage, uploadSanPhamImage } from "../../../api/lookup.api";
 import { getCurrentUser } from "../../../utils/auth";
 import TrenChuyenPrintTemplate from "../components/TrenChuyenPrintTemplate";
+import InspectionPrintCompareDialog from "../components/InspectionPrintCompareDialog";
+import UnifiedInspectionPrintTemplate from "../components/UnifiedInspectionPrintTemplate";
 import TrenChuyenSlotEditor from "../components/TrenChuyenSlotEditor";
 
 const getFieldValue = (dynamicFields = [], name) =>
@@ -123,7 +125,8 @@ export default function TrenChuyenDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
     const returnToList = () => navigate(location.state?.returnTo || "/phieu-kiem");
-    const printRef = useRef();
+    const oldPrintRef = useRef();
+    const newPrintRef = useRef();
     const productImageInputRef = useRef(null);
 
     const [loading, setLoading] = useState(true);
@@ -138,15 +141,21 @@ export default function TrenChuyenDetail() {
     const [approving, setApproving] = useState(false);
     const [actualQuantity, setActualQuantity] = useState("");
     const [savingActual, setSavingActual] = useState(false);
+    const [savingSourceFields, setSavingSourceFields] = useState(false);
+    const [sourceFields, setSourceFields] = useState({ maDonHang: "", tenQuyTrinhSanXuat: "", lot: "", lenhXuatVatTu: "" });
     const [editingHour, setEditingHour] = useState(undefined);
     const [slotEditorOpen, setSlotEditorOpen] = useState(false);
     const [completeOpen, setCompleteOpen] = useState(false);
     const [completing, setCompleting] = useState(false);
     const [currentUser] = useState(() => getCurrentUser());
 
-    const handlePrint = useReactToPrint({
-        contentRef: printRef,
-        documentTitle: phieu?.SoPhieu ? `TrenChuyen_${phieu.SoPhieu}` : "PhieuKiemTrenChuyen"
+    const handlePrintOld = useReactToPrint({
+        contentRef: oldPrintRef,
+        documentTitle: phieu?.SoPhieu ? `TrenChuyen_${phieu.SoPhieu}_MauCu` : "PhieuKiemTrenChuyen_MauCu"
+    });
+    const handlePrintNew = useReactToPrint({
+        contentRef: newPrintRef,
+        documentTitle: phieu?.SoPhieu ? `TrenChuyen_${phieu.SoPhieu}_MauMoi` : "PhieuKiemTrenChuyen_MauMoi"
     });
 
     useEffect(() => {
@@ -167,6 +176,12 @@ export default function TrenChuyenDetail() {
             setSlots(data.slots || []);
             setSummary(data.summary || null);
             setDynamicFields(data.dynamicFields || []);
+            setSourceFields({
+                maDonHang: getFieldValue(data.dynamicFields, "TrenChuyen_MaDonHang"),
+                tenQuyTrinhSanXuat: getFieldValue(data.dynamicFields, "TrenChuyen_TenQuyTrinhSanXuat"),
+                lot: getFieldValue(data.dynamicFields, "TrenChuyen_Lot"),
+                lenhXuatVatTu: getFieldValue(data.dynamicFields, "TrenChuyen_LenhXuatVatTu")
+            });
             setXacNhans(data.xacNhans || []);
             setCapabilities(data.capabilities || {});
         } catch (error) {
@@ -185,6 +200,23 @@ export default function TrenChuyenDetail() {
             window.alert(error.response?.data?.message || "Không cập nhật được số lượng thực tế.");
         } finally {
             setSavingActual(false);
+        }
+    };
+
+    const saveSourceFields = async () => {
+        try {
+            setSavingSourceFields(true);
+            await updateTrenChuyenSourceFields(id, {
+                TrenChuyen_MaDonHang: sourceFields.maDonHang,
+                TrenChuyen_TenQuyTrinhSanXuat: sourceFields.tenQuyTrinhSanXuat,
+                TrenChuyen_Lot: sourceFields.lot,
+                TrenChuyen_LenhXuatVatTu: sourceFields.lenhXuatVatTu
+            });
+            await loadData({ background: true });
+        } catch (error) {
+            window.alert(error.response?.data?.message || "Không bổ sung được thông tin nguồn.");
+        } finally {
+            setSavingSourceFields(false);
         }
     };
 
@@ -269,6 +301,10 @@ export default function TrenChuyenDetail() {
         });
         return acc;
     }, { minor: 0, major: 0, critical: 0 });
+    const specialDefectTotal = slots.reduce((total, slot) => total + (slot.Entries || []).reduce(
+        (entryTotal, entry) => entryTotal + Number(entry.SoLoiBuiBan || 0) + Number(entry.SoLoiConTrung || 0),
+        0
+    ), 0);
     const latestTbpApproval = (xacNhans || []).find((item) => String(item?.VaiTro || "").toUpperCase() === "TBP");
 
     const handleApprove = async () => {
@@ -443,6 +479,18 @@ export default function TrenChuyenDetail() {
                                         <Grid size={{ xs: 12, md: 6, lg: 2 }}>
                                             <InfoLine label="NS dự kiến / Đã SX" value={`${nangSuatDuKien} / ${daSanXuat}`} />
                                         </Grid>
+                                        <Grid size={{ xs: 12 }}>
+                                            <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 700 }}>THÔNG TIN NGUỒN CHO BIỂU MẪU</Typography>
+                                            <Stack direction={{ xs: "column", md: "row" }} spacing={1} sx={{ mt: 0.75 }}>
+                                                <TextField size="small" fullWidth label="Mã đơn hàng" value={sourceFields.maDonHang} disabled={!canEdit || Boolean(getFieldValue(dynamicFields, "TrenChuyen_MaDonHang"))} onChange={(event) => setSourceFields((current) => ({ ...current, maDonHang: event.target.value }))} />
+                                                <TextField size="small" fullWidth label="Quy trình sản xuất" value={sourceFields.tenQuyTrinhSanXuat} disabled={!canEdit || Boolean(getFieldValue(dynamicFields, "TrenChuyen_TenQuyTrinhSanXuat"))} onChange={(event) => setSourceFields((current) => ({ ...current, tenQuyTrinhSanXuat: event.target.value }))} />
+                                                <TextField size="small" fullWidth label="LOT" value={sourceFields.lot} disabled={!canEdit || Boolean(getFieldValue(dynamicFields, "TrenChuyen_Lot"))} onChange={(event) => setSourceFields((current) => ({ ...current, lot: event.target.value }))} />
+                                                <TextField size="small" fullWidth label="Lệnh xuất vật tư" value={sourceFields.lenhXuatVatTu} disabled={!canEdit || Boolean(getFieldValue(dynamicFields, "TrenChuyen_LenhXuatVatTu"))} onChange={(event) => setSourceFields((current) => ({ ...current, lenhXuatVatTu: event.target.value }))} />
+                                                {canEdit && ["TrenChuyen_MaDonHang", "TrenChuyen_TenQuyTrinhSanXuat", "TrenChuyen_Lot", "TrenChuyen_LenhXuatVatTu"].some((name) => !getFieldValue(dynamicFields, name)) ? (
+                                                    <Button variant="outlined" disabled={savingSourceFields} onClick={saveSourceFields}>Bổ sung</Button>
+                                                ) : null}
+                                            </Stack>
+                                        </Grid>
                                     </Grid>
 
                                     {latestTbpApproval ? (
@@ -491,7 +539,7 @@ export default function TrenChuyenDetail() {
                                             <StatCard icon={<ReportProblemOutlinedIcon fontSize="small" />} label="Dòng lỗi" value={summary?.TotalDefectRows || 0} accent="#d97706" />
                                         </Grid>
                                         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-                                            <StatCard icon={<ErrorOutlineOutlinedIcon fontSize="small" />} label="Tổng số lỗi" value={summary?.TotalDefectQuantity || 0} accent="#dc2626" />
+                                            <StatCard icon={<ErrorOutlineOutlinedIcon fontSize="small" />} label="Tổng số lỗi" value={Number(summary?.TotalDefectQuantity || 0) + specialDefectTotal} accent="#dc2626" />
                                         </Grid>
                                     </Grid>
                                 </Stack>
@@ -632,16 +680,19 @@ export default function TrenChuyenDetail() {
                                                                             Công đoạn {entry.CongDoan}
                                                                         </Typography>
                                                                         <Typography variant="body2" color="text.secondary">
-                                                                            Công nhân gây lỗi: {entry.TenCongNhanGayLoi || "—"}
+                                                                            Công nhân: {entry.TenCongNhanGayLoi || "—"}
                                                                         </Typography>
                                                                         <Typography variant="body2" color="text.secondary">
                                                                             Người ghi nhận: {entry.TenNguoiGhiNhan || "—"}
+                                                                        </Typography>
+                                                                        <Typography variant="body2" color="text.secondary">
+                                                                            Số lượng kiểm: {entry.SoLuongKiem ?? "—"} • Bụi bẩn: {entry.SoLoiBuiBan || 0} • Côn trùng: {entry.SoLoiConTrung || 0}
                                                                         </Typography>
                                                                     </Box>
                                                                     <Chip
                                                                         size="small"
                                                                         icon={<ReportProblemOutlinedIcon />}
-                                                                        label={`${(entry.Defects || []).reduce((sum, defect) => sum + Number(defect.SoLuong || 0), 0)} lỗi`}
+                                                                        label={`${(entry.Defects || []).reduce((sum, defect) => sum + Number(defect.SoLuong || 0), Number(entry.SoLoiBuiBan || 0) + Number(entry.SoLoiConTrung || 0))} lỗi`}
                                                                         color="default"
                                                                         sx={{ alignSelf: { xs: "flex-start", md: "center" } }}
                                                                     />
@@ -721,18 +772,32 @@ export default function TrenChuyenDetail() {
                     </Stack>
                 </Container>
 
-                <Dialog open={openPrint} onClose={() => setOpenPrint(false)} maxWidth="lg" fullWidth>
-                    <DialogTitle>Xem in phiếu kiểm trên chuyền</DialogTitle>
-                    <DialogContent dividers sx={{ bgcolor: "#e5e7eb", p: 2 }}>
-                        <input
-                            ref={productImageInputRef}
-                            type="file"
-                            accept="image/*"
-                            style={{ display: "none" }}
-                            onChange={handleProductImageSelected}
+                <input
+                    ref={productImageInputRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: "none" }}
+                    onChange={handleProductImageSelected}
+                />
+                <InspectionPrintCompareDialog
+                    open={openPrint}
+                    onClose={() => setOpenPrint(false)}
+                    title="Xem in phiếu kiểm trên chuyền"
+                    onPrintNew={handlePrintNew}
+                    onPrintOld={handlePrintOld}
+                    newContent={(
+                        <UnifiedInspectionPrintTemplate
+                            ref={newPrintRef}
+                            kind="tren-chuyen"
+                            phieu={phieu}
+                            slots={slots}
+                            dynamicFields={dynamicFields}
+                            xacNhans={xacNhans}
                         />
+                    )}
+                    oldContent={(
                         <TrenChuyenPrintTemplate
-                            ref={printRef}
+                            ref={oldPrintRef}
                             phieu={phieu}
                             dynamicFields={dynamicFields}
                             slots={slots}
@@ -740,14 +805,8 @@ export default function TrenChuyenDetail() {
                             xacNhans={xacNhans}
                             onRequestProductImageUpload={handleTriggerProductImageUpload}
                         />
-                    </DialogContent>
-                    <DialogActions>
-                        <Button onClick={() => setOpenPrint(false)}>Đóng</Button>
-                        <Button variant="contained" startIcon={<PrintIcon />} onClick={() => handlePrint()}>
-                            In / Lưu PDF
-                        </Button>
-                    </DialogActions>
-                </Dialog>
+                    )}
+                />
                 <Dialog open={completeOpen} onClose={completing ? undefined : () => setCompleteOpen(false)} fullWidth maxWidth="xs">
                     <DialogTitle>Hoàn tất phiếu trên chuyền</DialogTitle>
                     <DialogContent dividers>

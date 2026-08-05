@@ -9,14 +9,6 @@ dist/
 build/
 
 *.sql
-!server/sql/migrations/20260803_defect_b7_approval_workflow.sql
-!server/sql/migrations/20260804_defect_b7_return_workflow.sql
-!server/sql/migrations/20260804_user_access_management.sql
-!server/sql/migrations/20260805_kph_v01_review_round.sql
-!server/sql/migrations/20260805_kph_tp_department_visibility.sql
-!server/sql/migrations/20260805_cong_doan_bien_ban_quantity.sql
-!server/sql/migrations/20260804_sxbt_multi_import_plans.sql
-# !server/sql/update_phieu_kiem_tbp_flow.sql
-# !server/sql/migrations/
-# !server/sql/migrations/*.sql
+!server/sql/migrations/20260805_unified_inspection_print_data.sql
+
 *.xlsx

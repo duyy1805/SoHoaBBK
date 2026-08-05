@@ -30,6 +30,12 @@ const mapPlan = (plan, index) => ({
     ...plan,
     localId: plan.Id || `plan-${index}`,
     soLuongThucTe: plan.SoLuongThucTe == null ? "" : String(plan.SoLuongThucTe),
+    maDonHang: plan.MaDonHang || plan.Ma_DonHang || "",
+    tenQuyTrinhSanXuat: plan.TenQuyTrinhSanXuat || plan.Ten_QuyTrinhSanXuat || "",
+    lot: plan.Lot || "",
+    lenhXuatVatTu: plan.LenhXuatVatTu || "",
+    soLoiBuiBan: String(plan.SoLoiBuiBan || ""),
+    soLoiConTrung: String(plan.SoLoiConTrung || ""),
     defects: (plan.Defects || []).map((defect, defectIndex) => ({
         localId: defect.Id || `defect-${plan.Id}-${defectIndex}`,
         defectId: Number(defect.DefectId),
@@ -39,6 +45,7 @@ const mapPlan = (plan, index) => ({
         soLuongDatSauSua: defect.SoLuongDatSauSua == null ? "" : String(defect.SoLuongDatSauSua),
         soLuongKhongDatSauSua: defect.SoLuongKhongDatSauSua == null ? "" : String(defect.SoLuongKhongDatSauSua),
         ghiChu: defect.GhiChu || "",
+        tenCongNhan: defect.TenCongNhan || "",
         savedUrls: parseImages(defect.ImageUrls),
         files: []
     }))
@@ -90,6 +97,7 @@ export default function CuoiChuyenPlanEditor({ open, phieuId, planId, plans = []
                 soLuongDatSauSua: "",
                 soLuongKhongDatSauSua: "",
                 ghiChu: "",
+                tenCongNhan: "",
                 savedUrls: [],
                 files: []
             }]
@@ -102,11 +110,12 @@ export default function CuoiChuyenPlanEditor({ open, phieuId, planId, plans = []
             return;
         }
         const validRows = plan.defects.filter((row) => Number(row.defectId) > 0 && Number(row.soLuong) > 0);
-        if (!validRows.length) {
-            setError("Cần có ít nhất một lỗi để lưu kế hoạch.");
+        if (validRows.some((row) => !row.tenCongNhan.trim())) {
+            setError("Mỗi dòng lỗi cần nhập công nhân.");
             return;
         }
-        const totalDefects = validRows.reduce((sum, row) => sum + Number(row.soLuong), 0);
+        const totalDefects = validRows.reduce((sum, row) => sum + Number(row.soLuong), 0)
+            + Number(plan.soLoiBuiBan || 0) + Number(plan.soLoiConTrung || 0);
         if (totalDefects > effectiveQuantity) {
             setError(`Tổng lỗi (${totalDefects}) vượt số lượng hiệu lực (${effectiveQuantity}).`);
             return;
@@ -130,6 +139,12 @@ export default function CuoiChuyenPlanEditor({ open, phieuId, planId, plans = []
                     planId: item.Id,
                     sortOrder: item.SortOrder || planIndex + 1,
                     soLuongThucTe: item.soLuongThucTe === "" ? null : Number(item.soLuongThucTe),
+                    maDonHang: item.maDonHang.trim(),
+                    tenQuyTrinhSanXuat: item.tenQuyTrinhSanXuat.trim(),
+                    lot: item.lot.trim(),
+                    lenhXuatVatTu: item.lenhXuatVatTu.trim(),
+                    soLoiBuiBan: Number(item.soLoiBuiBan || 0),
+                    soLoiConTrung: Number(item.soLoiConTrung || 0),
                     defects: item.defects
                         .filter((row) => Number(row.defectId) > 0 && Number(row.soLuong) > 0)
                         .map((row, defectIndex) => ({
@@ -138,6 +153,7 @@ export default function CuoiChuyenPlanEditor({ open, phieuId, planId, plans = []
                             soLuongDatSauSua: row.soLuongDatSauSua === "" ? null : Number(row.soLuongDatSauSua),
                             soLuongKhongDatSauSua: row.soLuongKhongDatSauSua === "" ? null : Number(row.soLuongKhongDatSauSua),
                             ghiChu: row.ghiChu.trim(),
+                            tenCongNhan: row.tenCongNhan.trim(),
                             imageUrls: row.savedUrls,
                             sortOrder: defectIndex + 1
                         }))
@@ -175,6 +191,18 @@ export default function CuoiChuyenPlanEditor({ open, phieuId, planId, plans = []
                             inputProps={{ min: 0, step: 1 }}
                             onChange={(event) => setPlan((current) => ({ ...current, soLuongThucTe: event.target.value.replace(/\D/g, "") }))}
                         />
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                            <TextField fullWidth label="Mã đơn hàng" value={plan.maDonHang} disabled={Boolean(plan.MaDonHang || plan.Ma_DonHang)} onChange={(event) => setPlan((current) => ({ ...current, maDonHang: event.target.value }))} />
+                            <TextField fullWidth label="Quy trình" value={plan.tenQuyTrinhSanXuat} disabled={Boolean(plan.TenQuyTrinhSanXuat || plan.Ten_QuyTrinhSanXuat)} onChange={(event) => setPlan((current) => ({ ...current, tenQuyTrinhSanXuat: event.target.value }))} />
+                        </Stack>
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                            <TextField fullWidth label="LOT" value={plan.lot} disabled={Boolean(plan.Lot)} onChange={(event) => setPlan((current) => ({ ...current, lot: event.target.value }))} />
+                            <TextField fullWidth label="Lệnh xuất vật tư" value={plan.lenhXuatVatTu} disabled={Boolean(plan.LenhXuatVatTu)} onChange={(event) => setPlan((current) => ({ ...current, lenhXuatVatTu: event.target.value }))} />
+                        </Stack>
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                            <TextField fullWidth label="Bụi bẩn" type="number" value={plan.soLoiBuiBan} onChange={(event) => setPlan((current) => ({ ...current, soLoiBuiBan: event.target.value.replace(/\D/g, "") }))} />
+                            <TextField fullWidth label="Côn trùng" type="number" value={plan.soLoiConTrung} onChange={(event) => setPlan((current) => ({ ...current, soLoiConTrung: event.target.value.replace(/\D/g, "") }))} />
+                        </Stack>
                         <DefectPickerDialog
                             defects={availableCatalog}
                             onSelect={addDefect}
@@ -197,6 +225,7 @@ export default function CuoiChuyenPlanEditor({ open, phieuId, planId, plans = []
                                         </IconButton>
                                     </Stack>
                                     <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                                        <TextField label="Công nhân" value={row.tenCongNhan} onChange={(event) => updateDefect(index, { tenCongNhan: event.target.value })} />
                                         <TextField label="Số lỗi" type="number" value={row.soLuong} onChange={(event) => updateDefect(index, { soLuong: event.target.value.replace(/\D/g, "") })} />
                                         <TextField label="Sửa đạt" type="number" value={row.soLuongDatSauSua} onChange={(event) => updateDefect(index, { soLuongDatSauSua: event.target.value.replace(/\D/g, "") })} />
                                         <TextField label="Sửa không đạt" type="number" value={row.soLuongKhongDatSauSua} onChange={(event) => updateDefect(index, { soLuongKhongDatSauSua: event.target.value.replace(/\D/g, "") })} />
