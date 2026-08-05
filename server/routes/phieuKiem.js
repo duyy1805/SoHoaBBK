@@ -1188,13 +1188,71 @@ router.get(
             const result = await pool.request()
                 .execute('sp_KeHoachSanXuat_GetList_ChuaKiem_TrenChuyen');
 
-            res.json((result.recordset || []).map((row) => ({
+            const rows = result.recordset || [];
+            const planIds = [...new Set(rows
+                .map((row) => Number(row.ID_KeHoachSanXuat))
+                .filter((id) => Number.isInteger(id) && id > 0))];
+            let planMetaById = new Map();
+
+            if (planIds.length > 0) {
+                const metaResult = await pool.request()
+                    .input('PlanIds', sql.NVarChar(sql.MAX), planIds.join(','))
+                    .query(`
+                        SELECT
+                            productionPlan.ID_KeHoachSanXuat,
+                            productionPlan.ID_BoPhan,
+                            productionPlan.ID_QuyTrinhSanXuat,
+                            productionOrder.ID_DonVi
+                        FROM TAG_QLSX.dbo.KeHoachSanXuat productionPlan
+                        LEFT JOIN TAG_QLSX.dbo.LenhSanXuat productionOrder
+                            ON productionOrder.ID_LenhSanXuat = productionPlan.ID_LenhSanXuat
+                        WHERE productionPlan.ID_KeHoachSanXuat IN (
+                            SELECT TRY_CAST([value] AS int)
+                            FROM STRING_SPLIT(@PlanIds, ',')
+                        )
+                    `);
+                planMetaById = new Map((metaResult.recordset || []).map((row) => [
+                    Number(row.ID_KeHoachSanXuat),
+                    row
+                ]));
+            }
+
+            let responseRows = rows.map((row) => ({
                 ...row,
+                ...(planMetaById.get(Number(row.ID_KeHoachSanXuat)) || {}),
                 // mssql/useUTC=false tao Date theo gio dia phuong; JSON.stringify se
                 // doi sang UTC va co the lui mot ngay. Tra date-only de client gui
                 // lai dung khoa nghiep vu ID ke hoach + ngay hien tai.
                 Ngay: serializeSqlDateOnly(row.Ngay)
-            })));
+            }));
+
+            if (isCuoiChuyenLoaiKiem(req.query.loaiKiemId) && planIds.length > 0) {
+                const checkedResult = await pool.request()
+                    .input('LoaiKiemId', sql.Int, CUOI_CHUYEN_LOAI_KIEM_ID)
+                    .input('PlanIds', sql.NVarChar(sql.MAX), planIds.join(','))
+                    .query(`
+                        SELECT DISTINCT
+                            planRow.ID_KeHoachSanXuat,
+                            CONVERT(char(10), planRow.NgayKeHoach, 23) AS NgayKeHoach
+                        FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN planRow
+                        INNER JOIN dbo.PHIEU_KIEM inspection
+                            ON inspection.Id = planRow.PhieuKiemId
+                        WHERE inspection.LoaiKiemId = @LoaiKiemId
+                          AND ISNULL(inspection.TrangThai, N'') <> N'DA_HUY'
+                          AND planRow.ID_KeHoachSanXuat IN (
+                              SELECT TRY_CAST([value] AS int)
+                              FROM STRING_SPLIT(@PlanIds, ',')
+                          )
+                    `);
+                const checkedPlanDays = new Set((checkedResult.recordset || []).map((item) =>
+                    `${Number(item.ID_KeHoachSanXuat)}|${item.NgayKeHoach}`
+                ));
+                responseRows = responseRows.filter((row) => !checkedPlanDays.has(
+                    `${Number(row.ID_KeHoachSanXuat)}|${row.Ngay}`
+                ));
+            }
+
+            res.json(responseRows);
 
         } catch (err) {
             console.error(err);
@@ -1772,32 +1830,50 @@ router.post(
             }
 
             if (isCuoiChuyenLoaiKiem(loaiKiemId)) {
-                const selectedPlanIds = normalizedCuoiChuyenPlans
-                    .map((plan) => plan.idKeHoachSanXuat)
-                    .filter((id) => Number(id) > 0);
+                const selectedPlanDays = normalizedCuoiChuyenPlans.map((plan) => ({
+                    idKeHoachSanXuat: Number(plan.idKeHoachSanXuat) || null,
+                    ngayKeHoach: normalizeDateOnly(plan.ngayKeHoach)
+                }));
 
-                if (selectedPlanIds.length !== normalizedCuoiChuyenPlans.length) {
-                    return res.status(400).json({ message: 'Kế hoạch cuối chuyền không hợp lệ' });
+                if (selectedPlanDays.some((plan) => !plan.idKeHoachSanXuat || !plan.ngayKeHoach)) {
+                    return res.status(400).json({
+                        message: 'Kế hoạch cuối chuyền cần đầy đủ ID kế hoạch và ngày kế hoạch'
+                    });
+                }
+
+                const uniquePlanDays = new Set(selectedPlanDays.map((plan) =>
+                    `${plan.idKeHoachSanXuat}|${plan.ngayKeHoach}`
+                ));
+                if (uniquePlanDays.size !== selectedPlanDays.length) {
+                    return res.status(400).json({
+                        message: 'Danh sách có kế hoạch cuối chuyền bị trùng trong cùng ngày'
+                    });
                 }
 
                 const duplicateResult = await pool.request()
                     .input('LoaiKiemId', sql.Int, loaiKiemId)
-                    .input('PlanIdsJson', sql.NVarChar(sql.MAX), JSON.stringify(selectedPlanIds))
+                    .input('PlanDaysJson', sql.NVarChar(sql.MAX), JSON.stringify(selectedPlanDays))
                     .query(`
                         IF OBJECT_ID(N'dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN', N'U') IS NOT NULL
                         BEGIN
-                            SELECT TOP 1 p.ID_KeHoachSanXuat
+                            SELECT TOP 1
+                                p.ID_KeHoachSanXuat,
+                                CONVERT(char(10), p.NgayKeHoach, 23) AS NgayKeHoach
                             FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN p
                             INNER JOIN dbo.PHIEU_KIEM pk ON pk.Id = p.PhieuKiemId
-                            INNER JOIN OPENJSON(@PlanIdsJson) WITH (ID_KeHoachSanXuat INT '$') j
-                                ON j.ID_KeHoachSanXuat = p.ID_KeHoachSanXuat
-                            WHERE pk.LoaiKiemId = @LoaiKiemId;
+                            INNER JOIN OPENJSON(@PlanDaysJson) WITH (
+                                ID_KeHoachSanXuat INT '$.idKeHoachSanXuat',
+                                NgayKeHoach DATE '$.ngayKeHoach'
+                            ) j ON j.ID_KeHoachSanXuat = p.ID_KeHoachSanXuat
+                                AND j.NgayKeHoach = p.NgayKeHoach
+                            WHERE pk.LoaiKiemId = @LoaiKiemId
+                              AND ISNULL(pk.TrangThai, N'') <> N'DA_HUY';
                         END
                     `);
 
                 if (duplicateResult.recordset?.length > 0) {
                     return res.status(409).json({
-                        message: `Kế hoạch ${duplicateResult.recordset[0].ID_KeHoachSanXuat} đã được tạo phiếu kiểm cuối chuyền`
+                        message: `Kế hoạch ${duplicateResult.recordset[0].ID_KeHoachSanXuat} đã có phiếu kiểm cuối chuyền ngày ${duplicateResult.recordset[0].NgayKeHoach}`
                     });
                 }
             }
@@ -1954,9 +2030,13 @@ router.post(
                 || err?.message;
             const isDailyPlanConflict = isTrenChuyen
                 && /Kế hoạch đã có phiếu kiểm trên chuyền ngày/i.test(sqlMessage || '');
-            res.status(isDailyPlanConflict ? 409 : 500).json({
+            const isCuoiChuyenDailyConflict = isCuoiChuyenLoaiKiem(loaiKiemId)
+                && [2601, 2627].includes(Number(err?.number || err?.originalError?.info?.number));
+            res.status(isDailyPlanConflict || isCuoiChuyenDailyConflict ? 409 : 500).json({
                 message: isDailyPlanConflict
                     ? sqlMessage
+                    : isCuoiChuyenDailyConflict
+                        ? 'Kế hoạch đã có phiếu kiểm cuối chuyền trong ngày này'
                     : 'Tạo phiếu kiểm thất bại'
             });
         }

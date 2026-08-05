@@ -160,6 +160,57 @@ export const SxbtPrintTemplate = React.forwardRef(({
         return rows;
     };
 
+    const normalizeConclusion = (value) => {
+        if (value === 'DAT') return 'ĐẠT';
+        if (value === 'KHONG_DAT') return 'KHÔNG ĐẠT';
+        return value || '';
+    };
+
+    const getConclusionStyle = (value) => {
+        const conclusion = normalizeConclusion(value);
+        return {
+            ...s.tdc,
+            fontWeight: 'bold',
+            color: conclusion === 'ĐẠT' ? '#16a34a' : conclusion === 'KHÔNG ĐẠT' ? '#dc2626' : '#000'
+        };
+    };
+
+    const renderRatioRowsWithMergedResult = (rows, mergedResult = rows[0]) => {
+        const [summaryRow, ...detailRows] = rows;
+        if (!summaryRow) return null;
+
+        return (
+            <>
+                <tr key={summaryRow.key}>
+                    <td style={{ ...s.td, height: '22px', fontWeight: 'bold' }}>{summaryRow.label}</td>
+                    <td style={s.tdc}>{summaryRow.sampleQty}</td>
+                    <td style={s.tdc}>{summaryRow.sampleRate}</td>
+                    <td style={s.tdc}>{summaryRow.passRate}</td>
+                    <td style={s.tdc}>{summaryRow.criticalRate}</td>
+                    <td style={s.tdc}>{summaryRow.majorMinorRate}</td>
+                    <td style={getConclusionStyle(summaryRow.conclusion)}>{normalizeConclusion(summaryRow.conclusion)}</td>
+                </tr>
+                {detailRows.map((row, index) => (
+                    <tr key={row.key}>
+                        <td style={{ ...s.td, height: '22px' }}>{row.label}</td>
+                        <td style={s.tdc}>{row.sampleQty}</td>
+                        <td style={s.tdc}>{row.sampleRate}</td>
+                        {index === 0 && (
+                            <>
+                                <td style={s.tdc} rowSpan={detailRows.length}>{mergedResult.passRate}</td>
+                                <td style={s.tdc} rowSpan={detailRows.length}>{mergedResult.criticalRate}</td>
+                                <td style={s.tdc} rowSpan={detailRows.length}>{mergedResult.majorMinorRate}</td>
+                                <td style={getConclusionStyle(mergedResult.conclusion)} rowSpan={detailRows.length}>
+                                    {normalizeConclusion(mergedResult.conclusion)}
+                                </td>
+                            </>
+                        )}
+                    </tr>
+                ))}
+            </>
+        );
+    };
+
     const getItemCodeKey = (item = {}) =>
         String(item.ItemCode || item.MaSanPham || item.TenSanPham || 'KHONG_CO_ITEMCODE').trim();
 
@@ -598,19 +649,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
                         </tr>
                     </thead>
                     <tbody>
-                        {getRatioRows().map((row) => (
-                            <tr key={row.key}>
-                                <td style={{ ...s.td, height: '22px', fontWeight: row.key === 'summary-total' ? 'bold' : 'normal' }}>{row.label}</td>
-                                <td style={s.tdc}>{row.sampleQty}</td>
-                                <td style={s.tdc}>{row.sampleRate}</td>
-                                <td style={s.tdc}>{row.passRate}</td>
-                                <td style={s.tdc}>{row.criticalRate}</td>
-                                <td style={s.tdc}>{row.majorMinorRate}</td>
-                                <td style={{ ...s.tdc, fontWeight: 'bold', color: row.conclusion === 'ĐẠT' || row.conclusion === 'DAT' ? '#16a34a' : row.conclusion === 'KHÔNG ĐẠT' || row.conclusion === 'KHONG_DAT' ? '#dc2626' : '#000' }}>
-                                    {row.conclusion === 'DAT' ? 'ĐẠT' : row.conclusion === 'KHONG_DAT' ? 'KHÔNG ĐẠT' : row.conclusion}
-                                </td>
-                            </tr>
-                        ))}
+                        {renderRatioRowsWithMergedResult(getRatioRows())}
                         <tr>
                             <td style={{ ...s.td, height: '20px' }} colSpan={7}></td>
                         </tr>
@@ -774,6 +813,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
                 {itemCodeGroups.map((group) => {
                     const groupDefects = getDefectsForPrintRows(group.rows);
                     const groupRatio = getGroupRatio(group.rows, groupDefects);
+                    const overallRatio = getRatioRows()[0];
                     const groupCriticalDefects = groupDefects.filter(isCriticalDefect);
                     const groupMajorMinorDefects = groupDefects.filter(d => !isCriticalDefect(d));
                     const groupRatioRows = [
@@ -782,10 +822,10 @@ export const SxbtPrintTemplate = React.forwardRef(({
                             label: `Tổng itemcode ${group.itemCode || group.key}`,
                             sampleQty: groupRatio.sampleQty > 0 ? formatQuantity(groupRatio.sampleQty) : '',
                             sampleRate: '',
-                            passRate: groupRatio.passRate,
-                            criticalRate: groupRatio.criticalRate,
-                            majorMinorRate: groupRatio.majorMinorRate,
-                            conclusion: groupRatio.conclusion
+                            passRate: overallRatio.passRate,
+                            criticalRate: overallRatio.criticalRate,
+                            majorMinorRate: overallRatio.majorMinorRate,
+                            conclusion: overallRatio.conclusion
                         },
                         ...group.rows.map(({ item, lotRow, lotIndex }) => {
                             const rowDefects = groupDefects.filter(d =>
@@ -1036,19 +1076,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {groupRatioRows.map((row) => (
-                                        <tr key={row.key}>
-                                            <td style={{ ...s.td, height: '22px', fontWeight: row.key.startsWith('group-total') ? 'bold' : 'normal' }}>{row.label}</td>
-                                            <td style={s.tdc}>{row.sampleQty}</td>
-                                            <td style={s.tdc}>{row.sampleRate}</td>
-                                            <td style={s.tdc}>{row.passRate}</td>
-                                            <td style={s.tdc}>{row.criticalRate}</td>
-                                            <td style={s.tdc}>{row.majorMinorRate}</td>
-                                            <td style={{ ...s.tdc, fontWeight: 'bold', color: row.conclusion === 'ĐẠT' ? '#16a34a' : row.conclusion === 'KHÔNG ĐẠT' ? '#dc2626' : '#000' }}>
-                                                {row.conclusion}
-                                            </td>
-                                        </tr>
-                                    ))}
+                                    {renderRatioRowsWithMergedResult(groupRatioRows, overallRatio)}
                                     <tr>
                                         <td style={{ ...s.td, height: '20px' }} colSpan={7}></td>
                                     </tr>

@@ -367,6 +367,7 @@ router.get(
                     a.BoPhanId,
                     bp.MaBoPhan,
                     bp.TenBoPhan,
+                    CAST(0 AS bit) AS IsOpinionDepartment,
                     CASE WHEN EXISTS (
                         SELECT 1
                         FROM dbo.BIEN_BAN_XAC_NHAN xn
@@ -388,6 +389,7 @@ router.get(
                     yk.BoPhanId,
                     bp.MaBoPhan,
                     bp.TenBoPhan,
+                    CAST(1 AS bit) AS IsOpinionDepartment,
                     CASE WHEN yk.ConfirmedAt IS NOT NULL
                         AND yk.ConfirmedReviewRound=ISNULL(bb.ReviewRound,1)
                         THEN 1 ELSE 0 END AS DaXacNhan
@@ -405,9 +407,21 @@ router.get(
                 const progress = normalProgressByBienBanId.get(key) || {
                     total: 0,
                     done: 0,
-                    pendingDepartments: []
+                    pendingDepartments: [],
+                    opinionDepartments: []
                 };
                 progress.total += 1;
+                if (assign.IsOpinionDepartment === true || assign.IsOpinionDepartment === 1) {
+                    const departmentId = Number(assign.BoPhanId);
+                    if (Number.isInteger(departmentId) && departmentId > 0 &&
+                        !progress.opinionDepartments.some((department) => department.id === departmentId)) {
+                        progress.opinionDepartments.push({
+                            id: departmentId,
+                            maBoPhan: assign.MaBoPhan || null,
+                            tenBoPhan: assign.TenBoPhan || null
+                        });
+                    }
+                }
                 if (Number(assign.DaXacNhan) === 1) {
                     progress.done += 1;
                 } else {
@@ -423,12 +437,27 @@ router.get(
 
             const listMetaResult = await pool.request()
                 .input("BienBanIds", sql.NVarChar(sql.MAX), bienBanIds.join(","))
+                .input("CurrentBoPhanId", sql.Int, Number(req.user.boPhanId) || null)
                 .query(`
                     SELECT
                         bb.Id AS BienBanId,
                         COALESCE(bb.BoPhanTaoId, creator.BoPhanId) AS BoPhanTaoId,
                         creatorDepartment.MaBoPhan AS MaBoPhanTao,
                         creatorDepartment.TenBoPhan AS TenBoPhanTao,
+                        CASE
+                            WHEN myOpinion.Id IS NULL
+                                OR bb.OpinionDepartmentsConfirmedAt IS NULL
+                                OR bb.CreatorConfirmedAt IS NOT NULL
+                                OR bb.TrangThai IN (N'TRA_LAI_CHINH_SUA', N'CHO_THEO_DOI', N'HOAN_TAT')
+                                THEN NULL
+                            WHEN myOpinion.ConfirmedAt IS NOT NULL
+                                AND ISNULL(myOpinion.ConfirmedReviewRound, 0) = ISNULL(bb.ReviewRound, 1)
+                                THEN N'DA_XAC_NHAN'
+                            WHEN NULLIF(LTRIM(RTRIM(myResponse.NoiDung)), N'') IS NOT NULL
+                                AND ISNULL(myOpinion.OpinionReviewRound, 0) = ISNULL(bb.ReviewRound, 1)
+                                THEN N'CHO_TBP_XAC_NHAN'
+                            ELSE N'CHO_Y_KIEN'
+                        END AS MyDepartmentOpinionStatus,
                         CASE
                             WHEN pk.LoaiKiemId = 4
                                 THEN COALESCE(planContractor.Ma_NhaThau, contractor.Ma_NhaThau)
@@ -438,6 +467,20 @@ router.get(
                     LEFT JOIN dbo.USERS creator ON creator.Id = bb.NguoiLapId
                     LEFT JOIN dbo.DM_BO_PHAN creatorDepartment
                         ON creatorDepartment.Id = COALESCE(bb.BoPhanTaoId, creator.BoPhanId)
+                    OUTER APPLY (
+                        SELECT TOP 1 opinion.*
+                        FROM dbo.XIN_Y_KIEN opinion
+                        WHERE opinion.BienBanId = bb.Id
+                          AND opinion.BoPhanId = @CurrentBoPhanId
+                          AND ISNULL(opinion.IsActive, 1) = 1
+                        ORDER BY opinion.Id DESC
+                    ) myOpinion
+                    OUTER APPLY (
+                        SELECT TOP 1 response.NoiDung
+                        FROM dbo.TRA_LOI_Y_KIEN response
+                        WHERE response.XinYKienId = myOpinion.Id
+                        ORDER BY response.ThoiGian DESC, response.Id DESC
+                    ) myResponse
                     LEFT JOIN dbo.PHIEU_KIEM pk ON pk.Id = bb.PhieuKiemId
                     LEFT JOIN TAG_QTKD.dbo.PhieuNhapBTP receipt
                         ON receipt.ID_PhieuNhapBTP = COALESCE(
@@ -496,7 +539,8 @@ router.get(
                     TenBoPhanDangCho: progress?.TenBoPhanDangCho || null,
                     BoPhanChuaXacNhanText: isSxbt
                         ? (progress?.BoPhanChuaXacNhanText || null)
-                        : (normalProgress?.pendingDepartments.join(", ") || null)
+                        : (normalProgress?.pendingDepartments.join(", ") || null),
+                    OpinionDepartments: isSxbt ? [] : (normalProgress?.opinionDepartments || [])
                 };
             });
 

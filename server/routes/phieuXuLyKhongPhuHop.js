@@ -124,6 +124,21 @@ router.get("/", authenticateToken, async (req, res) => {
         const rows = result.recordset || [];
         const ids = rows.map((item) => Number(item.BienBanId)).filter((id) => Number.isInteger(id) && id > 0);
         if (!ids.length) return res.json(rows);
+        const creatorDepartmentResult = await pool.request().query(`
+            SELECT
+                bb.Id AS BienBanId,
+                COALESCE(bb.BoPhanTaoId, creator.BoPhanId) AS CreatorBoPhanId,
+                department.MaBoPhan AS MaBoPhanTao,
+                department.TenBoPhan AS TenBoPhanTao
+            FROM dbo.BIEN_BAN_KIEM bb
+            LEFT JOIN dbo.USERS creator ON creator.Id = bb.NguoiLapId
+            LEFT JOIN dbo.DM_BO_PHAN department
+                ON department.Id = COALESCE(bb.BoPhanTaoId, creator.BoPhanId)
+            WHERE bb.Id IN (${ids.join(",")})
+        `);
+        const creatorDepartmentMap = new Map(
+            (creatorDepartmentResult.recordset || []).map((item) => [Number(item.BienBanId), item])
+        );
         const progressResult = await pool.request().query(`
             SELECT yk.BienBanId,yk.BoPhanId,bp.MaBoPhan,bp.TenBoPhan,
                 CASE WHEN yk.ConfirmedAt IS NOT NULL
@@ -143,10 +158,12 @@ router.get("/", authenticateToken, async (req, res) => {
             progressMap.set(key, progress);
         }
         res.json(rows.map((item) => {
+            const creatorDepartment = creatorDepartmentMap.get(Number(item.BienBanId)) || {};
             const progress = progressMap.get(Number(item.BienBanId));
-            if (!progress) return item;
+            if (!progress) return { ...item, ...creatorDepartment };
             return {
                 ...item,
+                ...creatorDepartment,
                 SoBoPhan: progress.total,
                 DaCoYKien: progress.done,
                 BoPhanChuaXacNhanText: progress.pending.filter(Boolean).join(", ") || null
@@ -421,11 +438,14 @@ router.post("/:id/defects", authenticateToken, async (req, res) => {
             const soLuongKiem = item.soLuongKiem === null || item.soLuongKiem === ""
                 ? null
                 : Number(item.soLuongKiem);
-            return !Number.isFinite(soLuong) || soLuong < 0 ||
-                (soLuongKiem !== null && (!Number.isFinite(soLuongKiem) || soLuongKiem < 0 || soLuong > soLuongKiem));
+            return !Number.isInteger(soLuong) || soLuong <= 0 ||
+                !Number.isInteger(soLuongKiem) || soLuongKiem <= 0 ||
+                soLuong > soLuongKiem;
         });
         if (invalidDefect) {
-            return res.status(400).json({ message: "Số lượng lỗi phải không âm và không vượt số lượng kiểm" });
+            return res.status(400).json({
+                message: "Số lượng kiểm phải lớn hơn 0 và không được nhỏ hơn số lượng lỗi"
+            });
         }
 
         const pool = await poolPromise;

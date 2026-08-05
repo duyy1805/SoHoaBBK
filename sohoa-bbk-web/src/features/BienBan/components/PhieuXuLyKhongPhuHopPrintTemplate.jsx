@@ -5,7 +5,7 @@ export const PhieuXuLyKhongPhuHopPrintTemplate = React.forwardRef((props, ref) =
     const normalizedDefects = (props.defects || []).map((item) => ({
         ...item,
         TenLoi: item.TenLoi || item.TenLoiTuNhap || item.MoTa || "",
-        SoLuongKiem: item.SoLuongKiem || item.SoLuong || 0
+        SoLuongKiem: item.SoLuongKiem ?? ""
     }));
 
     return (
@@ -13,6 +13,7 @@ export const PhieuXuLyKhongPhuHopPrintTemplate = React.forwardRef((props, ref) =
             ref={ref}
             {...props}
             defects={normalizedDefects}
+            useDefectInspectedQuantityOnly
         />
     );
 });

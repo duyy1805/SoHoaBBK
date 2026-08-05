@@ -19,13 +19,29 @@ import {
     Paper,
     InputAdornment,
     Tabs,
-    Tab
+    Tab,
+    MenuItem,
+    Collapse,
+    TablePagination
 } from "@mui/material";
-import { Add as AddIcon, Search as SearchIcon, ArrowForward as ArrowForwardIcon } from "@mui/icons-material";
+import {
+    Add as AddIcon,
+    Search as SearchIcon,
+    ArrowForward as ArrowForwardIcon,
+    FilterList as FilterListIcon,
+    RestartAlt as RestartAltIcon
+} from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import { createStandaloneBienBan, getStandaloneBienBanList } from "../../api/bienBan.api";
 import { decodeToken } from "../../utils/auth";
 import { getBienBanStatusMeta } from "./components/bienBanWorkflow";
+
+const normalizeSearchText = (value) => String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase();
 
 const renderTrangThaiChip = (trangThai) => {
     const status = getBienBanStatusMeta(trangThai);
@@ -63,6 +79,13 @@ export default function PhieuXuLyKhongPhuHopList() {
     const [creating, setCreating] = useState(false);
     const [searchText, setSearchText] = useState("");
     const [workFilter, setWorkFilter] = useState("all");
+    const [statusFilter, setStatusFilter] = useState("");
+    const [departmentFilter, setDepartmentFilter] = useState("all");
+    const [dateFrom, setDateFrom] = useState("");
+    const [dateTo, setDateTo] = useState("");
+    const [advancedOpen, setAdvancedOpen] = useState(false);
+    const [page, setPage] = useState(0);
+    const [rowsPerPage, setRowsPerPage] = useState(10);
     const currentUser = useMemo(() => decodeToken() || {}, []);
     const access = useMemo(() => {
         const permissions = currentUser.permissions || [];
@@ -101,16 +124,61 @@ export default function PhieuXuLyKhongPhuHopList() {
         return result;
     }, { action: 0, waiting: 0, done: 0 }), [data, currentUser, access]);
 
+    const departmentOptions = useMemo(() => {
+        const options = new Map();
+        data.forEach((item) => {
+            const id = Number(item.CreatorBoPhanId);
+            if (!Number.isInteger(id) || id <= 0) return;
+            options.set(id, {
+                id,
+                label: [item.MaBoPhanTao, item.TenBoPhanTao].filter(Boolean).join(" - ") || `Bộ phận #${id}`
+            });
+        });
+        return [...options.values()].sort((a, b) => a.label.localeCompare(b.label, "vi"));
+    }, [data]);
+
+    const statusOptions = useMemo(() => [...new Set(data.map((item) => item.TrangThai).filter(Boolean))]
+        .map((value) => ({ value, label: getBienBanStatusMeta(value).label }))
+        .sort((a, b) => a.label.localeCompare(b.label, "vi")), [data]);
+
     const filteredData = useMemo(() => {
         const keyword = searchText.trim().toLowerCase();
         return data.filter((item) => {
             if (workFilter !== "all" && getWorkBucket(item, currentUser, access) !== workFilter) return false;
+            if (statusFilter && item.TrangThai !== statusFilter) return false;
+            if (departmentFilter === "mine" && Number(item.CreatorBoPhanId) !== Number(currentUser.boPhanId)) return false;
+            if (!["all", "mine"].includes(departmentFilter) && Number(item.CreatorBoPhanId) !== Number(departmentFilter)) return false;
+
+            const createdAt = item.CreatedAt ? new Date(item.CreatedAt) : null;
+            if (dateFrom && (!createdAt || createdAt < new Date(`${dateFrom}T00:00:00`))) return false;
+            if (dateTo && (!createdAt || createdAt > new Date(`${dateTo}T23:59:59.999`))) return false;
+
             if (!keyword) return true;
-            return String(item.SoBienBan || "").toLowerCase().includes(keyword) ||
-                String(item.MoTaChung || "").toLowerCase().includes(keyword) ||
-                String(item.NguoiLap || "").toLowerCase().includes(keyword);
+            const searchableText = normalizeSearchText([
+                item.SoBienBan,
+                item.MoTaChung,
+                item.NguoiLap,
+                item.MaBoPhanTao,
+                item.TenBoPhanTao
+            ].filter(Boolean).join(" "));
+            return searchableText.includes(normalizeSearchText(keyword));
         });
-    }, [data, searchText, workFilter, currentUser, access]);
+    }, [data, searchText, workFilter, statusFilter, departmentFilter, dateFrom, dateTo, currentUser, access]);
+
+    const paginatedData = useMemo(() => {
+        const startIndex = page * rowsPerPage;
+        return filteredData.slice(startIndex, startIndex + rowsPerPage);
+    }, [filteredData, page, rowsPerPage]);
+
+    const resetFilters = () => {
+        setSearchText("");
+        setStatusFilter("");
+        setDepartmentFilter("all");
+        setDateFrom("");
+        setDateTo("");
+        setWorkFilter("all");
+        setPage(0);
+    };
 
     const handleCreate = async () => {
         try {
@@ -149,21 +217,14 @@ export default function PhieuXuLyKhongPhuHopList() {
                     <Typography variant="h5" sx={{ fontWeight: 700 }}>
                         Phiếu xử lý không phù hợp
                     </Typography>
-                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                        <TextField
-                            size="small"
-                            placeholder="Tìm số biên bản, người lập..."
-                            value={searchText}
-                            onChange={(e) => setSearchText(e.target.value)}
-                            InputProps={{
-                                startAdornment: (
-                                    <InputAdornment position="start">
-                                        <SearchIcon fontSize="small" />
-                                    </InputAdornment>
-                                )
-                            }}
-                            sx={{ minWidth: { xs: "100%", sm: 280 } }}
-                        />
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                        <Button
+                            variant={advancedOpen ? "contained" : "outlined"}
+                            startIcon={<FilterListIcon />}
+                            onClick={() => setAdvancedOpen((open) => !open)}
+                        >
+                            {advancedOpen ? "Thu gọn bộ lọc" : "Bộ lọc nâng cao"}
+                        </Button>
                         <Button
                             variant="contained"
                             startIcon={<AddIcon />}
@@ -175,10 +236,109 @@ export default function PhieuXuLyKhongPhuHopList() {
                     </Stack>
                 </Stack>
 
+                <Paper variant="outlined" sx={{ mb: 2, p: 2, borderRadius: 2.5 }}>
+                    <Stack direction={{ xs: "column", md: "row" }} spacing={1.5}>
+                        <TextField
+                            size="small"
+                            placeholder="Tìm số biên bản, mô tả, người lập..."
+                            value={searchText}
+                            onChange={(e) => {
+                                setSearchText(e.target.value);
+                                setPage(0);
+                            }}
+                            slotProps={{
+                                input: {
+                                    startAdornment: (
+                                        <InputAdornment position="start">
+                                            <SearchIcon fontSize="small" />
+                                        </InputAdornment>
+                                    )
+                                }
+                            }}
+                            sx={{ flex: 1, minWidth: { xs: "100%", md: 280 } }}
+                        />
+                        <TextField
+                            select
+                            size="small"
+                            label="Bộ phận lập"
+                            value={departmentFilter}
+                            onChange={(e) => {
+                                setDepartmentFilter(e.target.value);
+                                setPage(0);
+                            }}
+                            sx={{ minWidth: { xs: "100%", md: 220 } }}
+                        >
+                            <MenuItem value="all">Tất cả bộ phận</MenuItem>
+                            {currentUser.boPhanId && <MenuItem value="mine">Bộ phận của tôi</MenuItem>}
+                            {departmentOptions.map((department) => (
+                                <MenuItem key={department.id} value={String(department.id)}>{department.label}</MenuItem>
+                            ))}
+                        </TextField>
+                        <TextField
+                            select
+                            size="small"
+                            label="Trạng thái"
+                            value={statusFilter}
+                            onChange={(e) => {
+                                setStatusFilter(e.target.value);
+                                setPage(0);
+                            }}
+                            sx={{ minWidth: { xs: "100%", md: 210 } }}
+                        >
+                            <MenuItem value="">Tất cả trạng thái</MenuItem>
+                            {statusOptions.map((status) => (
+                                <MenuItem key={status.value} value={status.value}>{status.label}</MenuItem>
+                            ))}
+                        </TextField>
+                    </Stack>
+
+                    <Collapse in={advancedOpen}>
+                        <Stack
+                            direction={{ xs: "column", sm: "row" }}
+                            spacing={1.5}
+                            alignItems={{ xs: "stretch", sm: "center" }}
+                            sx={{ mt: 1.5 }}
+                        >
+                            <TextField
+                                size="small"
+                                label="Từ ngày"
+                                type="date"
+                                value={dateFrom}
+                                onChange={(e) => {
+                                    setDateFrom(e.target.value);
+                                    setPage(0);
+                                }}
+                                slotProps={{ inputLabel: { shrink: true } }}
+                            />
+                            <TextField
+                                size="small"
+                                label="Đến ngày"
+                                type="date"
+                                value={dateTo}
+                                onChange={(e) => {
+                                    setDateTo(e.target.value);
+                                    setPage(0);
+                                }}
+                                slotProps={{ inputLabel: { shrink: true } }}
+                            />
+                            <Button color="inherit" startIcon={<RestartAltIcon />} onClick={resetFilters}>
+                                Xóa bộ lọc
+                            </Button>
+                        </Stack>
+                    </Collapse>
+
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.25 }}>
+                        Hiển thị {filteredData.length} / {data.length} phiếu
+                    </Typography>
+                </Paper>
+
                 <Paper variant="outlined" sx={{ mb: 2, borderRadius: 2, overflow: "hidden" }}>
                     <Tabs
                         value={workFilter}
-                        onChange={(_, value) => setWorkFilter(value)}
+                        onChange={(_, value) => {
+                            setWorkFilter(value);
+                            setPage(0);
+                        }}
                         variant="scrollable"
                         scrollButtons="auto"
                         aria-label="Lọc phiếu theo công việc"
@@ -213,11 +373,16 @@ export default function PhieuXuLyKhongPhuHopList() {
                                             </TableCell>
                                         </TableRow>
                                     ) : (
-                                        filteredData.map((item) => (
+                                        paginatedData.map((item) => (
                                             <TableRow key={item.BienBanId} hover>
                                                 <TableCell sx={{ fontWeight: 600 }}>{item.SoBienBan || `BB#${item.BienBanId}`}</TableCell>
                                                 <TableCell>{item.MoTaChung || "---"}</TableCell>
-                                                <TableCell>{item.NguoiLap || "---"}</TableCell>
+                                                <TableCell>
+                                                    <Typography variant="body2">{item.NguoiLap || "---"}</Typography>
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {[item.MaBoPhanTao, item.TenBoPhanTao].filter(Boolean).join(" - ") || "Chưa có bộ phận"}
+                                                    </Typography>
+                                                </TableCell>
                                                 <TableCell>{item.CreatedAt ? new Date(item.CreatedAt).toLocaleString("vi-VN") : "---"}</TableCell>
                                                 <TableCell>
                                                     <Typography variant="body2" fontWeight={600}>
@@ -249,6 +414,20 @@ export default function PhieuXuLyKhongPhuHopList() {
                                 </TableBody>
                             </Table>
                         </TableContainer>
+                        <TablePagination
+                            component="div"
+                            count={filteredData.length}
+                            page={page}
+                            onPageChange={(_, newPage) => setPage(newPage)}
+                            rowsPerPage={rowsPerPage}
+                            onRowsPerPageChange={(event) => {
+                                setRowsPerPage(parseInt(event.target.value, 10));
+                                setPage(0);
+                            }}
+                            labelRowsPerPage="Số dòng/trang:"
+                            labelDisplayedRows={({ from, to, count }) => `${from}-${to} trên ${count}`}
+                            rowsPerPageOptions={[5, 10, 25, 50]}
+                        />
                     </CardContent>
                 </Card>
             </Box>

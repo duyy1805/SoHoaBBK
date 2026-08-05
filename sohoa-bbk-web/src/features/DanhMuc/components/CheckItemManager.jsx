@@ -7,7 +7,8 @@ import {
     TextField, Stack, Alert,
     Box, Typography, CircularProgress,
     Autocomplete, TableContainer, Paper, Tooltip,
-    Chip, Checkbox, FormControlLabel
+    Chip, Checkbox, FormControlLabel,
+    Accordion, AccordionSummary, AccordionDetails
 } from "@mui/material";
 
 import EditIcon from "@mui/icons-material/Edit";
@@ -17,6 +18,7 @@ import DownloadIcon from "@mui/icons-material/Download";
 import ChecklistRtlIcon from "@mui/icons-material/ChecklistRtl";
 import TouchAppIcon from "@mui/icons-material/TouchApp";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { useToast } from "../../../components/common/ToastContext"
 import ConfirmDialog from "../../../components/common/ConfirmDialog"
 import {
@@ -26,8 +28,79 @@ import {
     updateCheckItem,
     deleteCheckItem,
     importDanhMucKiemExcel,
+    previewImportDanhMucKiemExcel,
     downloadDanhMucKiemTemplate
 } from "../../../api/lookup.api";
+
+const previewAction = {
+    CREATE: { label: "Tạo mới", color: "success" },
+    CLONE: { label: "Tách nhóm riêng", color: "warning" },
+    REACTIVATE: { label: "Kích hoạt lại", color: "info" },
+    UPDATE: { label: "Giữ và cập nhật", color: "primary" }
+};
+
+function GroupPreviewList({ groups = [], current = false }) {
+    if (!groups.length) {
+        return (
+            <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                Không có nhóm kiểm.
+            </Typography>
+        );
+    }
+
+    return (
+        <Stack spacing={1.25}>
+            {groups.map((group, groupIndex) => {
+                const action = previewAction[group.Action] || previewAction.UPDATE;
+                return (
+                    <Paper
+                        key={`${group.NhomKiemId || group.TenNhom}-${group.AssignmentId || groupIndex}`}
+                        variant="outlined"
+                        sx={{ p: 1.5, opacity: group.WillDeactivate ? 0.7 : 1 }}
+                    >
+                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                            <Typography fontWeight={650}>{group.TenNhom}</Typography>
+                            {current ? (
+                                <>
+                                    <Chip
+                                        size="small"
+                                        label={group.WillClone ? "Sẽ tách bản riêng" : group.WillDeactivate ? "Sẽ ẩn" : "Đang dùng"}
+                                        color={group.WillClone ? "warning" : group.WillDeactivate ? "error" : "default"}
+                                        variant={group.WillDeactivate ? "filled" : "outlined"}
+                                    />
+                                    {group.Shared && <Chip size="small" label="Nhóm dùng chung" color="warning" variant="outlined" />}
+                                </>
+                            ) : (
+                                <Chip size="small" label={action.label} color={action.color} variant="outlined" />
+                            )}
+                        </Stack>
+                        {group.MoTa && (
+                            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                                {group.MoTa}
+                            </Typography>
+                        )}
+                        <Stack component="ul" spacing={0.35} sx={{ pl: 2.5, mb: 0, mt: 1 }}>
+                            {(group.items || []).map((item, itemIndex) => (
+                                <Typography
+                                    component="li"
+                                    variant="body2"
+                                    key={`${item.Id || item.TenMucKiem}-${itemIndex}`}
+                                    sx={{
+                                        textDecoration: item.WillDeactivate && !group.WillClone ? "line-through" : "none",
+                                        color: item.WillDeactivate && !group.WillClone ? "error.main" : "text.primary"
+                                    }}
+                                >
+                                    {item.TenMucKiem}
+                                    {item.DiemTrongYeu ? " · Điểm trọng yếu" : ""}
+                                </Typography>
+                            ))}
+                        </Stack>
+                    </Paper>
+                );
+            })}
+        </Stack>
+    );
+}
 
 export default function CheckItemManager() {
 
@@ -40,6 +113,8 @@ export default function CheckItemManager() {
     const [loading, setLoading] = useState(false);
     const [importOpen, setImportOpen] = useState(false);
     const [importFile, setImportFile] = useState(null);
+    const [importPreview, setImportPreview] = useState(null);
+    const [previewing, setPreviewing] = useState(false);
     const [importing, setImporting] = useState(false);
     const [importResult, setImportResult] = useState(null);
     const { showToast } = useToast();
@@ -151,8 +226,28 @@ export default function CheckItemManager() {
         }
     };
 
-    const handleImportExcel = async () => {
+    const handlePreviewImportExcel = async () => {
         if (!importFile) return;
+
+        try {
+            setPreviewing(true);
+            setImportResult(null);
+            setImportPreview(null);
+            const res = await previewImportDanhMucKiemExcel(importFile);
+            setImportPreview(res.data?.summary || null);
+        } catch (err) {
+            setImportResult({
+                type: "error",
+                message: err.response?.data?.message || "Không xem trước được dữ liệu",
+                errors: err.response?.data?.errors || []
+            });
+        } finally {
+            setPreviewing(false);
+        }
+    };
+
+    const handleImportExcel = async () => {
+        if (!importFile || !importPreview) return;
 
         try {
             setImporting(true);
@@ -160,13 +255,14 @@ export default function CheckItemManager() {
             const res = await importDanhMucKiemExcel(importFile);
             setImportResult({
                 type: "success",
-                message: res.data?.message || "Import thành công",
+                message: res.data?.message || "Đồng bộ thành công",
                 summary: res.data?.summary
             });
+            setImportPreview(null);
             setImportFile(null);
             await loadNhom();
             await loadData();
-            showToast("Import danh mục kiểm thành công", "success");
+            showToast("Đồng bộ danh mục kiểm thành công", "success");
         } catch (err) {
             setImportResult({
                 type: "error",
@@ -176,6 +272,20 @@ export default function CheckItemManager() {
         } finally {
             setImporting(false);
         }
+    };
+
+    const requestImportConfirmation = () => {
+        if (!importFile || !importPreview) return;
+        setConfirmDialog({
+            open: true,
+            title: "Xác nhận đồng bộ danh mục kiểm",
+            message: `Danh mục của ${importPreview.affectedProducts} sản phẩm trong file sẽ được thay thế hoàn toàn. Dữ liệu không còn trong file sẽ bị ngừng hoạt động. Bạn có muốn tiếp tục?`,
+            type: "warning",
+            onConfirm: async () => {
+                setConfirmDialog(prev => ({ ...prev, open: false }));
+                await handleImportExcel();
+            }
+        });
     };
 
     // Lấy object nhóm hiện tại cho Autocomplete
@@ -459,7 +569,7 @@ export default function CheckItemManager() {
 
             <Dialog
                 open={importOpen}
-                onClose={() => !importing && setImportOpen(false)}
+                onClose={() => !importing && !previewing && setImportOpen(false)}
                 maxWidth="md"
                 fullWidth
             >
@@ -470,6 +580,10 @@ export default function CheckItemManager() {
                 <DialogContent dividers>
                     <Stack spacing={2.5}>
                         <Alert severity="info">
+                            <strong>Danh mục của các sản phẩm có trong file sẽ được thay thế hoàn toàn theo file Excel.</strong>
+                            <br />
+                            Nhóm, mục kiểm hoặc liên kết không còn trong file sẽ được ngừng hoạt động; sản phẩm không xuất hiện trong file không bị ảnh hưởng.
+                            <br /><br />
                             File .xlsx cần có sheet <strong>DanhMucKiem</strong> với các cột: MaSanPham, TenNhom, MoTaNhom, ThuTuNhom, TenMucKiem, ThamChieu, PhuongPhapKiem, TieuChuan, ThuTuMuc, ThuTuGanNhom, DiemTrongYeu.
                             <br />
                             <strong>MoTaNhom</strong> là bắt buộc và dùng để phân biệt các nhóm kiểm trùng tên giữa từng sản phẩm/vật tư.
@@ -482,7 +596,7 @@ export default function CheckItemManager() {
                                 variant="outlined"
                                 startIcon={<DownloadIcon />}
                                 onClick={handleDownloadTemplate}
-                                disabled={importing}
+                                disabled={importing || previewing}
                             >
                                 Tải file mẫu
                             </Button>
@@ -491,7 +605,7 @@ export default function CheckItemManager() {
                                 variant="contained"
                                 component="label"
                                 startIcon={<UploadFileIcon />}
-                                disabled={importing}
+                                disabled={importing || previewing}
                             >
                                 Chọn file .xlsx
                                 <input
@@ -500,6 +614,7 @@ export default function CheckItemManager() {
                                     accept=".xlsx"
                                     onChange={(e) => {
                                         setImportFile(e.target.files?.[0] || null);
+                                        setImportPreview(null);
                                         setImportResult(null);
                                         e.target.value = "";
                                     }}
@@ -516,6 +631,70 @@ export default function CheckItemManager() {
                             </Paper>
                         )}
 
+                        {importPreview && (
+                            <Stack spacing={1.5}>
+                                <Alert severity="warning" icon={false}>
+                                    <Typography fontWeight={700} sx={{ mb: 1 }}>
+                                        Xem trước đồng bộ: {importPreview.affectedProducts} sản phẩm, {importPreview.totalRows} dòng Excel
+                                    </Typography>
+                                    <Stack spacing={0.5}>
+                                        <Typography variant="body2">
+                                            Nhóm kiểm: tạo {importPreview.createdNhom}, cập nhật {importPreview.updatedNhom}, kích hoạt lại {importPreview.reactivatedNhom}, ngừng hoạt động {importPreview.deactivatedNhom}
+                                        </Typography>
+                                        <Typography variant="body2">
+                                            Mục kiểm: tạo {importPreview.createdMuc}, cập nhật {importPreview.updatedMuc}, kích hoạt lại {importPreview.reactivatedMuc}, ngừng hoạt động {importPreview.deactivatedMuc}
+                                        </Typography>
+                                        <Typography variant="body2">
+                                            Liên kết sản phẩm: tạo {importPreview.createdGanNhom}, cập nhật {importPreview.updatedGanNhom}, kích hoạt lại {importPreview.reactivatedGanNhom}, ngừng hoạt động {importPreview.deactivatedGanNhom}
+                                        </Typography>
+                                        <Typography variant="body2" fontWeight={600}>
+                                            Nhóm dùng chung sẽ tách riêng: {importPreview.clonedNhom}
+                                        </Typography>
+                                    </Stack>
+                                </Alert>
+
+                                <Box>
+                                    <Typography fontWeight={700} sx={{ mb: 1 }}>
+                                        Chi tiết theo sản phẩm
+                                    </Typography>
+                                    {(importPreview.products || []).map((product) => (
+                                        <Accordion key={product.Id} disableGutters variant="outlined">
+                                            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                                <Box sx={{ minWidth: 0 }}>
+                                                    <Typography fontWeight={650}>{product.MaSanPham}</Typography>
+                                                    <Typography variant="body2" color="text.secondary" noWrap>
+                                                        {product.TenSanPham || "Chưa có tên sản phẩm"} · hiện có {product.currentGroups?.length || 0} nhóm · sau đồng bộ {product.resultGroups?.length || 0} nhóm
+                                                    </Typography>
+                                                </Box>
+                                            </AccordionSummary>
+                                            <AccordionDetails sx={{ bgcolor: "grey.50" }}>
+                                                <Box
+                                                    sx={{
+                                                        display: "grid",
+                                                        gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
+                                                        gap: 2
+                                                    }}
+                                                >
+                                                    <Box>
+                                                        <Typography fontWeight={700} color="text.secondary" sx={{ mb: 1 }}>
+                                                            Đang sử dụng hiện tại
+                                                        </Typography>
+                                                        <GroupPreviewList groups={product.currentGroups} current />
+                                                    </Box>
+                                                    <Box>
+                                                        <Typography fontWeight={700} color="primary.main" sx={{ mb: 1 }}>
+                                                            Sau khi đồng bộ theo Excel
+                                                        </Typography>
+                                                        <GroupPreviewList groups={product.resultGroups} />
+                                                    </Box>
+                                                </Box>
+                                            </AccordionDetails>
+                                        </Accordion>
+                                    ))}
+                                </Box>
+                            </Stack>
+                        )}
+
                         {importResult && (
                             <Alert severity={importResult.type}>
                                 <Typography fontWeight={600}>{importResult.message}</Typography>
@@ -523,9 +702,10 @@ export default function CheckItemManager() {
                                 {importResult.summary && (
                                     <Stack spacing={0.5} sx={{ mt: 1 }}>
                                         <Typography variant="body2">Tổng dòng: {importResult.summary.totalRows}</Typography>
-                                        <Typography variant="body2">Nhóm kiểm: tạo {importResult.summary.createdNhom}, cập nhật {importResult.summary.updatedNhom}</Typography>
-                                        <Typography variant="body2">Mục kiểm: tạo {importResult.summary.createdMuc}, cập nhật {importResult.summary.updatedMuc}</Typography>
-                                        <Typography variant="body2">Gán sản phẩm: tạo {importResult.summary.createdGanNhom}, cập nhật {importResult.summary.updatedGanNhom}</Typography>
+                                        <Typography variant="body2">Nhóm kiểm: tạo {importResult.summary.createdNhom}, cập nhật {importResult.summary.updatedNhom}, kích hoạt lại {importResult.summary.reactivatedNhom}, ngừng hoạt động {importResult.summary.deactivatedNhom}</Typography>
+                                        <Typography variant="body2">Mục kiểm: tạo {importResult.summary.createdMuc}, cập nhật {importResult.summary.updatedMuc}, kích hoạt lại {importResult.summary.reactivatedMuc}, ngừng hoạt động {importResult.summary.deactivatedMuc}</Typography>
+                                        <Typography variant="body2">Gán sản phẩm: tạo {importResult.summary.createdGanNhom}, cập nhật {importResult.summary.updatedGanNhom}, kích hoạt lại {importResult.summary.reactivatedGanNhom}, ngừng hoạt động {importResult.summary.deactivatedGanNhom}</Typography>
+                                        <Typography variant="body2">Nhóm dùng chung đã tách: {importResult.summary.clonedNhom}</Typography>
                                     </Stack>
                                 )}
                             </Alert>
@@ -558,16 +738,22 @@ export default function CheckItemManager() {
                     <Button
                         onClick={() => setImportOpen(false)}
                         color="inherit"
-                        disabled={importing}
+                        disabled={importing || previewing}
                     >
                         Đóng
                     </Button>
                     <Button
                         variant="contained"
-                        onClick={handleImportExcel}
-                        disabled={!importFile || importing}
+                        onClick={importPreview ? requestImportConfirmation : handlePreviewImportExcel}
+                        disabled={!importFile || importing || previewing}
                     >
-                        {importing ? "Đang import..." : "Import"}
+                        {previewing
+                            ? "Đang phân tích..."
+                            : importing
+                                ? "Đang đồng bộ..."
+                                : importPreview
+                                    ? "Đồng bộ theo file"
+                                    : "Xem trước"}
                     </Button>
                 </DialogActions>
             </Dialog>

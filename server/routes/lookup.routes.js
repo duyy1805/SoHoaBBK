@@ -12,6 +12,11 @@ sharp.cache(false);
 const { poolPromise } = require('../db');
 const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
+const {
+  buildSyncPlan: buildDanhMucKiemSyncPlan,
+  executeSyncPlan: executeDanhMucKiemSyncPlan,
+  groupKey: buildDanhMucKiemGroupKey
+} = require('../services/danhMucKiemImport.service');
 
 const excelUpload = multer({
   storage: multer.memoryStorage(),
@@ -213,7 +218,6 @@ const decodeRowVersion = (value) => {
     return buffer.length === 8 ? buffer : null;
   } catch { return null; }
 };
-const buildNhomImportKey = (tenNhom, moTaNhom) => `${normalizeKey(tenNhom)}|${normalizeKey(moTaNhom)}`;
 const parseOrder = (value, fallback) => {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -495,6 +499,160 @@ const parseOptionalDiemTrongYeu = (rawValue) => {
   return { valid: false, value: null };
 };
 
+const parseDanhMucKiemWorkbook = (buffer) => {
+  let workbook;
+  try {
+    workbook = XLSX.read(buffer, { type: "buffer" });
+  } catch {
+    const error = new Error("Không đọc được file Excel");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (!workbook.SheetNames.includes("DanhMucKiem")) {
+    const error = new Error("File phải có sheet tên DanhMucKiem");
+    error.statusCode = 400;
+    error.details = [{ line: 1, message: "Không tìm thấy sheet DanhMucKiem" }];
+    throw error;
+  }
+
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets.DanhMucKiem, {
+    defval: "",
+    raw: false
+  }).map(normalizeImportRow);
+
+  if (!rows.length) {
+    const error = new Error("File không có dữ liệu");
+    error.statusCode = 400;
+    error.details = [{ line: 1, message: "File không có dòng dữ liệu để import" }];
+    throw error;
+  }
+  return rows;
+};
+
+const prepareDanhMucKiemImport = async (pool, rows) => {
+  const sanPhamList = await getAllSanPham(pool);
+  const sanPhamByCode = new Map(
+    sanPhamList.map((item) => [normalizeKey(item.MaSanPham), item])
+  );
+  const errors = [];
+  const products = new Map();
+
+  rows.forEach((row) => {
+    const criticalValue = parseOptionalDiemTrongYeu(row.DiemTrongYeuRaw);
+    row.DiemTrongYeu = criticalValue.value ?? false;
+    const product = sanPhamByCode.get(normalizeKey(row.MaSanPham));
+
+    if (!row.MaSanPham) {
+      errors.push({ line: row.line, message: "Thiếu MaSanPham" });
+    } else if (!product) {
+      errors.push({ line: row.line, message: `MaSanPham không tồn tại: ${row.MaSanPham}` });
+    }
+    if (!row.TenNhom) errors.push({ line: row.line, message: "Thiếu TenNhom" });
+    if (row.TenNhom.length > 255) {
+      errors.push({ line: row.line, message: "TenNhom không được vượt quá 255 ký tự" });
+    }
+    if (!row.MoTaNhom) {
+      errors.push({ line: row.line, message: "Thiếu MoTaNhom để phân biệt nhóm kiểm" });
+    }
+    if (!row.TenMucKiem) errors.push({ line: row.line, message: "Thiếu TenMucKiem" });
+    if (row.TenMucKiem.length > 255) {
+      errors.push({ line: row.line, message: "TenMucKiem không được vượt quá 255 ký tự" });
+    }
+    if (row.ThamChieu.length > 255) {
+      errors.push({ line: row.line, message: "ThamChieu không được vượt quá 255 ký tự" });
+    }
+    if (!criticalValue.valid) {
+      errors.push({
+        line: row.line,
+        message: "DiemTrongYeu chỉ nhận Có/Không, true/false hoặc 1/0"
+      });
+    }
+    if (!product || !row.TenNhom || !row.MoTaNhom || !row.TenMucKiem || !criticalValue.valid) {
+      return;
+    }
+
+    const productId = Number(product.Id);
+    if (!products.has(productId)) {
+      products.set(productId, { ...product, Id: productId, groups: new Map() });
+    }
+    const productModel = products.get(productId);
+    const nhomKey = buildDanhMucKiemGroupKey(row.TenNhom, row.MoTaNhom);
+    const explicitGroupOrder = parseOptionalOrder(row.ThuTuNhom);
+    const explicitAssignmentOrder = parseOptionalOrder(row.ThuTuGanNhom);
+
+    if (!productModel.groups.has(nhomKey)) {
+      productModel.groups.set(nhomKey, {
+        key: nhomKey,
+        TenNhom: row.TenNhom,
+        MoTa: row.MoTaNhom,
+        ThuTu: explicitGroupOrder || productModel.groups.size + 1,
+        ThuTuGanNhom: explicitAssignmentOrder || productModel.groups.size + 1,
+        firstLine: row.line,
+        items: new Map()
+      });
+    }
+
+    const group = productModel.groups.get(nhomKey);
+    if (explicitGroupOrder && explicitGroupOrder !== group.ThuTu) {
+      errors.push({
+        line: row.line,
+        message: `ThuTuNhom mâu thuẫn với dòng ${group.firstLine} trong cùng sản phẩm/nhóm`
+      });
+    }
+    if (explicitAssignmentOrder && explicitAssignmentOrder !== group.ThuTuGanNhom) {
+      errors.push({
+        line: row.line,
+        message: `ThuTuGanNhom mâu thuẫn với dòng ${group.firstLine} trong cùng sản phẩm/nhóm`
+      });
+    }
+
+    const itemKey = normalizeKey(row.TenMucKiem);
+    if (group.items.has(itemKey)) {
+      errors.push({
+        line: row.line,
+        message: `Mục kiểm “${row.TenMucKiem}” bị trùng với dòng ${group.items.get(itemKey).line}`
+      });
+      return;
+    }
+    group.items.set(itemKey, {
+      key: itemKey,
+      line: row.line,
+      TenMucKiem: row.TenMucKiem,
+      ThamChieu: row.ThamChieu,
+      PhuongPhapKiem: row.PhuongPhapKiem,
+      TieuChuan: row.TieuChuan,
+      ThuTu: parseOrder(row.ThuTuMuc, group.items.size + 1),
+      DiemTrongYeu: row.DiemTrongYeu
+    });
+  });
+
+  if (errors.length) {
+    const error = new Error("File có dữ liệu không hợp lệ");
+    error.statusCode = 400;
+    error.details = errors;
+    throw error;
+  }
+
+  return { totalRows: rows.length, products };
+};
+
+const danhMucKiemUpload = (req, res, next) => {
+  excelUpload.single("file")(req, res, (error) => {
+    if (error) return res.status(400).json({ message: error.message || "File không hợp lệ" });
+    if (!req.file) return res.status(400).json({ message: "Vui lòng chọn file .xlsx" });
+    next();
+  });
+};
+
+const sendDanhMucKiemImportError = (res, error, action) => {
+  console.error(`${action} danh muc kiem error:`, error);
+  return res.status(error.statusCode || 500).json({
+    message: error.statusCode ? error.message : `${action} danh mục kiểm thất bại`,
+    errors: error.details,
+    ...(error.statusCode ? {} : { error: error.message })
+  });
+};
+
 const normalizeThongSoImportRow = (row, index) => ({
   line: index + 2,
   MaSanPham: trimValue(row.MaSanPham),
@@ -761,26 +919,6 @@ async function getAllSanPham(pool) {
   }
 
   return items;
-}
-
-async function getNhomKiemListInTransaction(transaction) {
-  const result = await requestWithTransaction(transaction)
-    .execute("sp_DM_GetNhomKiemList");
-  return result.recordset || [];
-}
-
-async function getCheckItemsInTransaction(transaction, nhomKiemId) {
-  const result = await requestWithTransaction(transaction)
-    .input("NhomKiemId", sql.Int, nhomKiemId)
-    .execute("sp_DM_GetCheckItemList");
-  return result.recordset || [];
-}
-
-async function getSanPhamNhomKiemInTransaction(transaction, sanPhamId) {
-  const result = await requestWithTransaction(transaction)
-    .input("SanPhamId", sql.Int, sanPhamId)
-    .execute("sp_SANPHAM_GetNhomKiemBySanPham");
-  return result.recordset || [];
 }
 
 async function getThongSoInTransaction(transaction, sanPhamId) {
@@ -2589,283 +2727,67 @@ router.get(
 );
 
 router.post(
+  "/import-danh-muc-kiem/preview",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  danhMucKiemUpload,
+  async (req, res) => {
+    try {
+      const rows = parseDanhMucKiemWorkbook(req.file.buffer);
+      const pool = await poolPromise;
+      const model = await prepareDanhMucKiemImport(pool, rows);
+      const plan = await buildDanhMucKiemSyncPlan({
+        requestFactory: () => pool.request(),
+        model
+      });
+
+      res.json({
+        success: true,
+        message: "Đã phân tích dữ liệu sẽ đồng bộ",
+        summary: plan.summary
+      });
+    } catch (error) {
+      sendDanhMucKiemImportError(res, error, "Xem trước import");
+    }
+  }
+);
+
+router.post(
   "/import-danh-muc-kiem",
   authenticateToken,
   authorize("QUAN_TRI_DM"),
-  (req, res, next) => {
-    excelUpload.single("file")(req, res, (err) => {
-      if (err) {
-        return res.status(400).json({ message: err.message || "File không hợp lệ" });
-      }
-      next();
-    });
-  },
+  danhMucKiemUpload,
   async (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({ message: "Vui lòng chọn file .xlsx" });
-    }
-
-    let rows = [];
-
-    try {
-      const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
-      const sheetName = workbook.SheetNames.includes("DanhMucKiem")
-        ? "DanhMucKiem"
-        : null;
-
-      if (!sheetName) {
-        return res.status(400).json({
-          message: "File phải có sheet tên DanhMucKiem",
-          errors: [{ line: 1, message: "Không tìm thấy sheet DanhMucKiem" }]
-        });
-      }
-
-      rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
-        defval: "",
-        raw: false
-      }).map(normalizeImportRow);
-    } catch (err) {
-      console.error("Parse import danh muc kiem error:", err);
-      return res.status(400).json({ message: "Không đọc được file Excel" });
-    }
-
-    if (!rows.length) {
+    if (String(req.body.confirmReplace || "").toLowerCase() !== "true") {
       return res.status(400).json({
-        message: "File không có dữ liệu",
-        errors: [{ line: 1, message: "File không có dòng dữ liệu để import" }]
+        message: "Bạn phải xác nhận đồng bộ thay thế hoàn toàn theo file Excel"
       });
     }
 
+    let transaction;
     try {
+      const rows = parseDanhMucKiemWorkbook(req.file.buffer);
       const pool = await poolPromise;
-      const sanPhamList = await getAllSanPham(pool);
-      const sanPhamByCode = new Map(
-        sanPhamList.map(item => [normalizeKey(item.MaSanPham), item])
-      );
-
-      const errors = [];
-
-      rows.forEach((row) => {
-        const criticalValue = parseOptionalDiemTrongYeu(row.DiemTrongYeuRaw);
-        row.DiemTrongYeu = criticalValue.value;
-
-        if (!row.MaSanPham) {
-          errors.push({ line: row.line, message: "Thiếu MaSanPham" });
-        } else if (!sanPhamByCode.has(normalizeKey(row.MaSanPham))) {
-          errors.push({ line: row.line, message: `MaSanPham không tồn tại: ${row.MaSanPham}` });
-        }
-
-        if (!row.TenNhom) {
-          errors.push({ line: row.line, message: "Thiếu TenNhom" });
-        }
-
-        if (!row.MoTaNhom) {
-          errors.push({ line: row.line, message: "Thiếu MoTaNhom để phân biệt nhóm kiểm" });
-        }
-
-        if (!row.TenMucKiem) {
-          errors.push({ line: row.line, message: "Thiếu TenMucKiem" });
-        }
-
-        if (!criticalValue.valid) {
-          errors.push({
-            line: row.line,
-            message: "DiemTrongYeu chỉ nhận Có/Không, true/false hoặc 1/0"
-          });
-        }
+      const model = await prepareDanhMucKiemImport(pool, rows);
+      transaction = new sql.Transaction(pool);
+      await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+      const plan = await buildDanhMucKiemSyncPlan({
+        requestFactory: () => requestWithTransaction(transaction),
+        model
       });
+      await executeDanhMucKiemSyncPlan(transaction, plan);
+      await transaction.commit();
 
-      if (errors.length) {
-        return res.status(400).json({
-          message: "File có dữ liệu không hợp lệ",
-          errors
-        });
+      res.json({
+        success: true,
+        message: "Đồng bộ danh mục kiểm thành công",
+        summary: plan.summary
+      });
+    } catch (error) {
+      if (transaction) {
+        try { await transaction.rollback(); } catch { /* transaction đã kết thúc */ }
       }
-
-      const nhomRows = new Map();
-      const itemRows = new Map();
-      const assignRows = new Map();
-
-      rows.forEach((row, index) => {
-        const nhomKey = buildNhomImportKey(row.TenNhom, row.MoTaNhom);
-        const sanPham = sanPhamByCode.get(normalizeKey(row.MaSanPham));
-        const nhomOrder = parseOrder(row.ThuTuNhom, index + 1);
-        const itemOrder = parseOrder(row.ThuTuMuc, index + 1);
-        const assignOrder = parseOrder(row.ThuTuGanNhom, index + 1);
-
-        if (!nhomRows.has(nhomKey)) {
-          nhomRows.set(nhomKey, {
-            TenNhom: row.TenNhom,
-            MoTa: row.MoTaNhom,
-            ThuTu: nhomOrder
-          });
-        }
-
-        const itemKey = `${nhomKey}|${normalizeKey(row.TenMucKiem)}`;
-        if (!itemRows.has(itemKey)) {
-          itemRows.set(itemKey, {
-            nhomKey,
-            TenMucKiem: row.TenMucKiem,
-            ThamChieu: row.ThamChieu,
-            PhuongPhapKiem: row.PhuongPhapKiem,
-            TieuChuan: row.TieuChuan,
-            ThuTu: itemOrder,
-            DiemTrongYeu: row.DiemTrongYeu
-          });
-        }
-
-        const assignKey = `${sanPham.Id}|${nhomKey}`;
-        if (!assignRows.has(assignKey)) {
-          assignRows.set(assignKey, {
-            SanPhamId: sanPham.Id,
-            nhomKey,
-            ThuTu: assignOrder
-          });
-        }
-      });
-
-      const transaction = new sql.Transaction(pool);
-      await transaction.begin();
-
-      const summary = {
-        totalRows: rows.length,
-        createdNhom: 0,
-        updatedNhom: 0,
-        createdMuc: 0,
-        updatedMuc: 0,
-        createdGanNhom: 0,
-        updatedGanNhom: 0
-      };
-
-      try {
-        let nhomList = await getNhomKiemListInTransaction(transaction);
-        const nhomByName = new Map(
-          nhomList.map(item => [buildNhomImportKey(item.TenNhom, item.MoTa), item])
-        );
-
-        for (const [nhomKey, nhom] of nhomRows.entries()) {
-          const existed = nhomByName.get(nhomKey);
-
-          if (existed) {
-            await requestWithTransaction(transaction)
-              .input("Id", sql.Int, existed.Id)
-              .input("TenNhom", sql.NVarChar(255), nhom.TenNhom)
-              .input("MoTa", sql.NVarChar(sql.MAX), nhom.MoTa)
-              .input("ThuTu", sql.Int, nhom.ThuTu)
-              .input("TrangThai", sql.Bit, existed.TrangThai)
-              .execute("sp_DM_UpdateNhomKiem");
-            summary.updatedNhom += 1;
-          } else {
-            await requestWithTransaction(transaction)
-              .input("TenNhom", sql.NVarChar(255), nhom.TenNhom)
-              .input("MoTa", sql.NVarChar(sql.MAX), nhom.MoTa)
-              .input("ThuTu", sql.Int, nhom.ThuTu)
-              .execute("sp_DM_CreateNhomKiem");
-            summary.createdNhom += 1;
-          }
-
-          nhomList = await getNhomKiemListInTransaction(transaction);
-          nhomByName.clear();
-          nhomList.forEach(item => nhomByName.set(buildNhomImportKey(item.TenNhom, item.MoTa), item));
-        }
-
-        const itemCache = new Map();
-        const getItemByName = async (nhomKiemId, tenMucKiem) => {
-          if (!itemCache.has(nhomKiemId)) {
-            const items = await getCheckItemsInTransaction(transaction, nhomKiemId);
-            itemCache.set(
-              nhomKiemId,
-              new Map(items.map(item => [normalizeKey(item.TenMucKiem), item]))
-            );
-          }
-
-          return itemCache.get(nhomKiemId).get(normalizeKey(tenMucKiem));
-        };
-
-        for (const item of itemRows.values()) {
-          const nhom = nhomByName.get(item.nhomKey);
-          const existed = await getItemByName(nhom.Id, item.TenMucKiem);
-
-          if (existed) {
-            await requestWithTransaction(transaction)
-              .input("Id", sql.Int, existed.Id)
-              .input("TenMucKiem", sql.NVarChar(255), item.TenMucKiem)
-              .input("ThamChieu", sql.NVarChar(sql.MAX), item.ThamChieu)
-              .input("PhuongPhapKiem", sql.NVarChar(sql.MAX), item.PhuongPhapKiem)
-              .input("TieuChuan", sql.NVarChar(sql.MAX), item.TieuChuan)
-              .input("ThuTu", sql.Int, item.ThuTu)
-              .input("TrangThai", sql.Bit, existed.TrangThai)
-              .input("DiemTrongYeu", sql.Bit, item.DiemTrongYeu ?? existed.DiemTrongYeu ?? false)
-              .execute("sp_DM_UpdateCheckItem");
-            summary.updatedMuc += 1;
-          } else {
-            await requestWithTransaction(transaction)
-              .input("NhomKiemId", sql.Int, nhom.Id)
-              .input("TenMucKiem", sql.NVarChar(255), item.TenMucKiem)
-              .input("ThamChieu", sql.NVarChar(sql.MAX), item.ThamChieu)
-              .input("PhuongPhapKiem", sql.NVarChar(sql.MAX), item.PhuongPhapKiem)
-              .input("TieuChuan", sql.NVarChar(sql.MAX), item.TieuChuan)
-              .input("ThuTu", sql.Int, item.ThuTu)
-              .input("DiemTrongYeu", sql.Bit, item.DiemTrongYeu ?? false)
-              .execute("sp_DM_CreateCheckItem");
-            itemCache.delete(nhom.Id);
-            summary.createdMuc += 1;
-          }
-        }
-
-        const assignmentCache = new Map();
-        const getAssignmentByNhomId = async (sanPhamId, nhomKiemId) => {
-          if (!assignmentCache.has(sanPhamId)) {
-            const assignments = await getSanPhamNhomKiemInTransaction(transaction, sanPhamId);
-            assignmentCache.set(
-              sanPhamId,
-              new Map(assignments.map(item => [Number(item.NhomKiemId), item]))
-            );
-          }
-
-          return assignmentCache.get(sanPhamId).get(Number(nhomKiemId));
-        };
-
-        for (const assignment of assignRows.values()) {
-          const nhom = nhomByName.get(assignment.nhomKey);
-          const existed = await getAssignmentByNhomId(assignment.SanPhamId, nhom.Id);
-
-          if (existed) {
-            await requestWithTransaction(transaction)
-              .input("Id", sql.Int, existed.Id)
-              .input("BatBuoc", sql.Bit, true)
-              .input("ThuTu", sql.Int, assignment.ThuTu)
-              .execute("sp_SANPHAM_UpdateNhomKiem");
-            summary.updatedGanNhom += 1;
-          } else {
-            await requestWithTransaction(transaction)
-              .input("SanPhamId", sql.Int, assignment.SanPhamId)
-              .input("NhomKiemId", sql.Int, nhom.Id)
-              .input("BatBuoc", sql.Bit, true)
-              .input("ThuTu", sql.Int, assignment.ThuTu)
-              .execute("sp_SANPHAM_AddNhomKiem");
-            assignmentCache.delete(assignment.SanPhamId);
-            summary.createdGanNhom += 1;
-          }
-        }
-
-        await transaction.commit();
-
-        res.json({
-          success: true,
-          message: "Import danh mục kiểm thành công",
-          summary
-        });
-      } catch (err) {
-        await transaction.rollback();
-        throw err;
-      }
-    } catch (err) {
-      console.error("Import danh muc kiem error:", err);
-      res.status(500).json({
-        message: "Import danh mục kiểm thất bại",
-        error: err.message
-      });
+      sendDanhMucKiemImportError(res, error, "Đồng bộ");
     }
   }
 );

@@ -12,7 +12,8 @@ export const BienBanPrintTemplate = React.forwardRef(({
     dynamicFields = [],
     specialistOpinions = [],
     followUpEvaluation = null,
-    canEditCustomFields = false
+    canEditCustomFields = false,
+    useDefectInspectedQuantityOnly = false
 }, ref) => {
 
     // 1. Lấy dữ liệu Custom Data đã lưu từ API
@@ -274,7 +275,9 @@ export const BienBanPrintTemplate = React.forwardRef(({
     const printProposals = xuLy || [];
     const printOpinions = isV01 ? (specialistOpinions || []) : [];
     const getInspectedQuantity = (defect) => {
-        const candidates = [defect?.SoLuongKiem, info.SoLuong, bienBanSoLuongKhongPhuHop];
+        const candidates = useDefectInspectedQuantityOnly
+            ? [defect?.SoLuongKiem]
+            : [defect?.SoLuongKiem, info.SoLuong, bienBanSoLuongKhongPhuHop];
         return candidates.find((value) => value !== null && value !== undefined && String(value).trim() !== '' && Number(value) > 0) ?? '';
     };
 

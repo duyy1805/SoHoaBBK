@@ -76,6 +76,20 @@ const uniquePlanFilterOptions = (rows, valueGetter, labelGetter) => {
         .sort((left, right) => left.label.localeCompare(right.label, "vi"));
 };
 
+const getPlanUnitFilterValue = (row = {}) =>
+    String(row.ID_DonVi ?? row.Ten_DonVi ?? "").trim();
+
+const getPlanDepartmentFilterValue = (row = {}) =>
+    String(row.ID_BoPhan ?? row.Ten_BoPhan ?? "").trim();
+
+const getPlanProcessFilterValue = (row = {}) =>
+    String(
+        row.ID_QuyTrinhSanXuat ??
+        row.Ten_QuyTrinhSanXuat ??
+        row.TenQuyTrinhSanXuat ??
+        ""
+    ).trim();
+
 export default function PhieuKiemCreate() {
     const navigate = useNavigate();
     const { showToast } = useToast();
@@ -226,7 +240,7 @@ export default function PhieuKiemCreate() {
                 setLichList(res.data || []);
             }
             if (isKeHoachSanXuatLoai(loai)) {
-                const res = await getKeHoachSanXuatChuaKiem();
+                const res = await getKeHoachSanXuatChuaKiem({ loaiKiemId: loai.Id });
                 setLichList(res.data || []);
             }
             if (loai?.Id === 4) {
@@ -307,13 +321,13 @@ export default function PhieuKiemCreate() {
                 result = result.filter((row) => getLocalDateKey(row.Ngay) === planDateFilter);
             }
             if (planUnitFilter) {
-                result = result.filter((row) => String(row.ID_DonVi || row.Ten_DonVi || "") === planUnitFilter);
+                result = result.filter((row) => getPlanUnitFilterValue(row) === planUnitFilter);
             }
             if (planDepartmentFilter) {
-                result = result.filter((row) => String(row.ID_BoPhan || row.Ten_BoPhan || "") === planDepartmentFilter);
+                result = result.filter((row) => getPlanDepartmentFilterValue(row) === planDepartmentFilter);
             }
             if (planProcessFilter) {
-                result = result.filter((row) => String(row.ID_QuyTrinhSanXuat || row.Ten_QuyTrinhSanXuat || row.TenQuyTrinhSanXuat || "") === planProcessFilter);
+                result = result.filter((row) => getPlanProcessFilterValue(row) === planProcessFilter);
             }
         }
 
@@ -325,17 +339,17 @@ export default function PhieuKiemCreate() {
             .sort((left, right) => right.localeCompare(left)),
         units: uniquePlanFilterOptions(
             lichList,
-            (row) => row.ID_DonVi || row.Ten_DonVi,
+            getPlanUnitFilterValue,
             (row) => row.Ten_DonVi || `Đơn vị #${row.ID_DonVi}`
         ),
         departments: uniquePlanFilterOptions(
             lichList,
-            (row) => row.ID_BoPhan || row.Ten_BoPhan,
+            getPlanDepartmentFilterValue,
             (row) => row.Ten_BoPhan || `Bộ phận #${row.ID_BoPhan}`
         ),
         processes: uniquePlanFilterOptions(
             lichList,
-            (row) => row.ID_QuyTrinhSanXuat || row.Ten_QuyTrinhSanXuat || row.TenQuyTrinhSanXuat,
+            getPlanProcessFilterValue,
             (row) => row.Ten_QuyTrinhSanXuat || row.TenQuyTrinhSanXuat || `Quy trình #${row.ID_QuyTrinhSanXuat}`
         )
     }), [lichList]);
@@ -354,6 +368,14 @@ export default function PhieuKiemCreate() {
         if (selectedLoai?.Id === 4) return row.KeHoachNhapId || row.ID_TuTang;
         return row.Id;
     };
+
+    const getRowRenderKey = (row, index) => [
+        getRowId(row),
+        row.SanPhamId || row.ItemCode || row.MaSanPham || row.ItemId || "no-product",
+        row.Ngay || row.RequiredDateString || "no-date",
+        row.Ten_QuyTrinhSanXuat || row.TenQuyTrinhSanXuat || "no-process",
+        index
+    ].join("::");
 
     const handleLoaiKiemSelect = (option) => {
         const value = option?.Id || "";
@@ -421,7 +443,14 @@ export default function PhieuKiemCreate() {
         if (e.target.checked) {
             setSelectedLichList((prev) => {
                 const selectedIds = new Set(prev.map((item) => getRowId(item)));
-                return [...prev, ...filteredLichList.filter((item) => !selectedIds.has(getRowId(item)))];
+                const next = [...prev];
+                filteredLichList.forEach((item) => {
+                    const itemId = getRowId(item);
+                    if (selectedIds.has(itemId)) return;
+                    selectedIds.add(itemId);
+                    next.push(item);
+                });
+                return next;
             });
         } else {
             const filteredIds = new Set(filteredLichList.map((item) => getRowId(item)));
@@ -998,7 +1027,7 @@ export default function PhieuKiemCreate() {
                                             )}
                                             {isKeHoachSanXuatLoai(selectedLoai) && (
                                                 <>
-                                                    <TableCell>Phân xưởng</TableCell>
+                                                    <TableCell>Phân xưởng / Bộ phận</TableCell>
                                                     <TableCell>Mã SP</TableCell>
                                                     <TableCell>Tên sản phẩm</TableCell>
                                                     <TableCell>Quy trình sản xuất</TableCell>
@@ -1025,7 +1054,11 @@ export default function PhieuKiemCreate() {
                                         </TableRow>
                                     </TableHead>
 
-                                    <TableBody>
+                                    <TableBody
+                                        key={isKeHoachSanXuatLoai(selectedLoai)
+                                            ? [planDateFilter, planUnitFilter, planDepartmentFilter, planProcessFilter, searchTerm].join("|")
+                                            : `${selectedLoai?.Id || "none"}|${searchTerm}`}
+                                    >
                                         {filteredLichList.length === 0 ? (
                                             <TableRow>
                                                 <TableCell colSpan={9} align="center" sx={{ py: 3 }}>
@@ -1035,11 +1068,11 @@ export default function PhieuKiemCreate() {
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
-                                            filteredLichList.map((row) => {
+                                            filteredLichList.map((row, rowIndex) => {
                                                 const isSelected = selectedLichList.some(item => getRowId(item) === getRowId(row));
                                                 return (
                                                     <TableRow
-                                                        key={getRowId(row)}
+                                                        key={getRowRenderKey(row, rowIndex)}
                                                         hover
                                                         onClick={() => handleToggleRow(row)}
                                                         role="checkbox"
@@ -1086,7 +1119,12 @@ export default function PhieuKiemCreate() {
                                                         )}
                                                         {isKeHoachSanXuatLoai(selectedLoai) && (
                                                             <>
-                                                                <TableCell>{row.Ten_DonVi}</TableCell>
+                                                                <TableCell>
+                                                                    <Typography variant="body2" fontWeight={600}>{row.Ten_DonVi || "---"}</Typography>
+                                                                    <Typography variant="caption" color="text.secondary">
+                                                                        {row.Ten_BoPhan || "Chưa xác định bộ phận"}
+                                                                    </Typography>
+                                                                </TableCell>
                                                                 <TableCell>{row.MaSanPham}</TableCell>
                                                                 <TableCell>{row.TenSanPham}</TableCell>
                                                                 <TableCell>{row.Ten_QuyTrinhSanXuat || row.TenQuyTrinhSanXuat || "---"}</TableCell>

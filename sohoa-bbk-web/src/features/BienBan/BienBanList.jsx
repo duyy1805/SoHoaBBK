@@ -23,17 +23,38 @@ import {
     Button,
     Tabs,
     Tab,
-    Paper
+    Paper,
+    Collapse
 } from "@mui/material";
 import {
     Search as SearchIcon,
     Visibility as VisibilityIcon,
-    ArrowForward as ArrowForwardIcon
+    ArrowForward as ArrowForwardIcon,
+    FilterList as FilterListIcon,
+    RestartAlt as RestartAltIcon,
+    ForumOutlined as ForumOutlinedIcon
 } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import { getMyBienBan } from "../../api/bienBan.api"; // Giữ nguyên import của bạn
 import { decodeToken } from "../../utils/auth";
 import { getBienBanStatusMeta } from "./components/bienBanWorkflow";
+
+const normalizeSearchText = (value) => String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase();
+
+const getMyDepartmentOpinionMeta = (status) => {
+    if (status === "CHO_Y_KIEN") {
+        return { label: "Bộ phận bạn cần nhập ý kiến", color: "warning" };
+    }
+    if (status === "CHO_TBP_XAC_NHAN") {
+        return { label: "Chờ TBP bộ phận bạn xác nhận", color: "info" };
+    }
+    return null;
+};
 
 const getWorkBucket = (item, currentUser, isManager, isSxbt) => {
     if (isSxbt) {
@@ -58,6 +79,12 @@ export default function BienBanList() {
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [workFilter, setWorkFilter] = useState("all");
+    const [departmentFilter, setDepartmentFilter] = useState("all");
+    const [opinionDepartmentFilter, setOpinionDepartmentFilter] = useState("all");
+    const [typeFilter, setTypeFilter] = useState("all");
+    const [dateFrom, setDateFrom] = useState("");
+    const [dateTo, setDateTo] = useState("");
+    const [advancedOpen, setAdvancedOpen] = useState(false);
     const currentUser = useMemo(() => decodeToken() || {}, []);
     const isManager = (currentUser.permissions || []).some((permission) =>
         ["QUAN_TRI_DM", "XAC_NHAN_NGUOI_XU_LY", "KET_LUAN"].includes(permission)
@@ -131,31 +158,84 @@ export default function BienBanList() {
         return result;
     }, { action: 0, waiting: 0, done: 0 }), [data, currentUser, isManager]);
 
+    const departmentOptions = useMemo(() => {
+        const options = new Map();
+        data.forEach((item) => {
+            const id = Number(item.BoPhanTaoId);
+            if (!Number.isInteger(id) || id <= 0) return;
+            options.set(id, {
+                id,
+                label: [item.MaBoPhanTao, item.TenBoPhanTao].filter(Boolean).join(" - ") || `Bộ phận #${id}`
+            });
+        });
+        return [...options.values()].sort((a, b) => a.label.localeCompare(b.label, "vi"));
+    }, [data]);
+
+    const opinionDepartmentOptions = useMemo(() => {
+        const options = new Map();
+        data.forEach((item) => {
+            (Array.isArray(item.OpinionDepartments) ? item.OpinionDepartments : []).forEach((department) => {
+                const id = Number(department.id);
+                if (!Number.isInteger(id) || id <= 0) return;
+                options.set(id, {
+                    id,
+                    label: [department.maBoPhan, department.tenBoPhan].filter(Boolean).join(" - ") || `Bộ phận #${id}`
+                });
+            });
+        });
+        return [...options.values()].sort((a, b) => a.label.localeCompare(b.label, "vi"));
+    }, [data]);
+
     const filteredData = useMemo(() => {
         return data.filter((item) => {
             if (workFilter !== "all" && getWorkBucket(item, currentUser, isManager, isSxbtBienBan(item)) !== workFilter) return false;
+            if (departmentFilter === "mine" && Number(item.BoPhanTaoId) !== Number(currentUser.boPhanId)) return false;
+            if (!["all", "mine"].includes(departmentFilter) && Number(item.BoPhanTaoId) !== Number(departmentFilter)) return false;
+            const opinionDepartmentIds = (Array.isArray(item.OpinionDepartments) ? item.OpinionDepartments : [])
+                .map((department) => Number(department.id));
+            if (opinionDepartmentFilter === "mine" && !opinionDepartmentIds.includes(Number(currentUser.boPhanId))) return false;
+            if (!["all", "mine"].includes(opinionDepartmentFilter) && !opinionDepartmentIds.includes(Number(opinionDepartmentFilter))) return false;
+            if (typeFilter === "sxbt" && !isSxbtBienBan(item)) return false;
+            if (typeFilter === "normal" && isSxbtBienBan(item)) return false;
             // Lọc theo trạng thái
             if (filterStatus && item.TrangThai !== filterStatus) return false;
 
+            const createdAt = item.CreatedAt ? new Date(item.CreatedAt) : null;
+            if (dateFrom && (!createdAt || createdAt < new Date(`${dateFrom}T00:00:00`))) return false;
+            if (dateTo && (!createdAt || createdAt > new Date(`${dateTo}T23:59:59.999`))) return false;
+
             // Lọc theo text (Tìm kiếm trên nhiều cột)
             if (searchText) {
-                const searchLower = searchText.toLowerCase();
-                const matchSoPhieu = item.SoPhieu?.toLowerCase().includes(searchLower);
-                const matchSanPham = item.TenSanPham?.toLowerCase().includes(searchLower);
-                const matchLot = item.Lot?.toLowerCase().includes(searchLower);
-                const matchNguoiLap = item.NguoiLap?.toLowerCase().includes(searchLower);
-                const matchBoPhan = `${item.MaBoPhanTao || ""} ${item.TenBoPhanTao || ""}`
-                    .toLowerCase()
-                    .includes(searchLower);
-                const matchMaDonVi = item.MaDonVi?.toLowerCase().includes(searchLower);
-
-                if (!matchSoPhieu && !matchSanPham && !matchLot && !matchNguoiLap && !matchBoPhan && !matchMaDonVi) {
-                    return false;
-                }
+                const searchLower = normalizeSearchText(searchText.trim());
+                const searchableText = normalizeSearchText([
+                    item.SoPhieu,
+                    item.TenSanPham,
+                    item.Lot,
+                    item.NguoiLap,
+                    item.MaBoPhanTao,
+                    item.TenBoPhanTao,
+                    ...(Array.isArray(item.OpinionDepartments)
+                        ? item.OpinionDepartments.flatMap((department) => [department.maBoPhan, department.tenBoPhan])
+                        : []),
+                    item.MaDonVi
+                ].filter(Boolean).join(" "));
+                if (!searchableText.includes(searchLower)) return false;
             }
             return true;
         });
-    }, [data, filterStatus, searchText, workFilter, currentUser, isManager]);
+    }, [data, filterStatus, searchText, workFilter, departmentFilter, opinionDepartmentFilter, typeFilter, dateFrom, dateTo, currentUser, isManager]);
+
+    const resetFilters = () => {
+        setSearchText("");
+        setFilterStatus("");
+        setDepartmentFilter("all");
+        setOpinionDepartmentFilter("all");
+        setTypeFilter("all");
+        setDateFrom("");
+        setDateTo("");
+        setWorkFilter("all");
+        setPage(0);
+    };
 
     // Xử lý phân trang
     const paginatedData = useMemo(() => {
@@ -237,24 +317,70 @@ export default function BienBanList() {
                         Danh sách Biên bản
                     </Typography>
 
-                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                    <Button
+                        variant={advancedOpen ? "contained" : "outlined"}
+                        startIcon={<FilterListIcon />}
+                        onClick={() => setAdvancedOpen((open) => !open)}
+                    >
+                        {advancedOpen ? "Thu gọn bộ lọc" : "Bộ lọc nâng cao"}
+                    </Button>
+                </Stack>
+
+                <Paper variant="outlined" sx={{ mb: 2, p: 2, borderRadius: 2.5 }}>
+                    <Stack direction={{ xs: "column", md: "row" }} spacing={1.5}>
                         <TextField
                             size="small"
-                            placeholder="Tìm số phiếu, sản phẩm..."
+                            placeholder="Tìm số phiếu, sản phẩm, LOT, người lập..."
                             value={searchText}
                             onChange={(e) => {
                                 setSearchText(e.target.value);
                                 setPage(0);
                             }}
-                            InputProps={{
-                                startAdornment: (
-                                    <InputAdornment position="start">
-                                        <SearchIcon fontSize="small" />
-                                    </InputAdornment>
-                                ),
+                            slotProps={{
+                                input: {
+                                    startAdornment: (
+                                        <InputAdornment position="start">
+                                            <SearchIcon fontSize="small" />
+                                        </InputAdornment>
+                                    )
+                                }
                             }}
-                            sx={{ minWidth: { xs: '100%', sm: 260 } }}
+                            sx={{ flex: 1, minWidth: { xs: "100%", md: 280 } }}
                         />
+                        <TextField
+                            select
+                            size="small"
+                            label="Bộ phận lập"
+                            value={departmentFilter}
+                            onChange={(e) => {
+                                setDepartmentFilter(e.target.value);
+                                setPage(0);
+                            }}
+                            sx={{ minWidth: { xs: "100%", md: 220 } }}
+                        >
+                            <MenuItem value="all">Tất cả bộ phận</MenuItem>
+                            {currentUser.boPhanId && <MenuItem value="mine">Bộ phận của tôi</MenuItem>}
+                            {departmentOptions.map((department) => (
+                                <MenuItem key={department.id} value={String(department.id)}>{department.label}</MenuItem>
+                            ))}
+                        </TextField>
+                        <TextField
+                            select
+                            size="small"
+                            label="Bộ phận được xin ý kiến"
+                            value={opinionDepartmentFilter}
+                            onChange={(e) => {
+                                setOpinionDepartmentFilter(e.target.value);
+                                setPage(0);
+                            }}
+                            sx={{ minWidth: { xs: "100%", md: 250 } }}
+                        >
+                            <MenuItem value="all">Tất cả bộ phận được xin ý kiến</MenuItem>
+                            {currentUser.boPhanId && <MenuItem value="mine">Bộ phận của tôi</MenuItem>}
+                            {opinionDepartmentOptions.map((department) => (
+                                <MenuItem key={department.id} value={String(department.id)}>{department.label}</MenuItem>
+                            ))}
+                        </TextField>
                         <TextField
                             select
                             size="small"
@@ -264,9 +390,9 @@ export default function BienBanList() {
                                 setFilterStatus(e.target.value);
                                 setPage(0);
                             }}
-                            sx={{ minWidth: { xs: '100%', sm: 180 } }}
+                            sx={{ minWidth: { xs: "100%", md: 210 } }}
                         >
-                            <MenuItem value="">Tất cả</MenuItem>
+                            <MenuItem value="">Tất cả trạng thái</MenuItem>
                             <MenuItem value="BB_MOI">Mới tạo</MenuItem>
                             <MenuItem value="CHO_PHAN_BO_XU_LY">Chờ phân công xử lý</MenuItem>
                             <MenuItem value="CHO_TP_B8">Chờ kết luận</MenuItem>
@@ -282,7 +408,61 @@ export default function BienBanList() {
                             <MenuItem value="BB_SXBT_HOAN_TAT">SXBT hoàn tất</MenuItem>
                         </TextField>
                     </Stack>
-                </Stack>
+
+                    <Collapse in={advancedOpen}>
+                        <Stack
+                            direction={{ xs: "column", sm: "row" }}
+                            spacing={1.5}
+                            alignItems={{ xs: "stretch", sm: "center" }}
+                            sx={{ mt: 1.5 }}
+                        >
+                            <TextField
+                                select
+                                size="small"
+                                label="Loại biên bản"
+                                value={typeFilter}
+                                onChange={(e) => {
+                                    setTypeFilter(e.target.value);
+                                    setPage(0);
+                                }}
+                                sx={{ minWidth: 190 }}
+                            >
+                                <MenuItem value="all">Tất cả loại</MenuItem>
+                                <MenuItem value="normal">Biên bản kiểm</MenuItem>
+                                <MenuItem value="sxbt">Biên bản SXBT</MenuItem>
+                            </TextField>
+                            <TextField
+                                size="small"
+                                label="Từ ngày"
+                                type="date"
+                                value={dateFrom}
+                                onChange={(e) => {
+                                    setDateFrom(e.target.value);
+                                    setPage(0);
+                                }}
+                                slotProps={{ inputLabel: { shrink: true } }}
+                            />
+                            <TextField
+                                size="small"
+                                label="Đến ngày"
+                                type="date"
+                                value={dateTo}
+                                onChange={(e) => {
+                                    setDateTo(e.target.value);
+                                    setPage(0);
+                                }}
+                                slotProps={{ inputLabel: { shrink: true } }}
+                            />
+                            <Button color="inherit" startIcon={<RestartAltIcon />} onClick={resetFilters}>
+                                Xóa bộ lọc
+                            </Button>
+                        </Stack>
+                    </Collapse>
+
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.25 }}>
+                        Hiển thị {filteredData.length} / {data.length} biên bản
+                    </Typography>
+                </Paper>
 
                 <Paper variant="outlined" sx={{ mb: 2, borderRadius: 2, overflow: "hidden" }}>
                     <Tabs
@@ -335,12 +515,19 @@ export default function BienBanList() {
                                 ) : paginatedData.map((item) => {
                                     const pendingText = getPendingDepartmentsText(item);
                                     const bucket = getWorkBucket(item, currentUser, isManager, isSxbtBienBan(item));
+                                    const myOpinionMeta = getMyDepartmentOpinionMeta(item.MyDepartmentOpinionStatus);
                                     return (
                                         <TableRow
                                             key={item.BienBanId}
                                             hover
                                             onClick={() => navigate(getItemPath(item))}
-                                            sx={{ cursor: "pointer" }}
+                                            sx={{
+                                                cursor: "pointer",
+                                                ...(myOpinionMeta ? {
+                                                    bgcolor: "rgba(245, 158, 11, 0.055)",
+                                                    "& td:first-of-type": { borderLeft: "4px solid", borderLeftColor: "warning.main" }
+                                                } : {})
+                                            }}
                                         >
                                             <TableCell>
                                                 <Typography variant="body2" fontWeight={700} color="primary.main" sx={{ lineHeight: 1.3, overflowWrap: "anywhere" }}>
@@ -371,6 +558,16 @@ export default function BienBanList() {
                                             <TableCell align="center">
                                                 <Stack alignItems="center" spacing={0.4} sx={{ minWidth: 0 }}>
                                                     {renderTrangThaiChip(item)}
+                                                    {myOpinionMeta && (
+                                                        <Chip
+                                                            icon={<ForumOutlinedIcon />}
+                                                            label={myOpinionMeta.label}
+                                                            color={myOpinionMeta.color}
+                                                            size="small"
+                                                            variant="outlined"
+                                                            sx={{ maxWidth: "100%", fontWeight: 700 }}
+                                                        />
+                                                    )}
                                                     {pendingText && (
                                                         <Tooltip title={pendingText}>
                                                             <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: "100%" }}>
@@ -410,12 +607,20 @@ export default function BienBanList() {
                         ) : paginatedData.map((item) => {
                             const pendingText = getPendingDepartmentsText(item);
                             const department = [item.MaBoPhanTao, item.TenBoPhanTao].filter(Boolean).join(" - ") || "—";
+                            const myOpinionMeta = getMyDepartmentOpinionMeta(item.MyDepartmentOpinionStatus);
                             return (
                                 <Paper
                                     key={item.BienBanId}
                                     variant="outlined"
                                     onClick={() => navigate(getItemPath(item))}
-                                    sx={{ p: 1.5, borderRadius: 2, cursor: "pointer", bgcolor: "background.paper" }}
+                                    sx={{
+                                        p: 1.5,
+                                        borderRadius: 2,
+                                        cursor: "pointer",
+                                        bgcolor: myOpinionMeta ? "rgba(245, 158, 11, 0.055)" : "background.paper",
+                                        borderLeft: myOpinionMeta ? "4px solid" : undefined,
+                                        borderLeftColor: myOpinionMeta ? "warning.main" : undefined
+                                    }}
                                 >
                                     <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
                                         <Box sx={{ minWidth: 0 }}>
@@ -431,6 +636,17 @@ export default function BienBanList() {
                                         {item.TenSanPham || "—"}
                                     </Typography>
                                     <Typography variant="caption" color="text.secondary">Lot: {item.Lot || "—"}</Typography>
+
+                                    {myOpinionMeta && (
+                                        <Chip
+                                            icon={<ForumOutlinedIcon />}
+                                            label={myOpinionMeta.label}
+                                            color={myOpinionMeta.color}
+                                            size="small"
+                                            variant="outlined"
+                                            sx={{ mt: 1, fontWeight: 700 }}
+                                        />
+                                    )}
 
                                     <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, my: 1.25 }}>
                                         <Box>

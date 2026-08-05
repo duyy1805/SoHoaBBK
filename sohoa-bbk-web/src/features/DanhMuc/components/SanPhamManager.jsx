@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { Fragment, useEffect, useState, useMemo } from "react";
 import {
     Box,
     Button,
@@ -24,7 +24,9 @@ import {
     Grid,
     Divider,
     Alert,
-    InputAdornment
+    InputAdornment,
+    Collapse,
+    CircularProgress
 } from "@mui/material";
 
 import SearchIcon from "@mui/icons-material/Search";
@@ -35,6 +37,8 @@ import AddIcon from "@mui/icons-material/Add";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
 import SettingsOverscanIcon from '@mui/icons-material/SettingsOverscan';
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import ConfirmDialog from "../../../components/common/ConfirmDialog"
 import SanPhamThongSoDialog from "./SanPhamThongSoDialog";
 import {
@@ -51,9 +55,48 @@ import {
     createSanPhamNhomKiem,
     deleteSanPhamNhomKiem,
     getNhomKiemList,
+    getCheckItemByNhom,
     uploadSanPhamImage,
     importSanPhamImages
 } from "../../../api/lookup.api";
+
+function CheckItemPreview({ items = [] }) {
+    if (!items.length) {
+        return <Alert severity="info">Nhóm này chưa có mục kiểm hoạt động.</Alert>;
+    }
+
+    return (
+        <TableContainer component={Paper} variant="outlined">
+            <Table size="small">
+                <TableHead>
+                    <TableRow sx={{ bgcolor: "grey.100" }}>
+                        <TableCell sx={{ width: 56, fontWeight: 650 }}>STT</TableCell>
+                        <TableCell sx={{ minWidth: 180, fontWeight: 650 }}>Mục kiểm</TableCell>
+                        <TableCell sx={{ minWidth: 150, fontWeight: 650 }}>Tham chiếu</TableCell>
+                        <TableCell sx={{ minWidth: 190, fontWeight: 650 }}>Phương pháp kiểm</TableCell>
+                        <TableCell sx={{ minWidth: 220, fontWeight: 650 }}>Tiêu chuẩn</TableCell>
+                    </TableRow>
+                </TableHead>
+                <TableBody>
+                    {[...items].sort((a, b) => (a.ThuTu || 0) - (b.ThuTu || 0)).map((item, index) => (
+                        <TableRow key={item.Id || `${item.TenMucKiem}-${index}`}>
+                            <TableCell>{item.ThuTu || index + 1}</TableCell>
+                            <TableCell>
+                                <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                                    <Typography variant="body2" fontWeight={600}>{item.TenMucKiem}</Typography>
+                                    {item.DiemTrongYeu && <Chip size="small" color="error" label="Trọng yếu" variant="outlined" />}
+                                </Stack>
+                            </TableCell>
+                            <TableCell>{item.ThamChieu || "—"}</TableCell>
+                            <TableCell>{item.PhuongPhapKiem || "—"}</TableCell>
+                            <TableCell>{item.TieuChuan || "—"}</TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+        </TableContainer>
+    );
+}
 
 export default function SanPhamManager() {
     const [data, setData] = useState([]);
@@ -71,6 +114,10 @@ export default function SanPhamManager() {
     const [nhomList, setNhomList] = useState([]);
     const [selectedNhomObj, setSelectedNhomObj] = useState(null);
     const [thuTu, setThuTu] = useState(1);
+    const [expandedNhomId, setExpandedNhomId] = useState(null);
+    const [nhomItems, setNhomItems] = useState({});
+    const [loadingNhomId, setLoadingNhomId] = useState(null);
+    const [nhomPreviewError, setNhomPreviewError] = useState("");
 
     const [page, setPage] = useState(0);
     const [pageSize] = useState(20);
@@ -153,6 +200,9 @@ export default function SanPhamManager() {
     const openNhomManager = async (sanPham) => {
         setSelectedSanPham(sanPham);
         setNhomDialog(true);
+        setExpandedNhomId(null);
+        setNhomItems({});
+        setNhomPreviewError("");
 
         const [nhomRes, sanPhamNhomRes] = await Promise.all([
             getNhomKiemList(),
@@ -163,6 +213,32 @@ export default function SanPhamManager() {
         setNhomData(sanPhamNhomRes.data || []);
         setThuTu((sanPhamNhomRes.data?.length || 0) + 1);
         setSelectedNhomObj(null);
+    };
+
+    const loadNhomItems = async (nhomKiemId) => {
+        if (nhomItems[nhomKiemId]) return nhomItems[nhomKiemId];
+        try {
+            setLoadingNhomId(nhomKiemId);
+            setNhomPreviewError("");
+            const response = await getCheckItemByNhom(nhomKiemId);
+            const items = response.data || [];
+            setNhomItems(prev => ({ ...prev, [nhomKiemId]: items }));
+            return items;
+        } catch (error) {
+            setNhomPreviewError(error.response?.data?.message || "Không tải được các mục kiểm trong nhóm");
+            return [];
+        } finally {
+            setLoadingNhomId(null);
+        }
+    };
+
+    const toggleNhomItems = async (nhomKiemId) => {
+        if (expandedNhomId === nhomKiemId) {
+            setExpandedNhomId(null);
+            return;
+        }
+        setExpandedNhomId(nhomKiemId);
+        await loadNhomItems(nhomKiemId);
     };
 
     const openThongSoManager = (sanPham) => {
@@ -658,7 +734,10 @@ export default function SanPhamManager() {
                                 sx={{ flex: 1, width: "100%" }}
                                 options={nhomAvailable}
                                 value={selectedNhomObj}
-                                onChange={(_, value) => setSelectedNhomObj(value)}
+                                onChange={(_, value) => {
+                                    setSelectedNhomObj(value);
+                                    if (value?.Id) loadNhomItems(value.Id);
+                                }}
                                 getOptionLabel={(option) => option.TenNhom || ""}
                                 isOptionEqualToValue={(opt, val) => opt.Id === val.Id}
                                 renderOption={(props, option) => (
@@ -704,6 +783,35 @@ export default function SanPhamManager() {
                                 Thêm
                             </Button>
                         </Stack>
+
+                        {selectedNhomObj && (
+                            <Paper variant="outlined" sx={{ mt: 2, p: 2, bgcolor: "background.paper" }}>
+                                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1} sx={{ mb: 1.5 }}>
+                                    <Box>
+                                        <Typography fontWeight={700}>Xem trước: {selectedNhomObj.TenNhom}</Typography>
+                                        {selectedNhomObj.MoTa && (
+                                            <Typography variant="body2" color="text.secondary">
+                                                {selectedNhomObj.MoTa}
+                                            </Typography>
+                                        )}
+                                    </Box>
+                                    <Chip
+                                        size="small"
+                                        label={`${nhomItems[selectedNhomObj.Id]?.length || 0} mục kiểm`}
+                                        color="primary"
+                                        variant="outlined"
+                                    />
+                                </Stack>
+                                {loadingNhomId === selectedNhomObj.Id ? (
+                                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" sx={{ py: 2 }}>
+                                        <CircularProgress size={20} />
+                                        <Typography variant="body2">Đang tải nội dung nhóm...</Typography>
+                                    </Stack>
+                                ) : (
+                                    <CheckItemPreview items={nhomItems[selectedNhomObj.Id] || []} />
+                                )}
+                            </Paper>
+                        )}
                     </Box>
 
                     <Divider />
@@ -713,6 +821,12 @@ export default function SanPhamManager() {
                         <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600 }}>
                             DANH SÁCH NHÓM KIỂM ĐÃ GÁN ({nhomData.length})
                         </Typography>
+
+                        {nhomPreviewError && (
+                            <Alert severity="error" onClose={() => setNhomPreviewError("")} sx={{ mb: 2 }}>
+                                {nhomPreviewError}
+                            </Alert>
+                        )}
 
                         {nhomData.length === 0 ? (
                             <Alert severity="info" sx={{ mt: 2 }}>
@@ -730,27 +844,60 @@ export default function SanPhamManager() {
                                     </TableHead>
                                     <TableBody>
                                         {nhomData.sort((a, b) => a.ThuTu - b.ThuTu).map(row => (
-                                            <TableRow key={row.Id} hover>
-                                                <TableCell align="center">
-                                                    <Typography fontWeight="bold" color="text.secondary">
-                                                        #{row.ThuTu}
-                                                    </Typography>
-                                                </TableCell>
-                                                <TableCell>
-                                                    <Typography fontWeight={500}>{row.TenNhom}</Typography>
-                                                </TableCell>
-                                                <TableCell align="right">
-                                                    <Tooltip title="Gỡ bỏ nhóm này">
-                                                        <IconButton
-                                                            size="small"
-                                                            color="error"
-                                                            onClick={() => handleDeleteNhom(row.Id)}
-                                                        >
-                                                            <DeleteIcon fontSize="small" />
-                                                        </IconButton>
-                                                    </Tooltip>
-                                                </TableCell>
-                                            </TableRow>
+                                            <Fragment key={row.Id}>
+                                                <TableRow hover>
+                                                    <TableCell align="center">
+                                                        <Typography fontWeight="bold" color="text.secondary">
+                                                            #{row.ThuTu}
+                                                        </Typography>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Typography fontWeight={500}>{row.TenNhom}</Typography>
+                                                        {row.MoTa && (
+                                                            <Typography variant="caption" color="text.secondary">
+                                                                {row.MoTa}
+                                                            </Typography>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell align="right">
+                                                        <Tooltip title="Xem các mục kiểm trong nhóm">
+                                                            <Button
+                                                                size="small"
+                                                                onClick={() => toggleNhomItems(row.NhomKiemId)}
+                                                                endIcon={expandedNhomId === row.NhomKiemId ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                                                                sx={{ mr: 0.5 }}
+                                                            >
+                                                                Xem
+                                                            </Button>
+                                                        </Tooltip>
+                                                        <Tooltip title="Gỡ bỏ nhóm này">
+                                                            <IconButton
+                                                                size="small"
+                                                                color="error"
+                                                                onClick={() => handleDeleteNhom(row.Id)}
+                                                            >
+                                                                <DeleteIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                    </TableCell>
+                                                </TableRow>
+                                                <TableRow>
+                                                    <TableCell colSpan={3} sx={{ py: 0, borderBottom: expandedNhomId === row.NhomKiemId ? undefined : 0 }}>
+                                                        <Collapse in={expandedNhomId === row.NhomKiemId} timeout="auto" unmountOnExit>
+                                                            <Box sx={{ py: 2 }}>
+                                                                {loadingNhomId === row.NhomKiemId ? (
+                                                                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" sx={{ py: 2 }}>
+                                                                        <CircularProgress size={20} />
+                                                                        <Typography variant="body2">Đang tải mục kiểm...</Typography>
+                                                                    </Stack>
+                                                                ) : (
+                                                                    <CheckItemPreview items={nhomItems[row.NhomKiemId] || []} />
+                                                                )}
+                                                            </Box>
+                                                        </Collapse>
+                                                    </TableCell>
+                                                </TableRow>
+                                            </Fragment>
                                         ))}
                                     </TableBody>
                                 </Table>

@@ -158,15 +158,24 @@ export const deleteCheckItem = (id) => {
     return axiosClient.delete(`/lookup/check-item/${id}`);
 };
 
-export const importDanhMucKiemExcel = (file) => {
+const postDanhMucKiemExcel = (url, file, extraFields = {}) => {
     const formData = new FormData();
     formData.append("file", file);
+    Object.entries(extraFields).forEach(([name, value]) => formData.append(name, value));
 
-    return axiosClient.post("/lookup/import-danh-muc-kiem", formData, {
+    return axiosClient.post(url, formData, {
         headers: { "Content-Type": "multipart/form-data" },
         timeout: 120000
     });
 };
+
+export const previewImportDanhMucKiemExcel = (file) =>
+    postDanhMucKiemExcel("/lookup/import-danh-muc-kiem/preview", file);
+
+export const importDanhMucKiemExcel = (file) =>
+    postDanhMucKiemExcel("/lookup/import-danh-muc-kiem", file, {
+        confirmReplace: "true"
+    });
 
 export const downloadDanhMucKiemTemplate = () => {
     return axiosClient.get("/lookup/import-danh-muc-kiem/template", {

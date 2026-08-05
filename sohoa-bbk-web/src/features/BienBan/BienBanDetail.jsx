@@ -405,6 +405,7 @@ export default function BienBanDetail({ standalone = false }) {
                 TenLoi: "",
                 DefectType: "MINOR",
                 MoTa: "",
+                SoLuongKiem: "",
                 SoLuong: 1,
                 GhiChu: "",
                 SortOrder: prev.length + 1,
@@ -423,6 +424,7 @@ export default function BienBanDetail({ standalone = false }) {
                 TenLoiTuNhap: "",
                 DefectType: "MINOR",
                 MoTa: "",
+                SoLuongKiem: "",
                 SoLuong: 1,
                 GhiChu: "",
                 SortOrder: prev.length + 1,
@@ -467,11 +469,29 @@ export default function BienBanDetail({ standalone = false }) {
                 DefectType: item.DefectType || "",
                 TenLoiTuNhap: item.TenLoiTuNhap || "",
                 MoTa: item.MoTa || "",
+                SoLuongKiem: item.SoLuongKiem === "" || item.SoLuongKiem === null || item.SoLuongKiem === undefined
+                    ? null
+                    : Number(item.SoLuongKiem),
                 SoLuong: Number(item.SoLuong) || 0,
                 GhiChu: item.GhiChu || "",
                 SortOrder: index + 1
             }))
             .filter((item) => (item.DefectId || item.TenLoiTuNhap) && item.SoLuong > 0);
+
+        if (payload.length === 0) {
+            showToast("Cần nhập ít nhất một lỗi hợp lệ", "warning");
+            return;
+        }
+
+        const invalidQuantity = payload.find((item) =>
+            !Number.isInteger(item.SoLuongKiem) || item.SoLuongKiem <= 0 ||
+            !Number.isInteger(item.SoLuong) || item.SoLuong <= 0 ||
+            item.SoLuong > item.SoLuongKiem
+        );
+        if (invalidQuantity) {
+            showToast("Số lượng kiểm phải lớn hơn 0 và không được nhỏ hơn số lượng lỗi", "warning");
+            return;
+        }
 
         try {
             setActionSaving((current) => ({ ...current, defects: true }));
@@ -1189,7 +1209,16 @@ export default function BienBanDetail({ standalone = false }) {
                                                                     </Box>
                                                                     <Stack direction="row" spacing={1} flexWrap="wrap">
                                                                         <Chip size="small" variant="outlined" label={d.DefectType || "MINOR"} />
-                                                                        <Chip size="small" variant="outlined" label={`SL ${d.SoLuong || 1}`} />
+                                                                        <Chip size="small" variant="outlined" label={`SL kiểm ${d.SoLuongKiem || "—"}`} />
+                                                                        <Chip size="small" variant="outlined" label={`SL lỗi ${d.SoLuong || 1}`} />
+                                                                        {Number(d.SoLuongKiem) > 0 && (
+                                                                            <Chip
+                                                                                size="small"
+                                                                                color="info"
+                                                                                variant="outlined"
+                                                                                label={`Tỷ lệ ${((Number(d.SoLuong || 0) / Number(d.SoLuongKiem)) * 100).toFixed(2)}%`}
+                                                                            />
+                                                                        )}
                                                                         {d.MaLoi && <Chip size="small" variant="outlined" label={d.MaLoi} />}
                                                                     </Stack>
                                                                 </Stack>
@@ -1309,10 +1338,19 @@ export default function BienBanDetail({ standalone = false }) {
                                                                             fullWidth
                                                                             size="small"
                                                                             type="number"
-                                                                            label="Số lượng"
+                                                                            label="Số lượng kiểm"
+                                                                            value={d.SoLuongKiem ?? ""}
+                                                                            onChange={(e) => updateStandaloneDefect(i, { SoLuongKiem: e.target.value })}
+                                                                            inputProps={{ min: 1, step: 1 }}
+                                                                        />
+                                                                        <TextField
+                                                                            fullWidth
+                                                                            size="small"
+                                                                            type="number"
+                                                                            label="Số lượng lỗi"
                                                                             value={d.SoLuong ?? 1}
                                                                             onChange={(e) => updateStandaloneDefect(i, { SoLuong: e.target.value })}
-                                                                            inputProps={{ min: 1 }}
+                                                                            inputProps={{ min: 1, step: 1 }}
                                                                         />
                                                                         <TextField
                                                                             fullWidth
