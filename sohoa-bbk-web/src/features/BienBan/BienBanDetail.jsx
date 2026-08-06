@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useReactToPrint } from "react-to-print";
 
 // --- MUI Core ---
@@ -114,6 +114,7 @@ const KPH_HEADER_FIELDS = [
 
 export default function BienBanDetail({ standalone = false }) {
     const { id: bienBanId } = useParams();
+    const location = useLocation();
     const navigate = useNavigate();
     const componentRef = useRef();
     const latestLoadRequestRef = useRef(0);
@@ -121,6 +122,18 @@ export default function BienBanDetail({ standalone = false }) {
     const serverDraftSnapshotRef = useRef(null);
     const confirmSavingRef = useRef(false);
     const { showToast } = useToast();
+
+    const returnToList = (isStandalone = standalone) => {
+        if (location.state?.returnTo) {
+            navigate(location.state.returnTo);
+            return;
+        }
+        if (isStandalone) {
+            navigate("/phieu-xu-ly-khong-phu-hop");
+            return;
+        }
+        navigate(-1);
+    };
 
     const [info, setInfo] = useState(null);
     const [moTaChung, setMoTaChung] = useState("");
@@ -597,7 +610,7 @@ export default function BienBanDetail({ standalone = false }) {
                     } else {
                         await completeBienBan(bienBanId);
                         showToast("Đã hoàn thành biên bản", "success");
-                        navigate(-1);
+                        returnToList(isStandaloneBienBan);
                     }
                 } catch (err) {
                     showToast(err?.response?.data?.message || "Lỗi hoàn thành biên bản", "error");
@@ -714,7 +727,7 @@ export default function BienBanDetail({ standalone = false }) {
                 try {
                     await deleteStandaloneBienBan(bienBanId);
                     showToast("Đã xóa phiếu xử lý không phù hợp", "success");
-                    navigate("/phieu-xu-ly-khong-phu-hop");
+                    returnToList(true);
                 } catch (err) {
                     showToast(err?.response?.data?.message || "Không thể xóa phiếu", "error");
                 } finally {
@@ -865,7 +878,7 @@ export default function BienBanDetail({ standalone = false }) {
                     <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems="center" spacing={2}>
                         <Button
                             startIcon={<ArrowBackIcon />}
-                            onClick={() => navigate(isStandaloneBienBan ? "/phieu-xu-ly-khong-phu-hop" : -1)}
+                            onClick={() => returnToList(isStandaloneBienBan)}
                             color="inherit"
                         >
                             {isStandaloneBienBan ? "Danh sách phiếu xử lý không phù hợp" : "Danh sách biên bản"}
@@ -1456,6 +1469,63 @@ export default function BienBanDetail({ standalone = false }) {
                                     </CardContent>
                                 )}
                             </Card>
+
+                            {isStandaloneBienBan && isV01 && (
+                                <Card
+                                    elevation={0}
+                                    sx={{
+                                        border: '1px solid',
+                                        borderColor: info.CreatorConfirmedAt ? 'success.light' : 'warning.light',
+                                        borderRadius: 2,
+                                        bgcolor: info.CreatorConfirmedAt ? '#f0fdf4' : '#fffbeb'
+                                    }}
+                                >
+                                    <CardContent>
+                                        <Stack
+                                            direction={{ xs: 'column', md: 'row' }}
+                                            justifyContent="space-between"
+                                            alignItems={{ xs: 'stretch', md: 'center' }}
+                                            spacing={2}
+                                        >
+                                            <Box>
+                                                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                                                    <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                        <VerifiedIcon color={info.CreatorConfirmedAt ? "success" : "warning"} />
+                                                        Xác nhận của Trưởng bộ phận
+                                                    </Typography>
+                                                    <Chip
+                                                        size="small"
+                                                        color={info.CreatorConfirmedAt ? "success" : "warning"}
+                                                        label={info.CreatorConfirmedAt ? "Đã xác nhận" : "Chưa xác nhận"}
+                                                    />
+                                                </Stack>
+                                                {info.CreatorConfirmedAt ? (
+                                                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                                                        Người xác nhận: <strong>{info.CreatorConfirmerName || "Trưởng bộ phận tạo phiếu"}</strong>
+                                                        {` · ${new Date(info.CreatorConfirmedAt).toLocaleString("vi-VN")}`}
+                                                    </Typography>
+                                                ) : (
+                                                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                                                        Sử dụng xác nhận cuối của Trưởng bộ phận tạo phiếu. Chữ ký này được hiển thị giữa mục 4 và mục 5 trên bản in.
+                                                        Nút xác nhận sẽ xuất hiện khi các bộ phận đã xác nhận đầy đủ ý kiến.
+                                                    </Typography>
+                                                )}
+                                            </Box>
+                                            {!info.CreatorConfirmedAt && canSubmitCompletion && (
+                                                <Button
+                                                    variant="contained"
+                                                    color="success"
+                                                    startIcon={<VerifiedIcon />}
+                                                    onClick={handleComplete}
+                                                    sx={{ flexShrink: 0 }}
+                                                >
+                                                    Xác nhận và chuyển theo dõi
+                                                </Button>
+                                            )}
+                                        </Stack>
+                                    </CardContent>
+                                </Card>
+                            )}
                         </Stack>
                     </Grid>
 
@@ -1688,6 +1758,7 @@ export default function BienBanDetail({ standalone = false }) {
                                     chiPhi={chiPhi}
                                     hanhDong={hanhDong}
                                     xacNhan={xacNhan}
+                                    phieuKiemXacNhan={phieuKiemXacNhan}
                                     assigns={workflowDepartments}
                                     dynamicFields={dynamicFields}
                                     specialistOpinions={specialistOpinions}
@@ -1718,6 +1789,7 @@ export default function BienBanDetail({ standalone = false }) {
                                     chiPhi={chiPhi}
                                     hanhDong={hanhDong}
                                     xacNhan={xacNhan}
+                                    phieuKiemXacNhan={phieuKiemXacNhan}
                                     assigns={workflowDepartments}
                                     dynamicFields={dynamicFields}
                                     specialistOpinions={specialistOpinions}

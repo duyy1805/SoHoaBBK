@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     Box,
     Typography,
@@ -24,7 +24,8 @@ import {
     Tabs,
     Tab,
     Paper,
-    Collapse
+    Collapse,
+    Alert
 } from "@mui/material";
 import {
     Search as SearchIcon,
@@ -34,7 +35,7 @@ import {
     RestartAlt as RestartAltIcon,
     ForumOutlined as ForumOutlinedIcon
 } from "@mui/icons-material";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { getMyBienBan } from "../../api/bienBan.api"; // Giữ nguyên import của bạn
 import { decodeToken } from "../../utils/auth";
 import { getBienBanStatusMeta } from "./components/bienBanWorkflow";
@@ -45,6 +46,12 @@ const normalizeSearchText = (value) => String(value || "")
     .replace(/đ/g, "d")
     .replace(/Đ/g, "D")
     .toLowerCase();
+
+const VALID_PAGE_SIZES = [5, 10, 25, 50];
+const parsePageParam = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed - 1 : 0;
+};
 
 const getMyDepartmentOpinionMeta = (status) => {
     if (status === "CHO_Y_KIEN") {
@@ -58,7 +65,10 @@ const getMyDepartmentOpinionMeta = (status) => {
 
 const getWorkBucket = (item, currentUser, isManager, isSxbt) => {
     if (isSxbt) {
-        return item.TrangThai === "BB_SXBT_HOAN_TAT" ? "done" : "waiting";
+        if (item.TrangThai === "BB_SXBT_HOAN_TAT") return "done";
+        return Number(item.BoPhanDangChoId) === Number(currentUser.boPhanId)
+            ? "action"
+            : "waiting";
     }
     if (["HOAN_TAT", "HOAN_THANH", "DA_XAC_NHAN"].includes(item.TrangThai)) return "done";
     const explicitMyTurn = item.CanCurrentUserAct === true || item.CanCurrentUserAct === 1 ||
@@ -70,27 +80,65 @@ const getWorkBucket = (item, currentUser, isManager, isSxbt) => {
 };
 
 export default function BienBanList() {
+    const [searchParams, setSearchParams] = useSearchParams();
+    const location = useLocation();
+    const navigate = useNavigate();
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState("");
 
     // Filters & Pagination state
-    const [filterStatus, setFilterStatus] = useState("");
-    const [searchText, setSearchText] = useState("");
-    const [page, setPage] = useState(0);
-    const [rowsPerPage, setRowsPerPage] = useState(10);
-    const [workFilter, setWorkFilter] = useState("all");
-    const [departmentFilter, setDepartmentFilter] = useState("all");
-    const [opinionDepartmentFilter, setOpinionDepartmentFilter] = useState("all");
-    const [typeFilter, setTypeFilter] = useState("all");
-    const [dateFrom, setDateFrom] = useState("");
-    const [dateTo, setDateTo] = useState("");
-    const [advancedOpen, setAdvancedOpen] = useState(false);
+    const [filterStatus, setFilterStatus] = useState(() => searchParams.get("status") || "");
+    const [searchText, setSearchText] = useState(() => searchParams.get("q") || "");
+    const [page, setPage] = useState(() => parsePageParam(searchParams.get("page")));
+    const [rowsPerPage, setRowsPerPage] = useState(() => {
+        const value = Number(searchParams.get("pageSize"));
+        return VALID_PAGE_SIZES.includes(value) ? value : 10;
+    });
+    const [workFilter, setWorkFilter] = useState(() => searchParams.get("work") || "all");
+    const [departmentFilter, setDepartmentFilter] = useState(() => searchParams.get("creatorDepartment") || "all");
+    const [opinionDepartmentFilter, setOpinionDepartmentFilter] = useState(() => searchParams.get("opinionDepartment") || "all");
+    const [typeFilter, setTypeFilter] = useState(() => searchParams.get("type") || "all");
+    const [dateFrom, setDateFrom] = useState(() => searchParams.get("from") || "");
+    const [dateTo, setDateTo] = useState(() => searchParams.get("to") || "");
+    const [advancedOpen, setAdvancedOpen] = useState(() => searchParams.get("advanced") === "1");
+    const tableContainerRef = useRef(null);
+    const restoredScrollKeyRef = useRef("");
     const currentUser = useMemo(() => decodeToken() || {}, []);
-    const isManager = (currentUser.permissions || []).some((permission) =>
+    const isManager = (currentUser.roles || []).some((role) =>
+        String(role || "").toUpperCase().startsWith("TP_")
+    ) || (currentUser.permissions || []).some((permission) =>
         ["QUAN_TRI_DM", "XAC_NHAN_NGUOI_XU_LY", "KET_LUAN"].includes(permission)
     );
 
-    const navigate = useNavigate();
+    const listUrl = `${location.pathname}${location.search}`;
+    const scrollStorageKey = `bien-ban:list-scroll:${listUrl}`;
+
+    const updateQuery = useCallback((updates) => {
+        setSearchParams((current) => {
+            const next = new URLSearchParams(current);
+            Object.entries(updates).forEach(([key, value]) => {
+                if (value === "" || value === null || value === undefined) next.delete(key);
+                else next.set(key, String(value));
+            });
+            return next;
+        }, { replace: true });
+    }, [setSearchParams]);
+
+    useEffect(() => {
+        setFilterStatus(searchParams.get("status") || "");
+        setSearchText(searchParams.get("q") || "");
+        setPage(parsePageParam(searchParams.get("page")));
+        const pageSize = Number(searchParams.get("pageSize"));
+        setRowsPerPage(VALID_PAGE_SIZES.includes(pageSize) ? pageSize : 10);
+        setWorkFilter(searchParams.get("work") || "all");
+        setDepartmentFilter(searchParams.get("creatorDepartment") || "all");
+        setOpinionDepartmentFilter(searchParams.get("opinionDepartment") || "all");
+        setTypeFilter(searchParams.get("type") || "all");
+        setDateFrom(searchParams.get("from") || "");
+        setDateTo(searchParams.get("to") || "");
+        setAdvancedOpen(searchParams.get("advanced") === "1");
+    }, [searchParams]);
 
     useEffect(() => {
         loadData();
@@ -99,10 +147,13 @@ export default function BienBanList() {
     const loadData = async () => {
         try {
             setLoading(true);
+            setLoadError("");
             const res = await getMyBienBan();
             setData(res.data || []);
         } catch (err) {
             console.error(err);
+            setData([]);
+            setLoadError(err.response?.data?.message || "Không thể tải danh sách biên bản. Vui lòng thử lại.");
         } finally {
             setLoading(false);
         }
@@ -235,6 +286,17 @@ export default function BienBanList() {
         setDateTo("");
         setWorkFilter("all");
         setPage(0);
+        updateQuery({
+            q: "",
+            status: "",
+            creatorDepartment: "",
+            opinionDepartment: "",
+            type: "",
+            from: "",
+            to: "",
+            work: "all",
+            page: 1
+        });
     };
 
     // Xử lý phân trang
@@ -243,16 +305,69 @@ export default function BienBanList() {
         return filteredData.slice(startIndex, startIndex + rowsPerPage);
     }, [filteredData, page, rowsPerPage]);
 
-    const handleChangePage = (event, newPage) => setPage(newPage);
+    useEffect(() => {
+        if (loading) return;
+        const maxPage = Math.max(0, Math.ceil(filteredData.length / rowsPerPage) - 1);
+        if (page > maxPage) {
+            setPage(maxPage);
+            updateQuery({ page: maxPage + 1 });
+        }
+    }, [filteredData.length, loading, page, rowsPerPage, updateQuery]);
 
-    const handleChangeRowsPerPage = (event) => {
-        setRowsPerPage(parseInt(event.target.value, 10));
-        setPage(0);
+    useEffect(() => {
+        if (loading || restoredScrollKeyRef.current === scrollStorageKey) return;
+        const savedValue = sessionStorage.getItem(scrollStorageKey);
+        let savedPosition = null;
+        try {
+            savedPosition = savedValue ? JSON.parse(savedValue) : null;
+        } catch {
+            sessionStorage.removeItem(scrollStorageKey);
+        }
+        const frame = window.requestAnimationFrame(() => {
+            if (tableContainerRef.current && Number.isFinite(savedPosition?.tableTop)) {
+                tableContainerRef.current.scrollTop = savedPosition.tableTop;
+            }
+            if (Number.isFinite(savedPosition?.windowTop)) {
+                window.scrollTo({ top: savedPosition.windowTop });
+            }
+            restoredScrollKeyRef.current = scrollStorageKey;
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [loading, paginatedData.length, scrollStorageKey]);
+
+    const rememberScrollPosition = () => {
+        sessionStorage.setItem(scrollStorageKey, JSON.stringify({
+            tableTop: tableContainerRef.current?.scrollTop || 0,
+            windowTop: window.scrollY || 0
+        }));
     };
 
     const getItemPath = (item) => isSxbtBienBan(item)
         ? `/bien-ban/sxbt/${item.BienBanId}`
         : `/bien-ban/${item.BienBanId}`;
+
+    const openDetail = (item) => {
+        rememberScrollPosition();
+        navigate(getItemPath(item), { state: { returnTo: listUrl } });
+    };
+
+    const updateFilter = (setter, queryKey, value) => {
+        setter(value);
+        setPage(0);
+        updateQuery({ [queryKey]: value, page: 1 });
+    };
+
+    const handleChangePage = (event, newPage) => {
+        setPage(newPage);
+        updateQuery({ page: newPage + 1 });
+    };
+
+    const handleChangeRowsPerPage = (event) => {
+        const nextPageSize = parseInt(event.target.value, 10);
+        setRowsPerPage(nextPageSize);
+        setPage(0);
+        updateQuery({ pageSize: nextPageSize, page: 1 });
+    };
 
     const getProgressLabel = (item) => isSxbtBienBan(item)
         ? item.SoBoPhan > 0
@@ -279,8 +394,7 @@ export default function BienBanList() {
     );
 
     const getActionLabel = (item) => {
-        if (isSxbtBienBan(item)) return "Xem chi tiết";
-        const bucket = getWorkBucket(item, currentUser, isManager, false);
+        const bucket = getWorkBucket(item, currentUser, isManager, isSxbtBienBan(item));
         if (bucket === "action") return "Xử lý ngay";
         if (bucket === "done") return "Xem kết quả";
         return "Xem tiến độ";
@@ -320,11 +434,23 @@ export default function BienBanList() {
                     <Button
                         variant={advancedOpen ? "contained" : "outlined"}
                         startIcon={<FilterListIcon />}
-                        onClick={() => setAdvancedOpen((open) => !open)}
+                        onClick={() => {
+                            const nextOpen = !advancedOpen;
+                            setAdvancedOpen(nextOpen);
+                            updateQuery({ advanced: nextOpen ? 1 : "" });
+                        }}
                     >
                         {advancedOpen ? "Thu gọn bộ lọc" : "Bộ lọc nâng cao"}
                     </Button>
                 </Stack>
+
+                {loadError && (
+                    <Alert severity="error" sx={{ mb: 2 }} action={(
+                        <Button color="inherit" size="small" onClick={loadData}>Tải lại</Button>
+                    )}>
+                        {loadError}
+                    </Alert>
+                )}
 
                 <Paper variant="outlined" sx={{ mb: 2, p: 2, borderRadius: 2.5 }}>
                     <Stack direction={{ xs: "column", md: "row" }} spacing={1.5}>
@@ -332,10 +458,7 @@ export default function BienBanList() {
                             size="small"
                             placeholder="Tìm số phiếu, sản phẩm, LOT, người lập..."
                             value={searchText}
-                            onChange={(e) => {
-                                setSearchText(e.target.value);
-                                setPage(0);
-                            }}
+                            onChange={(e) => updateFilter(setSearchText, "q", e.target.value)}
                             slotProps={{
                                 input: {
                                     startAdornment: (
@@ -352,10 +475,7 @@ export default function BienBanList() {
                             size="small"
                             label="Bộ phận lập"
                             value={departmentFilter}
-                            onChange={(e) => {
-                                setDepartmentFilter(e.target.value);
-                                setPage(0);
-                            }}
+                            onChange={(e) => updateFilter(setDepartmentFilter, "creatorDepartment", e.target.value)}
                             sx={{ minWidth: { xs: "100%", md: 220 } }}
                         >
                             <MenuItem value="all">Tất cả bộ phận</MenuItem>
@@ -369,10 +489,7 @@ export default function BienBanList() {
                             size="small"
                             label="Bộ phận được xin ý kiến"
                             value={opinionDepartmentFilter}
-                            onChange={(e) => {
-                                setOpinionDepartmentFilter(e.target.value);
-                                setPage(0);
-                            }}
+                            onChange={(e) => updateFilter(setOpinionDepartmentFilter, "opinionDepartment", e.target.value)}
                             sx={{ minWidth: { xs: "100%", md: 250 } }}
                         >
                             <MenuItem value="all">Tất cả bộ phận được xin ý kiến</MenuItem>
@@ -386,10 +503,7 @@ export default function BienBanList() {
                             size="small"
                             label="Trạng thái"
                             value={filterStatus}
-                            onChange={(e) => {
-                                setFilterStatus(e.target.value);
-                                setPage(0);
-                            }}
+                            onChange={(e) => updateFilter(setFilterStatus, "status", e.target.value)}
                             sx={{ minWidth: { xs: "100%", md: 210 } }}
                         >
                             <MenuItem value="">Tất cả trạng thái</MenuItem>
@@ -421,10 +535,7 @@ export default function BienBanList() {
                                 size="small"
                                 label="Loại biên bản"
                                 value={typeFilter}
-                                onChange={(e) => {
-                                    setTypeFilter(e.target.value);
-                                    setPage(0);
-                                }}
+                                onChange={(e) => updateFilter(setTypeFilter, "type", e.target.value)}
                                 sx={{ minWidth: 190 }}
                             >
                                 <MenuItem value="all">Tất cả loại</MenuItem>
@@ -436,10 +547,7 @@ export default function BienBanList() {
                                 label="Từ ngày"
                                 type="date"
                                 value={dateFrom}
-                                onChange={(e) => {
-                                    setDateFrom(e.target.value);
-                                    setPage(0);
-                                }}
+                                onChange={(e) => updateFilter(setDateFrom, "from", e.target.value)}
                                 slotProps={{ inputLabel: { shrink: true } }}
                             />
                             <TextField
@@ -447,10 +555,7 @@ export default function BienBanList() {
                                 label="Đến ngày"
                                 type="date"
                                 value={dateTo}
-                                onChange={(e) => {
-                                    setDateTo(e.target.value);
-                                    setPage(0);
-                                }}
+                                onChange={(e) => updateFilter(setDateTo, "to", e.target.value)}
                                 slotProps={{ inputLabel: { shrink: true } }}
                             />
                             <Button color="inherit" startIcon={<RestartAltIcon />} onClick={resetFilters}>
@@ -470,6 +575,7 @@ export default function BienBanList() {
                         onChange={(_, value) => {
                             setWorkFilter(value);
                             setPage(0);
+                            updateQuery({ work: value, page: 1 });
                         }}
                         variant="scrollable"
                         scrollButtons="auto"
@@ -484,7 +590,7 @@ export default function BienBanList() {
 
                 {/* Danh sách desktop + card mobile */}
                 <Card sx={{ borderRadius: 2.5, boxShadow: "0 4px 20px rgba(15,23,42,0.06)", overflow: "hidden" }}>
-                    <TableContainer sx={{ display: { xs: "none", md: "block" }, maxHeight: 'calc(100vh - 240px)' }}>
+                    <TableContainer ref={tableContainerRef} sx={{ display: { xs: "none", md: "block" }, maxHeight: 'calc(100vh - 240px)' }}>
                         <Table
                             stickyHeader
                             size="small"
@@ -520,7 +626,7 @@ export default function BienBanList() {
                                         <TableRow
                                             key={item.BienBanId}
                                             hover
-                                            onClick={() => navigate(getItemPath(item))}
+                                            onClick={() => openDetail(item)}
                                             sx={{
                                                 cursor: "pointer",
                                                 ...(myOpinionMeta ? {
@@ -584,7 +690,7 @@ export default function BienBanList() {
                                                         color="primary"
                                                         onClick={(event) => {
                                                             event.stopPropagation();
-                                                            navigate(getItemPath(item));
+                                                            openDetail(item);
                                                         }}
                                                         sx={bucket === "action" ? { bgcolor: "primary.main", color: "primary.contrastText", "&:hover": { bgcolor: "primary.dark" } } : undefined}
                                                     >
@@ -612,7 +718,7 @@ export default function BienBanList() {
                                 <Paper
                                     key={item.BienBanId}
                                     variant="outlined"
-                                    onClick={() => navigate(getItemPath(item))}
+                                    onClick={() => openDetail(item)}
                                     sx={{
                                         p: 1.5,
                                         borderRadius: 2,
@@ -675,7 +781,7 @@ export default function BienBanList() {
                                         endIcon={<ArrowForwardIcon />}
                                         onClick={(event) => {
                                             event.stopPropagation();
-                                            navigate(getItemPath(item));
+                                            openDetail(item);
                                         }}
                                         sx={{ mt: 1.25 }}
                                     >

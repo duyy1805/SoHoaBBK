@@ -8,6 +8,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
     chiPhi = [],
     hanhDong = [],
     xacNhan = [],
+    phieuKiemXacNhan = [],
     assigns = [],
     dynamicFields = [],
     specialistOpinions = [],
@@ -262,6 +263,16 @@ export const BienBanPrintTemplate = React.forwardRef(({
 
     const kphKnSignature = (xacNhan || []).find(item => item.VaiTro === 'KPH_KN');
     const kphBpsxSignature = (xacNhan || []).find(item => item.VaiTro === 'KPH_BPSX');
+    const inspectionTbpSignature = (phieuKiemXacNhan || []).find((item) =>
+        ['TBP_CONG_DOAN', 'TBP'].includes(String(item?.VaiTro || '').toUpperCase())
+    );
+    const v01TbpSignature = inspectionTbpSignature ? {
+        ThoiGian: inspectionTbpSignature.ThoiGian,
+        FullName: inspectionTbpSignature.TenNguoiXacNhan || inspectionTbpSignature.FullName
+    } : {
+        ThoiGian: info.CreatorConfirmedAt,
+        FullName: info.CreatorConfirmerName
+    };
 
     const signatureRows = Array.from(
         (xacNhan || []).filter(item => !['KPH_KN', 'KPH_BPSX'].includes(item.VaiTro)).reduce((map, item) => {
@@ -527,10 +538,10 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                 <Box className="avoid-break" style={styles.signatureBlock}>
                                     {isV01 ? (
                                         <Box style={styles.signatureCol}>
-                                            <div style={styles.text}>{formatSignatureDate(info.CreatorConfirmedAt)}</div>
+                                            <div style={styles.text}>{formatSignatureDate(v01TbpSignature.ThoiGian)}</div>
                                             <div style={styles.boldText}>TRƯỞNG BỘ PHẬN</div>
                                             <Box height="60px"></Box>
-                                            <div style={styles.text}>{info.CreatorConfirmerName || '(Ký, họ tên)'}</div>
+                                            <div style={styles.text}>{v01TbpSignature.FullName || '(Ký, họ tên)'}</div>
                                         </Box>
                                     ) : (
                                         <>

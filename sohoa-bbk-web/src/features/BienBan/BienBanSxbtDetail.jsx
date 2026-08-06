@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
     Box,
     Button,
@@ -143,6 +143,7 @@ const getDefectImages = (defect) => {
 
 export default function BienBanSxbtDetail() {
     const { id: bienBanId } = useParams();
+    const location = useLocation();
     const navigate = useNavigate();
     const { showToast } = useToast();
     const currentUser = getCurrentUser();
@@ -162,6 +163,14 @@ export default function BienBanSxbtDetail() {
     const [openHanhDong, setOpenHanhDong] = useState(false);
     const [openPrint, setOpenPrint] = useState(false);
     const [previewImage, setPreviewImage] = useState("");
+
+    const returnToList = () => {
+        if (location.state?.returnTo) {
+            navigate(location.state.returnTo);
+            return;
+        }
+        navigate(-1);
+    };
 
     useEffect(() => {
         loadData();
@@ -320,7 +329,7 @@ export default function BienBanSxbtDetail() {
             >
                 <Container maxWidth="xl">
                     <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={2} alignItems={{ xs: "flex-start", md: "center" }}>
-                        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(-1)} color="inherit">
+                        <Button startIcon={<ArrowBackIcon />} onClick={returnToList} color="inherit">
                             Danh sách biên bản
                         </Button>
                         <Stack direction="row" spacing={1} flexWrap="wrap">

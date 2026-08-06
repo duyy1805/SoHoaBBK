@@ -59,10 +59,10 @@ router.get("/:id", authenticateToken, async (req, res) => {
                     creatorDepartment.MaBoPhan AS MaBoPhanTao,
                     creatorDepartment.TenBoPhan AS TenBoPhanTao,
                     CASE
-                        WHEN pk.SxbtKeHoachNhapId IS NOT NULL THEN N'KE_HOACH_NHAP'
+                        WHEN COALESCE(pk.SxbtKeHoachNhapId, linkedSource.KeHoachNhapId) IS NOT NULL THEN N'KE_HOACH_NHAP'
                         ELSE N'LEGACY_PHIEU_NHAP'
                     END AS SxbtSourceType,
-                    pk.SxbtKeHoachNhapId AS KeHoachNhapId,
+                    COALESCE(pk.SxbtKeHoachNhapId, linkedSource.KeHoachNhapId) AS KeHoachNhapId,
                     COALESCE(pk.SxbtPhieuNhapBtpId,
                         CASE WHEN pk.SxbtKeHoachNhapId IS NULL THEN pk.SourceId END
                     ) AS PhieuNhapBtpId,
@@ -82,6 +82,12 @@ router.get("/:id", authenticateToken, async (req, res) => {
                 LEFT JOIN dbo.DM_BO_PHAN creatorDepartment
                     ON creatorDepartment.Id = COALESCE(bb.BoPhanTaoId, ulap.BoPhanId)
                 LEFT JOIN dbo.PHIEU_KIEM pk ON pk.Id = bb.PhieuKiemId
+                OUTER APPLY (
+                    SELECT TOP 1 link.KeHoachNhapId
+                    FROM dbo.PHIEU_KIEM_SXBT_PLAN link
+                    WHERE link.PhieuKiemId = pk.Id
+                    ORDER BY ISNULL(link.IsPrimary, 0) DESC, link.SortOrder, link.Id
+                ) linkedSource
                 LEFT JOIN TAG_QTKD.dbo.PhieuNhapBTP receipt
                     ON receipt.ID_PhieuNhapBTP = COALESCE(
                         pk.SxbtPhieuNhapBtpId,
@@ -94,7 +100,7 @@ router.get("/:id", authenticateToken, async (req, res) => {
                 LEFT JOIN TAG_QTKD.dbo.DM_NhaThau contractor
                     ON contractor.ID_BoPhan = sourceDepartment.ID_BoPhan
                 LEFT JOIN TAG_QLSX.dbo.KeHoachSanXuat_NhaThau_ThamChieu_Nhap importPlan
-                    ON importPlan.ID_TuTang = pk.SxbtKeHoachNhapId
+                    ON importPlan.ID_TuTang = COALESCE(pk.SxbtKeHoachNhapId, linkedSource.KeHoachNhapId)
                 LEFT JOIN TAG_QLSX.dbo.KeHoachSanXuat productionPlan
                     ON productionPlan.ID_KeHoachSanXuat = importPlan.ID_KeHoachSanXuat
                 LEFT JOIN TAG_QLSX.dbo.LenhSanXuat productionOrder
@@ -128,7 +134,7 @@ router.get("/:id", authenticateToken, async (req, res) => {
                         link.SortOrder, link.IsPrimary
                     FROM dbo.PHIEU_KIEM_SXBT_PLAN link
                     WHERE link.PhieuKiemId = @PhieuKiemId
-                    ORDER BY link.SortOrder, link.Id
+                    ORDER BY ISNULL(link.IsPrimary, 0) DESC, link.SortOrder, link.Id
                 `);
             sxbtSources = sourcesResult.recordset || [];
             if (sxbtSources.length > 0) {

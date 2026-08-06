@@ -9,6 +9,8 @@ dist/
 build/
 
 *.sql
+!server/sql/delete_phieu_kiem_by_creator.sql
+!server/sql/thong_ke_phieu_kiem_theo_loai.sql
 !server/sql/migrations/20260805_unified_inspection_print_data.sql
 
 *.xlsx

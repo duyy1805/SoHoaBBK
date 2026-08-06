@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     Box,
     Typography,
@@ -31,7 +31,7 @@ import {
     FilterList as FilterListIcon,
     RestartAlt as RestartAltIcon
 } from "@mui/icons-material";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { createStandaloneBienBan, getStandaloneBienBanList } from "../../api/bienBan.api";
 import { decodeToken } from "../../utils/auth";
 import { getBienBanStatusMeta } from "./components/bienBanWorkflow";
@@ -42,6 +42,12 @@ const normalizeSearchText = (value) => String(value || "")
     .replace(/đ/g, "d")
     .replace(/Đ/g, "D")
     .toLowerCase();
+
+const VALID_PAGE_SIZES = [5, 10, 25, 50];
+const parsePageParam = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed - 1 : 0;
+};
 
 const renderTrangThaiChip = (trangThai) => {
     const status = getBienBanStatusMeta(trangThai);
@@ -73,19 +79,27 @@ const getWorkBucket = (item, currentUser, access) => {
 };
 
 export default function PhieuXuLyKhongPhuHopList() {
+    const [searchParams, setSearchParams] = useSearchParams();
+    const location = useLocation();
     const navigate = useNavigate();
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
-    const [searchText, setSearchText] = useState("");
-    const [workFilter, setWorkFilter] = useState("all");
-    const [statusFilter, setStatusFilter] = useState("");
-    const [departmentFilter, setDepartmentFilter] = useState("all");
-    const [dateFrom, setDateFrom] = useState("");
-    const [dateTo, setDateTo] = useState("");
-    const [advancedOpen, setAdvancedOpen] = useState(false);
-    const [page, setPage] = useState(0);
-    const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [searchText, setSearchText] = useState(() => searchParams.get("q") || "");
+    const [workFilter, setWorkFilter] = useState(() => searchParams.get("work") || "all");
+    const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") || "");
+    const [departmentFilter, setDepartmentFilter] = useState(() => searchParams.get("creatorDepartment") || "all");
+    const [dateFrom, setDateFrom] = useState(() => searchParams.get("from") || "");
+    const [dateTo, setDateTo] = useState(() => searchParams.get("to") || "");
+    const [advancedOpen, setAdvancedOpen] = useState(() => searchParams.get("advanced") === "1");
+    const [page, setPage] = useState(() => parsePageParam(searchParams.get("page")));
+    const [rowsPerPage, setRowsPerPage] = useState(() => {
+        const value = Number(searchParams.get("pageSize"));
+        return VALID_PAGE_SIZES.includes(value) ? value : 10;
+    });
+    const tableContainerRef = useRef(null);
+    const restoredScrollKeyRef = useRef("");
+    const initialWorkFilterResolvedRef = useRef(searchParams.has("work"));
     const currentUser = useMemo(() => decodeToken() || {}, []);
     const access = useMemo(() => {
         const permissions = currentUser.permissions || [];
@@ -98,21 +112,52 @@ export default function PhieuXuLyKhongPhuHopList() {
         };
     }, [currentUser]);
 
+    const listUrl = `${location.pathname}${location.search}`;
+    const scrollStorageKey = `phieu-xu-ly-kph:list-scroll:${listUrl}`;
+
+    const updateQuery = useCallback((updates) => {
+        setSearchParams((current) => {
+            const next = new URLSearchParams(current);
+            Object.entries(updates).forEach(([key, value]) => {
+                if (value === "" || value === null || value === undefined) next.delete(key);
+                else next.set(key, String(value));
+            });
+            return next;
+        }, { replace: true });
+    }, [setSearchParams]);
+
+    useEffect(() => {
+        setSearchText(searchParams.get("q") || "");
+        setWorkFilter(searchParams.get("work") || "all");
+        setStatusFilter(searchParams.get("status") || "");
+        setDepartmentFilter(searchParams.get("creatorDepartment") || "all");
+        setDateFrom(searchParams.get("from") || "");
+        setDateTo(searchParams.get("to") || "");
+        setAdvancedOpen(searchParams.get("advanced") === "1");
+        setPage(parsePageParam(searchParams.get("page")));
+        const pageSize = Number(searchParams.get("pageSize"));
+        setRowsPerPage(VALID_PAGE_SIZES.includes(pageSize) ? pageSize : 10);
+    }, [searchParams]);
+
     const loadData = useCallback(async () => {
         try {
             setLoading(true);
             const res = await getStandaloneBienBanList();
             const rows = res.data || [];
             setData(rows);
-            if (rows.some((item) => getWorkBucket(item, currentUser, access) === "action")) {
-                setWorkFilter("action");
+            if (!initialWorkFilterResolvedRef.current) {
+                initialWorkFilterResolvedRef.current = true;
+                if (rows.some((item) => getWorkBucket(item, currentUser, access) === "action")) {
+                    setWorkFilter("action");
+                    updateQuery({ work: "action", page: 1 });
+                }
             }
         } catch (err) {
             console.error(err);
         } finally {
             setLoading(false);
         }
-    }, [currentUser, access]);
+    }, [currentUser, access, updateQuery]);
 
     useEffect(() => {
         loadData();
@@ -170,6 +215,54 @@ export default function PhieuXuLyKhongPhuHopList() {
         return filteredData.slice(startIndex, startIndex + rowsPerPage);
     }, [filteredData, page, rowsPerPage]);
 
+    useEffect(() => {
+        if (loading) return;
+        const maxPage = Math.max(0, Math.ceil(filteredData.length / rowsPerPage) - 1);
+        if (page > maxPage) {
+            setPage(maxPage);
+            updateQuery({ page: maxPage + 1 });
+        }
+    }, [filteredData.length, loading, page, rowsPerPage, updateQuery]);
+
+    useEffect(() => {
+        if (loading || restoredScrollKeyRef.current === scrollStorageKey) return;
+        const savedValue = sessionStorage.getItem(scrollStorageKey);
+        let savedPosition = null;
+        try {
+            savedPosition = savedValue ? JSON.parse(savedValue) : null;
+        } catch {
+            sessionStorage.removeItem(scrollStorageKey);
+        }
+        const frame = window.requestAnimationFrame(() => {
+            if (tableContainerRef.current && Number.isFinite(savedPosition?.tableTop)) {
+                tableContainerRef.current.scrollTop = savedPosition.tableTop;
+            }
+            if (Number.isFinite(savedPosition?.windowTop)) {
+                window.scrollTo({ top: savedPosition.windowTop });
+            }
+            restoredScrollKeyRef.current = scrollStorageKey;
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [loading, paginatedData.length, scrollStorageKey]);
+
+    const rememberScrollPosition = () => {
+        sessionStorage.setItem(scrollStorageKey, JSON.stringify({
+            tableTop: tableContainerRef.current?.scrollTop || 0,
+            windowTop: window.scrollY || 0
+        }));
+    };
+
+    const openDetail = (bienBanId) => {
+        rememberScrollPosition();
+        navigate(`/phieu-xu-ly-khong-phu-hop/${bienBanId}`, { state: { returnTo: listUrl } });
+    };
+
+    const updateFilter = (setter, queryKey, value) => {
+        setter(value);
+        setPage(0);
+        updateQuery({ [queryKey]: value, page: 1 });
+    };
+
     const resetFilters = () => {
         setSearchText("");
         setStatusFilter("");
@@ -178,6 +271,16 @@ export default function PhieuXuLyKhongPhuHopList() {
         setDateTo("");
         setWorkFilter("all");
         setPage(0);
+        initialWorkFilterResolvedRef.current = true;
+        updateQuery({
+            q: "",
+            status: "",
+            creatorDepartment: "",
+            from: "",
+            to: "",
+            work: "all",
+            page: 1
+        });
     };
 
     const handleCreate = async () => {
@@ -186,7 +289,7 @@ export default function PhieuXuLyKhongPhuHopList() {
             const res = await createStandaloneBienBan();
             const bienBanId = res.data?.bienBanId;
             if (bienBanId) {
-                navigate(`/phieu-xu-ly-khong-phu-hop/${bienBanId}`);
+                openDetail(bienBanId);
             }
         } catch (err) {
             console.error(err);
@@ -221,7 +324,11 @@ export default function PhieuXuLyKhongPhuHopList() {
                         <Button
                             variant={advancedOpen ? "contained" : "outlined"}
                             startIcon={<FilterListIcon />}
-                            onClick={() => setAdvancedOpen((open) => !open)}
+                            onClick={() => {
+                                const nextOpen = !advancedOpen;
+                                setAdvancedOpen(nextOpen);
+                                updateQuery({ advanced: nextOpen ? 1 : "" });
+                            }}
                         >
                             {advancedOpen ? "Thu gọn bộ lọc" : "Bộ lọc nâng cao"}
                         </Button>
@@ -242,10 +349,7 @@ export default function PhieuXuLyKhongPhuHopList() {
                             size="small"
                             placeholder="Tìm số biên bản, mô tả, người lập..."
                             value={searchText}
-                            onChange={(e) => {
-                                setSearchText(e.target.value);
-                                setPage(0);
-                            }}
+                            onChange={(e) => updateFilter(setSearchText, "q", e.target.value)}
                             slotProps={{
                                 input: {
                                     startAdornment: (
@@ -262,10 +366,7 @@ export default function PhieuXuLyKhongPhuHopList() {
                             size="small"
                             label="Bộ phận lập"
                             value={departmentFilter}
-                            onChange={(e) => {
-                                setDepartmentFilter(e.target.value);
-                                setPage(0);
-                            }}
+                            onChange={(e) => updateFilter(setDepartmentFilter, "creatorDepartment", e.target.value)}
                             sx={{ minWidth: { xs: "100%", md: 220 } }}
                         >
                             <MenuItem value="all">Tất cả bộ phận</MenuItem>
@@ -279,10 +380,7 @@ export default function PhieuXuLyKhongPhuHopList() {
                             size="small"
                             label="Trạng thái"
                             value={statusFilter}
-                            onChange={(e) => {
-                                setStatusFilter(e.target.value);
-                                setPage(0);
-                            }}
+                            onChange={(e) => updateFilter(setStatusFilter, "status", e.target.value)}
                             sx={{ minWidth: { xs: "100%", md: 210 } }}
                         >
                             <MenuItem value="">Tất cả trạng thái</MenuItem>
@@ -304,10 +402,7 @@ export default function PhieuXuLyKhongPhuHopList() {
                                 label="Từ ngày"
                                 type="date"
                                 value={dateFrom}
-                                onChange={(e) => {
-                                    setDateFrom(e.target.value);
-                                    setPage(0);
-                                }}
+                                onChange={(e) => updateFilter(setDateFrom, "from", e.target.value)}
                                 slotProps={{ inputLabel: { shrink: true } }}
                             />
                             <TextField
@@ -315,10 +410,7 @@ export default function PhieuXuLyKhongPhuHopList() {
                                 label="Đến ngày"
                                 type="date"
                                 value={dateTo}
-                                onChange={(e) => {
-                                    setDateTo(e.target.value);
-                                    setPage(0);
-                                }}
+                                onChange={(e) => updateFilter(setDateTo, "to", e.target.value)}
                                 slotProps={{ inputLabel: { shrink: true } }}
                             />
                             <Button color="inherit" startIcon={<RestartAltIcon />} onClick={resetFilters}>
@@ -338,6 +430,8 @@ export default function PhieuXuLyKhongPhuHopList() {
                         onChange={(_, value) => {
                             setWorkFilter(value);
                             setPage(0);
+                            initialWorkFilterResolvedRef.current = true;
+                            updateQuery({ work: value, page: 1 });
                         }}
                         variant="scrollable"
                         scrollButtons="auto"
@@ -352,7 +446,7 @@ export default function PhieuXuLyKhongPhuHopList() {
 
                 <Card sx={{ borderRadius: 3 }}>
                     <CardContent sx={{ p: 0 }}>
-                        <TableContainer component={Paper} elevation={0}>
+                        <TableContainer ref={tableContainerRef} component={Paper} elevation={0}>
                             <Table>
                                 <TableHead sx={{ bgcolor: "#f8fafc" }}>
                                     <TableRow>
@@ -374,7 +468,12 @@ export default function PhieuXuLyKhongPhuHopList() {
                                         </TableRow>
                                     ) : (
                                         paginatedData.map((item) => (
-                                            <TableRow key={item.BienBanId} hover>
+                                            <TableRow
+                                                key={item.BienBanId}
+                                                hover
+                                                onClick={() => openDetail(item.BienBanId)}
+                                                sx={{ cursor: "pointer" }}
+                                            >
                                                 <TableCell sx={{ fontWeight: 600 }}>{item.SoBienBan || `BB#${item.BienBanId}`}</TableCell>
                                                 <TableCell>{item.MoTaChung || "---"}</TableCell>
                                                 <TableCell>
@@ -400,7 +499,10 @@ export default function PhieuXuLyKhongPhuHopList() {
                                                         size="small"
                                                         variant={getWorkBucket(item, currentUser, access) === "action" ? "contained" : "outlined"}
                                                         endIcon={<ArrowForwardIcon />}
-                                                        onClick={() => navigate(`/phieu-xu-ly-khong-phu-hop/${item.BienBanId}`)}
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            openDetail(item.BienBanId);
+                                                        }}
                                                         sx={{ whiteSpace: "nowrap" }}
                                                     >
                                                         {getWorkBucket(item, currentUser, access) === "action"
@@ -418,11 +520,16 @@ export default function PhieuXuLyKhongPhuHopList() {
                             component="div"
                             count={filteredData.length}
                             page={page}
-                            onPageChange={(_, newPage) => setPage(newPage)}
+                            onPageChange={(_, newPage) => {
+                                setPage(newPage);
+                                updateQuery({ page: newPage + 1 });
+                            }}
                             rowsPerPage={rowsPerPage}
                             onRowsPerPageChange={(event) => {
-                                setRowsPerPage(parseInt(event.target.value, 10));
+                                const nextPageSize = parseInt(event.target.value, 10);
+                                setRowsPerPage(nextPageSize);
                                 setPage(0);
+                                updateQuery({ pageSize: nextPageSize, page: 1 });
                             }}
                             labelRowsPerPage="Số dòng/trang:"
                             labelDisplayedRows={({ from, to, count }) => `${from}-${to} trên ${count}`}

@@ -484,10 +484,10 @@ export default function TrenChuyenDetail() {
                                             <Stack direction={{ xs: "column", md: "row" }} spacing={1} sx={{ mt: 0.75 }}>
                                                 <TextField size="small" fullWidth label="Mã đơn hàng" value={sourceFields.maDonHang} disabled={!canEdit || Boolean(getFieldValue(dynamicFields, "TrenChuyen_MaDonHang"))} onChange={(event) => setSourceFields((current) => ({ ...current, maDonHang: event.target.value }))} />
                                                 <TextField size="small" fullWidth label="Quy trình sản xuất" value={sourceFields.tenQuyTrinhSanXuat} disabled={!canEdit || Boolean(getFieldValue(dynamicFields, "TrenChuyen_TenQuyTrinhSanXuat"))} onChange={(event) => setSourceFields((current) => ({ ...current, tenQuyTrinhSanXuat: event.target.value }))} />
-                                                <TextField size="small" fullWidth label="LOT" value={sourceFields.lot} disabled={!canEdit || Boolean(getFieldValue(dynamicFields, "TrenChuyen_Lot"))} onChange={(event) => setSourceFields((current) => ({ ...current, lot: event.target.value }))} />
-                                                <TextField size="small" fullWidth label="Lệnh xuất vật tư" value={sourceFields.lenhXuatVatTu} disabled={!canEdit || Boolean(getFieldValue(dynamicFields, "TrenChuyen_LenhXuatVatTu"))} onChange={(event) => setSourceFields((current) => ({ ...current, lenhXuatVatTu: event.target.value }))} />
-                                                {canEdit && ["TrenChuyen_MaDonHang", "TrenChuyen_TenQuyTrinhSanXuat", "TrenChuyen_Lot", "TrenChuyen_LenhXuatVatTu"].some((name) => !getFieldValue(dynamicFields, name)) ? (
-                                                    <Button variant="outlined" disabled={savingSourceFields} onClick={saveSourceFields}>Bổ sung</Button>
+                                                <TextField size="small" fullWidth label="LOT" value={sourceFields.lot} disabled={!canEdit} onChange={(event) => setSourceFields((current) => ({ ...current, lot: event.target.value }))} />
+                                                <TextField size="small" fullWidth label="Lệnh xuất vật tư" value={sourceFields.lenhXuatVatTu} disabled={!canEdit} onChange={(event) => setSourceFields((current) => ({ ...current, lenhXuatVatTu: event.target.value }))} />
+                                                {canEdit ? (
+                                                    <Button variant="outlined" disabled={savingSourceFields} onClick={saveSourceFields}>Cập nhật</Button>
                                                 ) : null}
                                             </Stack>
                                         </Grid>

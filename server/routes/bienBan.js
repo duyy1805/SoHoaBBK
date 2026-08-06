@@ -128,11 +128,9 @@ const assertKphSectionContributionOpen = async (transaction, bienBanId, allowRet
 };
 
 const hasLeadRole = (user) => {
-    if (!Array.isArray(user?.roles) || user.roles.length === 0) {
-        return true;
-    }
-
-    return user.roles.some((role) => role?.toUpperCase().includes("TP"));
+    return Array.isArray(user?.roles) && user.roles.some((role) =>
+        String(role || "").toUpperCase().startsWith("TP_")
+    );
 };
 
 const canManageDepartmentAssign = (user, boPhanId) => {
@@ -353,13 +351,33 @@ router.get(
                 return res.json(rows);
             }
 
-            const progressResult = await pool.request()
+            // Không dùng sp_BienBan_GetListProgress ở đây: SP này tổng hợp lại cả
+            // luồng thường và SXBT bằng nhiều CTE lồng nhau, dễ vượt request timeout
+            // khi tài khoản quản lý được trả về toàn bộ danh sách. Tiến độ biên bản
+            // thường được tính ở truy vấn bên dưới; phần này chỉ cần lấy các bước SXBT.
+            const sxbtProgressResult = await pool.request()
                 .input("BienBanIds", sql.NVarChar(sql.MAX), bienBanIds.join(","))
-                .execute("sp_BienBan_GetListProgress");
+                .query(`
+                    SELECT
+                        step.BienBanId,
+                        step.BoPhanId,
+                        step.TrangThai,
+                        step.StepOrder,
+                        department.MaBoPhan,
+                        department.TenBoPhan
+                    FROM dbo.BIEN_BAN_SXBT_CONFIRM_STEP step
+                    LEFT JOIN dbo.DM_BO_PHAN department ON department.Id = step.BoPhanId
+                    WHERE step.BienBanId IN (
+                        SELECT TRY_CONVERT(int, [value])
+                        FROM STRING_SPLIT(@BienBanIds, ',')
+                    )
+                    ORDER BY step.BienBanId, step.StepOrder, step.Id
+                `);
 
             // sp_BienBan_GetListProgress cũ đối chiếu bộ phận của người xác nhận,
             // không tính BoPhanId đích được lưu trực tiếp trên bản ghi xác nhận.
-            // Lấy lại tiến độ biên bản thường theo dữ liệu hiện hành; SXBT vẫn dùng SP.
+            // Lấy lại tiến độ biên bản thường theo dữ liệu hiện hành; SXBT đã được
+            // tổng hợp riêng từ các bước xác nhận ở trên.
             const normalProgressResult = await pool.request().query(`
                 SELECT
                     a.BienBanId,
@@ -431,9 +449,37 @@ router.get(
                 normalProgressByBienBanId.set(key, progress);
             }
 
-            const progressByBienBanId = new Map(
-                (progressResult.recordset || []).map((item) => [Number(item.BienBanId), item])
-            );
+            const progressByBienBanId = new Map();
+            for (const step of sxbtProgressResult.recordset || []) {
+                const key = Number(step.BienBanId);
+                const progress = progressByBienBanId.get(key) || {
+                    IsSxbt: true,
+                    SoBoPhan: 0,
+                    DaCoYKien: 0,
+                    pendingDepartments: []
+                };
+                progress.SoBoPhan += 1;
+                if (step.TrangThai === "DA_XAC_NHAN") {
+                    progress.DaCoYKien += 1;
+                } else {
+                    progress.pendingDepartments.push(step);
+                }
+                progressByBienBanId.set(key, progress);
+            }
+
+            for (const progress of progressByBienBanId.values()) {
+                const pendingStep = progress.pendingDepartments[0] || null;
+                progress.BoPhanDangChoId = pendingStep?.BoPhanId || null;
+                progress.MaBoPhanDangCho = pendingStep?.MaBoPhan || null;
+                progress.TenBoPhanDangCho = pendingStep?.TenBoPhan || null;
+                progress.BoPhanChuaXacNhanText = progress.pendingDepartments
+                    .map((step) => step.TenBoPhan || step.MaBoPhan)
+                    .filter(Boolean)
+                    .join(", ") || null;
+                progress.ProgressPercent = progress.SoBoPhan > 0
+                    ? Math.round(progress.DaCoYKien * 100 / progress.SoBoPhan)
+                    : 0;
+            }
 
             const listMetaResult = await pool.request()
                 .input("BienBanIds", sql.NVarChar(sql.MAX), bienBanIds.join(","))
@@ -537,6 +583,7 @@ router.get(
                         : (total > 0 ? Math.round((done / total) * 100) : 0),
                     MaBoPhanDangCho: progress?.MaBoPhanDangCho || null,
                     TenBoPhanDangCho: progress?.TenBoPhanDangCho || null,
+                    BoPhanDangChoId: Number(progress?.BoPhanDangChoId) || null,
                     BoPhanChuaXacNhanText: isSxbt
                         ? (progress?.BoPhanChuaXacNhanText || null)
                         : (normalProgress?.pendingDepartments.join(", ") || null),
@@ -700,7 +747,7 @@ router.get(
                 LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id=COALESCE(xn.BoPhanId,u.BoPhanId)
                 WHERE xn.BienBanId=@BienBanId
             `);
-            if (Number(info?.LoaiKiemId) === 6 && Number(info?.PhieuKiemId) > 0) {
+            if ((Number(info?.LoaiKiemId) === 6 || isCongDoan) && Number(info?.PhieuKiemId) > 0) {
                 const xacNhanResult = await pool.request()
                     .input("PhieuKiemId", sql.Int, Number(info.PhieuKiemId))
                     .query(`
@@ -712,7 +759,7 @@ router.get(
                             xn.TrangThai,
                             xn.NoiDung,
                             xn.ThoiGian,
-                            u.FullName AS TenNguoiXacNhan,
+                            COALESCE(NULLIF(u.FullName, N''), u.Username) AS TenNguoiXacNhan,
                             u.BoPhanId
                         FROM dbo.PHIEU_KIEM_XAC_NHAN xn
                         LEFT JOIN dbo.USERS u ON u.Id = xn.NguoiXacNhanId

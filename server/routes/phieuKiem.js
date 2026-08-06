@@ -66,6 +66,10 @@ const TREN_CHUYEN_SOURCE_FIELDS = [
     'TrenChuyen_Lot',
     'TrenChuyen_LenhXuatVatTu'
 ];
+const TREN_CHUYEN_EDITABLE_SOURCE_FIELDS = new Set([
+    'TrenChuyen_Lot',
+    'TrenChuyen_LenhXuatVatTu'
+]);
 
 const isCuoiChuyenLoaiKiem = (loaiKiemId) => Number(loaiKiemId) === CUOI_CHUYEN_LOAI_KIEM_ID;
 const isTrenChuyenLoaiKiem = (loaiKiemId) => Number(loaiKiemId) === TREN_CHUYEN_LOAI_KIEM_ID;
@@ -1408,13 +1412,16 @@ router.patch(
                 `);
             const existing = new Map(existingResult.recordset.map((row) => [row.FieldName, String(row.FieldValue || '').trim()]));
             for (const fieldName of TREN_CHUYEN_SOURCE_FIELDS) {
-                if (existing.get(fieldName) && incoming[fieldName] !== existing.get(fieldName)) {
+                if (!TREN_CHUYEN_EDITABLE_SOURCE_FIELDS.has(fieldName)
+                    && existing.get(fieldName)
+                    && incoming[fieldName] !== existing.get(fieldName)) {
                     return res.status(409).json({ message: `${fieldName} đã có dữ liệu và không được sửa` });
                 }
             }
             const fieldsToSave = Object.fromEntries(
                 TREN_CHUYEN_SOURCE_FIELDS
-                    .filter((fieldName) => !existing.get(fieldName) && incoming[fieldName])
+                    .filter((fieldName) => TREN_CHUYEN_EDITABLE_SOURCE_FIELDS.has(fieldName)
+                        || (!existing.get(fieldName) && incoming[fieldName]))
                     .map((fieldName) => [fieldName, incoming[fieldName]])
             );
             if (Object.keys(fieldsToSave).length) {
@@ -2303,8 +2310,8 @@ router.post(
                             SET SoLuongThucTe = @SoLuongThucTe,
                                 MaDonHang = CASE WHEN NULLIF(LTRIM(RTRIM(MaDonHang)), '') IS NULL THEN @MaDonHang ELSE MaDonHang END,
                                 TenQuyTrinhSanXuat = CASE WHEN NULLIF(LTRIM(RTRIM(TenQuyTrinhSanXuat)), '') IS NULL THEN @TenQuyTrinhSanXuat ELSE TenQuyTrinhSanXuat END,
-                                Lot = CASE WHEN NULLIF(LTRIM(RTRIM(Lot)), '') IS NULL THEN @Lot ELSE Lot END,
-                                LenhXuatVatTu = CASE WHEN NULLIF(LTRIM(RTRIM(LenhXuatVatTu)), '') IS NULL THEN @LenhXuatVatTu ELSE LenhXuatVatTu END,
+                                Lot = @Lot,
+                                LenhXuatVatTu = @LenhXuatVatTu,
                                 SoLoiBuiBan = @SoLoiBuiBan,
                                 SoLoiConTrung = @SoLoiConTrung
                             WHERE Id = @PlanId AND PhieuKiemId = @PhieuKiemId
@@ -2659,16 +2666,22 @@ router.post(
                 if (!quantityValidation.recordset.length) {
                     return res.status(409).json({ message: 'Phiếu cần ít nhất một dòng kiểm trước khi hoàn tất' });
                 }
-                const invalidEntry = quantityValidation.recordset.find((entry) =>
-                    !String(entry.CongDoan || '').trim()
-                    || !String(entry.TenCongNhanGayLoi || '').trim()
-                    || !Number.isInteger(Number(entry.SoLuongKiem))
-                    || Number(entry.SoLuongKiem) <= 0
-                    || Number(entry.TongLoi || 0) > Number(entry.SoLuongKiem || 0)
-                );
+                const invalidEntry = quantityValidation.recordset.find((entry) => {
+                    const hasSoLuongKiem = entry.SoLuongKiem !== null
+                        && entry.SoLuongKiem !== undefined
+                        && entry.SoLuongKiem !== '';
+                    const invalidSoLuongKiem = hasSoLuongKiem && (
+                        !Number.isInteger(Number(entry.SoLuongKiem))
+                        || Number(entry.SoLuongKiem) <= 0
+                        || Number(entry.TongLoi || 0) > Number(entry.SoLuongKiem)
+                    );
+                    return !String(entry.CongDoan || '').trim()
+                        || !String(entry.TenCongNhanGayLoi || '').trim()
+                        || invalidSoLuongKiem;
+                });
                 if (invalidEntry) {
                     return res.status(409).json({
-                        message: `Dòng kiểm #${invalidEntry.Id} thiếu công đoạn/công nhân/số lượng kiểm hoặc có tổng lỗi vượt số lượng kiểm`
+                        message: `Dòng kiểm #${invalidEntry.Id} thiếu công đoạn/công nhân, số lượng kiểm không hợp lệ hoặc có tổng lỗi vượt số lượng kiểm đã nhập`
                     });
                 }
             } else {

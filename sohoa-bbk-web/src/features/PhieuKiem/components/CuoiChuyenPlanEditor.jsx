@@ -196,8 +196,8 @@ export default function CuoiChuyenPlanEditor({ open, phieuId, planId, plans = []
                             <TextField fullWidth label="Quy trình" value={plan.tenQuyTrinhSanXuat} disabled={Boolean(plan.TenQuyTrinhSanXuat || plan.Ten_QuyTrinhSanXuat)} onChange={(event) => setPlan((current) => ({ ...current, tenQuyTrinhSanXuat: event.target.value }))} />
                         </Stack>
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                            <TextField fullWidth label="LOT" value={plan.lot} disabled={Boolean(plan.Lot)} onChange={(event) => setPlan((current) => ({ ...current, lot: event.target.value }))} />
-                            <TextField fullWidth label="Lệnh xuất vật tư" value={plan.lenhXuatVatTu} disabled={Boolean(plan.LenhXuatVatTu)} onChange={(event) => setPlan((current) => ({ ...current, lenhXuatVatTu: event.target.value }))} />
+                            <TextField fullWidth label="LOT" value={plan.lot} onChange={(event) => setPlan((current) => ({ ...current, lot: event.target.value }))} />
+                            <TextField fullWidth label="Lệnh xuất vật tư" value={plan.lenhXuatVatTu} onChange={(event) => setPlan((current) => ({ ...current, lenhXuatVatTu: event.target.value }))} />
                         </Stack>
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                             <TextField fullWidth label="Bụi bẩn" type="number" value={plan.soLoiBuiBan} onChange={(event) => setPlan((current) => ({ ...current, soLoiBuiBan: event.target.value.replace(/\D/g, "") }))} />

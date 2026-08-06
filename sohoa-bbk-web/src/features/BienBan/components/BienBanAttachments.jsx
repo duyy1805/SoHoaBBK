@@ -7,6 +7,10 @@ import {
     CardContent,
     Chip,
     CircularProgress,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
     Divider,
     IconButton,
     Stack,
@@ -18,6 +22,7 @@ import CloudUploadOutlinedIcon from "@mui/icons-material/CloudUploadOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import DownloadOutlinedIcon from "@mui/icons-material/DownloadOutlined";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
+import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import {
     deleteBienBanAttachment,
     downloadBienBanAttachment,
@@ -42,6 +47,16 @@ const formatBytes = (value) => {
 
 const extensionOf = (name) => String(name || "").split(".").pop()?.toLowerCase() || "";
 
+const previewTypeOf = (attachment) => {
+    const mimeType = String(attachment?.mimeType || "").toLowerCase();
+    const extension = extensionOf(attachment?.originalName);
+    if (mimeType.startsWith("image/") || ["jpg", "jpeg", "png", "gif", "webp"].includes(extension)) {
+        return "image";
+    }
+    if (mimeType === "application/pdf" || extension === "pdf") return "pdf";
+    return null;
+};
+
 const errorMessage = (error, fallback) => error?.response?.data?.message || error?.message || fallback;
 
 export default function BienBanAttachments({ bienBanId }) {
@@ -51,8 +66,24 @@ export default function BienBanAttachments({ bienBanId }) {
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
     const [downloadingId, setDownloadingId] = useState(null);
+    const [previewLoadingId, setPreviewLoadingId] = useState(null);
+    const [preview, setPreview] = useState(null);
     const [deletingId, setDeletingId] = useState(null);
     const [notice, setNotice] = useState(null);
+    const previewUrlRef = useRef("");
+    const previewRequestRef = useRef(0);
+
+    const revokePreviewUrl = useCallback(() => {
+        if (previewUrlRef.current) {
+            URL.revokeObjectURL(previewUrlRef.current);
+            previewUrlRef.current = "";
+        }
+    }, []);
+
+    useEffect(() => () => {
+        previewRequestRef.current += 1;
+        revokePreviewUrl();
+    }, [revokePreviewUrl]);
 
     const loadAttachments = useCallback(async () => {
         if (!bienBanId) return;
@@ -125,6 +156,38 @@ export default function BienBanAttachments({ bienBanId }) {
             setNotice({ type: "error", message: errorMessage(error, "Không tải xuống được file") });
         } finally {
             setDownloadingId(null);
+        }
+    };
+
+    const handleClosePreview = () => {
+        previewRequestRef.current += 1;
+        setPreviewLoadingId(null);
+        setPreview(null);
+        revokePreviewUrl();
+    };
+
+    const handlePreview = async (attachment) => {
+        const type = previewTypeOf(attachment);
+        if (!type) return;
+
+        const requestId = previewRequestRef.current + 1;
+        previewRequestRef.current = requestId;
+        try {
+            setPreviewLoadingId(attachment.id);
+            setNotice(null);
+            const response = await downloadBienBanAttachment(bienBanId, attachment.id);
+            if (previewRequestRef.current !== requestId) return;
+
+            revokePreviewUrl();
+            const objectUrl = URL.createObjectURL(response.data);
+            previewUrlRef.current = objectUrl;
+            setPreview({ attachment, type, url: objectUrl });
+        } catch (error) {
+            if (previewRequestRef.current === requestId) {
+                setNotice({ type: "error", message: errorMessage(error, "Không xem trước được file") });
+            }
+        } finally {
+            if (previewRequestRef.current === requestId) setPreviewLoadingId(null);
         }
     };
 
@@ -237,6 +300,20 @@ export default function BienBanAttachments({ bienBanId }) {
                                     </Box>
                                 </Stack>
                                 <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                                    {previewTypeOf(attachment) && (
+                                        <Tooltip title="Xem file">
+                                            <span>
+                                                <IconButton
+                                                    color="primary"
+                                                    disabled={previewLoadingId === attachment.id}
+                                                    onClick={() => handlePreview(attachment)}
+                                                    aria-label={`Xem ${attachment.originalName}`}
+                                                >
+                                                    {previewLoadingId === attachment.id ? <CircularProgress size={20} /> : <VisibilityOutlinedIcon />}
+                                                </IconButton>
+                                            </span>
+                                        </Tooltip>
+                                    )}
                                     <Tooltip title="Tải xuống">
                                         <span>
                                             <IconButton
@@ -267,6 +344,66 @@ export default function BienBanAttachments({ bienBanId }) {
                     </Stack>
                 )}
             </CardContent>
+
+            <Dialog
+                open={Boolean(preview)}
+                onClose={handleClosePreview}
+                fullWidth
+                maxWidth="xl"
+                PaperProps={{
+                    sx: {
+                        width: { xs: "calc(100% - 16px)", sm: "calc(100% - 32px)" },
+                        height: { xs: "calc(100% - 16px)", sm: "calc(100% - 32px)" },
+                        maxHeight: "none",
+                        m: { xs: 1, sm: 2 }
+                    }
+                }}
+            >
+                <DialogTitle sx={{ pr: 2, overflowWrap: "anywhere" }}>
+                    {preview?.attachment?.originalName || "Xem file đính kèm"}
+                </DialogTitle>
+                <DialogContent
+                    dividers
+                    sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        minHeight: 0,
+                        p: preview?.type === "pdf" ? 0 : { xs: 1, sm: 2 },
+                        bgcolor: "#e5e7eb"
+                    }}
+                >
+                    {preview?.type === "image" && (
+                        <Box
+                            component="img"
+                            src={preview.url}
+                            alt={preview.attachment.originalName || "Ảnh đính kèm"}
+                            sx={{ display: "block", maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+                        />
+                    )}
+                    {preview?.type === "pdf" && (
+                        <Box
+                            component="iframe"
+                            src={preview.url}
+                            title={preview.attachment.originalName || "Tài liệu PDF"}
+                            sx={{ display: "block", width: "100%", height: "100%", border: 0, bgcolor: "white" }}
+                        />
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleClosePreview}>Đóng</Button>
+                    {preview && (
+                        <Button
+                            variant="contained"
+                            startIcon={<DownloadOutlinedIcon />}
+                            onClick={() => handleDownload(preview.attachment)}
+                            disabled={downloadingId === preview.attachment.id}
+                        >
+                            Tải xuống
+                        </Button>
+                    )}
+                </DialogActions>
+            </Dialog>
         </Card>
     );
 }
