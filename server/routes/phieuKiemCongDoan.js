@@ -379,6 +379,7 @@ router.post(
             const plan = (available.recordset || [])
                 .find((item) =>
                     Number(item.ID_KeHoachSanXuat) === sourceId
+                    && dateKey(item.Ngay) === dateKey(header.recordset[0].NgayKiem)
                     && normalizeText(item.Ten_DonVi) === normalizeText(header.recordset[0].PhanXuong)
                 );
             if (!plan) {

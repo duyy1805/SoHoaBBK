@@ -82,7 +82,8 @@ const getHeaderAccess = async (pool, bienBanId, user) => {
 };
 const KPH_V01_CUSTOM_FIELDS = new Set([
     "TenBoPhan", "MaBoPhan", "TenSanPham", "MaSanPham", "MaTruyNguyen",
-    "DonHang", "Lot", "SoLuongKPH", "DauTuan", "PhatHienTu", "MucDo"
+    "DonHang", "Lot", "SoLuongKPH", "DauTuan", "PhatHienTu", "MucDo",
+    "ItemSourceType", "ItemSourceId", "LocalProductId", "OrderId"
 ]);
 
 const enrichDefectCodes = async (pool, defects = []) => {
@@ -139,6 +140,22 @@ router.get("/", authenticateToken, async (req, res) => {
         const creatorDepartmentMap = new Map(
             (creatorDepartmentResult.recordset || []).map((item) => [Number(item.BienBanId), item])
         );
+        const summaryFieldResult = await pool.request().query(`
+            SELECT customField.BienBanId,
+                MAX(CASE WHEN customField.FieldName=N'MaSanPham' THEN customField.FieldValue END) AS MaSanPham,
+                MAX(CASE WHEN customField.FieldName=N'TenSanPham' THEN customField.FieldValue END) AS TenSanPham,
+                MAX(CASE WHEN customField.FieldName=N'DonHang' THEN customField.FieldValue END) AS DonHang,
+                MAX(CASE WHEN customField.FieldName=N'ItemSourceType' THEN customField.FieldValue END) AS ItemSourceType,
+                MAX(CASE WHEN customField.FieldName=N'PhatHienTu' THEN customField.FieldValue END) AS PhatHienTu,
+                MAX(CASE WHEN customField.FieldName=N'MucDo' THEN customField.FieldValue END) AS MucDo
+            FROM dbo.BienBan_CustomFields customField
+            WHERE customField.BienBanId IN (${ids.join(",")})
+              AND customField.FieldName IN (N'MaSanPham',N'TenSanPham',N'DonHang',N'ItemSourceType',N'PhatHienTu',N'MucDo')
+            GROUP BY customField.BienBanId;
+        `);
+        const summaryFieldMap = new Map(
+            (summaryFieldResult.recordset || []).map((item) => [Number(item.BienBanId), item])
+        );
         const progressResult = await pool.request().query(`
             SELECT yk.BienBanId,yk.BoPhanId,bp.MaBoPhan,bp.TenBoPhan,
                 CASE WHEN yk.ConfirmedAt IS NOT NULL
@@ -159,11 +176,13 @@ router.get("/", authenticateToken, async (req, res) => {
         }
         res.json(rows.map((item) => {
             const creatorDepartment = creatorDepartmentMap.get(Number(item.BienBanId)) || {};
+            const summaryFields = summaryFieldMap.get(Number(item.BienBanId)) || {};
             const progress = progressMap.get(Number(item.BienBanId));
-            if (!progress) return { ...item, ...creatorDepartment };
+            if (!progress) return { ...item, ...creatorDepartment, ...summaryFields };
             return {
                 ...item,
                 ...creatorDepartment,
+                ...summaryFields,
                 SoBoPhan: progress.total,
                 DaCoYKien: progress.done,
                 BoPhanChuaXacNhanText: progress.pending.filter(Boolean).join(", ") || null
@@ -172,6 +191,114 @@ router.get("/", authenticateToken, async (req, res) => {
     } catch (err) {
         console.error("GetStandaloneBienBanList error:", err);
         res.status(500).json({ message: "Không tải được danh sách phiếu xử lý không phù hợp" });
+    }
+});
+
+router.get("/catalog-items", authenticateToken, async (req, res) => {
+    try {
+        const keyword = String(req.query.keyword || "").trim();
+        const orderId = Number(req.query.orderId) || null;
+        const page = Math.max(Number(req.query.page) || 0, 0);
+        const pageSize = Math.min(Math.max(Number(req.query.pageSize) || 20, 1), 50);
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input("Keyword", sql.NVarChar(200), keyword || null)
+            .input("OrderId", sql.Int, orderId)
+            .input("Offset", sql.Int, page * pageSize)
+            .input("PageSize", sql.Int, pageSize)
+            .query(`
+                WITH catalog AS (
+                    SELECT localProduct.Id AS LocalProductId,
+                        localProduct.MaSanPham AS Code,
+                        localProduct.TenSanPham AS Name,
+                        CASE WHEN material.ID_VatTu IS NOT NULL THEN N'VAT_TU' ELSE N'SAN_PHAM' END AS SourceType,
+                        COALESCE(material.ID_VatTu, sourceProduct.ID_SanPham) AS SourceId
+                    FROM dbo.DM_SAN_PHAM localProduct
+                    OUTER APPLY (
+                        SELECT TOP (1) materialRow.ID_VatTu
+                        FROM TAG_QTKD.dbo.DM_VatTu materialRow
+                        WHERE materialRow.Ma_VatTu = localProduct.MaSanPham
+                          AND ISNULL(materialRow.TonTai, 1) = 1
+                        ORDER BY materialRow.ID_VatTu
+                    ) material
+                    OUTER APPLY (
+                        SELECT TOP (1) productRow.ID_SanPham
+                        FROM TAG_QTKD.dbo.DM_SanPham productRow
+                        WHERE productRow.ItemCode = localProduct.MaSanPham
+                          AND ISNULL(productRow.TonTai, 1) = 1
+                        ORDER BY productRow.ID_SanPham
+                    ) sourceProduct
+                    WHERE localProduct.TrangThai = 1
+                      AND (material.ID_VatTu IS NOT NULL OR sourceProduct.ID_SanPham IS NOT NULL)
+                      AND (@Keyword IS NULL OR localProduct.MaSanPham LIKE N'%' + @Keyword + N'%'
+                           OR localProduct.TenSanPham LIKE N'%' + @Keyword + N'%')
+                      AND (@OrderId IS NULL OR (material.ID_VatTu IS NULL AND EXISTS (
+                          SELECT 1 FROM TAG_QTKD.dbo.DonHang_SanPham orderProduct
+                          WHERE orderProduct.ID_DonHang = @OrderId
+                            AND orderProduct.ID_SanPham = sourceProduct.ID_SanPham
+                            AND ISNULL(orderProduct.TonTai, 1) = 1
+                      )))
+                )
+                SELECT *, COUNT(*) OVER() AS Total
+                FROM catalog
+                ORDER BY Code
+                OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            `);
+        const rows = result.recordset || [];
+        res.json({
+            data: rows.map(({ Total, ...item }) => item),
+            total: Number(rows[0]?.Total || 0)
+        });
+    } catch (err) {
+        console.error("SearchStandaloneCatalogItems error:", err);
+        res.status(500).json({ message: "Không tìm được danh mục VT/BTP/TP" });
+    }
+});
+
+router.get("/orders", authenticateToken, async (req, res) => {
+    try {
+        const keyword = String(req.query.keyword || "").trim();
+        const localProductId = Number(req.query.localProductId) || null;
+        const page = Math.max(Number(req.query.page) || 0, 0);
+        const pageSize = Math.min(Math.max(Number(req.query.pageSize) || 20, 1), 50);
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input("Keyword", sql.NVarChar(200), keyword || null)
+            .input("LocalProductId", sql.Int, localProductId)
+            .input("Offset", sql.Int, page * pageSize)
+            .input("PageSize", sql.Int, pageSize)
+            .query(`
+                WITH orders AS (
+                    SELECT DISTINCT orderRow.ID_DonHang AS OrderId, orderRow.Ma_DonHang AS OrderCode
+                    FROM TAG_QTKD.dbo.DonHang orderRow
+                    WHERE ISNULL(orderRow.TonTai, 1) = 1
+                      AND (@Keyword IS NULL OR orderRow.Ma_DonHang LIKE N'%' + @Keyword + N'%')
+                      AND (@LocalProductId IS NULL OR EXISTS (
+                          SELECT 1
+                          FROM dbo.DM_SAN_PHAM localProduct
+                          INNER JOIN TAG_QTKD.dbo.DM_SanPham sourceProduct
+                              ON sourceProduct.ItemCode = localProduct.MaSanPham
+                          INNER JOIN TAG_QTKD.dbo.DonHang_SanPham orderProduct
+                              ON orderProduct.ID_SanPham = sourceProduct.ID_SanPham
+                             AND orderProduct.ID_DonHang = orderRow.ID_DonHang
+                          WHERE localProduct.Id = @LocalProductId
+                            AND ISNULL(sourceProduct.TonTai, 1) = 1
+                            AND ISNULL(orderProduct.TonTai, 1) = 1
+                      ))
+                )
+                SELECT *, COUNT(*) OVER() AS Total
+                FROM orders
+                ORDER BY OrderCode DESC
+                OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            `);
+        const rows = result.recordset || [];
+        res.json({
+            data: rows.map(({ Total, ...item }) => item),
+            total: Number(rows[0]?.Total || 0)
+        });
+    } catch (err) {
+        console.error("SearchStandaloneOrders error:", err);
+        res.status(500).json({ message: "Không tìm được danh sách đơn hàng" });
     }
 });
 
@@ -402,6 +529,75 @@ router.post("/:id/header", authenticateToken, async (req, res) => {
         const normalizedFields = Object.fromEntries(
             Object.entries(fields || {}).filter(([key]) => KPH_V01_CUSTOM_FIELDS.has(key))
         );
+        const localProductId = Number(normalizedFields.LocalProductId);
+        if (!Number.isInteger(localProductId) || localProductId <= 0) {
+            return res.status(400).json({ message: "Vui lòng chọn VT/BTP/TP từ danh mục" });
+        }
+
+        const catalogResult = await pool.request()
+            .input("LocalProductId", sql.Int, localProductId)
+            .query(`
+                SELECT TOP (1) localProduct.Id AS LocalProductId,
+                    localProduct.MaSanPham AS Code,
+                    localProduct.TenSanPham AS Name,
+                    material.ID_VatTu,
+                    sourceProduct.ID_SanPham
+                FROM dbo.DM_SAN_PHAM localProduct
+                OUTER APPLY (
+                    SELECT TOP (1) materialRow.ID_VatTu
+                    FROM TAG_QTKD.dbo.DM_VatTu materialRow
+                    WHERE materialRow.Ma_VatTu = localProduct.MaSanPham
+                      AND ISNULL(materialRow.TonTai, 1) = 1
+                    ORDER BY materialRow.ID_VatTu
+                ) material
+                OUTER APPLY (
+                    SELECT TOP (1) productRow.ID_SanPham
+                    FROM TAG_QTKD.dbo.DM_SanPham productRow
+                    WHERE productRow.ItemCode = localProduct.MaSanPham
+                      AND ISNULL(productRow.TonTai, 1) = 1
+                    ORDER BY productRow.ID_SanPham
+                ) sourceProduct
+                WHERE localProduct.Id = @LocalProductId
+                  AND localProduct.TrangThai = 1
+                  AND (material.ID_VatTu IS NOT NULL OR sourceProduct.ID_SanPham IS NOT NULL);
+            `);
+        const catalogItem = catalogResult.recordset?.[0];
+        if (!catalogItem) {
+            return res.status(400).json({ message: "VT/BTP/TP đã chọn không còn tồn tại trong danh mục" });
+        }
+
+        const isMaterial = Boolean(catalogItem.ID_VatTu);
+        const orderId = isMaterial ? null : (Number(normalizedFields.OrderId) || null);
+        let orderCode = "";
+        if (orderId) {
+            const orderResult = await pool.request()
+                .input("OrderId", sql.Int, orderId)
+                .input("SourceProductId", sql.Int, catalogItem.ID_SanPham)
+                .query(`
+                    SELECT TOP (1) orderRow.Ma_DonHang
+                    FROM TAG_QTKD.dbo.DonHang orderRow
+                    INNER JOIN TAG_QTKD.dbo.DonHang_SanPham orderProduct
+                        ON orderProduct.ID_DonHang = orderRow.ID_DonHang
+                    WHERE orderRow.ID_DonHang = @OrderId
+                      AND orderProduct.ID_SanPham = @SourceProductId
+                      AND ISNULL(orderRow.TonTai, 1) = 1
+                      AND ISNULL(orderProduct.TonTai, 1) = 1;
+                `);
+            orderCode = orderResult.recordset?.[0]?.Ma_DonHang || "";
+            if (!orderCode) {
+                return res.status(400).json({ message: "Sản phẩm không thuộc đơn hàng đã chọn" });
+            }
+        }
+
+        Object.assign(normalizedFields, {
+            LocalProductId: String(catalogItem.LocalProductId),
+            ItemSourceType: isMaterial ? "VAT_TU" : "SAN_PHAM",
+            ItemSourceId: String(isMaterial ? catalogItem.ID_VatTu : catalogItem.ID_SanPham),
+            MaSanPham: catalogItem.Code || "",
+            TenSanPham: catalogItem.Name || "",
+            OrderId: orderId ? String(orderId) : "",
+            DonHang: orderCode
+        });
         await pool.request()
             .input("BienBanId", sql.Int, bienBanId)
             .input("MoTaChung", sql.NVarChar(sql.MAX), moTaChung)
@@ -420,7 +616,7 @@ router.post("/:id/defects", authenticateToken, async (req, res) => {
         const bienBanId = Number(req.params.id);
         const { defects = [] } = req.body || {};
         const normalizedDefects = (Array.isArray(defects) ? defects : []).map((item, index) => ({
-            defectId: item?.defectId ?? item?.DefectId ?? null,
+            defectId: Number(item?.defectId ?? item?.DefectId) || null,
             maLoi: item?.maLoi ?? item?.MaLoi ?? "",
             tenLoi: item?.tenLoi ?? item?.TenLoi ?? "",
             defectType: item?.defectType ?? item?.DefectType ?? "",
@@ -432,6 +628,12 @@ router.post("/:id/defects", authenticateToken, async (req, res) => {
             soLuongKiem: item?.soLuongKiem ?? item?.SoLuongKiem ?? null,
             sortOrder: item?.sortOrder ?? item?.SortOrder ?? index + 1
         }));
+
+        if (normalizedDefects.length === 0 || normalizedDefects.some((item) => !Number.isInteger(item.defectId) || item.defectId <= 0)) {
+            return res.status(400).json({
+                message: "Mỗi dòng lỗi phải được chọn từ ngân hàng lỗi"
+            });
+        }
 
         const invalidDefect = normalizedDefects.find((item) => {
             const soLuong = Number(item.soLuong);
@@ -452,9 +654,32 @@ router.post("/:id/defects", authenticateToken, async (req, res) => {
         const access = await getHeaderAccess(pool, bienBanId, req.user);
         if (!access.exists) return res.status(404).json({ message: "Không tìm thấy biên bản" });
         if (!access.canEdit) return res.status(403).json({ message: "Bạn không có quyền sửa lỗi ở trạng thái hiện tại" });
+
+        const defectIds = [...new Set(normalizedDefects.map((item) => item.defectId))];
+        const catalogResult = await pool.request().query(`
+            SELECT Id, MaLoi, TenLoi, DefectType, MoTa
+            FROM dbo.DM_DEFECT
+            WHERE Id IN (${defectIds.join(",")})
+        `);
+        const catalogById = new Map((catalogResult.recordset || []).map((item) => [Number(item.Id), item]));
+        if (defectIds.some((defectId) => !catalogById.has(defectId))) {
+            return res.status(400).json({ message: "Có lỗi không tồn tại trong ngân hàng lỗi" });
+        }
+
+        const catalogDefects = normalizedDefects.map((item) => {
+            const catalog = catalogById.get(item.defectId);
+            return {
+                ...item,
+                maLoi: catalog.MaLoi || "",
+                tenLoi: catalog.TenLoi || "",
+                defectType: catalog.DefectType || "",
+                tenLoiTuNhap: "",
+                moTa: catalog.MoTa || ""
+            };
+        });
         await pool.request()
             .input("BienBanId", sql.Int, bienBanId)
-            .input("DefectsJson", sql.NVarChar(sql.MAX), JSON.stringify(normalizedDefects))
+            .input("DefectsJson", sql.NVarChar(sql.MAX), JSON.stringify(catalogDefects))
             .execute("sp_PhieuXuLyKPH_SaveDefects");
 
         res.json({ success: true });

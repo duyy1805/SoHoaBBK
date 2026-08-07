@@ -35,6 +35,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { createStandaloneBienBan, getStandaloneBienBanList } from "../../api/bienBan.api";
 import { decodeToken } from "../../utils/auth";
 import { getBienBanStatusMeta } from "./components/bienBanWorkflow";
+import WorkFilterTabLabel from "./components/WorkFilterTabLabel";
 
 const normalizeSearchText = (value) => String(value || "")
     .normalize("NFD")
@@ -44,6 +45,20 @@ const normalizeSearchText = (value) => String(value || "")
     .toLowerCase();
 
 const VALID_PAGE_SIZES = [5, 10, 25, 50];
+const PHAT_HIEN_TU_LABELS = {
+    KIEM_TRA_DAU_VAO: "Kiểm tra đầu vào",
+    TRONG_SAN_XUAT: "Trong sản xuất",
+    KIEM_DONG_CONT: "Kiểm cuối",
+    TAI_NCC: "Kiểm tra tại NCC",
+    KHACH_HANG: "Khách hàng",
+    TRONG_KHO: "Trong kho"
+};
+const MUC_DO_LABELS = {
+    LoiLanDau: "Lỗi lần đầu",
+    LoiLapLai: "Lỗi lặp lại",
+    LoiDonLe: "Lỗi đơn lẻ",
+    LoiHangLoat: "Lỗi hàng loạt"
+};
 const parsePageParam = (value) => {
     const parsed = Number.parseInt(value, 10);
     return Number.isInteger(parsed) && parsed > 0 ? parsed - 1 : 0;
@@ -139,7 +154,7 @@ export default function PhieuXuLyKhongPhuHopList() {
         setRowsPerPage(VALID_PAGE_SIZES.includes(pageSize) ? pageSize : 10);
     }, [searchParams]);
 
-    const loadData = useCallback(async () => {
+    const loadData = async () => {
         try {
             setLoading(true);
             const res = await getStandaloneBienBanList();
@@ -157,11 +172,11 @@ export default function PhieuXuLyKhongPhuHopList() {
         } finally {
             setLoading(false);
         }
-    }, [currentUser, access, updateQuery]);
+    };
 
     useEffect(() => {
         loadData();
-    }, [loadData]);
+    }, []);
 
     const counts = useMemo(() => data.reduce((result, item) => {
         const bucket = getWorkBucket(item, currentUser, access);
@@ -204,7 +219,12 @@ export default function PhieuXuLyKhongPhuHopList() {
                 item.MoTaChung,
                 item.NguoiLap,
                 item.MaBoPhanTao,
-                item.TenBoPhanTao
+                item.TenBoPhanTao,
+                item.MaSanPham,
+                item.TenSanPham,
+                item.DonHang,
+                PHAT_HIEN_TU_LABELS[item.PhatHienTu],
+                MUC_DO_LABELS[item.MucDo]
             ].filter(Boolean).join(" "));
             return searchableText.includes(normalizeSearchText(keyword));
         });
@@ -437,32 +457,33 @@ export default function PhieuXuLyKhongPhuHopList() {
                         scrollButtons="auto"
                         aria-label="Lọc phiếu theo công việc"
                     >
-                        <Tab value="action" label={`Cần tôi xử lý (${counts.action})`} />
-                        <Tab value="waiting" label={`Đang chờ (${counts.waiting})`} />
-                        <Tab value="done" label={`Hoàn tất (${counts.done})`} />
-                        <Tab value="all" label={`Tất cả (${data.length})`} />
+                        <Tab value="action" label={<WorkFilterTabLabel label="Cần tôi xử lý" count={counts.action} description="Các phiếu mà bạn hoặc bộ phận của bạn đang có nhiệm vụ hoặc quyền thực hiện bước tiếp theo." />} />
+                        <Tab value="waiting" label={<WorkFilterTabLabel label="Đang chờ" count={counts.waiting} description="Các phiếu bạn được xem nhưng hiện đang chờ người hoặc bộ phận khác xử lý." />} />
+                        <Tab value="done" label={<WorkFilterTabLabel label="Hoàn tất" count={counts.done} description="Các phiếu đã hoàn thành quy trình và chỉ còn phục vụ tra cứu hoặc in lại." />} />
+                        <Tab value="all" label={<WorkFilterTabLabel label="Tất cả" count={data.length} description="Toàn bộ phiếu xử lý không phù hợp mà tài khoản của bạn có quyền xem." />} />
                     </Tabs>
                 </Paper>
 
                 <Card sx={{ borderRadius: 3 }}>
                     <CardContent sx={{ p: 0 }}>
                         <TableContainer ref={tableContainerRef} component={Paper} elevation={0}>
-                            <Table>
+                            <Table size="small" sx={{ minWidth: 1180, "& .MuiTableCell-root": { px: 1.25, py: 1, fontSize: "0.8rem", verticalAlign: "top" } }}>
                                 <TableHead sx={{ bgcolor: "#f8fafc" }}>
                                     <TableRow>
-                                        <TableCell>Số biên bản</TableCell>
+                                        <TableCell sx={{ width: 150 }}>Số biên bản</TableCell>
+                                        <TableCell sx={{ width: 235 }}>VT/BTP/TP</TableCell>
+                                        <TableCell sx={{ width: 170 }}>Thông tin KPH</TableCell>
                                         <TableCell>Mô tả chung</TableCell>
-                                        <TableCell>Người lập</TableCell>
-                                        <TableCell>Ngày tạo</TableCell>
-                                        <TableCell>Tiến độ</TableCell>
-                                        <TableCell>Trạng thái</TableCell>
-                                        <TableCell align="center">Thao tác</TableCell>
+                                        <TableCell sx={{ width: 170 }}>Người lập</TableCell>
+                                        <TableCell sx={{ width: 155 }}>Tiến độ</TableCell>
+                                        <TableCell sx={{ width: 145 }}>Trạng thái</TableCell>
+                                        <TableCell align="center" sx={{ width: 115 }}>Thao tác</TableCell>
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
                                     {filteredData.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={7} align="center" sx={{ py: 4, color: "text.secondary" }}>
+                                            <TableCell colSpan={8} align="center" sx={{ py: 4, color: "text.secondary" }}>
                                                 Chưa có phiếu xử lý không phù hợp
                                             </TableCell>
                                         </TableRow>
@@ -474,17 +495,43 @@ export default function PhieuXuLyKhongPhuHopList() {
                                                 onClick={() => openDetail(item.BienBanId)}
                                                 sx={{ cursor: "pointer" }}
                                             >
-                                                <TableCell sx={{ fontWeight: 600 }}>{item.SoBienBan || `BB#${item.BienBanId}`}</TableCell>
-                                                <TableCell>{item.MoTaChung || "---"}</TableCell>
                                                 <TableCell>
-                                                    <Typography variant="body2">{item.NguoiLap || "---"}</Typography>
+                                                    <Typography variant="body2" fontWeight={700} color="primary.main">{item.SoBienBan || `BB#${item.BienBanId}`}</Typography>
                                                     <Typography variant="caption" color="text.secondary">
+                                                        {item.CreatedAt ? new Date(item.CreatedAt).toLocaleString("vi-VN") : "---"}
+                                                    </Typography>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
+                                                        <Chip size="small" variant="outlined" color={item.ItemSourceType === "VAT_TU" ? "warning" : item.ItemSourceType === "SAN_PHAM" ? "primary" : "default"} label={item.ItemSourceType === "VAT_TU" ? "Vật tư" : item.ItemSourceType === "SAN_PHAM" ? "BTP/TP" : "VT/BTP/TP"} sx={{ height: 20, fontSize: "0.68rem" }} />
+                                                        <Typography variant="caption" fontWeight={700}>{item.MaSanPham || "Chưa có mã"}</Typography>
+                                                    </Stack>
+                                                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25, lineHeight: 1.35 }}>
+                                                        {item.TenSanPham || "Chưa có thông tin VT/BTP/TP"}
+                                                    </Typography>
+                                                    {item.DonHang && <Typography variant="caption" color="text.secondary">ĐH: {item.DonHang}</Typography>}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Typography variant="caption" fontWeight={600} sx={{ display: "block" }}>
+                                                        {PHAT_HIEN_TU_LABELS[item.PhatHienTu] || "Chưa chọn nguồn phát hiện"}
+                                                    </Typography>
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {MUC_DO_LABELS[item.MucDo] || "Chưa chọn mức độ"}
+                                                    </Typography>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Typography variant="caption" sx={{ display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 3, overflow: "hidden", lineHeight: 1.4 }}>
+                                                        {item.MoTaChung || "---"}
+                                                    </Typography>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Typography variant="caption" fontWeight={600}>{item.NguoiLap || "---"}</Typography>
+                                                    <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
                                                         {[item.MaBoPhanTao, item.TenBoPhanTao].filter(Boolean).join(" - ") || "Chưa có bộ phận"}
                                                     </Typography>
                                                 </TableCell>
-                                                <TableCell>{item.CreatedAt ? new Date(item.CreatedAt).toLocaleString("vi-VN") : "---"}</TableCell>
                                                 <TableCell>
-                                                    <Typography variant="body2" fontWeight={600}>
+                                                    <Typography variant="caption" fontWeight={600} sx={{ display: "block" }}>
                                                         {item.SoBoPhan > 0 ? `${item.DaCoYKien || 0}/${item.SoBoPhan} bộ phận` : "Chưa phân công"}
                                                     </Typography>
                                                     {item.BoPhanChuaXacNhanText && (

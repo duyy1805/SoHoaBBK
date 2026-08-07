@@ -364,7 +364,9 @@ export default function PhieuKiemCreate() {
     const getRowId = (row) => {
         if (selectedLoai?.MaLoai === "KIEM_DONG_CONT") return row.ClosingScheduleDetailGuid;
         if (selectedLoai?.MaLoai === "DAU_VAO") return row.ID_ChungTuNhap_ChiTiet;
-        if (isKeHoachSanXuatLoai(selectedLoai)) return row.ID_KeHoachSanXuat;
+        if (isKeHoachSanXuatLoai(selectedLoai)) {
+            return `${row.ID_KeHoachSanXuat}::${getLocalDateKey(row.Ngay)}`;
+        }
         if (selectedLoai?.Id === 4) return row.KeHoachNhapId || row.ID_TuTang;
         return row.Id;
     };

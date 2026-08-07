@@ -23,12 +23,12 @@ export default function BienBanWorkflowGuide({ workflow, status }) {
             : { border: "#93c5fd", bg: "#eff6ff", accent: "#1d4ed8" };
 
     return (
-        <Stack spacing={2.5} sx={{ mb: 3 }}>
-            <Card elevation={0} sx={{ border: `1px solid ${palette.border}`, bgcolor: palette.bg, borderRadius: 3 }}>
-                <CardContent sx={{ p: { xs: 2, md: 2.5 }, "&:last-child": { pb: { xs: 2, md: 2.5 } } }}>
-                    <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={2}>
+        <Stack spacing={1.25} sx={{ mb: 2 }}>
+            <Card elevation={0} sx={{ border: `1px solid ${palette.border}`, bgcolor: palette.bg, borderRadius: 2 }}>
+                <CardContent sx={{ p: { xs: 1.5, md: 1.75 }, "&:last-child": { pb: { xs: 1.5, md: 1.75 } } }}>
+                    <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={1.25} alignItems={{ md: "center" }}>
                         <Box>
-                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
+                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.25 }}>
                                 <Typography
                                     variant="subtitle2"
                                     sx={{
@@ -43,7 +43,7 @@ export default function BienBanWorkflowGuide({ workflow, status }) {
                                 </Typography>
                                 <Chip size="small" color={statusMeta.color} label={statusMeta.label} />
                             </Stack>
-                            <Typography variant="h6" sx={{ fontWeight: 750, color: "text.primary", mb: 0.5 }}>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 750, color: "text.primary", lineHeight: 1.35 }}>
                                 {guidance.title}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
@@ -52,6 +52,7 @@ export default function BienBanWorkflowGuide({ workflow, status }) {
                         </Box>
                         {guidance.actionLabel && guidance.onAction && (
                             <Button
+                                size="small"
                                 variant="contained"
                                 color={guidance.tone === "success" ? "success" : "primary"}
                                 endIcon={<ArrowForwardIcon />}
@@ -76,10 +77,10 @@ export default function BienBanWorkflowGuide({ workflow, status }) {
                                 display: "flex",
                                 alignItems: "center",
                                 gap: 1,
-                                minHeight: 48,
-                                px: 1.25,
-                                py: 1,
-                                borderRadius: 2,
+                                minHeight: 44,
+                                px: 1,
+                                py: 0.5,
+                                borderRadius: 1.5,
                                 border: "1px solid",
                                 borderColor: completed ? "success.light" : current ? "primary.main" : "divider",
                                 bgcolor: completed ? "#f0fdf4" : current ? "#eff6ff" : "background.paper"

@@ -208,7 +208,7 @@ export default function BienBanAttachments({ bienBanId }) {
 
     return (
         <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider", borderRadius: 2 }}>
-            <CardContent sx={{ p: { xs: 2, md: 2.5 }, "&:last-child": { pb: { xs: 2, md: 2.5 } } }}>
+            <CardContent sx={{ p: { xs: 1.5, md: 2 }, "&:last-child": { pb: { xs: 1.5, md: 2 } } }}>
                 <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={2}>
                     <Box>
                         <Stack direction="row" spacing={1} alignItems="center">

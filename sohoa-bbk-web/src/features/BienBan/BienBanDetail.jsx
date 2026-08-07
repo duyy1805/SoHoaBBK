@@ -35,7 +35,9 @@ import {
     Container,
     List,
     ListItem,
-    ListItemButton
+    ListItemButton,
+    Autocomplete,
+    IconButton
 } from "@mui/material";
 
 // --- MUI Icons ---
@@ -75,6 +77,8 @@ import {
     getAssignableUsers,
     assignUser,
     deleteStandaloneBienBan,
+    searchStandaloneCatalogItems,
+    searchStandaloneOrders,
     confirmOpinionDepartments,
     confirmKphByCreatorDepartment,
     resubmitKphReview
@@ -185,8 +189,20 @@ export default function BienBanDetail({ standalone = false }) {
         SoLuongKPH: "",
         DauTuan: "",
         PhatHienTu: "",
-        MucDo: ""
+        MucDo: "",
+        ItemSourceType: "",
+        ItemSourceId: "",
+        LocalProductId: "",
+        OrderId: ""
     });
+    const [catalogItemOptions, setCatalogItemOptions] = useState([]);
+    const [orderOptions, setOrderOptions] = useState([]);
+    const [selectedCatalogItem, setSelectedCatalogItem] = useState(null);
+    const [selectedOrder, setSelectedOrder] = useState(null);
+    const [catalogItemSearch, setCatalogItemSearch] = useState("");
+    const [orderSearch, setOrderSearch] = useState("");
+    const [catalogItemLoading, setCatalogItemLoading] = useState(false);
+    const [orderLoading, setOrderLoading] = useState(false);
     const [defectOptions, setDefectOptions] = useState([]);
     const [isEditingStandaloneDefects, setIsEditingStandaloneDefects] = useState(false);
     // Confirm Dialog state
@@ -223,6 +239,56 @@ export default function BienBanDetail({ standalone = false }) {
 
         loadDefects();
     }, [standalone]);
+
+    useEffect(() => {
+        if (!standalone || !info?.CanManageKphFlow) return undefined;
+        let active = true;
+        const timer = setTimeout(async () => {
+            setCatalogItemLoading(true);
+            try {
+                const response = await searchStandaloneCatalogItems({
+                    keyword: catalogItemSearch,
+                    orderId: selectedOrder?.OrderId || undefined,
+                    page: 0,
+                    pageSize: 20
+                });
+                if (active) setCatalogItemOptions(response.data?.data || []);
+            } catch (error) {
+                if (active) console.error("SearchStandaloneCatalogItems error:", error);
+            } finally {
+                if (active) setCatalogItemLoading(false);
+            }
+        }, 300);
+        return () => {
+            active = false;
+            clearTimeout(timer);
+        };
+    }, [standalone, info?.CanManageKphFlow, catalogItemSearch, selectedOrder?.OrderId]);
+
+    useEffect(() => {
+        if (!standalone || !info?.CanManageKphFlow || selectedCatalogItem?.SourceType === "VAT_TU") return undefined;
+        let active = true;
+        const timer = setTimeout(async () => {
+            setOrderLoading(true);
+            try {
+                const response = await searchStandaloneOrders({
+                    keyword: orderSearch,
+                    localProductId: selectedCatalogItem?.LocalProductId || undefined,
+                    page: 0,
+                    pageSize: 20
+                });
+                if (active) setOrderOptions(response.data?.data || []);
+            } catch (error) {
+                if (active) console.error("SearchStandaloneOrders error:", error);
+            } finally {
+                if (active) setOrderLoading(false);
+            }
+        }, 300);
+        return () => {
+            active = false;
+            clearTimeout(timer);
+        };
+    }, [standalone, info?.CanManageKphFlow, orderSearch, selectedCatalogItem?.LocalProductId, selectedCatalogItem?.SourceType]);
 
     const loadData = async ({ background = hasLoadedRef.current } = {}) => {
         const requestId = ++latestLoadRequestRef.current;
@@ -282,7 +348,11 @@ export default function BienBanDetail({ standalone = false }) {
                 SoLuongKPH: fieldsMap.SoLuongKPH || "",
                 DauTuan: fieldsMap.DauTuan || "",
                 PhatHienTu: fieldsMap.PhatHienTu || "",
-                MucDo: fieldsMap.MucDo || ""
+                MucDo: fieldsMap.MucDo || "",
+                ItemSourceType: fieldsMap.ItemSourceType || "",
+                ItemSourceId: fieldsMap.ItemSourceId || "",
+                LocalProductId: fieldsMap.LocalProductId || "",
+                OrderId: fieldsMap.OrderId || ""
             };
             const moTa = res.data.info?.MoTaChung || "";
             serverDraftSnapshotRef.current = {
@@ -293,6 +363,17 @@ export default function BienBanDetail({ standalone = false }) {
             };
             if (!background || !isEditingKphHeader) {
                 setHeaderFields(nextHeaderFields);
+                setSelectedCatalogItem(nextHeaderFields.LocalProductId ? {
+                    LocalProductId: Number(nextHeaderFields.LocalProductId),
+                    SourceType: nextHeaderFields.ItemSourceType,
+                    SourceId: Number(nextHeaderFields.ItemSourceId) || null,
+                    Code: nextHeaderFields.MaSanPham,
+                    Name: nextHeaderFields.TenSanPham
+                } : null);
+                setSelectedOrder(nextHeaderFields.OrderId ? {
+                    OrderId: Number(nextHeaderFields.OrderId),
+                    OrderCode: nextHeaderFields.DonHang
+                } : null);
             }
             if (!background || moTaConfirmed) {
                 setMoTaChung(moTa);
@@ -326,6 +407,17 @@ export default function BienBanDetail({ standalone = false }) {
         if (!snapshot) return;
         if (header) {
             setHeaderFields(snapshot.headerFields);
+            setSelectedCatalogItem(snapshot.headerFields.LocalProductId ? {
+                LocalProductId: Number(snapshot.headerFields.LocalProductId),
+                SourceType: snapshot.headerFields.ItemSourceType,
+                SourceId: Number(snapshot.headerFields.ItemSourceId) || null,
+                Code: snapshot.headerFields.MaSanPham,
+                Name: snapshot.headerFields.TenSanPham
+            } : null);
+            setSelectedOrder(snapshot.headerFields.OrderId ? {
+                OrderId: Number(snapshot.headerFields.OrderId),
+                OrderCode: snapshot.headerFields.DonHang
+            } : null);
             setIsEditingKphHeader(false);
         }
         if (restoreDefects) {
@@ -336,6 +428,40 @@ export default function BienBanDetail({ standalone = false }) {
 
     const handleHeaderFieldChange = (fieldName, value) => {
         setHeaderFields((prev) => ({ ...prev, [fieldName]: value }));
+    };
+
+    const handleCatalogItemChange = (_, item) => {
+        setSelectedCatalogItem(item);
+        if (!item) {
+            setHeaderFields((current) => ({
+                ...current,
+                TenSanPham: "", MaSanPham: "", ItemSourceType: "", ItemSourceId: "", LocalProductId: ""
+            }));
+            return;
+        }
+        const isMaterial = item.SourceType === "VAT_TU";
+        setHeaderFields((current) => ({
+            ...current,
+            TenSanPham: item.Name || "",
+            MaSanPham: item.Code || "",
+            ItemSourceType: item.SourceType || "",
+            ItemSourceId: String(item.SourceId || ""),
+            LocalProductId: String(item.LocalProductId || ""),
+            ...(isMaterial ? { DonHang: "", OrderId: "" } : {})
+        }));
+        if (isMaterial && selectedOrder) {
+            setSelectedOrder(null);
+            showToast("Vật tư không áp dụng đơn hàng; lựa chọn đơn hàng đã được xóa", "info");
+        }
+    };
+
+    const handleOrderChange = (_, order) => {
+        setSelectedOrder(order);
+        setHeaderFields((current) => ({
+            ...current,
+            OrderId: order ? String(order.OrderId) : "",
+            DonHang: order?.OrderCode || ""
+        }));
     };
 
     const handleSaveKphCustomFields = async () => {
@@ -388,6 +514,10 @@ export default function BienBanDetail({ standalone = false }) {
 
     const handleSaveStandaloneHeader = async () => {
         if (actionSaving.description) return;
+        if (!headerFields.LocalProductId) {
+            showToast("Vui lòng chọn VT/BTP/TP từ danh mục", "warning");
+            return;
+        }
         if (!moTaChung.trim()) {
             showToast("Vui lòng nhập mô tả chung!", "warning");
             return;
@@ -427,25 +557,6 @@ export default function BienBanDetail({ standalone = false }) {
         ]);
     };
 
-    const addManualDefectRow = () => {
-        setDefects((prev) => [
-            ...prev,
-            {
-                DefectId: null,
-                MaLoi: "",
-                TenLoi: "",
-                TenLoiTuNhap: "",
-                DefectType: "MINOR",
-                MoTa: "",
-                SoLuongKiem: "",
-                SoLuong: 1,
-                GhiChu: "",
-                SortOrder: prev.length + 1,
-                sourceType: "manual"
-            }
-        ]);
-    };
-
     const updateStandaloneDefect = (index, patch) => {
         setDefects((prev) => prev.map((item, idx) => (
             idx === index ? { ...item, ...patch } : item
@@ -474,13 +585,17 @@ export default function BienBanDetail({ standalone = false }) {
 
     const handleSaveStandaloneDefects = async () => {
         if (actionSaving.defects) return;
+        if (defects.length === 0 || defects.some((item) => !item.DefectId)) {
+            showToast("Mỗi dòng lỗi phải được chọn từ ngân hàng lỗi", "warning");
+            return;
+        }
         const payload = defects
             .map((item, index) => ({
                 DefectId: item.DefectId ? Number(item.DefectId) : null,
                 MaLoi: item.MaLoi || "",
                 TenLoi: item.TenLoi || "",
                 DefectType: item.DefectType || "",
-                TenLoiTuNhap: item.TenLoiTuNhap || "",
+                TenLoiTuNhap: "",
                 MoTa: item.MoTa || "",
                 SoLuongKiem: item.SoLuongKiem === "" || item.SoLuongKiem === null || item.SoLuongKiem === undefined
                     ? null
@@ -489,7 +604,7 @@ export default function BienBanDetail({ standalone = false }) {
                 GhiChu: item.GhiChu || "",
                 SortOrder: index + 1
             }))
-            .filter((item) => (item.DefectId || item.TenLoiTuNhap) && item.SoLuong > 0);
+            .filter((item) => item.DefectId && item.SoLuong > 0);
 
         if (payload.length === 0) {
             showToast("Cần nhập ít nhất một lỗi hợp lệ", "warning");
@@ -871,21 +986,23 @@ export default function BienBanDetail({ standalone = false }) {
     }
 
     return (
-        <Box sx={{ bgcolor: '#f4f6f8', minHeight: '100vh', pb: 5 }}>
+        <Box sx={{ bgcolor: '#f4f6f8', minHeight: '100vh', pb: 3 }}>
             {/* Top Toolbar */}
-            <Paper elevation={0} sx={{ p: 2, mb: 3, borderBottom: '1px solid #e0e0e0', position: 'sticky', top: 0, zIndex: 10 }}>
+            <Paper elevation={0} sx={{ py: 1, px: 1.5, mb: 1.5, borderBottom: '1px solid #e0e0e0', position: 'sticky', top: 0, zIndex: 10 }}>
                 <Container maxWidth="xl">
-                    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems="center" spacing={2}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems="center" spacing={1}>
                         <Button
+                            size="small"
                             startIcon={<ArrowBackIcon />}
                             onClick={() => returnToList(isStandaloneBienBan)}
                             color="inherit"
                         >
                             {isStandaloneBienBan ? "Danh sách phiếu xử lý không phù hợp" : "Danh sách biên bản"}
                         </Button>
-                        <Stack direction="row" spacing={2}>
+                        <Stack direction="row" spacing={1}>
                             {isStandaloneBienBan && (
                                 <Button
+                                    size="small"
                                     variant="outlined"
                                     color="error"
                                     startIcon={<DeleteOutlineIcon />}
@@ -896,6 +1013,7 @@ export default function BienBanDetail({ standalone = false }) {
                             )}
                             {!isStandaloneBienBan && info.PhieuKiemId && (
                                 <Button
+                                    size="small"
                                     variant="outlined"
                                     startIcon={<AssignmentTurnedInIcon />}
                                     onClick={() => navigate(info.IsCongDoan
@@ -906,6 +1024,7 @@ export default function BienBanDetail({ standalone = false }) {
                                 </Button>
                             )}
                             <Button
+                                size="small"
                                 variant="outlined"
                                 startIcon={<PrintIcon />}
                                 onClick={handlePrintPreview}
@@ -918,10 +1037,10 @@ export default function BienBanDetail({ standalone = false }) {
                 </Container>
             </Paper>
 
-            <Box sx={{ px: { xs: 2, md: 4 } }}>
+            <Box sx={{ px: { xs: 1.5, md: 3 } }}>
                 <BienBanWorkflowGuide workflow={workflow} status={info.TrangThai} />
                 {info.TrangThai === "TRA_LAI_CHINH_SUA" && (
-                    <Paper variant="outlined" sx={{ mb: 3, p: 2, borderColor: "error.main", bgcolor: "#fff5f5" }}>
+                    <Paper variant="outlined" sx={{ mb: 2, p: 1.5, borderColor: "error.main", bgcolor: "#fff5f5" }}>
                         <Stack direction={{ xs: "column", md: "row" }} spacing={2} justifyContent="space-between" alignItems={{ md: "center" }}>
                             <Box>
                                 <Typography color="error.main" fontWeight={800}>Biên bản đã được trả lại để chỉnh sửa</Typography>
@@ -938,20 +1057,20 @@ export default function BienBanDetail({ standalone = false }) {
                     </Paper>
                 )}
                 {/* <Container > */}
-                <Grid container spacing={3}>
+                <Grid container spacing={2}>
                     {/* Thông tin chung & lỗi: dùng toàn chiều rộng theo bố cục hồ sơ một cột. */}
                     <Grid id="bien-ban-thong-tin" size={{ xs: 12 }} sx={{ scrollMarginTop: 100 }}>
-                        <Stack spacing={3}>
+                        <Stack spacing={2}>
                             {/* Card Header Info */}
                             <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
-                                <CardContent sx={{ p: { xs: 2, md: 2.5 }, '&:last-child': { pb: { xs: 2, md: 2.5 } } }}>
+                                <CardContent sx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}>
                                     <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.25}>
-                                        <Typography variant="h5" color="primary.main" fontWeight="bold">
+                                        <Typography variant="h6" color="primary.main" fontWeight="bold">
                                             {isStandaloneBienBan ? info.SoBienBan : info.SoPhieu}
                                         </Typography>
                                         <Chip label={statusMeta.label} color={statusMeta.color} variant="filled" size="small" />
                                     </Stack>
-                                    <Divider sx={{ mb: 1.5 }} />
+                                    <Divider sx={{ mb: 1 }} />
                                     {isStandaloneBienBan ? (
                                         <Stack spacing={1.5}>
                                             <Grid container spacing={2}>
@@ -967,7 +1086,11 @@ export default function BienBanDetail({ standalone = false }) {
                                                 </Grid>
                                                 <Grid size={{ xs: 12, sm: 4 }}>
                                                     <Typography variant="caption" color="text.secondary">Mức độ không phù hợp</Typography>
-                                                    <Typography variant="body2">{info.MucDoKhongPhuHop || "---"}</Typography>
+                                                    <Typography variant="body2">
+                                                        {MUC_DO_KPH_OPTIONS.find(([value]) => value === headerFields.MucDo)?.[1]
+                                                            || info.MucDoKhongPhuHop
+                                                            || "---"}
+                                                    </Typography>
                                                 </Grid>
                                             </Grid>
                                             <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
@@ -980,7 +1103,7 @@ export default function BienBanDetail({ standalone = false }) {
                                             </Typography>
                                         </Stack>
                                     ) : (
-                                        <Grid container spacing={{ xs: 1.5, md: 3 }} alignItems="start">
+                                        <Grid container spacing={{ xs: 1, md: 2 }} alignItems="start">
                                             <Grid size={{ xs: 12, md: 5 }}>
                                                 <Typography variant="caption" color="text.secondary">Sản phẩm</Typography>
                                                 <Typography variant="body1" fontWeight="500">{info.TenSanPham}</Typography>
@@ -995,20 +1118,20 @@ export default function BienBanDetail({ standalone = false }) {
 
                             {!isStandaloneBienBan && info.MauPhieuVersion === "V01" && (
                                 <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
-                                    <CardContent>
-                                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+                                    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.25}>
                                             <Typography variant="h6"><DescriptionIcon sx={{ mr: 1, verticalAlign: 'middle' }} />Thông tin sự không phù hợp</Typography>
                                             {canEditKphCustomFields && !isEditingKphHeader && <Button variant="outlined" onClick={() => setIsEditingKphHeader(true)}>Chỉnh sửa</Button>}
                                         </Stack>
-                                        <Grid container spacing={2}>
+                                        <Grid container spacing={1.25}>
                                             {KPH_HEADER_FIELDS.map(([label, field]) => (
                                                 <Grid size={{ xs: 12, sm: 6, md: 4 }} key={field}>
-                                                    {isEditingKphHeader ? <TextField fullWidth size="small" label={label} value={headerFields[field] || ""} onChange={(e) => handleHeaderFieldChange(field, e.target.value)} /> : <Box sx={{ p: 1.25, bgcolor: '#f8fafc', borderRadius: 1 }}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="body2" fontWeight={600}>{headerFields[field] || '—'}</Typography></Box>}
+                                                    {isEditingKphHeader ? <TextField fullWidth size="small" label={label} value={headerFields[field] || ""} onChange={(e) => handleHeaderFieldChange(field, e.target.value)} /> : <Box sx={{ p: 1, bgcolor: '#f8fafc', borderRadius: 1 }}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="body2" fontWeight={600}>{headerFields[field] || '—'}</Typography></Box>}
                                                 </Grid>
                                             ))}
                                             {[["2. Sự không phù hợp được phát hiện từ", "PhatHienTu", PHAT_HIEN_TU_OPTIONS], ["3. Mức độ không phù hợp", "MucDo", MUC_DO_KPH_OPTIONS]].map(([label, field, options]) => (
                                                 <Grid size={{ xs: 12, md: 6 }} key={field}>
-                                                    {isEditingKphHeader ? <TextField fullWidth select size="small" label={label} value={headerFields[field] || ""} onChange={(e) => handleHeaderFieldChange(field, e.target.value)}><MenuItem value="">Chưa chọn</MenuItem>{options.map(([value, text]) => <MenuItem value={value} key={value}>{text}</MenuItem>)}</TextField> : <Box sx={{ p: 1.25, bgcolor: '#f8fafc', borderRadius: 1 }}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="body2" fontWeight={600}>{options.find(([value]) => value === headerFields[field])?.[1] || '—'}</Typography></Box>}
+                                                    {isEditingKphHeader ? <TextField fullWidth select size="small" label={label} value={headerFields[field] || ""} onChange={(e) => handleHeaderFieldChange(field, e.target.value)}><MenuItem value="">Chưa chọn</MenuItem>{options.map(([value, text]) => <MenuItem value={value} key={value}>{text}</MenuItem>)}</TextField> : <Box sx={{ p: 1, bgcolor: '#f8fafc', borderRadius: 1 }}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="body2" fontWeight={600}>{options.find(([value]) => value === headerFields[field])?.[1] || '—'}</Typography></Box>}
                                                 </Grid>
                                             ))}
                                         </Grid>
@@ -1019,7 +1142,7 @@ export default function BienBanDetail({ standalone = false }) {
 
                             {isStandaloneBienBan ? (
                                 <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
-                                    <CardContent>
+                                    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                                         <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                                             <DescriptionIcon color="action" /> Thông tin phiếu
                                         </Typography>
@@ -1033,44 +1156,139 @@ export default function BienBanDetail({ standalone = false }) {
                                             {[
                                                 ["Đơn vị sản xuất", "TenBoPhan"],
                                                 ["Mã ĐVSX", "MaBoPhan"],
-                                                ["Tên VT/BTP/TP", "TenSanPham"],
-                                                ["Mã Item", "MaSanPham"],
                                                 ["Mã truy nguyên", "MaTruyNguyen"],
-                                                ["Đơn hàng", "DonHang"],
                                                 ["Lô SX", "Lot"],
                                                 ["Số lượng", "SoLuongKPH"],
                                                 ["Dấu tuần", "DauTuan"]
                                             ].map(([label, field]) => (
                                                 <Grid size={{ xs: 12, sm: 6, lg: 4 }} key={field}>
-                                                    <TextField
-                                                        fullWidth
-                                                        size="small"
-                                                        label={label}
-                                                        disabled={!info.CanManageKphFlow}
-                                                        value={headerFields[field] || ""}
-                                                        onChange={(e) => handleHeaderFieldChange(field, e.target.value)}
-                                                    />
+                                                    {info.CanManageKphFlow ? (
+                                                        <TextField
+                                                            fullWidth
+                                                            size="small"
+                                                            label={label}
+                                                            value={headerFields[field] || ""}
+                                                            onChange={(e) => handleHeaderFieldChange(field, e.target.value)}
+                                                        />
+                                                    ) : (
+                                                        <Box sx={{ p: 1, bgcolor: '#f8fafc', borderRadius: 1 }}>
+                                                            <Typography variant="caption" color="text.secondary">{label}</Typography>
+                                                            <Typography variant="body2" fontWeight={600}>{headerFields[field] || '—'}</Typography>
+                                                        </Box>
+                                                    )}
                                                 </Grid>
                                             ))}
+                                            <Grid size={{ xs: 12, md: 8 }}>
+                                                {info.CanManageKphFlow ? (
+                                                    <Autocomplete
+                                                        options={catalogItemOptions}
+                                                        value={selectedCatalogItem}
+                                                        loading={catalogItemLoading}
+                                                        onChange={handleCatalogItemChange}
+                                                        onInputChange={(_, value, reason) => {
+                                                            if (reason === "input") setCatalogItemSearch(value);
+                                                        }}
+                                                        filterOptions={(options) => options}
+                                                        isOptionEqualToValue={(option, value) => Number(option.LocalProductId) === Number(value.LocalProductId)}
+                                                        getOptionLabel={(option) => [option.Code, option.Name].filter(Boolean).join(" - ")}
+                                                        renderOption={(props, option) => (
+                                                            <Box component="li" {...props} key={`${option.SourceType}-${option.LocalProductId}`}>
+                                                                <Stack direction="row" spacing={1} alignItems="center" sx={{ width: "100%" }}>
+                                                                    <Chip size="small" color={option.SourceType === "VAT_TU" ? "warning" : "primary"} label={option.SourceType === "VAT_TU" ? "Vật tư" : "BTP/TP"} />
+                                                                    <Box sx={{ minWidth: 0 }}>
+                                                                        <Typography variant="body2" fontWeight={700}>{option.Code}</Typography>
+                                                                        <Typography variant="caption" color="text.secondary">{option.Name}</Typography>
+                                                                    </Box>
+                                                                </Stack>
+                                                            </Box>
+                                                        )}
+                                                        renderInput={(params) => (
+                                                            <TextField
+                                                                {...params}
+                                                                size="small"
+                                                                label="VT/BTP/TP"
+                                                                placeholder="Nhập mã hoặc tên để tìm..."
+                                                                required
+                                                                slotProps={{
+                                                                    input: {
+                                                                        ...params.InputProps,
+                                                                        endAdornment: <>{catalogItemLoading && <CircularProgress size={18} />}{params.InputProps.endAdornment}</>
+                                                                    }
+                                                                }}
+                                                            />
+                                                        )}
+                                                    />
+                                                ) : (
+                                                    <Box sx={{ p: 1, bgcolor: '#f8fafc', borderRadius: 1 }}>
+                                                        <Typography variant="caption" color="text.secondary">VT/BTP/TP</Typography>
+                                                        <Typography variant="body2" fontWeight={600}>{[headerFields.MaSanPham, headerFields.TenSanPham].filter(Boolean).join(" - ") || '—'}</Typography>
+                                                    </Box>
+                                                )}
+                                            </Grid>
+                                            {selectedCatalogItem?.SourceType !== "VAT_TU" && (
+                                                <Grid size={{ xs: 12, md: 4 }}>
+                                                    {info.CanManageKphFlow ? (
+                                                        <Autocomplete
+                                                            options={orderOptions}
+                                                            value={selectedOrder}
+                                                            loading={orderLoading}
+                                                            onChange={handleOrderChange}
+                                                            onInputChange={(_, value, reason) => {
+                                                                if (reason === "input") setOrderSearch(value);
+                                                            }}
+                                                            filterOptions={(options) => options}
+                                                            isOptionEqualToValue={(option, value) => Number(option.OrderId) === Number(value.OrderId)}
+                                                            getOptionLabel={(option) => option.OrderCode || ""}
+                                                            renderInput={(params) => (
+                                                                <TextField
+                                                                    {...params}
+                                                                    size="small"
+                                                                    label="Đơn hàng (không bắt buộc)"
+                                                                    placeholder="Nhập mã đơn hàng..."
+                                                                    slotProps={{
+                                                                        input: {
+                                                                            ...params.InputProps,
+                                                                            endAdornment: <>{orderLoading && <CircularProgress size={18} />}{params.InputProps.endAdornment}</>
+                                                                        }
+                                                                    }}
+                                                                />
+                                                            )}
+                                                        />
+                                                    ) : (
+                                                        <Box sx={{ p: 1, bgcolor: '#f8fafc', borderRadius: 1 }}>
+                                                            <Typography variant="caption" color="text.secondary">Đơn hàng</Typography>
+                                                            <Typography variant="body2" fontWeight={600}>{headerFields.DonHang || '—'}</Typography>
+                                                        </Box>
+                                                    )}
+                                                </Grid>
+                                            )}
                                             {[
                                                 ["2. Sự không phù hợp được phát hiện từ", "PhatHienTu", PHAT_HIEN_TU_OPTIONS],
                                                 ["3. Mức độ không phù hợp", "MucDo", MUC_DO_KPH_OPTIONS]
                                             ].map(([label, field, options]) => (
                                                 <Grid size={{ xs: 12, md: 6 }} key={field}>
-                                                    <TextField
-                                                        fullWidth
-                                                        select
-                                                        size="small"
-                                                        label={label}
-                                                        disabled={!info.CanManageKphFlow}
-                                                        value={headerFields[field] || ""}
-                                                        onChange={(event) => handleHeaderFieldChange(field, event.target.value)}
-                                                    >
-                                                        <MenuItem value="">Chưa chọn</MenuItem>
-                                                        {options.map(([value, text]) => (
-                                                            <MenuItem value={value} key={value}>{text}</MenuItem>
-                                                        ))}
-                                                    </TextField>
+                                                    {info.CanManageKphFlow ? (
+                                                        <TextField
+                                                            fullWidth
+                                                            select
+                                                            size="small"
+                                                            label={label}
+                                                            value={headerFields[field] || ""}
+                                                            onChange={(event) => handleHeaderFieldChange(field, event.target.value)}
+                                                        >
+                                                            <MenuItem value="">Chưa chọn</MenuItem>
+                                                            {options.map(([value, text]) => (
+                                                                <MenuItem value={value} key={value}>{text}</MenuItem>
+                                                            ))}
+                                                        </TextField>
+                                                    ) : (
+                                                        <Box sx={{ p: 1, bgcolor: '#f8fafc', borderRadius: 1 }}>
+                                                            <Typography variant="caption" color="text.secondary">{label}</Typography>
+                                                            <Typography variant="body2" fontWeight={600}>
+                                                                {options.find(([value]) => value === headerFields[field])?.[1] || '—'}
+                                                            </Typography>
+                                                        </Box>
+                                                    )}
                                                 </Grid>
                                             ))}
                                             <Grid size={{ xs: 12 }}>
@@ -1082,20 +1300,30 @@ export default function BienBanDetail({ standalone = false }) {
                                                 </Typography>
                                             </Grid>
                                             <Grid size={{ xs: 12 }}>
-                                                <TextField
-                                                    fullWidth
-                                                    multiline
-                                                    minRows={4}
-                                                    disabled={!info.CanManageKphFlow}
-                                                    label="Mô tả chung"
-                                                    placeholder="Nhập mô tả chi tiết về tình trạng không phù hợp..."
-                                                    value={moTaChung}
-                                                    onChange={(e) => setMoTaChung(e.target.value)}
-                                                    sx={{
-                                                        bgcolor: '#fff',
-                                                        '& .MuiInputBase-root': { borderRadius: 1.5 }
-                                                    }}
-                                                />
+                                                {info.CanManageKphFlow ? (
+                                                    <TextField
+                                                        fullWidth
+                                                        multiline
+                                                        minRows={4}
+                                                        label="Mô tả chung"
+                                                        placeholder="Nhập mô tả chi tiết về tình trạng không phù hợp..."
+                                                        value={moTaChung}
+                                                        onChange={(e) => setMoTaChung(e.target.value)}
+                                                        sx={{
+                                                            bgcolor: '#fff',
+                                                            '& .MuiInputBase-root': { borderRadius: 1.5 }
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <Box sx={{ p: 1.25, bgcolor: '#f8fafc', borderRadius: 1, minHeight: 64 }}>
+                                                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>
+                                                            Mô tả chung
+                                                        </Typography>
+                                                        <Typography variant="body2" fontWeight={500} sx={{ whiteSpace: 'pre-wrap' }}>
+                                                            {moTaChung || '—'}
+                                                        </Typography>
+                                                    </Box>
+                                                )}
                                             </Grid>
                                         </Grid>
                                         {info.CanManageKphFlow && <Box sx={{ mt: 2, textAlign: 'right' }}>
@@ -1107,7 +1335,7 @@ export default function BienBanDetail({ standalone = false }) {
                                 </Card>
                             ) : (
                                 <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
-                                    <CardContent>
+                                    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                                         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
                                             <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                                 <DescriptionIcon color="action" /> Mô tả chung
@@ -1157,23 +1385,20 @@ export default function BienBanDetail({ standalone = false }) {
                             {/* Card Danh Sách Lỗi */}
                             <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
                                 {(isStandaloneBienBan || canEditKphDefects) ? (
-                                    <CardContent>
+                                    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                                         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
                                             <Box>
                                                 <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                                     <BugReportIcon color="error" /> Mô tả chi tiết sự không phù hợp
                                                 </Typography>
                                                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                                                    Có thể chọn lỗi từ danh mục chuẩn hoặc nhập tay một nội dung không phù hợp phát sinh thực tế.
+                                                    Các lỗi trên phiếu phải được chọn từ ngân hàng lỗi.
                                                 </Typography>
                                             </Box>
                                             {isEditingStandaloneDefects && canEditKphDefects ? (
                                                 <Stack direction="row" spacing={1}>
                                                     <Button size="small" variant="contained" onClick={addCatalogDefectRow}>
-                                                        Thêm từ danh mục
-                                                    </Button>
-                                                    <Button size="small" variant="outlined" onClick={addManualDefectRow}>
-                                                        Thêm nhập tay
+                                                        Thêm lỗi
                                                     </Button>
                                                 </Stack>
                                             ) : canEditKphDefects ? (
@@ -1187,7 +1412,7 @@ export default function BienBanDetail({ standalone = false }) {
                                         {!isEditingStandaloneDefects ? (
                                             defects.length === 0 ? (
                                                 <Box sx={{ py: 5, textAlign: "center", color: "text.secondary", border: "1px dashed #d0d7de", borderRadius: 2 }}>
-                                                    Chưa có dòng lỗi. Bấm chỉnh sửa để thêm từ danh mục hoặc nhập tay.
+                                                    Chưa có dòng lỗi. Bấm chỉnh sửa để chọn lỗi từ ngân hàng lỗi.
                                                 </Box>
                                             ) : (
                                                 <Stack spacing={1.5}>
@@ -1242,111 +1467,45 @@ export default function BienBanDetail({ standalone = false }) {
                                             )
                                         ) : defects.length === 0 ? (
                                             <Box sx={{ py: 5, textAlign: "center", color: "text.secondary", border: "1px dashed #d0d7de", borderRadius: 2 }}>
-                                                Chưa có dòng lỗi. Chọn từ danh mục hoặc thêm một dòng nhập tay để bắt đầu.
+                                                Chưa có dòng lỗi. Thêm dòng và chọn lỗi từ ngân hàng lỗi để bắt đầu.
                                             </Box>
                                         ) : (
                                             <Stack spacing={2}>
                                                 {defects.map((d, i) => {
-                                                    const isManual = d.sourceType === "manual" || (!d.DefectId && d.TenLoiTuNhap);
                                                     const selectedOption = defectOptions.find((option) => Number(option.Id) === Number(d.DefectId)) || null;
 
                                                     return (
                                                         <Paper
                                                             key={`${d.Id || "new"}-${i}`}
                                                             variant="outlined"
-                                                            sx={{ p: 2.5, borderRadius: 2, bgcolor: "#fcfcfd" }}
+                                                            sx={{ p: 1.25, borderRadius: 1.5, bgcolor: "#fcfcfd" }}
                                                         >
-                                                            <Grid container spacing={2}>
-                                                                <Grid size={{ xs: 12, md: 2 }}>
-                                                                    <TextField
-                                                                        fullWidth
-                                                                        select
-                                                                        size="small"
-                                                                        label="Loại dòng"
-                                                                        value={isManual ? "manual" : "catalog"}
-                                                                        onChange={(e) => {
-                                                                            const nextType = e.target.value;
-                                                                            updateStandaloneDefect(i, nextType === "manual"
-                                                                                ? {
-                                                                                    sourceType: "manual",
-                                                                                    DefectId: null,
-                                                                                    MaLoi: "",
-                                                                                    TenLoi: "",
-                                                                                    TenLoiTuNhap: d.TenLoiTuNhap || "",
-                                                                                    MoTa: ""
-                                                                                }
-                                                                                : {
-                                                                                    sourceType: "catalog",
-                                                                                    DefectId: "",
-                                                                                    MaLoi: "",
-                                                                                    TenLoi: "",
-                                                                                    TenLoiTuNhap: "",
-                                                                                    MoTa: ""
-                                                                                });
-                                                                        }}
-                                                                    >
-                                                                        <MenuItem value="catalog">Danh mục</MenuItem>
-                                                                        <MenuItem value="manual">Nhập tay</MenuItem>
-                                                                    </TextField>
-                                                                </Grid>
-
-                                                                <Grid size={{ xs: 12, md: 7 }}>
-                                                                    {isManual ? (
-                                                                        <Stack spacing={1.5}>
-                                                                            <TextField
-                                                                                fullWidth
-                                                                                size="small"
-                                                                                label="Tên lỗi / nội dung không phù hợp"
-                                                                                value={d.TenLoiTuNhap || ""}
-                                                                                onChange={(e) => updateStandaloneDefect(i, { TenLoiTuNhap: e.target.value })}
-                                                                            />
-                                                                            <TextField
-                                                                                fullWidth
-                                                                                size="small"
-                                                                                multiline
-                                                                                minRows={2}
-                                                                                label="Mô tả chi tiết"
-                                                                                value={d.MoTa || ""}
-                                                                                onChange={(e) => updateStandaloneDefect(i, { MoTa: e.target.value })}
-                                                                            />
-                                                                        </Stack>
-                                                                    ) : (
-                                                                        <Stack spacing={1.5}>
-                                                                            <DefectPickerDialog
-                                                                                defects={defectOptions}
-                                                                                onSelect={(value) => handleCatalogDefectSelected(i, value?.Id || "")}
-                                                                                buttonLabel={selectedOption
-                                                                                    ? `${selectedOption.MaLoi ? `${selectedOption.MaLoi} - ` : ""}${selectedOption.TenLoi || ""}`
-                                                                                    : "Chọn lỗi từ danh mục"}
-                                                                                fullWidth
-                                                                            />
-                                                                            <Paper variant="outlined" sx={{ p: 1.5, bgcolor: "#fff" }}>
-                                                                                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
-                                                                                    Mô tả hiện tại
-                                                                                </Typography>
-                                                                                <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
-                                                                                    {d.MoTa || "Chưa có mô tả cho lỗi này"}
-                                                                                </Typography>
-                                                                            </Paper>
-                                                                        </Stack>
-                                                                    )}
-                                                                </Grid>
-
-                                                                <Grid size={{ xs: 12, md: 3 }}>
-                                                                    <Stack spacing={1.5}>
-                                                                        <TextField
+                                                            <Stack spacing={1}>
+                                                                <Grid container spacing={1} alignItems="center">
+                                                                    <Grid size={{ xs: 12, md: 10 }}>
+                                                                        <DefectPickerDialog
+                                                                            defects={defectOptions}
+                                                                            onSelect={(value) => handleCatalogDefectSelected(i, value?.Id || "")}
+                                                                            buttonLabel={selectedOption
+                                                                                ? `${selectedOption.MaLoi ? `${selectedOption.MaLoi} - ` : ""}${selectedOption.TenLoi || ""}`
+                                                                                : "Chọn lỗi từ ngân hàng lỗi"}
                                                                             fullWidth
-                                                                            select
-                                                                            size="small"
-                                                                            label="Mức độ"
-                                                                            value={d.DefectType || "MINOR"}
-                                                                            onChange={(e) => updateStandaloneDefect(i, { DefectType: e.target.value })}
-                                                                            disabled={!isManual}
-                                                                        >
-                                                                            <MenuItem value="MINOR">MINOR</MenuItem>
-                                                                            <MenuItem value="MAJOR">MAJOR</MenuItem>
-                                                                            <MenuItem value="CRITICAL">CRITICAL</MenuItem>
-                                                                        </TextField>
+                                                                        />
+                                                                    </Grid>
+                                                                    <Grid size={{ xs: 12, md: 2 }}>
+                                                                        <Stack direction="row" justifyContent={{ xs: "space-between", md: "flex-end" }} alignItems="center" spacing={1}>
+                                                                            <Chip size="small" color={getDefectColor(d.DefectType)} label={d.DefectType || "MINOR"} />
+                                                                            <IconButton color="error" size="small" aria-label="Xóa dòng lỗi" onClick={() => removeStandaloneDefect(i)}>
+                                                                                <DeleteOutlineIcon />
+                                                                            </IconButton>
+                                                                        </Stack>
+                                                                    </Grid>
+                                                                </Grid>
+                                                                <Typography variant="caption" color="text.secondary" sx={{ px: 0.5, whiteSpace: "pre-wrap" }}>
+                                                                    {selectedOption?.MoTa || "Chưa chọn lỗi từ ngân hàng lỗi"}
+                                                                </Typography>
+                                                                <Grid container spacing={1}>
+                                                                    <Grid size={{ xs: 6, md: 2 }}>
                                                                         <TextField
                                                                             fullWidth
                                                                             size="small"
@@ -1356,6 +1515,8 @@ export default function BienBanDetail({ standalone = false }) {
                                                                             onChange={(e) => updateStandaloneDefect(i, { SoLuongKiem: e.target.value })}
                                                                             inputProps={{ min: 1, step: 1 }}
                                                                         />
+                                                                    </Grid>
+                                                                    <Grid size={{ xs: 6, md: 2 }}>
                                                                         <TextField
                                                                             fullWidth
                                                                             size="small"
@@ -1365,21 +1526,18 @@ export default function BienBanDetail({ standalone = false }) {
                                                                             onChange={(e) => updateStandaloneDefect(i, { SoLuong: e.target.value })}
                                                                             inputProps={{ min: 1, step: 1 }}
                                                                         />
+                                                                    </Grid>
+                                                                    <Grid size={{ xs: 12, md: 8 }}>
                                                                         <TextField
                                                                             fullWidth
                                                                             size="small"
-                                                                            multiline
-                                                                            minRows={2}
                                                                             label="Ghi chú"
                                                                             value={d.GhiChu || ""}
                                                                             onChange={(e) => updateStandaloneDefect(i, { GhiChu: e.target.value })}
                                                                         />
-                                                                        <Button color="error" variant="text" onClick={() => removeStandaloneDefect(i)}>
-                                                                            Xóa dòng lỗi
-                                                                        </Button>
-                                                                    </Stack>
+                                                                    </Grid>
                                                                 </Grid>
-                                                            </Grid>
+                                                            </Stack>
                                                         </Paper>
                                                     );
                                                 })}
@@ -1480,7 +1638,7 @@ export default function BienBanDetail({ standalone = false }) {
                                         bgcolor: info.CreatorConfirmedAt ? '#f0fdf4' : '#fffbeb'
                                     }}
                                 >
-                                    <CardContent>
+                                    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                                         <Stack
                                             direction={{ xs: 'column', md: 'row' }}
                                             justifyContent="space-between"
@@ -1531,13 +1689,13 @@ export default function BienBanDetail({ standalone = false }) {
 
                     {/* Các luồng xử lý */}
                     <Grid id="bien-ban-xu-ly" size={{ xs: 12 }} sx={{ scrollMarginTop: 100 }}>
-                        <Stack spacing={3}>
+                        <Stack spacing={2}>
 
                             {/* Phân công xử lý */}
                             {moTaConfirmed && (
                                 <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
-                                    <CardContent>
-                                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+                                    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.25}>
                                             <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                                 <GroupWorkIcon color="primary" /> {isV01 ? "Bộ phận cần lấy ý kiến" : "Bộ phận phối hợp xử lý"}
                                             </Typography>
@@ -1562,7 +1720,7 @@ export default function BienBanDetail({ standalone = false }) {
                                         {!isV01 && isAdminUser && info.AssignConfirmed && <Stack direction="row" flexWrap="wrap" sx={{ mt: 2, gap: 1 }}>{assigns.filter((a) => !xacNhan.some((x) => Number(x.BoPhanId) === Number(a.BoPhanId))).map((a) => <Button key={a.BoPhanId} size="small" variant="outlined" onClick={() => handleConfirmUser(a.BoPhanId)}>Xác nhận thay {a.MaBoPhan}</Button>)}</Stack>}
 
                                         {!isV01 && !info.AssignConfirmed && assigns.length > 0 && isManagerOrQA && (
-                                            <Box sx={{ mt: 3, textAlign: 'right' }}>
+                                            <Box sx={{ mt: 2, textAlign: 'right' }}>
                                                 <Button variant="contained" color="warning" onClick={handleConfirmAssign} startIcon={<AssignmentTurnedInIcon />}>
                                                     Chốt phân công
                                                 </Button>
@@ -1575,7 +1733,7 @@ export default function BienBanDetail({ standalone = false }) {
                             {/* Ý kiến xử lý */}
                             <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
                                 <CardContent sx={{ p: 0 }}>
-                                    <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <Box sx={{ px: 2, py: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                             <LightbulbCircleIcon color="warning" /> Ý kiến / Đề xuất xử lý
                                         </Typography>
@@ -1617,11 +1775,11 @@ export default function BienBanDetail({ standalone = false }) {
                             </Card>
 
                             {/* Chi phí & hành động khắc phục xếp dọc để bảng có đủ không gian. */}
-                            <Grid container spacing={3}>
+                            <Grid container spacing={2}>
                                 <Grid size={{ xs: 12 }}>
                                     <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2, height: '100%' }}>
-                                        <CardContent>
-                                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+                                        <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.25}>
                                                 <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '1.1rem' }}>
                                                     <AttachMoneyIcon color="success" /> Chi phí phát sinh
                                                 </Typography>
@@ -1650,8 +1808,8 @@ export default function BienBanDetail({ standalone = false }) {
 
                                 <Grid size={{ xs: 12 }}>
                                     <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2, height: '100%' }}>
-                                        <CardContent>
-                                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+                                        <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.25}>
                                                 <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '1.1rem' }}>
                                                     <BuildCircleIcon color="info" /> Hành động khắc phục
                                                 </Typography>
@@ -1695,7 +1853,7 @@ export default function BienBanDetail({ standalone = false }) {
                             {/* Lịch sử xác nhận */}
                             {xacNhan.length > 0 && (
                                 <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
-                                    <CardContent>
+                                    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                                         <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                                             <VerifiedIcon color="success" /> Lịch sử xác nhận
                                         </Typography>
@@ -1716,22 +1874,22 @@ export default function BienBanDetail({ standalone = false }) {
                     </Grid>
                 </Grid>
 
-                <Box sx={{ mt: 3 }}>
+                <Box sx={{ mt: 2 }}>
                     <BienBanAttachments bienBanId={bienBanId} />
                 </Box>
 
                 {/* Floating Bottom Action Bar */}
                 {(canConfirmProcessing || canSubmitCompletion) && (
-                    <Paper elevation={4} sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, p: 2, bgcolor: 'white', zIndex: 100, borderTop: '1px solid #e0e0e0' }}>
+                    <Paper elevation={4} sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, py: 1, px: 2, bgcolor: 'white', zIndex: 100, borderTop: '1px solid #e0e0e0' }}>
                         <Container maxWidth="xl">
                             <Stack direction="row" justifyContent="flex-end" spacing={2}>
                                 {canConfirmProcessing && (
-                                    <Button variant="contained" color="warning" size="large" onClick={() => handleConfirmUser()} startIcon={<VerifiedIcon />}>
+                                    <Button variant="contained" color="warning" onClick={() => handleConfirmUser()} startIcon={<VerifiedIcon />}>
                                         Xác nhận tiến độ xử lý của bộ phận
                                     </Button>
                                 )}
                                 {canSubmitCompletion && (
-                                    <Button variant="contained" color="success" size="large" onClick={handleComplete} startIcon={<SaveIcon />}>
+                                    <Button variant="contained" color="success" onClick={handleComplete} startIcon={<SaveIcon />}>
                                         {isV01 ? "Xác nhận và chuyển theo dõi" : "Hoàn tất Biên Bản"}
                                     </Button>
                                 )}

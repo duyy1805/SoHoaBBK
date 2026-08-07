@@ -39,6 +39,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { getMyBienBan } from "../../api/bienBan.api"; // Giữ nguyên import của bạn
 import { decodeToken } from "../../utils/auth";
 import { getBienBanStatusMeta } from "./components/bienBanWorkflow";
+import WorkFilterTabLabel from "./components/WorkFilterTabLabel";
 
 const normalizeSearchText = (value) => String(value || "")
     .normalize("NFD")
@@ -581,10 +582,10 @@ export default function BienBanList() {
                         scrollButtons="auto"
                         aria-label="Lọc biên bản theo công việc"
                     >
-                        <Tab value="action" label={`Cần tôi xử lý (${workCounts.action})`} />
-                        <Tab value="waiting" label={`Đang chờ (${workCounts.waiting})`} />
-                        <Tab value="done" label={`Hoàn tất (${workCounts.done})`} />
-                        <Tab value="all" label={`Tất cả (${data.length})`} />
+                        <Tab value="action" label={<WorkFilterTabLabel label="Cần tôi xử lý" count={workCounts.action} description="Các biên bản mà bạn hoặc bộ phận của bạn đang có nhiệm vụ hoặc quyền thực hiện bước tiếp theo." />} />
+                        <Tab value="waiting" label={<WorkFilterTabLabel label="Đang chờ" count={workCounts.waiting} description="Các biên bản bạn được xem nhưng hiện đang chờ người hoặc bộ phận khác xử lý." />} />
+                        <Tab value="done" label={<WorkFilterTabLabel label="Hoàn tất" count={workCounts.done} description="Các biên bản đã hoàn thành quy trình và chỉ còn phục vụ tra cứu hoặc in lại." />} />
+                        <Tab value="all" label={<WorkFilterTabLabel label="Tất cả" count={data.length} description="Toàn bộ biên bản mà tài khoản của bạn có quyền xem, không phân biệt tiến độ xử lý." />} />
                     </Tabs>
                 </Paper>
 

@@ -30,6 +30,12 @@ export const getStandaloneBienBanDetail = (id) => {
     return axiosClient.get(`/phieu-xu-ly-khong-phu-hop/${id}`);
 };
 
+export const searchStandaloneCatalogItems = (params = {}) =>
+    axiosClient.get("/phieu-xu-ly-khong-phu-hop/catalog-items", { params });
+
+export const searchStandaloneOrders = (params = {}) =>
+    axiosClient.get("/phieu-xu-ly-khong-phu-hop/orders", { params });
+
 /* ================================
    Lỗi từ phiếu kiểm
 ================================ */

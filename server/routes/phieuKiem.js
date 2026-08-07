@@ -1890,6 +1890,12 @@ router.post(
         const isTrenChuyen = isTrenChuyenLoaiKiem(loaiKiemId);
         const hasNgayKiem = ngayKiem !== null && ngayKiem !== undefined && ngayKiem !== '';
         const normalizedNgayKiem = isTrenChuyen ? normalizeDateOnly(ngayKiem) : null;
+        const requestedTrenChuyenSnapshot = isTrenChuyen && req.body?.snapshotFields
+            ? req.body.snapshotFields
+            : {};
+        const snapshotNgayKeHoach = normalizeDateOnly(requestedTrenChuyenSnapshot.TrenChuyen_NgayKeHoach);
+        const snapshotSourceId = Number(requestedTrenChuyenSnapshot.TrenChuyen_IDKeHoachSanXuat || 0) || null;
+        const snapshotNangSuat = requestedTrenChuyenSnapshot.TrenChuyen_NangSuatDuKien;
 
         if (!isTrenChuyen && hasNgayKiem) {
             return res.status(400).json({
@@ -1902,6 +1908,37 @@ router.post(
                 message: 'Ngày kiểm trên chuyền không hợp lệ'
             });
         }
+
+        if (isTrenChuyen && snapshotNgayKeHoach && snapshotNgayKeHoach !== normalizedNgayKiem) {
+            return res.status(400).json({
+                message: 'Ngày kế hoạch trong dữ liệu chụp không khớp ngày kiểm đã chọn'
+            });
+        }
+
+        if (isTrenChuyen && snapshotSourceId && snapshotSourceId !== Number(sourceId)) {
+            return res.status(400).json({
+                message: 'Kế hoạch trong dữ liệu chụp không khớp kế hoạch đã chọn'
+            });
+        }
+
+        if (isTrenChuyen
+            && snapshotNangSuat !== null
+            && snapshotNangSuat !== undefined
+            && snapshotNangSuat !== ''
+            && Number(snapshotNangSuat) !== Number(soLuong)) {
+            return res.status(400).json({
+                message: 'Năng suất dự kiến trong dữ liệu chụp không khớp số lượng của kế hoạch đã chọn'
+            });
+        }
+
+        const trenChuyenSnapshot = isTrenChuyen
+            ? {
+                ...requestedTrenChuyenSnapshot,
+                TrenChuyen_NgayKeHoach: normalizedNgayKiem,
+                TrenChuyen_IDKeHoachSanXuat: sourceId,
+                TrenChuyen_NangSuatDuKien: soLuong
+            }
+            : null;
 
         // Bắt buộc phải có 1 trong 2 loại source
         if (!sanPhamId || !loaiKiemId || !nguoiKiemId || !soLuong || (!sourceId && !sourceId_LCD)) {
@@ -1931,10 +1968,7 @@ router.post(
             let effectiveNgayKiem = null;
 
             if (isTrenChuyen) {
-                const sqlDateResult = await pool.request().query(`
-                    SELECT CONVERT(char(10), CONVERT(date, GETDATE()), 23) AS NgayKiem
-                `);
-                effectiveNgayKiem = sqlDateResult.recordset?.[0]?.NgayKiem || null;
+                effectiveNgayKiem = normalizedNgayKiem;
             }
 
             if (isCuoiChuyenLoaiKiem(loaiKiemId)) {
@@ -2022,8 +2056,8 @@ router.post(
                 });
             }
 
-            if (isTrenChuyenLoaiKiem(loaiKiemId) && req.body.snapshotFields) {
-                await upsertPhieuKiemCustomFields(pool, newPhieuId, req.body.snapshotFields);
+            if (isTrenChuyen && trenChuyenSnapshot) {
+                await upsertPhieuKiemCustomFields(pool, newPhieuId, trenChuyenSnapshot);
             }
 
             if (isTrenChuyenLoaiKiem(loaiKiemId) || isCuoiChuyenLoaiKiem(loaiKiemId)) {
@@ -2162,14 +2196,23 @@ router.post(
                 || err?.message;
             const isDailyPlanConflict = isTrenChuyen
                 && /Kế hoạch đã có phiếu kiểm trên chuyền ngày/i.test(sqlMessage || '');
+            const isInvalidTrenChuyenDate = isTrenChuyen
+                && /Ngày kiểm trên chuyền chỉ được trong khoảng|Kế hoạch không có lịch sản xuất trong ngày kiểm/i.test(sqlMessage || '');
             const isCuoiChuyenDailyConflict = isCuoiChuyenLoaiKiem(loaiKiemId)
                 && [2601, 2627].includes(Number(err?.number || err?.originalError?.info?.number));
-            res.status(isDailyPlanConflict || isCuoiChuyenDailyConflict ? 409 : 500).json({
+            const responseStatus = isDailyPlanConflict || isCuoiChuyenDailyConflict
+                ? 409
+                : isInvalidTrenChuyenDate
+                    ? 400
+                    : 500;
+            res.status(responseStatus).json({
                 message: isDailyPlanConflict
                     ? sqlMessage
-                    : isCuoiChuyenDailyConflict
-                        ? 'Kế hoạch đã có phiếu kiểm cuối chuyền trong ngày này'
-                    : 'Tạo phiếu kiểm thất bại'
+                    : isInvalidTrenChuyenDate
+                        ? sqlMessage
+                        : isCuoiChuyenDailyConflict
+                            ? 'Kế hoạch đã có phiếu kiểm cuối chuyền trong ngày này'
+                            : 'Tạo phiếu kiểm thất bại'
             });
         }
     }

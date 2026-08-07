@@ -126,9 +126,9 @@ export default function KphV01WorkflowSections({
     if (info?.MauPhieuVersion !== "V01") return null;
 
     return (
-        <Stack spacing={3}>
+        <Stack spacing={2}>
             <Card elevation={0} sx={{ border: "1px solid #e0e0e0", borderRadius: 2 }}>
-                <CardContent>
+                <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
                     <Typography variant="h6" sx={{ mb: 1.5 }}>Ý kiến phòng ban chuyên môn</Typography>
                     {Boolean(info.OpinionDepartmentsConfirmed) && !info.CreatorConfirmedAt && (
                         <Alert severity="info" sx={{ mb: 2, py: 0.5, alignItems: "center" }}>
@@ -227,7 +227,7 @@ export default function KphV01WorkflowSections({
             </Card>
 
             <Card elevation={0} sx={{ border: "1px solid #e0e0e0", borderRadius: 2 }}>
-                <CardContent>
+                <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
                     <Typography variant="h6" sx={{ mb: 2 }}>Theo dõi đánh giá</Typography>
                     {evaluation ? (
                         <Stack spacing={1}>
