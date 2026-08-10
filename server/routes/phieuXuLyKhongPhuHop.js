@@ -529,14 +529,20 @@ router.post("/:id/header", authenticateToken, async (req, res) => {
         const normalizedFields = Object.fromEntries(
             Object.entries(fields || {}).filter(([key]) => KPH_V01_CUSTOM_FIELDS.has(key))
         );
-        const localProductId = Number(normalizedFields.LocalProductId);
-        if (!Number.isInteger(localProductId) || localProductId <= 0) {
-            return res.status(400).json({ message: "Vui lòng chọn VT/BTP/TP từ danh mục" });
+        const rawLocalProductId = normalizedFields.LocalProductId;
+        const hasCatalogItem = rawLocalProductId !== null
+            && rawLocalProductId !== undefined
+            && String(rawLocalProductId).trim() !== "";
+        const localProductId = hasCatalogItem ? Number(rawLocalProductId) : null;
+
+        if (hasCatalogItem && (!Number.isInteger(localProductId) || localProductId <= 0)) {
+            return res.status(400).json({ message: "VT/BTP/TP đã chọn không hợp lệ" });
         }
 
-        const catalogResult = await pool.request()
-            .input("LocalProductId", sql.Int, localProductId)
-            .query(`
+        if (hasCatalogItem) {
+            const catalogResult = await pool.request()
+                .input("LocalProductId", sql.Int, localProductId)
+                .query(`
                 SELECT TOP (1) localProduct.Id AS LocalProductId,
                     localProduct.MaSanPham AS Code,
                     localProduct.TenSanPham AS Name,
@@ -560,20 +566,20 @@ router.post("/:id/header", authenticateToken, async (req, res) => {
                 WHERE localProduct.Id = @LocalProductId
                   AND localProduct.TrangThai = 1
                   AND (material.ID_VatTu IS NOT NULL OR sourceProduct.ID_SanPham IS NOT NULL);
-            `);
-        const catalogItem = catalogResult.recordset?.[0];
-        if (!catalogItem) {
-            return res.status(400).json({ message: "VT/BTP/TP đã chọn không còn tồn tại trong danh mục" });
-        }
+                `);
+            const catalogItem = catalogResult.recordset?.[0];
+            if (!catalogItem) {
+                return res.status(400).json({ message: "VT/BTP/TP đã chọn không còn tồn tại trong danh mục" });
+            }
 
-        const isMaterial = Boolean(catalogItem.ID_VatTu);
-        const orderId = isMaterial ? null : (Number(normalizedFields.OrderId) || null);
-        let orderCode = "";
-        if (orderId) {
-            const orderResult = await pool.request()
-                .input("OrderId", sql.Int, orderId)
-                .input("SourceProductId", sql.Int, catalogItem.ID_SanPham)
-                .query(`
+            const isMaterial = Boolean(catalogItem.ID_VatTu);
+            const orderId = isMaterial ? null : (Number(normalizedFields.OrderId) || null);
+            let orderCode = "";
+            if (orderId) {
+                const orderResult = await pool.request()
+                    .input("OrderId", sql.Int, orderId)
+                    .input("SourceProductId", sql.Int, catalogItem.ID_SanPham)
+                    .query(`
                     SELECT TOP (1) orderRow.Ma_DonHang
                     FROM TAG_QTKD.dbo.DonHang orderRow
                     INNER JOIN TAG_QTKD.dbo.DonHang_SanPham orderProduct
@@ -582,22 +588,33 @@ router.post("/:id/header", authenticateToken, async (req, res) => {
                       AND orderProduct.ID_SanPham = @SourceProductId
                       AND ISNULL(orderRow.TonTai, 1) = 1
                       AND ISNULL(orderProduct.TonTai, 1) = 1;
-                `);
-            orderCode = orderResult.recordset?.[0]?.Ma_DonHang || "";
-            if (!orderCode) {
-                return res.status(400).json({ message: "Sản phẩm không thuộc đơn hàng đã chọn" });
+                    `);
+                orderCode = orderResult.recordset?.[0]?.Ma_DonHang || "";
+                if (!orderCode) {
+                    return res.status(400).json({ message: "Sản phẩm không thuộc đơn hàng đã chọn" });
+                }
             }
-        }
 
-        Object.assign(normalizedFields, {
-            LocalProductId: String(catalogItem.LocalProductId),
-            ItemSourceType: isMaterial ? "VAT_TU" : "SAN_PHAM",
-            ItemSourceId: String(isMaterial ? catalogItem.ID_VatTu : catalogItem.ID_SanPham),
-            MaSanPham: catalogItem.Code || "",
-            TenSanPham: catalogItem.Name || "",
-            OrderId: orderId ? String(orderId) : "",
-            DonHang: orderCode
-        });
+            Object.assign(normalizedFields, {
+                LocalProductId: String(catalogItem.LocalProductId),
+                ItemSourceType: isMaterial ? "VAT_TU" : "SAN_PHAM",
+                ItemSourceId: String(isMaterial ? catalogItem.ID_VatTu : catalogItem.ID_SanPham),
+                MaSanPham: catalogItem.Code || "",
+                TenSanPham: catalogItem.Name || "",
+                OrderId: orderId ? String(orderId) : "",
+                DonHang: orderCode
+            });
+        } else {
+            Object.assign(normalizedFields, {
+                LocalProductId: "",
+                ItemSourceType: "",
+                ItemSourceId: "",
+                MaSanPham: "",
+                TenSanPham: "",
+                OrderId: "",
+                DonHang: ""
+            });
+        }
         await pool.request()
             .input("BienBanId", sql.Int, bienBanId)
             .input("MoTaChung", sql.NVarChar(sql.MAX), moTaChung)

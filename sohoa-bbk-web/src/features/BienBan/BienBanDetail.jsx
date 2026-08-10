@@ -514,10 +514,6 @@ export default function BienBanDetail({ standalone = false }) {
 
     const handleSaveStandaloneHeader = async () => {
         if (actionSaving.description) return;
-        if (!headerFields.LocalProductId) {
-            showToast("Vui lòng chọn VT/BTP/TP từ danh mục", "warning");
-            return;
-        }
         if (!moTaChung.trim()) {
             showToast("Vui lòng nhập mô tả chung!", "warning");
             return;
@@ -1206,9 +1202,8 @@ export default function BienBanDetail({ standalone = false }) {
                                                             <TextField
                                                                 {...params}
                                                                 size="small"
-                                                                label="VT/BTP/TP"
+                                                                label="VT/BTP/TP (không bắt buộc)"
                                                                 placeholder="Nhập mã hoặc tên để tìm..."
-                                                                required
                                                                 slotProps={{
                                                                     input: {
                                                                         ...params.InputProps,
