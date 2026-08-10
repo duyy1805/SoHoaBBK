@@ -787,6 +787,12 @@ async function approveDefectRequest(pool, requestId, reviewerId, expectedRowVers
     }
 
     let maLoi = payload.MaLoi;
+    if (!maLoi && requestRow.DefectId) {
+      const currentCodeResult = await requestWithTransaction(transaction)
+        .input("DefectId", sql.Int, requestRow.DefectId)
+        .query("SELECT MaLoi FROM dbo.DM_DEFECT WITH (UPDLOCK, HOLDLOCK) WHERE Id=@DefectId");
+      maLoi = currentCodeResult.recordset?.[0]?.MaLoi || null;
+    }
     if (!maLoi) {
       const nextResult = await requestWithTransaction(transaction)
         .input("MaNhomLoi", sql.NVarChar(20), payload.MaNhomLoi)
@@ -845,7 +851,7 @@ async function approveDefectRequest(pool, requestId, reviewerId, expectedRowVers
       .input("ReviewerId", sql.Int, reviewerId);
 
     let defectId = requestRow.DefectId;
-    if (requestRow.RequestType === "CREATE") {
+    if (requestRow.RequestType === "CREATE" && !requestRow.DefectId) {
       const created = await catalogRequest.query(`
         INSERT dbo.DM_DEFECT (
           MaLoi, TenLoi, DefectType, TrangThai, MoTa, GhiChu, PhuongAnXuLy,
@@ -863,7 +869,7 @@ async function approveDefectRequest(pool, requestId, reviewerId, expectedRowVers
     } else {
       const updated = await catalogRequest.query(`
         UPDATE dbo.DM_DEFECT
-        SET MaLoi=@MaLoi, TenLoi=@TenLoi, DefectType=@DefectType, MoTa=@MoTa,
+        SET MaLoi=@MaLoi, TenLoi=@TenLoi, DefectType=@DefectType, TrangThai=1, MoTa=@MoTa,
             GhiChu=@GhiChu, PhuongAnXuLy=@PhuongAnXuLy, PhanHe=@PhanHe,
             MaNhomLoi=@MaNhomLoi, LoaiLoiSXBT=@LoaiLoiSXBT,
             TenSanPham=@TenSanPham, ChungLoai=@ChungLoai,
@@ -1011,11 +1017,28 @@ router.get("/defect-management", authenticateToken, async (req, res) => {
     const defectsResult = await pool.request()
       .query(`
         SELECT d.*, creator.FullName AS CreatedByName, approver.FullName AS ApprovedByName,
-               updater.FullName AS UpdatedByName
+               updater.FullName AS UpdatedByName,
+               approvedRequest.Id AS ApprovedRequestId,
+               approvedRequest.RowVersion AS ApprovedRequestRowVersion,
+               b7Preparer.FullName AS B7PreparedByName,
+               COALESCE(approvedRequest.UpdatedAt, approvedRequest.CreatedAt) AS B7PreparedAt,
+               approver.FullName AS TbpB7ApprovedByName,
+               d.ApprovedAt AS TbpB7ApprovedAt
         FROM dbo.DM_DEFECT d
         LEFT JOIN dbo.USERS creator ON creator.Id=d.CreatedBy
         LEFT JOIN dbo.USERS approver ON approver.Id=d.ApprovedBy
         LEFT JOIN dbo.USERS updater ON updater.Id=d.UpdatedBy
+        OUTER APPLY (
+          SELECT TOP (1) requestRow.Id, requestRow.RequestType,
+                 requestRow.CreatedBy, requestRow.CreatedAt,
+                 requestRow.UpdatedBy, requestRow.UpdatedAt,
+                 requestRow.RowVersion
+          FROM dbo.DM_DEFECT_REQUEST requestRow
+          WHERE requestRow.DefectId=d.Id AND requestRow.Status='APPROVED'
+          ORDER BY requestRow.ReviewedAt DESC, requestRow.Id DESC
+        ) approvedRequest
+        LEFT JOIN dbo.USERS b7Preparer
+          ON b7Preparer.Id=COALESCE(approvedRequest.UpdatedBy, approvedRequest.CreatedBy)
         ORDER BY ISNULL(d.UpdatedAt, d.CreatedAt) DESC, d.Id DESC
       `);
     const requestsResult = await pool.request()
@@ -1023,10 +1046,15 @@ router.get("/defect-management", authenticateToken, async (req, res) => {
       .input("IsB7", sql.Bit, workflowAccess.canPrepare)
       .input("CanApprove", sql.Bit, workflowAccess.canApprove)
       .query(`
-        SELECT r.*, creator.FullName AS CreatedByName, reviewer.FullName AS ReviewedByName
+        SELECT r.*, creator.FullName AS CreatedByName, reviewer.FullName AS ReviewedByName,
+               CASE WHEN r.Status IN ('PENDING','REJECTED')
+                    THEN COALESCE(requestUpdater.FullName, creator.FullName) END AS B7PreparedByName,
+               CASE WHEN r.Status IN ('PENDING','REJECTED')
+                    THEN COALESCE(r.UpdatedAt, r.CreatedAt) END AS B7PreparedAt
         FROM dbo.DM_DEFECT_REQUEST r
         LEFT JOIN dbo.USERS creator ON creator.Id=r.CreatedBy
         LEFT JOIN dbo.USERS reviewer ON reviewer.Id=r.ReviewedBy
+        LEFT JOIN dbo.USERS requestUpdater ON requestUpdater.Id=r.UpdatedBy
         WHERE r.CreatedBy=@UserId
            OR (@IsB7=1 AND r.Status IN ('WAITING_B7','REJECTED'))
            OR (@CanApprove=1 AND r.Status='PENDING')
@@ -1040,6 +1068,8 @@ router.get("/defect-management", authenticateToken, async (req, res) => {
     }));
     const defects = (defectsResult.recordset || []).map((row) => ({
       ...row,
+      ApprovedRequestId: row.ApprovedRequestId ? Number(row.ApprovedRequestId) : null,
+      ApprovedRequestRowVersion: row.ApprovedRequestRowVersion?.toString("base64") || null,
       RowVersion: row.RowVersion?.toString("base64") || null
     }));
     res.json({
@@ -1259,19 +1289,57 @@ router.post("/defect-requests/:id/reject", authenticateToken, async (req, res) =
       .input("CanApprove", sql.Bit, workflowAccess.canApprove)
       .input("RowVersion", sql.VarBinary(8), rowVersion)
       .query(`
+        DECLARE @Changed TABLE (
+          Id INT,
+          DefectId INT,
+          PreviousStatus VARCHAR(12),
+          Status VARCHAR(12),
+          ReviewedBy INT,
+          ReviewedAt DATETIME2,
+          ReviewNote NVARCHAR(2000),
+          RowVersion VARBINARY(8)
+        );
+
         UPDATE dbo.DM_DEFECT_REQUEST
-        SET Status=CASE WHEN Status='WAITING_B7' THEN 'RETURNED' ELSE 'REJECTED' END,
+        SET RequestType=CASE
+                WHEN Status='APPROVED' AND RequestType='CREATE' THEN 'UPDATE'
+                ELSE RequestType
+            END,
+            Status=CASE WHEN Status='WAITING_B7' THEN 'RETURNED' ELSE 'REJECTED' END,
             ReviewedBy=@ReviewerId, ReviewedAt=SYSDATETIME(), ReviewNote=@ReviewNote
-        OUTPUT INSERTED.Id, INSERTED.Status, INSERTED.ReviewedBy, INSERTED.ReviewedAt,
-               INSERTED.ReviewNote, INSERTED.RowVersion
+        OUTPUT INSERTED.Id, INSERTED.DefectId, DELETED.Status, INSERTED.Status,
+               INSERTED.ReviewedBy, INSERTED.ReviewedAt, INSERTED.ReviewNote,
+               INSERTED.RowVersion
+        INTO @Changed
         WHERE Id=@Id
-          AND ((Status='WAITING_B7' AND @CanPrepare=1) OR (Status='PENDING' AND @CanApprove=1))
+          AND (
+            (Status='WAITING_B7' AND @CanPrepare=1)
+            OR (Status IN ('PENDING','APPROVED') AND @CanApprove=1)
+          )
           AND (@RowVersion IS NULL OR RowVersion=@RowVersion)
+
+        UPDATE defect
+        SET TrangThai=0,
+            ApprovedBy=NULL,
+            ApprovedAt=NULL,
+            UpdatedBy=@ReviewerId,
+            UpdatedAt=SYSDATETIME()
+        FROM dbo.DM_DEFECT defect
+        INNER JOIN @Changed changed ON changed.DefectId=defect.Id
+        WHERE changed.PreviousStatus='APPROVED';
+
+        SELECT Id, DefectId, PreviousStatus, Status, ReviewedBy, ReviewedAt,
+               ReviewNote, RowVersion
+        FROM @Changed;
       `);
     if (!result.recordset.length) return res.status(409).json({ message: "Đề xuất đã được xử lý hoặc dữ liệu đã thay đổi" });
     const row = result.recordset[0];
     res.json({
-      message: row.Status === "RETURNED" ? "Đã trả lại người báo lỗi" : "Đã trả lại B7 bổ sung",
+      message: row.Status === "RETURNED"
+        ? "Đã trả lại người báo lỗi"
+        : row.PreviousStatus === "APPROVED"
+          ? "Đã thu hồi duyệt và trả lại B7 bổ sung"
+          : "Đã trả lại B7 bổ sung",
       request: { ...row, RowVersion: row.RowVersion.toString("base64") }
     });
   } catch (err) {

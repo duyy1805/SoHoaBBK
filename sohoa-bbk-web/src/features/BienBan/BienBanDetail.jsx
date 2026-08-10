@@ -266,14 +266,16 @@ export default function BienBanDetail({ standalone = false }) {
     }, [standalone, info?.CanManageKphFlow, catalogItemSearch, selectedOrder?.OrderId]);
 
     useEffect(() => {
-        if (!standalone || !info?.CanManageKphFlow || selectedCatalogItem?.SourceType === "VAT_TU") return undefined;
+        if (!standalone || !info?.CanManageKphFlow) return undefined;
         let active = true;
         const timer = setTimeout(async () => {
             setOrderLoading(true);
             try {
                 const response = await searchStandaloneOrders({
                     keyword: orderSearch,
-                    localProductId: selectedCatalogItem?.LocalProductId || undefined,
+                    localProductId: selectedCatalogItem?.SourceType === "SAN_PHAM"
+                        ? selectedCatalogItem.LocalProductId
+                        : undefined,
                     page: 0,
                     pageSize: 20
                 });
@@ -439,20 +441,14 @@ export default function BienBanDetail({ standalone = false }) {
             }));
             return;
         }
-        const isMaterial = item.SourceType === "VAT_TU";
         setHeaderFields((current) => ({
             ...current,
             TenSanPham: item.Name || "",
             MaSanPham: item.Code || "",
             ItemSourceType: item.SourceType || "",
             ItemSourceId: String(item.SourceId || ""),
-            LocalProductId: String(item.LocalProductId || ""),
-            ...(isMaterial ? { DonHang: "", OrderId: "" } : {})
+            LocalProductId: String(item.LocalProductId || "")
         }));
-        if (isMaterial && selectedOrder) {
-            setSelectedOrder(null);
-            showToast("Vật tư không áp dụng đơn hàng; lựa chọn đơn hàng đã được xóa", "info");
-        }
     };
 
     const handleOrderChange = (_, order) => {
@@ -1220,8 +1216,7 @@ export default function BienBanDetail({ standalone = false }) {
                                                     </Box>
                                                 )}
                                             </Grid>
-                                            {selectedCatalogItem?.SourceType !== "VAT_TU" && (
-                                                <Grid size={{ xs: 12, md: 4 }}>
+                                            <Grid size={{ xs: 12, md: 4 }}>
                                                     {info.CanManageKphFlow ? (
                                                         <Autocomplete
                                                             options={orderOptions}
@@ -1240,6 +1235,11 @@ export default function BienBanDetail({ standalone = false }) {
                                                                     size="small"
                                                                     label="Đơn hàng (không bắt buộc)"
                                                                     placeholder="Nhập mã đơn hàng..."
+                                                                    helperText={selectedCatalogItem?.SourceType === "SAN_PHAM"
+                                                                        ? "Chỉ hiển thị đơn hàng có BTP/TP đã chọn"
+                                                                        : selectedCatalogItem?.SourceType === "VAT_TU"
+                                                                            ? "Vật tư có thể chọn bất kỳ đơn hàng"
+                                                                            : "Có thể chọn đơn hàng độc lập"}
                                                                     slotProps={{
                                                                         input: {
                                                                             ...params.InputProps,
@@ -1255,8 +1255,7 @@ export default function BienBanDetail({ standalone = false }) {
                                                             <Typography variant="body2" fontWeight={600}>{headerFields.DonHang || '—'}</Typography>
                                                         </Box>
                                                     )}
-                                                </Grid>
-                                            )}
+                                            </Grid>
                                             {[
                                                 ["2. Sự không phù hợp được phát hiện từ", "PhatHienTu", PHAT_HIEN_TU_OPTIONS],
                                                 ["3. Mức độ không phù hợp", "MucDo", MUC_DO_KPH_OPTIONS]

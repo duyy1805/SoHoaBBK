@@ -1506,6 +1506,8 @@
                         CreatedAt: request.CreatedAt,
                         ReviewedByName: request.ReviewedByName,
                         ReviewedAt: request.ReviewedAt,
+                        B7PreparedByName: request.B7PreparedByName,
+                        B7PreparedAt: request.B7PreparedAt,
                         ReviewNote: request.ReviewNote,
                         DefectId: request.DefectId,
                         RequestType: request.RequestType,
@@ -1813,6 +1815,10 @@
                             ${row.MoTa && row.MoTa !== row.TenLoi ? `<div class="muted line-clamp" style="font-size: 12px;">${escapeHtml(row.MoTa)}</div>` : ""}
                             ${row.GhiChu ? `<div class="line-clamp" style="font-size: 12px; color: var(--primary);">${escapeHtml(row.GhiChu)}</div>` : ""}
                             <div class="muted" style="font-size: 11px; margin-top: 4px;">Người thêm: ${escapeHtml(row.CreatedByName || "Dữ liệu hệ thống")}</div>
+                            <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;">
+                                ${row.B7PreparedByName ? `<span class="chip" title="Thời gian trình duyệt: ${escapeHtml(formatDateTime(row.B7PreparedAt))}">NV B7: ${escapeHtml(row.B7PreparedByName)}</span>` : ""}
+                                ${row.TbpB7ApprovedByName ? `<span class="chip chip-success" title="Thời gian duyệt: ${escapeHtml(formatDateTime(row.TbpB7ApprovedAt))}">TBP B7 duyệt: ${escapeHtml(row.TbpB7ApprovedByName)}</span>` : ""}
+                            </div>
                             ${row.ReviewNote ? `<div style="font-size: 11px; color: var(--danger);">Lý do trả lại: ${escapeHtml(row.ReviewNote)}</div>` : ""}
                         </td>
                         <td><span class="chip ${type ? getDefectTypeClass(type) : ""}">${escapeHtml(type || "Chưa phân loại")}</span></td>
@@ -1845,6 +1851,7 @@
                             ${row.IsRequest && ((state.capabilities.canPrepare && ["WAITING_B7", "REJECTED"].includes(row.ApprovalStatus)) || (isOwner && row.ApprovalStatus === "RETURNED")) ? `<button class="btn btn-icon" type="button" data-submit-request="${escapeHtml(row.RequestId)}" title="${row.ApprovalStatus === "RETURNED" ? "Gửi lại B7" : "Gửi TP B7 duyệt"}">➜</button>` : ""}
                             ${row.IsRequest && (isOwner || state.capabilities.isAdmin) && ["WAITING_B7", "PENDING", "REJECTED", "RETURNED"].includes(row.ApprovalStatus) ? `<button class="btn btn-icon" type="button" data-cancel-request="${escapeHtml(row.RequestId)}" title="Rút đề xuất">×</button>` : ""}
                             ${row.IsRequest && row.ApprovalStatus === "PENDING" && state.capabilities.canApprove ? `<button class="btn btn-icon" type="button" data-approve-request="${escapeHtml(row.RequestId)}" title="Duyệt">✓</button><button class="btn btn-icon" type="button" data-reject-request="${escapeHtml(row.RequestId)}" title="Trả lại B7 bổ sung">↩</button>` : ""}
+                            ${!row.IsRequest && state.capabilities.canApprove && row.ApprovedRequestId ? `<button class="btn btn-icon" type="button" data-reject-request="${escapeHtml(row.ApprovedRequestId)}" title="Thu hồi duyệt và trả lại B7">↩</button>` : ""}
                             ${!row.IsRequest && state.capabilities.canChangeStatus ? `<button class="btn btn-icon" type="button" data-status-id="${escapeHtml(row.Id)}" data-next-status="${row.TrangThai ? "false" : "true"}" title="${row.TrangThai ? "Tạm ngưng" : "Kích hoạt"}">${row.TrangThai ? "⊘" : "✓"}</button>` : ""}
                         </td>
                     </tr>
@@ -1904,8 +1911,9 @@
                     `).join("") : `<span class="muted">Không có ảnh</span>`}
                 </div>
                 <div class="detail-text muted">Người thêm: ${escapeHtml(row.CreatedByName || "Dữ liệu hệ thống")} · ${escapeHtml(formatDateTime(row.CreatedAt))}</div>
-                ${row.ReviewedByName ? `<div class="detail-text muted">Người duyệt: ${escapeHtml(row.ReviewedByName)} · ${escapeHtml(formatDateTime(row.ReviewedAt))}</div>` : ""}
-                ${row.ApprovedByName ? `<div class="detail-text muted">Người duyệt: ${escapeHtml(row.ApprovedByName)} · ${escapeHtml(formatDateTime(row.ApprovedAt))}</div>` : ""}
+                ${row.B7PreparedByName ? `<div class="detail-text muted">Nhân viên B7: ${escapeHtml(row.B7PreparedByName)} · ${escapeHtml(formatDateTime(row.B7PreparedAt))}</div>` : ""}
+                ${row.TbpB7ApprovedByName ? `<div class="detail-text muted">TBP B7 duyệt: ${escapeHtml(row.TbpB7ApprovedByName)} · ${escapeHtml(formatDateTime(row.TbpB7ApprovedAt))}</div>` : ""}
+                ${row.ReviewedByName && !row.TbpB7ApprovedByName ? `<div class="detail-text muted">Người xử lý: ${escapeHtml(row.ReviewedByName)} · ${escapeHtml(formatDateTime(row.ReviewedAt))}</div>` : ""}
                 ${row.ReviewNote ? `<div class="alert alert-error" style="margin-top: 16px;">Lý do trả lại: ${escapeHtml(row.ReviewNote)}</div>` : ""}
             `;
             els.detailContent.querySelectorAll("[data-detail-preview]").forEach((button) => {
@@ -2200,6 +2208,7 @@
                 row.RequestRowVersion = result.request?.RowVersion || row.RequestRowVersion;
                 row.ReviewNote = null;
                 applyFilter();
+                await loadDefects({ background: true });
                 showAlert(isReporterResubmission ? "Đã gửi lại B7 xử lý." : "Đã gửi TP B7 duyệt.", "success");
             } catch (error) { showAlert(error.message); }
         }
@@ -2221,21 +2230,33 @@
                     body: JSON.stringify({ rowVersion: row.RequestRowVersion })
                 });
                 applyLocalApprovals([result]);
+                await loadDefects({ background: true });
                 showAlert("Đã duyệt đề xuất.", "success");
             } catch (error) { showAlert(error.message); }
         }
 
         async function rejectDefectRequest(id) {
-            const row = state.defects.find((item) => String(item.RequestId) === String(id));
+            const row = state.defects.find((item) => String(item.RequestId || item.ApprovedRequestId) === String(id));
             if (!row) return;
+            const isApprovedReturn = !row.IsRequest && String(row.ApprovedRequestId) === String(id);
             const isB7Return = row.ApprovalStatus === "WAITING_B7";
-            const reviewNote = window.prompt(isB7Return ? "Nhập lý do trả lại người báo lỗi:" : "Nhập lý do trả lại B7 bổ sung:");
+            const reviewNote = window.prompt(isApprovedReturn
+                ? "Lỗi sẽ được tạm ngưng. Nhập lý do thu hồi duyệt và trả lại B7:"
+                : isB7Return ? "Nhập lý do trả lại người báo lỗi:" : "Nhập lý do trả lại B7 bổ sung:");
             if (!reviewNote || !reviewNote.trim()) return;
             try {
                 const result = await apiFetch(`/lookup/defect-requests/${id}/reject`, {
                     method: "POST",
-                    body: JSON.stringify({ reviewNote: reviewNote.trim(), rowVersion: row.RequestRowVersion })
+                    body: JSON.stringify({
+                        reviewNote: reviewNote.trim(),
+                        rowVersion: isApprovedReturn ? row.ApprovedRequestRowVersion : row.RequestRowVersion
+                    })
                 });
+                if (isApprovedReturn) {
+                    await loadDefects({ background: true });
+                    showAlert(result.message || "Đã thu hồi duyệt và trả lại B7 bổ sung.", "success");
+                    return;
+                }
                 row.ApprovalStatus = result.request?.Status || (isB7Return ? "RETURNED" : "REJECTED");
                 row.RequestRowVersion = result.request?.RowVersion || row.RequestRowVersion;
                 row.ReviewNote = result.request?.ReviewNote || reviewNote.trim();
@@ -2255,6 +2276,7 @@
                     body: JSON.stringify({ items: requests.map((item) => ({ id: item.RequestId, rowVersion: item.RequestRowVersion })) })
                 });
                 applyLocalApprovals(result.approved || []);
+                await loadDefects({ background: true });
                 showAlert(result.message || "Đã duyệt hàng loạt.", result.errors?.length ? "error" : "success");
             } catch (error) { showAlert(error.message); }
         }

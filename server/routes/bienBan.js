@@ -490,6 +490,9 @@ router.get(
                         COALESCE(bb.BoPhanTaoId, creator.BoPhanId) AS BoPhanTaoId,
                         creatorDepartment.MaBoPhan AS MaBoPhanTao,
                         creatorDepartment.TenBoPhan AS TenBoPhanTao,
+                        pk.LoaiKiemId,
+                        inspectionType.MaLoai AS MaLoaiKiem,
+                        inspectionType.TenLoai AS TenLoaiKiem,
                         CASE
                             WHEN myOpinion.Id IS NULL
                                 OR bb.OpinionDepartmentsConfirmedAt IS NULL
@@ -528,6 +531,7 @@ router.get(
                         ORDER BY response.ThoiGian DESC, response.Id DESC
                     ) myResponse
                     LEFT JOIN dbo.PHIEU_KIEM pk ON pk.Id = bb.PhieuKiemId
+                    LEFT JOIN dbo.DM_LOAI_KIEM inspectionType ON inspectionType.Id = pk.LoaiKiemId
                     LEFT JOIN TAG_QTKD.dbo.PhieuNhapBTP receipt
                         ON receipt.ID_PhieuNhapBTP = COALESCE(
                             pk.SxbtPhieuNhapBtpId,

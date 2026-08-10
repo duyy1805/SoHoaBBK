@@ -9,11 +9,5 @@ dist/
 build/
 
 *.sql
-!server/sql/delete_phieu_kiem_by_creator.sql
-!server/sql/thong_ke_phieu_kiem_theo_loai.sql
-!server/sql/thong_ke_bien_ban_kph_theo_bo_phan.sql
-!server/sql/migrations/20260805_unified_inspection_print_data.sql
-!server/sql/migrations/20260807_tren_chuyen_backfill_3_days.sql
-!server/sql/migrations/20260807_tren_chuyen_backfill_3_days.rollback.sql
 
 *.xlsx

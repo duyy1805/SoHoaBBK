@@ -25,7 +25,8 @@ import {
     Tab,
     Paper,
     Collapse,
-    Alert
+    Alert,
+    Popover
 } from "@mui/material";
 import {
     Search as SearchIcon,
@@ -90,6 +91,11 @@ export default function BienBanList() {
 
     // Filters & Pagination state
     const [filterStatus, setFilterStatus] = useState(() => searchParams.get("status") || "");
+    const [filterSoPhieu, setFilterSoPhieu] = useState(() => searchParams.get("number") || "");
+    const [filterLoaiKiem, setFilterLoaiKiem] = useState(() => searchParams.get("inspectionType") || "");
+    const [filterProduct, setFilterProduct] = useState(() => searchParams.get("product") || "");
+    const [filterCreator, setFilterCreator] = useState(() => searchParams.get("creator") || "");
+    const [filterPopover, setFilterPopover] = useState({ field: "", anchorEl: null });
     const [searchText, setSearchText] = useState(() => searchParams.get("q") || "");
     const [page, setPage] = useState(() => parsePageParam(searchParams.get("page")));
     const [rowsPerPage, setRowsPerPage] = useState(() => {
@@ -128,6 +134,10 @@ export default function BienBanList() {
 
     useEffect(() => {
         setFilterStatus(searchParams.get("status") || "");
+        setFilterSoPhieu(searchParams.get("number") || "");
+        setFilterLoaiKiem(searchParams.get("inspectionType") || "");
+        setFilterProduct(searchParams.get("product") || "");
+        setFilterCreator(searchParams.get("creator") || "");
         setSearchText(searchParams.get("q") || "");
         setPage(parsePageParam(searchParams.get("page")));
         const pageSize = Number(searchParams.get("pageSize"));
@@ -164,6 +174,17 @@ export default function BienBanList() {
         item.LoaiBienBan === "SXBT" ||
         item.LoaiKiemId === 4 ||
         String(item.TrangThai || "").startsWith("BB_SXBT");
+
+    const getLoaiKiemLabel = (item) => item.TenLoaiKiem || (
+        item.LoaiKiemId
+            ? `Loại ${item.LoaiKiemId}`
+            : item.LoaiBienBan === "STANDALONE"
+                ? "Tạo độc lập"
+                : "—"
+    );
+    const getLoaiKiemValue = (item) => item.LoaiKiemId
+        ? String(item.LoaiKiemId)
+        : item.LoaiBienBan === "STANDALONE" ? "standalone" : "unknown";
 
     const renderTrangThaiChip = (item) => {
         const { TrangThai: trangThai } = item;
@@ -238,8 +259,26 @@ export default function BienBanList() {
         return [...options.values()].sort((a, b) => a.label.localeCompare(b.label, "vi"));
     }, [data]);
 
+    const loaiKiemOptions = useMemo(() => {
+        const options = new Map();
+        data.forEach((item) => options.set(getLoaiKiemValue(item), getLoaiKiemLabel(item)));
+        return [...options.entries()]
+            .map(([value, label]) => ({ value, label }))
+            .sort((a, b) => a.label.localeCompare(b.label, "vi"));
+    }, [data]);
+
+    const statusOptions = useMemo(() => [...new Set(data.map((item) => item.TrangThai).filter(Boolean))]
+        .map((value) => ({ value, label: getBienBanStatusMeta(value).label }))
+        .sort((a, b) => a.label.localeCompare(b.label, "vi")), [data]);
+
     const filteredData = useMemo(() => {
         return data.filter((item) => {
+            if (filterSoPhieu && !normalizeSearchText(item.SoPhieu).includes(normalizeSearchText(filterSoPhieu))) return false;
+            if (filterLoaiKiem && getLoaiKiemValue(item) !== filterLoaiKiem) return false;
+            if (filterProduct && !normalizeSearchText(`${item.TenSanPham || ""} ${item.Lot || ""}`)
+                .includes(normalizeSearchText(filterProduct))) return false;
+            if (filterCreator && !normalizeSearchText(`${item.NguoiLap || ""} ${item.MaBoPhanTao || ""} ${item.TenBoPhanTao || ""}`)
+                .includes(normalizeSearchText(filterCreator))) return false;
             if (workFilter !== "all" && getWorkBucket(item, currentUser, isManager, isSxbtBienBan(item)) !== workFilter) return false;
             if (departmentFilter === "mine" && Number(item.BoPhanTaoId) !== Number(currentUser.boPhanId)) return false;
             if (!["all", "mine"].includes(departmentFilter) && Number(item.BoPhanTaoId) !== Number(departmentFilter)) return false;
@@ -261,6 +300,8 @@ export default function BienBanList() {
                 const searchLower = normalizeSearchText(searchText.trim());
                 const searchableText = normalizeSearchText([
                     item.SoPhieu,
+                    item.TenLoaiKiem,
+                    item.MaLoaiKiem,
                     item.TenSanPham,
                     item.Lot,
                     item.NguoiLap,
@@ -275,11 +316,15 @@ export default function BienBanList() {
             }
             return true;
         });
-    }, [data, filterStatus, searchText, workFilter, departmentFilter, opinionDepartmentFilter, typeFilter, dateFrom, dateTo, currentUser, isManager]);
+    }, [data, filterStatus, filterSoPhieu, filterLoaiKiem, filterProduct, filterCreator, searchText, workFilter, departmentFilter, opinionDepartmentFilter, typeFilter, dateFrom, dateTo, currentUser, isManager]);
 
     const resetFilters = () => {
         setSearchText("");
         setFilterStatus("");
+        setFilterSoPhieu("");
+        setFilterLoaiKiem("");
+        setFilterProduct("");
+        setFilterCreator("");
         setDepartmentFilter("all");
         setOpinionDepartmentFilter("all");
         setTypeFilter("all");
@@ -290,6 +335,10 @@ export default function BienBanList() {
         updateQuery({
             q: "",
             status: "",
+            number: "",
+            inspectionType: "",
+            product: "",
+            creator: "",
             creatorDepartment: "",
             opinionDepartment: "",
             type: "",
@@ -356,6 +405,61 @@ export default function BienBanList() {
         setter(value);
         setPage(0);
         updateQuery({ [queryKey]: value, page: 1 });
+    };
+
+    const closeFilterPopover = () => setFilterPopover({ field: "", anchorEl: null });
+
+    const renderFilterHeader = ({ field, label, value, onChange, placeholder, options }) => {
+        const isOpen = filterPopover.field === field;
+        const hasValue = Boolean(value);
+        return (
+            <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="space-between">
+                <span>{label}</span>
+                <Tooltip title={`Lọc ${label.toLowerCase()}`}>
+                    <IconButton
+                        size="small"
+                        color={hasValue ? "primary" : "default"}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            setFilterPopover({ field, anchorEl: event.currentTarget });
+                        }}
+                        sx={{ width: 28, height: 28, bgcolor: hasValue ? "action.selected" : "transparent" }}
+                    >
+                        <FilterListIcon fontSize="small" />
+                    </IconButton>
+                </Tooltip>
+                <Popover
+                    open={isOpen}
+                    anchorEl={filterPopover.anchorEl}
+                    onClose={closeFilterPopover}
+                    anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+                    transformOrigin={{ vertical: "top", horizontal: "left" }}
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    <Box sx={{ p: 2, width: 280 }}>
+                        <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>{label}</Typography>
+                        <TextField
+                            autoFocus
+                            select={Boolean(options)}
+                            fullWidth
+                            size="small"
+                            placeholder={placeholder}
+                            value={value}
+                            onChange={(event) => onChange(event.target.value)}
+                            onKeyDown={(event) => event.key === "Escape" && closeFilterPopover()}
+                        >
+                            {options?.map((option) => (
+                                <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                            ))}
+                        </TextField>
+                        <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 2 }}>
+                            <Button variant="outlined" size="small" onClick={() => onChange("")}>Bỏ lọc</Button>
+                            <Button variant="contained" size="small" onClick={closeFilterPopover}>Đóng</Button>
+                        </Stack>
+                    </Box>
+                </Popover>
+            </Stack>
+        );
     };
 
     const handleChangePage = (event, newPage) => {
@@ -604,18 +708,29 @@ export default function BienBanList() {
                         >
                             <TableHead>
                                 <TableRow>
-                                    <TableCell sx={{ width: "15%", fontWeight: 700, bgcolor: 'background.paper' }}>Biên bản</TableCell>
-                                    <TableCell sx={{ width: "24%", fontWeight: 700, bgcolor: 'background.paper' }}>Sản phẩm / Lot</TableCell>
-                                    <TableCell sx={{ width: "22%", fontWeight: 700, bgcolor: 'background.paper' }}>Người lập / Bộ phận</TableCell>
-                                    <TableCell sx={{ width: "18%", fontWeight: 700, bgcolor: 'background.paper' }}>Tiến độ</TableCell>
-                                    <TableCell sx={{ width: "16%", fontWeight: 700, bgcolor: 'background.paper' }} align="center">Trạng thái</TableCell>
+                                    <TableCell sx={{ width: "13%", fontWeight: 700, bgcolor: 'background.paper' }}>
+                                        {renderFilterHeader({ field: "number", label: "Biên bản", value: filterSoPhieu, onChange: (value) => updateFilter(setFilterSoPhieu, "number", value), placeholder: "Nhập số biên bản" })}
+                                    </TableCell>
+                                    <TableCell sx={{ width: "13%", fontWeight: 700, bgcolor: 'background.paper' }}>
+                                        {renderFilterHeader({ field: "inspectionType", label: "Loại kiểm", value: filterLoaiKiem, onChange: (value) => updateFilter(setFilterLoaiKiem, "inspectionType", value), options: [{ value: "", label: "Tất cả" }, ...loaiKiemOptions] })}
+                                    </TableCell>
+                                    <TableCell sx={{ width: "20%", fontWeight: 700, bgcolor: 'background.paper' }}>
+                                        {renderFilterHeader({ field: "product", label: "Sản phẩm / Lot", value: filterProduct, onChange: (value) => updateFilter(setFilterProduct, "product", value), placeholder: "Nhập sản phẩm hoặc Lot" })}
+                                    </TableCell>
+                                    <TableCell sx={{ width: "20%", fontWeight: 700, bgcolor: 'background.paper' }}>
+                                        {renderFilterHeader({ field: "creator", label: "Người lập / Bộ phận", value: filterCreator, onChange: (value) => updateFilter(setFilterCreator, "creator", value), placeholder: "Nhập người lập hoặc bộ phận" })}
+                                    </TableCell>
+                                    <TableCell sx={{ width: "16%", fontWeight: 700, bgcolor: 'background.paper' }}>Tiến độ</TableCell>
+                                    <TableCell sx={{ width: "13%", fontWeight: 700, bgcolor: 'background.paper' }}>
+                                        {renderFilterHeader({ field: "status", label: "Trạng thái", value: filterStatus, onChange: (value) => updateFilter(setFilterStatus, "status", value), options: [{ value: "", label: "Tất cả" }, ...statusOptions] })}
+                                    </TableCell>
                                     <TableCell sx={{ width: "5%", fontWeight: 700, bgcolor: 'background.paper' }} align="center" aria-label="Thao tác" />
                                 </TableRow>
                             </TableHead>
                             <TableBody>
                                 {paginatedData.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
+                                        <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
                                             <Typography color="text.secondary">Không tìm thấy biên bản nào phù hợp.</Typography>
                                         </TableCell>
                                     </TableRow>
@@ -643,6 +758,13 @@ export default function BienBanList() {
                                                 <Typography variant="caption" color="text.secondary">
                                                     {item.CreatedAt ? new Date(item.CreatedAt).toLocaleDateString('vi-VN') : "—"}
                                                 </Typography>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Chip
+                                                    label={getLoaiKiemLabel(item)}
+                                                    size="small"
+                                                    variant="outlined"
+                                                />
                                             </TableCell>
                                             <TableCell>
                                                 <Typography variant="body2" fontWeight={600} title={item.TenSanPham || ""} sx={{ lineHeight: 1.35 }}>
@@ -738,6 +860,13 @@ export default function BienBanList() {
                                         </Box>
                                         {renderTrangThaiChip(item)}
                                     </Stack>
+
+                                    <Chip
+                                        label={getLoaiKiemLabel(item)}
+                                        size="small"
+                                        variant="outlined"
+                                        sx={{ mt: 1, alignSelf: "flex-start" }}
+                                    />
 
                                     <Typography variant="body2" fontWeight={700} sx={{ mt: 1, lineHeight: 1.35 }}>
                                         {item.TenSanPham || "—"}

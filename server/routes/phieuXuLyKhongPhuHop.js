@@ -232,12 +232,12 @@ router.get("/catalog-items", authenticateToken, async (req, res) => {
                       AND (material.ID_VatTu IS NOT NULL OR sourceProduct.ID_SanPham IS NOT NULL)
                       AND (@Keyword IS NULL OR localProduct.MaSanPham LIKE N'%' + @Keyword + N'%'
                            OR localProduct.TenSanPham LIKE N'%' + @Keyword + N'%')
-                      AND (@OrderId IS NULL OR (material.ID_VatTu IS NULL AND EXISTS (
+                      AND (@OrderId IS NULL OR material.ID_VatTu IS NOT NULL OR EXISTS (
                           SELECT 1 FROM TAG_QTKD.dbo.DonHang_SanPham orderProduct
                           WHERE orderProduct.ID_DonHang = @OrderId
                             AND orderProduct.ID_SanPham = sourceProduct.ID_SanPham
                             AND ISNULL(orderProduct.TonTai, 1) = 1
-                      )))
+                      ))
                 )
                 SELECT *, COUNT(*) OVER() AS Total
                 FROM catalog
@@ -573,25 +573,36 @@ router.post("/:id/header", authenticateToken, async (req, res) => {
             }
 
             const isMaterial = Boolean(catalogItem.ID_VatTu);
-            const orderId = isMaterial ? null : (Number(normalizedFields.OrderId) || null);
+            const orderId = Number(normalizedFields.OrderId) || null;
             let orderCode = "";
             if (orderId) {
-                const orderResult = await pool.request()
-                    .input("OrderId", sql.Int, orderId)
-                    .input("SourceProductId", sql.Int, catalogItem.ID_SanPham)
-                    .query(`
-                    SELECT TOP (1) orderRow.Ma_DonHang
-                    FROM TAG_QTKD.dbo.DonHang orderRow
-                    INNER JOIN TAG_QTKD.dbo.DonHang_SanPham orderProduct
-                        ON orderProduct.ID_DonHang = orderRow.ID_DonHang
-                    WHERE orderRow.ID_DonHang = @OrderId
-                      AND orderProduct.ID_SanPham = @SourceProductId
-                      AND ISNULL(orderRow.TonTai, 1) = 1
-                      AND ISNULL(orderProduct.TonTai, 1) = 1;
+                const orderRequest = pool.request()
+                    .input("OrderId", sql.Int, orderId);
+                if (!isMaterial) {
+                    orderRequest.input("SourceProductId", sql.Int, catalogItem.ID_SanPham);
+                }
+                const orderResult = await orderRequest.query(isMaterial ? `
+                        SELECT TOP (1) Ma_DonHang
+                        FROM TAG_QTKD.dbo.DonHang
+                        WHERE ID_DonHang = @OrderId
+                          AND ISNULL(TonTai, 1) = 1;
+                    ` : `
+                        SELECT TOP (1) orderRow.Ma_DonHang
+                        FROM TAG_QTKD.dbo.DonHang orderRow
+                        INNER JOIN TAG_QTKD.dbo.DonHang_SanPham orderProduct
+                            ON orderProduct.ID_DonHang = orderRow.ID_DonHang
+                        WHERE orderRow.ID_DonHang = @OrderId
+                          AND orderProduct.ID_SanPham = @SourceProductId
+                          AND ISNULL(orderRow.TonTai, 1) = 1
+                          AND ISNULL(orderProduct.TonTai, 1) = 1;
                     `);
                 orderCode = orderResult.recordset?.[0]?.Ma_DonHang || "";
                 if (!orderCode) {
-                    return res.status(400).json({ message: "Sản phẩm không thuộc đơn hàng đã chọn" });
+                    return res.status(400).json({
+                        message: isMaterial
+                            ? "Đơn hàng đã chọn không còn tồn tại"
+                            : "BTP/TP không thuộc đơn hàng đã chọn"
+                    });
                 }
             }
 
@@ -605,14 +616,31 @@ router.post("/:id/header", authenticateToken, async (req, res) => {
                 DonHang: orderCode
             });
         } else {
+            const orderId = Number(normalizedFields.OrderId) || null;
+            let orderCode = "";
+            if (orderId) {
+                const orderResult = await pool.request()
+                    .input("OrderId", sql.Int, orderId)
+                    .query(`
+                        SELECT TOP (1) Ma_DonHang
+                        FROM TAG_QTKD.dbo.DonHang
+                        WHERE ID_DonHang = @OrderId
+                          AND ISNULL(TonTai, 1) = 1;
+                    `);
+                orderCode = orderResult.recordset?.[0]?.Ma_DonHang || "";
+                if (!orderCode) {
+                    return res.status(400).json({ message: "Đơn hàng đã chọn không còn tồn tại" });
+                }
+            }
+
             Object.assign(normalizedFields, {
                 LocalProductId: "",
                 ItemSourceType: "",
                 ItemSourceId: "",
                 MaSanPham: "",
                 TenSanPham: "",
-                OrderId: "",
-                DonHang: ""
+                OrderId: orderId ? String(orderId) : "",
+                DonHang: orderCode
             });
         }
         await pool.request()

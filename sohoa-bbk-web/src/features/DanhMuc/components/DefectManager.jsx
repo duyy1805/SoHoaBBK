@@ -139,7 +139,8 @@ export default function DefectManager() {
         if (!search) return values;
         return values.filter((item) => {
             const data = item.ProposedData || item;
-            return [data.MaLoi, data.TenLoi, data.MoTa, item.CreatedByName, item.ReviewNote]
+            return [data.MaLoi, data.TenLoi, data.MoTa, item.CreatedByName,
+                item.B7PreparedByName, item.TbpB7ApprovedByName, item.ReviewNote]
                 .some((value) => String(value || "").toLowerCase().includes(search));
         });
     }, [deferredKeyword, management.defects, myRequests, pending, tab, waitingB7]);
@@ -284,6 +285,7 @@ export default function DefectManager() {
                 ReviewedByName: null,
                 ReviewedAt: null
             });
+            await loadData({ background: true });
         } catch (err) { setError(err.response?.data?.message || "Không gửi được đề xuất duyệt"); }
         finally { setSaving(false); }
     };
@@ -294,6 +296,7 @@ export default function DefectManager() {
             applyApprovals([res.data]);
             setReviewRequest(null);
             setNotice(res.data?.message || "Đã duyệt đề xuất");
+            await loadData({ background: true });
         }
         catch (err) { setError(err.response?.data?.message || "Không duyệt được đề xuất"); }
         finally { setSaving(false); }
@@ -309,6 +312,10 @@ export default function DefectManager() {
             setReturnRequest(null);
             setRejectNote("");
             setNotice(res.data?.message || (fallbackStatus === "RETURNED" ? "Đã trả lại người báo lỗi" : "Đã trả lại B7 bổ sung"));
+            if (request.IsApprovedReturn) {
+                setDetailTarget(null);
+                await loadData({ background: true });
+            }
         }
         catch (err) { setError(err.response?.data?.message || "Không trả lại được đề xuất"); }
         finally { setSaving(false); }
@@ -322,6 +329,7 @@ export default function DefectManager() {
             applyApprovals(res.data?.approved || []);
             setNotice(res.data?.message || "Đã duyệt đề xuất");
             setSelected([]);
+            await loadData({ background: true });
         }
         catch (err) { setError(err.response?.data?.message || "Không duyệt được các đề xuất"); }
         finally { setSaving(false); }
@@ -398,6 +406,20 @@ export default function DefectManager() {
                         <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
                             Người thêm: {item.CreatedByName || "Dữ liệu hệ thống"} · {formatDate(item.CreatedAt)}
                         </Typography>
+                        {(item.B7PreparedByName || item.TbpB7ApprovedByName) && (
+                            <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" sx={{ mt: 0.75 }}>
+                                {item.B7PreparedByName && (
+                                    <Tooltip title={`Thời gian trình duyệt: ${formatDate(item.B7PreparedAt)}`} arrow>
+                                        <Chip size="small" variant="outlined" color="info" label={`NV B7: ${item.B7PreparedByName}`} />
+                                    </Tooltip>
+                                )}
+                                {item.TbpB7ApprovedByName && (
+                                    <Tooltip title={`Thời gian duyệt: ${formatDate(item.TbpB7ApprovedAt)}`} arrow>
+                                        <Chip size="small" variant="outlined" color="success" label={`TBP B7 duyệt: ${item.TbpB7ApprovedByName}`} />
+                                    </Tooltip>
+                                )}
+                            </Stack>
+                        )}
                         {item.ReviewNote && <Alert severity="error" sx={{ mt: 1, py: 0 }}>Lý do trả lại: {item.ReviewNote}</Alert>}
                     </Box>
                     <Box onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}><ImageStrip data={data} onOpen={openImages} /></Box>
@@ -407,6 +429,26 @@ export default function DefectManager() {
                         )}
                         {isRequest && management.capabilities.canPrepare && item.Status === "WAITING_B7" && (
                             <Button size="small" color="error" startIcon={<CancelOutlinedIcon />} disabled={saving} onClick={() => { setReturnRequest(item); setRejectNote(""); }}>Trả lại</Button>
+                        )}
+                        {!isRequest && management.capabilities.canApprove && item.ApprovedRequestId && (
+                            <Button
+                                size="small"
+                                color="error"
+                                startIcon={<CancelOutlinedIcon />}
+                                disabled={saving}
+                                onClick={() => {
+                                    setReturnRequest({
+                                        ...item,
+                                        Id: item.ApprovedRequestId,
+                                        RowVersion: item.ApprovedRequestRowVersion,
+                                        Status: "APPROVED",
+                                        IsApprovedReturn: true
+                                    });
+                                    setRejectNote("");
+                                }}
+                            >
+                                Trả lại
+                            </Button>
                         )}
                         {canSubmitRequest && (
                             <Button size="small" color="success" startIcon={<CheckCircleOutlineIcon />} disabled={saving} onClick={() => submitForApproval(item)}>{item.Status === "RETURNED" ? "Gửi lại B7" : "Gửi duyệt"}</Button>
@@ -541,8 +583,9 @@ export default function DefectManager() {
                         <Typography variant="body2" color="text.secondary">
                             Người thêm: {detailTarget?.CreatedByName || "Dữ liệu hệ thống"} · {formatDate(detailTarget?.CreatedAt)}
                         </Typography>
-                        {detailTarget?.ReviewedByName && <Typography variant="body2" color="text.secondary">Người duyệt: {detailTarget.ReviewedByName} · {formatDate(detailTarget.ReviewedAt)}</Typography>}
-                        {detailTarget?.ApprovedByName && <Typography variant="body2" color="text.secondary">Người duyệt: {detailTarget.ApprovedByName} · {formatDate(detailTarget.ApprovedAt)}</Typography>}
+                        {detailTarget?.B7PreparedByName && <Typography variant="body2" color="text.secondary">Nhân viên B7: {detailTarget.B7PreparedByName} · {formatDate(detailTarget.B7PreparedAt)}</Typography>}
+                        {detailTarget?.TbpB7ApprovedByName && <Typography variant="body2" color="text.secondary">TBP B7 duyệt: {detailTarget.TbpB7ApprovedByName} · {formatDate(detailTarget.TbpB7ApprovedAt)}</Typography>}
+                        {detailTarget?.ReviewedByName && !detailTarget?.TbpB7ApprovedByName && <Typography variant="body2" color="text.secondary">Người xử lý: {detailTarget.ReviewedByName} · {formatDate(detailTarget.ReviewedAt)}</Typography>}
                         {detailTarget?.ReviewNote && <Alert severity="error">Lý do trả lại: {detailTarget.ReviewNote}</Alert>}
                     </Stack>
                 </DialogContent>
@@ -562,9 +605,13 @@ export default function DefectManager() {
             </Dialog>
 
             <Dialog open={Boolean(returnRequest)} onClose={() => saving ? null : setReturnRequest(null)} maxWidth="sm" fullWidth>
-                <DialogTitle>Trả lại báo lỗi cho người tạo</DialogTitle>
+                <DialogTitle>{returnRequest?.IsApprovedReturn ? "Thu hồi duyệt và trả lại B7" : "Trả lại báo lỗi cho người tạo"}</DialogTitle>
                 <DialogContent dividers>
-                    <Alert severity="info" sx={{ mb: 2 }}>Ghi rõ nội dung cần điều chỉnh để người báo lỗi có thể sửa và gửi lại B7.</Alert>
+                    <Alert severity={returnRequest?.IsApprovedReturn ? "warning" : "info"} sx={{ mb: 2 }}>
+                        {returnRequest?.IsApprovedReturn
+                            ? "Lỗi sẽ được tạm ngưng ngay và chuyển về B7 bổ sung. Sau khi duyệt lại, lỗi được kích hoạt trở lại."
+                            : "Ghi rõ nội dung cần điều chỉnh để người báo lỗi có thể sửa và gửi lại B7."}
+                    </Alert>
                     <TextField autoFocus label="Lý do trả lại" required fullWidth multiline minRows={3} value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} />
                 </DialogContent>
                 <DialogActions><Button disabled={saving} onClick={() => { setReturnRequest(null); setRejectNote(""); }}>Hủy</Button><Button color="error" variant="contained" disabled={!rejectNote.trim() || saving} onClick={() => returnForChanges(returnRequest)}>Trả lại</Button></DialogActions>

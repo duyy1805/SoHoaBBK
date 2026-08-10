@@ -22,7 +22,10 @@ import {
     Tab,
     MenuItem,
     Collapse,
-    TablePagination
+    TablePagination,
+    IconButton,
+    Tooltip,
+    Popover
 } from "@mui/material";
 import {
     Add as AddIcon,
@@ -103,6 +106,12 @@ export default function PhieuXuLyKhongPhuHopList() {
     const [searchText, setSearchText] = useState(() => searchParams.get("q") || "");
     const [workFilter, setWorkFilter] = useState(() => searchParams.get("work") || "all");
     const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") || "");
+    const [numberFilter, setNumberFilter] = useState(() => searchParams.get("number") || "");
+    const [itemFilter, setItemFilter] = useState(() => searchParams.get("item") || "");
+    const [kphFilter, setKphFilter] = useState(() => searchParams.get("kph") || "");
+    const [descriptionFilter, setDescriptionFilter] = useState(() => searchParams.get("description") || "");
+    const [creatorFilter, setCreatorFilter] = useState(() => searchParams.get("creator") || "");
+    const [filterPopover, setFilterPopover] = useState({ field: "", anchorEl: null });
     const [departmentFilter, setDepartmentFilter] = useState(() => searchParams.get("creatorDepartment") || "all");
     const [dateFrom, setDateFrom] = useState(() => searchParams.get("from") || "");
     const [dateTo, setDateTo] = useState(() => searchParams.get("to") || "");
@@ -145,6 +154,11 @@ export default function PhieuXuLyKhongPhuHopList() {
         setSearchText(searchParams.get("q") || "");
         setWorkFilter(searchParams.get("work") || "all");
         setStatusFilter(searchParams.get("status") || "");
+        setNumberFilter(searchParams.get("number") || "");
+        setItemFilter(searchParams.get("item") || "");
+        setKphFilter(searchParams.get("kph") || "");
+        setDescriptionFilter(searchParams.get("description") || "");
+        setCreatorFilter(searchParams.get("creator") || "");
         setDepartmentFilter(searchParams.get("creatorDepartment") || "all");
         setDateFrom(searchParams.get("from") || "");
         setDateTo(searchParams.get("to") || "");
@@ -154,7 +168,7 @@ export default function PhieuXuLyKhongPhuHopList() {
         setRowsPerPage(VALID_PAGE_SIZES.includes(pageSize) ? pageSize : 10);
     }, [searchParams]);
 
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         try {
             setLoading(true);
             const res = await getStandaloneBienBanList();
@@ -172,11 +186,11 @@ export default function PhieuXuLyKhongPhuHopList() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [access, currentUser, updateQuery]);
 
     useEffect(() => {
         loadData();
-    }, []);
+    }, [loadData]);
 
     const counts = useMemo(() => data.reduce((result, item) => {
         const bucket = getWorkBucket(item, currentUser, access);
@@ -204,6 +218,15 @@ export default function PhieuXuLyKhongPhuHopList() {
     const filteredData = useMemo(() => {
         const keyword = searchText.trim().toLowerCase();
         return data.filter((item) => {
+            if (numberFilter && !normalizeSearchText(item.SoBienBan || `BB#${item.BienBanId}`)
+                .includes(normalizeSearchText(numberFilter))) return false;
+            if (itemFilter && !normalizeSearchText(`${item.MaSanPham || ""} ${item.TenSanPham || ""} ${item.DonHang || ""}`)
+                .includes(normalizeSearchText(itemFilter))) return false;
+            if (kphFilter && !normalizeSearchText(`${PHAT_HIEN_TU_LABELS[item.PhatHienTu] || ""} ${MUC_DO_LABELS[item.MucDo] || ""}`)
+                .includes(normalizeSearchText(kphFilter))) return false;
+            if (descriptionFilter && !normalizeSearchText(item.MoTaChung).includes(normalizeSearchText(descriptionFilter))) return false;
+            if (creatorFilter && !normalizeSearchText(`${item.NguoiLap || ""} ${item.MaBoPhanTao || ""} ${item.TenBoPhanTao || ""}`)
+                .includes(normalizeSearchText(creatorFilter))) return false;
             if (workFilter !== "all" && getWorkBucket(item, currentUser, access) !== workFilter) return false;
             if (statusFilter && item.TrangThai !== statusFilter) return false;
             if (departmentFilter === "mine" && Number(item.CreatorBoPhanId) !== Number(currentUser.boPhanId)) return false;
@@ -228,7 +251,7 @@ export default function PhieuXuLyKhongPhuHopList() {
             ].filter(Boolean).join(" "));
             return searchableText.includes(normalizeSearchText(keyword));
         });
-    }, [data, searchText, workFilter, statusFilter, departmentFilter, dateFrom, dateTo, currentUser, access]);
+    }, [data, searchText, numberFilter, itemFilter, kphFilter, descriptionFilter, creatorFilter, workFilter, statusFilter, departmentFilter, dateFrom, dateTo, currentUser, access]);
 
     const paginatedData = useMemo(() => {
         const startIndex = page * rowsPerPage;
@@ -283,9 +306,69 @@ export default function PhieuXuLyKhongPhuHopList() {
         updateQuery({ [queryKey]: value, page: 1 });
     };
 
+    const closeFilterPopover = () => setFilterPopover({ field: "", anchorEl: null });
+
+    const renderFilterHeader = ({ field, label, value, onChange, placeholder, options }) => {
+        const isOpen = filterPopover.field === field;
+        const hasValue = Boolean(value);
+        return (
+            <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="space-between">
+                <span>{label}</span>
+                <Tooltip title={`Lọc ${label.toLowerCase()}`}>
+                    <IconButton
+                        size="small"
+                        color={hasValue ? "primary" : "default"}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            setFilterPopover({ field, anchorEl: event.currentTarget });
+                        }}
+                        sx={{ width: 28, height: 28, bgcolor: hasValue ? "action.selected" : "transparent" }}
+                    >
+                        <FilterListIcon fontSize="small" />
+                    </IconButton>
+                </Tooltip>
+                <Popover
+                    open={isOpen}
+                    anchorEl={filterPopover.anchorEl}
+                    onClose={closeFilterPopover}
+                    anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+                    transformOrigin={{ vertical: "top", horizontal: "left" }}
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    <Box sx={{ p: 2, width: 280 }}>
+                        <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>{label}</Typography>
+                        <TextField
+                            autoFocus
+                            select={Boolean(options)}
+                            fullWidth
+                            size="small"
+                            placeholder={placeholder}
+                            value={value}
+                            onChange={(event) => onChange(event.target.value)}
+                            onKeyDown={(event) => event.key === "Escape" && closeFilterPopover()}
+                        >
+                            {options?.map((option) => (
+                                <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                            ))}
+                        </TextField>
+                        <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 2 }}>
+                            <Button variant="outlined" size="small" onClick={() => onChange("")}>Bỏ lọc</Button>
+                            <Button variant="contained" size="small" onClick={closeFilterPopover}>Đóng</Button>
+                        </Stack>
+                    </Box>
+                </Popover>
+            </Stack>
+        );
+    };
+
     const resetFilters = () => {
         setSearchText("");
         setStatusFilter("");
+        setNumberFilter("");
+        setItemFilter("");
+        setKphFilter("");
+        setDescriptionFilter("");
+        setCreatorFilter("");
         setDepartmentFilter("all");
         setDateFrom("");
         setDateTo("");
@@ -295,6 +378,11 @@ export default function PhieuXuLyKhongPhuHopList() {
         updateQuery({
             q: "",
             status: "",
+            number: "",
+            item: "",
+            kph: "",
+            description: "",
+            creator: "",
             creatorDepartment: "",
             from: "",
             to: "",
@@ -470,13 +558,25 @@ export default function PhieuXuLyKhongPhuHopList() {
                             <Table size="small" sx={{ minWidth: 1180, "& .MuiTableCell-root": { px: 1.25, py: 1, fontSize: "0.8rem", verticalAlign: "top" } }}>
                                 <TableHead sx={{ bgcolor: "#f8fafc" }}>
                                     <TableRow>
-                                        <TableCell sx={{ width: 150 }}>Số biên bản</TableCell>
-                                        <TableCell sx={{ width: 235 }}>VT/BTP/TP</TableCell>
-                                        <TableCell sx={{ width: 170 }}>Thông tin KPH</TableCell>
-                                        <TableCell>Mô tả chung</TableCell>
-                                        <TableCell sx={{ width: 170 }}>Người lập</TableCell>
+                                        <TableCell sx={{ width: 150 }}>
+                                            {renderFilterHeader({ field: "number", label: "Số biên bản", value: numberFilter, onChange: (value) => updateFilter(setNumberFilter, "number", value), placeholder: "Nhập số biên bản" })}
+                                        </TableCell>
+                                        <TableCell sx={{ width: 235 }}>
+                                            {renderFilterHeader({ field: "item", label: "VT/BTP/TP", value: itemFilter, onChange: (value) => updateFilter(setItemFilter, "item", value), placeholder: "Nhập mã, tên hoặc đơn hàng" })}
+                                        </TableCell>
+                                        <TableCell sx={{ width: 170 }}>
+                                            {renderFilterHeader({ field: "kph", label: "Thông tin KPH", value: kphFilter, onChange: (value) => updateFilter(setKphFilter, "kph", value), placeholder: "Nhập nguồn hoặc mức độ" })}
+                                        </TableCell>
+                                        <TableCell>
+                                            {renderFilterHeader({ field: "description", label: "Mô tả chung", value: descriptionFilter, onChange: (value) => updateFilter(setDescriptionFilter, "description", value), placeholder: "Nhập nội dung mô tả" })}
+                                        </TableCell>
+                                        <TableCell sx={{ width: 170 }}>
+                                            {renderFilterHeader({ field: "creator", label: "Người lập", value: creatorFilter, onChange: (value) => updateFilter(setCreatorFilter, "creator", value), placeholder: "Nhập người lập hoặc bộ phận" })}
+                                        </TableCell>
                                         <TableCell sx={{ width: 155 }}>Tiến độ</TableCell>
-                                        <TableCell sx={{ width: 145 }}>Trạng thái</TableCell>
+                                        <TableCell sx={{ width: 145 }}>
+                                            {renderFilterHeader({ field: "status", label: "Trạng thái", value: statusFilter, onChange: (value) => updateFilter(setStatusFilter, "status", value), options: [{ value: "", label: "Tất cả" }, ...statusOptions] })}
+                                        </TableCell>
                                         <TableCell align="center" sx={{ width: 115 }}>Thao tác</TableCell>
                                     </TableRow>
                                 </TableHead>
