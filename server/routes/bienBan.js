@@ -3,6 +3,7 @@ const router = express.Router();
 const sql = require("mssql");
 
 const { poolPromise } = require("../db");
+const { loadSignatureDataUrlMap } = require("../utils/signatureImage");
 
 const authenticateToken = require("../middlewares/auth.middleware");
 const authorize = require("../middlewares/permission.middleware");
@@ -773,6 +774,20 @@ router.get(
                 phieuKiemXacNhan = xacNhanResult.recordset || [];
             }
 
+            const bienBanXacNhanRows = bienBanXacNhanResult.recordset || [];
+            const signatureMap = await loadSignatureDataUrlMap(pool, [
+                ...bienBanXacNhanRows.map((item) => item.NguoiXacNhanId),
+                ...phieuKiemXacNhan.map((item) => item.NguoiXacNhanId),
+                ...v01Data.specialistOpinions.map((item) => item.ConfirmedBy),
+                v01Data.meta.CreatorConfirmedBy,
+                v01Data.meta.NguoiLapId ?? info?.NguoiLapId,
+                v01Data.followUpEvaluation?.NguoiTheoDoiId
+            ]);
+            const withSignature = (item, userIdField) => ({
+                ...item,
+                SignatureDataUrl: signatureMap.get(Number(item?.[userIdField])) || null
+            });
+
             res.json({
                 info: info ? {
                     ...info,
@@ -788,6 +803,8 @@ router.get(
                     CreatorConfirmedAt: v01Data.meta.CreatorConfirmedAt,
                     CreatorConfirmedBy: v01Data.meta.CreatorConfirmedBy,
                     CreatorConfirmerName: v01Data.meta.CreatorConfirmerName,
+                    CreatorSignatureDataUrl: signatureMap.get(Number(v01Data.meta.CreatorConfirmedBy)) || null,
+                    NguoiLapSignatureDataUrl: signatureMap.get(Number(v01Data.meta.NguoiLapId ?? info.NguoiLapId)) || null,
                     ReviewRound: v01Data.meta.ReviewRound,
                     LastReturnedBy: v01Data.meta.LastReturnedBy,
                     LastReturnedByName: v01Data.meta.LastReturnedByName,
@@ -817,14 +834,16 @@ router.get(
                 assigns: mergedAssigns,
                 xuLy: proposalResult.recordset || [],
                 chiPhi: rs[4] || [],
-                xacNhan: bienBanXacNhanResult.recordset || [],
-                phieuKiemXacNhan,
+                xacNhan: bienBanXacNhanRows.map((item) => withSignature(item, "NguoiXacNhanId")),
+                phieuKiemXacNhan: phieuKiemXacNhan.map((item) => withSignature(item, "NguoiXacNhanId")),
                 hanhDong: rs[6] || [],
                 dynamicFields: dynamicFields,
                 canEditKphCustomFields: customFieldAccess.canEdit,
                 templateVersion: v01Data.meta.MauPhieuVersion,
-                specialistOpinions: v01Data.specialistOpinions,
-                followUpEvaluation: v01Data.followUpEvaluation,
+                specialistOpinions: v01Data.specialistOpinions.map((item) => withSignature(item, "ConfirmedBy")),
+                followUpEvaluation: v01Data.followUpEvaluation
+                    ? withSignature(v01Data.followUpEvaluation, "NguoiTheoDoiId")
+                    : null,
                 printMeta: v01Data.meta
             });
 

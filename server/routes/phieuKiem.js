@@ -41,6 +41,7 @@ const { poolPromise } = require('../db');
 const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
 const { getClosingScheduleCustomer } = require('../utils/closingScheduleCustomer');
+const { attachSignatureDataUrls, loadSignatureDataUrlMap } = require('../utils/signatureImage');
 
 const multer = require('multer');
 const path = require('path');
@@ -745,19 +746,44 @@ const enrichSxbtSignatureFields = async (pool, dynamicFields = [], phieu = null)
         ['SxbtKhoConfirmedBy', 'SxbtKhoConfirmedByName']
     ];
 
+    const signatureMap = await loadSignatureDataUrlMap(
+        pool,
+        signatureUserFields.map(([idField]) => Number(fieldMap.get(idField) || 0))
+    );
     for (const [idField, nameField] of signatureUserFields) {
         const userId = Number(fieldMap.get(idField) || 0);
-        if (!userId || fieldMap.has(nameField)) continue;
+        if (!userId) continue;
 
-        const fallbackName = idField === 'SxbtKcsCompletedBy' ? phieu?.TenNguoiKiem : '';
-        const displayName = await getUserDisplayName(pool, userId, fallbackName || '');
-        fields.push({
-            FieldName: nameField,
-            FieldValue: displayName
-        });
+        if (!fieldMap.has(nameField)) {
+            const fallbackName = idField === 'SxbtKcsCompletedBy' ? phieu?.TenNguoiKiem : '';
+            const displayName = await getUserDisplayName(pool, userId, fallbackName || '');
+            fields.push({ FieldName: nameField, FieldValue: displayName });
+        }
+        const signatureDataUrl = signatureMap.get(userId);
+        if (signatureDataUrl) {
+            fields.push({ FieldName: `${idField}SignatureDataUrl`, FieldValue: signatureDataUrl });
+        }
     }
 
     return fields;
+};
+
+const enrichInspectionSignatures = async (pool, dynamicFields = [], xacNhans = []) => {
+    const fields = Array.isArray(dynamicFields) ? [...dynamicFields] : [];
+    const fieldMap = new Map(fields.map((field) => [field.FieldName, field.FieldValue]));
+    const completionFields = [CUOI_CHUYEN_COMPLETED_BY_FIELD, TREN_CHUYEN_COMPLETED_BY_FIELD];
+    const signatureMap = await loadSignatureDataUrlMap(
+        pool,
+        completionFields.map((fieldName) => Number(fieldMap.get(fieldName) || 0))
+    );
+    completionFields.forEach((fieldName) => {
+        const dataUrl = signatureMap.get(Number(fieldMap.get(fieldName) || 0));
+        if (dataUrl) fields.push({ FieldName: `${fieldName}SignatureDataUrl`, FieldValue: dataUrl });
+    });
+    return {
+        dynamicFields: fields,
+        xacNhans: await attachSignatureDataUrls(pool, xacNhans, 'NguoiXacNhanId')
+    };
 };
 
 const normalizeTrenChuyenSlots = (slots = []) => slots.map((slot, slotIndex) => ({
@@ -1579,7 +1605,7 @@ router.get(
                 const planRecords = result.recordsets?.[1] || [];
                 const defectRecords = result.recordsets?.[2] || [];
                 const summary = result.recordsets?.[3]?.[0] || null;
-                const xacNhans = result.recordsets?.[4] || [];
+                let xacNhans = result.recordsets?.[4] || [];
                 const actualQuantityResult = await pool.request()
                     .input('PhieuKiemId', sql.Int, Number(id))
                     .query(`
@@ -1665,6 +1691,7 @@ router.get(
                     ? quantitySummary.TongSoLuongHieuLuc - quantitySummary.TongSoLuongKeHoach
                     : null;
 
+                ({ dynamicFields, xacNhans } = await enrichInspectionSignatures(pool, dynamicFields, xacNhans));
                 return res.json({
                     phieu,
                     plans,
@@ -1696,7 +1723,7 @@ router.get(
                 const slotRecords = result.recordsets?.[1] || [];
                 const entryDefectRecords = result.recordsets?.[2] || [];
                 const summary = result.recordsets?.[3]?.[0] || null;
-                const xacNhans = result.recordsets?.[4] || [];
+                let xacNhans = result.recordsets?.[4] || [];
                 const entryExtraResult = await pool.request()
                     .input('PhieuKiemId', sql.Int, Number(id))
                     .query(`
@@ -1783,6 +1810,7 @@ router.get(
                         }))
                 }));
 
+                ({ dynamicFields, xacNhans } = await enrichInspectionSignatures(pool, dynamicFields, xacNhans));
                 return res.json({
                     phieu,
                     slots,
@@ -1841,12 +1869,26 @@ router.get(
             });
 
             const checkItems = Object.values(map);
+            const confirmationResult = await pool.request()
+                .input('PhieuKiemId', sql.Int, Number(id))
+                .query(`
+                    SELECT xn.Id, xn.PhieuKiemId, xn.NguoiXacNhanId, xn.VaiTro,
+                        xn.TrangThai, xn.NoiDung, xn.ThoiGian,
+                        COALESCE(NULLIF(u.FullName, N''), u.Username) AS TenNguoiXacNhan,
+                        u.BoPhanId
+                    FROM dbo.PHIEU_KIEM_XAC_NHAN xn
+                    LEFT JOIN dbo.USERS u ON u.Id=xn.NguoiXacNhanId
+                    WHERE xn.PhieuKiemId=@PhieuKiemId
+                    ORDER BY xn.ThoiGian, xn.Id
+                `);
+            const xacNhans = await attachSignatureDataUrls(pool, confirmationResult.recordset || [], 'NguoiXacNhanId');
             res.json({
                 phieu,
                 sections,
                 checkItems,
                 defects,
                 dynamicFields,
+                xacNhans,
                 capabilities: inspectionCapabilities(req, phieu)
             });
 

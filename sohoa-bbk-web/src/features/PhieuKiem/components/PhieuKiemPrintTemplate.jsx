@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Grid } from '@mui/material';
 import { getAssetUrl } from "../../../api/lookup.api";
+import { PrintSignatureImage } from '../../../components/common/PrintSignature';
 
 // Hàm hỗ trợ chuyển số thứ tự thành số La Mã (I, II, III, IV...)
 const toRoman = (num) => {
@@ -14,10 +15,16 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
     checkItems = [],
     defects = [],
     dynamicFields = [],
+    xacNhans = [],
     thongSoList = [],
     thongSoKqList = [],
     onRequestProductImageUpload = null
 }, ref) => {
+    const findSigner = (roles) => [...xacNhans].reverse().find((item) =>
+        roles.includes(String(item?.VaiTro || '').toUpperCase())
+    );
+    const departmentSigner = findSigner(['PX', 'TBP', 'TRUONG_BO_PHAN']);
+    const inspectorSigner = findSigner(['KCS', 'NHAN_VIEN_KIEM', 'KIEM_NGHIEM']);
     if (!phieu) return null;
 
     // Chuyển array dynamicFields thành object để dễ map vào thẻ input
@@ -773,12 +780,12 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                     <Box style={{ ...styles.signatureBlock, marginTop: '10px' }}>
                         <Box style={styles.signatureCol}>
                             <div style={{ ...styles.text, minHeight: '30px' }}><b>Trưởng bộ phận</b></div>
-                            <Box height="60px">{ }</Box>
-                            <div style={styles.text}>{phieu.BoPhan}</div>
+                            <PrintSignatureImage src={departmentSigner?.SignatureDataUrl} height={60} />
+                            <div style={styles.text}>{departmentSigner?.TenNguoiXacNhan || phieu.BoPhan}</div>
                         </Box>
                         <Box style={styles.signatureCol}>
                             <div style={{ ...styles.text, minHeight: '30px' }}><b>Người kiểm hàng</b></div>
-                            <Box height="60px"></Box>
+                            <PrintSignatureImage src={inspectorSigner?.SignatureDataUrl} height={60} />
                             <div style={styles.text}>{phieu.TenNguoiKiem}</div>
                         </Box>
                     </Box>

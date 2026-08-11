@@ -1,4 +1,5 @@
 import React, { forwardRef, useMemo } from "react";
+import { PrintSignatureImage } from '../../../components/common/PrintSignature';
 
 const FORM_META = {
     companyName: "CÔNG TY TNHH MTV 76",
@@ -323,6 +324,8 @@ const CuoiChuyenPrintTemplate = forwardRef(function CuoiChuyenPrintTemplate({
         null;
     const ttsxSignerName = getPersonDisplayName(tbpApproval);
     const factorySignerName = ttsxSignerName || getFieldValue(dynamicFields, CUOI_CHUYEN_APPROVED_BY_NAME_FIELD);
+    const qcSignatureDataUrl = getFieldValue(dynamicFields, "CuoiChuyen_CompletedByUserIdSignatureDataUrl") || null;
+    const factorySignatureDataUrl = tbpApproval?.SignatureDataUrl || null;
 
     return (
         <div ref={ref} style={styles.page}>
@@ -466,16 +469,12 @@ const CuoiChuyenPrintTemplate = forwardRef(function CuoiChuyenPrintTemplate({
             <div style={styles.signatures}>
                 <div style={styles.signatureBox}>
                     <div style={styles.signatureTitle}>QC</div>
-                    <div style={styles.signatureSignedText}>
-                        {qcSignerName ? <span style={styles.signatureStamp}>Đã ký</span> : null}
-                    </div>
+                    <PrintSignatureImage src={qcSignatureDataUrl} height={54} />
                     <div style={styles.signatureName}>{qcSignerName}</div>
                 </div>
                 <div style={styles.signatureBox}>
                     <div style={styles.signatureTitle}>PHÂN XƯỞNG</div>
-                    <div style={styles.signatureSignedText}>
-                        {factorySignerName ? <span style={styles.signatureStamp}>Đã ký</span> : null}
-                    </div>
+                    <PrintSignatureImage src={factorySignatureDataUrl} height={54} />
                     <div style={styles.signatureName}>{factorySignerName}</div>
                 </div>
             </div>

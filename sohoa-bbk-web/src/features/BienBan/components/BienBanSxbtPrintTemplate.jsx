@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Box } from "@mui/material";
+import { PrintSignatureImage } from "../../../components/common/PrintSignature";
 
 const LEVEL_LABELS = {
     B: "Mức chất lượng B",
@@ -156,9 +157,7 @@ export const BienBanSxbtPrintTemplate = React.forwardRef(({
                             <div style={{ ...styles.text, fontStyle: "italic" }}>{ngayKy}</div>
                             <div style={styles.boldText}>{nhanKy}</div>
                             <Box height="16px" />
-                            <Box height="54px" display="flex" alignItems="center" justifyContent="center">
-                                {step?.ConfirmedAt ? <div style={styles.signedStamp}>ĐÃ KÝ</div> : null}
-                            </Box>
+                            <PrintSignatureImage src={step?.SignatureDataUrl || null} height={54} />
                             <div style={{ ...styles.text, fontWeight: "bold", marginTop: "8px" }}>
                                 {step?.TenNguoiXacNhan || ""}
                             </div>

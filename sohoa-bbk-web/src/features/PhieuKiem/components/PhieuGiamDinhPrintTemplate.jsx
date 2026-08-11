@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Grid } from '@mui/material';
 import TextareaAutosize from '@mui/material/TextareaAutosize';
+import { PrintSignatureImage } from '../../../components/common/PrintSignature';
 
 // Hàm hỗ trợ chuyển số thứ tự thành số La Mã (I, II, III, IV...)
 const toRoman = (num) => {
@@ -13,8 +14,14 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
     sections = [],
     checkItems = [],
     defects = [],
-    dynamicFields = []
+    dynamicFields = [],
+    xacNhans = []
 }, ref) => {
+    const findSigner = (roles) => [...xacNhans].reverse().find((item) =>
+        roles.includes(String(item?.VaiTro || '').toUpperCase())
+    );
+    const departmentSigner = findSigner(['PX', 'TBP', 'TRUONG_BO_PHAN']);
+    const inspectorSigner = findSigner(['KCS', 'NHAN_VIEN_KIEM', 'KIEM_NGHIEM']);
 
     const customData = (dynamicFields || []).reduce((acc, field) => {
         if (field?.FieldName) acc[field.FieldName] = field.FieldValue;
@@ -446,12 +453,12 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                     <Box style={{ ...styles.signatureBlock, marginTop: '10px' }}>
                                         <Box style={styles.signatureCol}>
                                             <div style={{ ...styles.text, minHeight: '30px' }}><b>Trưởng bộ phận</b></div>
-                                            <Box height="60px"></Box>
-                                            <div style={styles.text}>{phieu.BoPhan}</div>
+                                            <PrintSignatureImage src={departmentSigner?.SignatureDataUrl} height={60} />
+                                            <div style={styles.text}>{departmentSigner?.TenNguoiXacNhan || phieu.BoPhan}</div>
                                         </Box>
                                         <Box style={styles.signatureCol}>
                                             <div style={{ ...styles.text, minHeight: '30px' }}><b>Nhân viên KT</b></div>
-                                            <Box height="60px"></Box>
+                                            <PrintSignatureImage src={inspectorSigner?.SignatureDataUrl} height={60} />
                                             <div style={styles.text}>{phieu.TenNguoiKiem}</div>
                                         </Box>
                                     </Box>

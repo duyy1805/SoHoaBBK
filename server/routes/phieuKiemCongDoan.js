@@ -3,6 +3,7 @@ const sql = require('mssql');
 const { poolPromise } = require('../db');
 const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
+const { attachSignatureDataUrls } = require('../utils/signatureImage');
 
 const router = express.Router();
 const OPEN_STATES = new Set(['TAO_MOI', 'DANG_KIEM', 'CHUA_KIEM']);
@@ -347,10 +348,11 @@ router.get(
             totals.ChenhLechSoLuong = totals.SoKeHoachDaNhapThucTe
                 ? totals.TongSoLuongHieuLuc - totals.TongSoLuongKeHoach
                 : null;
+            const xacNhans = await attachSignatureDataUrls(pool, result.recordsets[3] || [], 'NguoiXacNhanId');
             res.json(encodeRows({
                 phieu: { ...normalizePhieuDates(phieu), ...totals },
                 plans,
-                xacNhans: result.recordsets[3] || [],
+                xacNhans,
                 readOnly: !OPEN_STATES.has(phieu.TrangThai),
                 capabilities: inspectionCapabilities(req, phieu)
             }));

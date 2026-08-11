@@ -1,4 +1,5 @@
 import React, { forwardRef, useMemo } from "react";
+import { PrintSignatureImage } from '../../../components/common/PrintSignature';
 
 const border = "1px solid #000";
 const cell = {
@@ -27,8 +28,7 @@ const weekNumber = (value) => {
 
 const signerByRole = (xacNhans, role) => [...(xacNhans || [])]
     .reverse()
-    .find((item) => String(item?.VaiTro || "").toUpperCase() === role)
-    ?.TenNguoiXacNhan || "";
+    .find((item) => String(item?.VaiTro || "").toUpperCase() === role) || null;
 
 const CongDoanPrintTemplate = forwardRef(function CongDoanPrintTemplate(
     { phieu, plans = [], xacNhans = [] },
@@ -128,8 +128,10 @@ const CongDoanPrintTemplate = forwardRef(function CongDoanPrintTemplate(
 
     const totalColumns = 16 + defectColumns.length;
     const tableFontSize = totalColumns > 22 ? 6.3 : totalColumns > 19 ? 7 : 7.8;
-    const kcsSignerName = signerByRole(xacNhans, "KCS_CONG_DOAN");
-    const departmentHeadSignerName = signerByRole(xacNhans, "TBP_CONG_DOAN");
+    const kcsSigner = signerByRole(xacNhans, "KCS_CONG_DOAN");
+    const departmentHeadSigner = signerByRole(xacNhans, "TBP_CONG_DOAN");
+    const kcsSignerName = kcsSigner?.TenNguoiXacNhan || "";
+    const departmentHeadSignerName = departmentHeadSigner?.TenNguoiXacNhan || "";
 
     return (
         <div
@@ -304,36 +306,12 @@ const CongDoanPrintTemplate = forwardRef(function CongDoanPrintTemplate(
                 fontSize: 12
             }}>
                 {[
-                    ["KCS", kcsSignerName],
-                    ["TRƯỞNG BỘ PHẬN", departmentHeadSignerName]
-                ].map(([title, signerName]) => (
+                    ["KCS", kcsSignerName, kcsSigner?.SignatureDataUrl],
+                    ["TRƯỞNG BỘ PHẬN", departmentHeadSignerName, departmentHeadSigner?.SignatureDataUrl]
+                ].map(([title, signerName, signatureDataUrl]) => (
                     <div key={title} style={{ textAlign: "center", minHeight: 118 }}>
                         <div style={{ fontWeight: 700, fontSize: 13 }}>{title}</div>
-                        <div style={{
-                            height: 72,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center"
-                        }}>
-                            {signerName ? (
-                                <span style={{
-                                    display: "inline-block",
-                                    padding: "8px 16px 7px",
-                                    border: "2px solid #f05a5a",
-                                    color: "#f05a5a",
-                                    fontWeight: 700,
-                                    fontSize: 17,
-                                    lineHeight: 1,
-                                    textTransform: "uppercase",
-                                    borderRadius: 4,
-                                    transform: "rotate(-9deg) translateY(4px)",
-                                    letterSpacing: "0.8px",
-                                    backgroundColor: "rgba(255,255,255,0.92)"
-                                }}>
-                                    Đã ký
-                                </span>
-                            ) : null}
-                        </div>
+                        <PrintSignatureImage src={signatureDataUrl} height={72} />
                         <div style={{ minHeight: 20, marginTop: 4, fontWeight: 700, fontSize: 12 }}>
                             {signerName}
                         </div>

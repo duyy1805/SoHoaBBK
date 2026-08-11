@@ -1,4 +1,5 @@
 import { forwardRef, useMemo } from "react";
+import PrintSignature from "../../../components/common/PrintSignature";
 
 const FORM_META = {
     companyName: "CÔNG TY TNHH MỘT THÀNH VIÊN 76",
@@ -178,11 +179,16 @@ const buildCuoiChuyenRows = ({ phieu, plans, columns, dynamicFields }) => plans.
 const getPersonName = (value = {}) => text(
     value.TenNguoiXacNhan || value.HoTen || value.TenNhanVien || value.FullName || value.Username
 );
+const toSigner = (value = {}, fallbackName = "") => ({
+    name: getPersonName(value) || text(fallbackName),
+    signedAt: value.ThoiGian || value.ConfirmedAt || null,
+    signatureDataUrl: value.SignatureDataUrl || null
+});
 
 const signerByRole = (xacNhans = [], roles = []) => {
     const allowed = roles.map((role) => role.toUpperCase());
     const signer = [...xacNhans].reverse().find((item) => allowed.includes(text(item.VaiTro).toUpperCase()));
-    return getPersonName(signer);
+    return signer ? toSigner(signer) : null;
 };
 
 const buildPrintData = ({ kind, phieu = {}, plans = [], slots = [], dynamicFields = [], xacNhans = [] }) => {
@@ -194,8 +200,8 @@ const buildPrintData = ({ kind, phieu = {}, plans = [], slots = [], dynamicField
     let workshop = text(phieu.PhanXuong);
     let team = text(phieu.ToMay);
     let date = phieu.NgayKiem;
-    let qcSigner = text(phieu.TenNguoiKiem);
-    let ttsxSigner = "";
+    let qcSigner = { name: text(phieu.TenNguoiKiem), signatureDataUrl: null, signedAt: null };
+    let ttsxSigner = null;
 
     if (kind === "cong-doan") {
         rows = buildCongDoanRows({ phieu, plans, columns });
@@ -206,17 +212,25 @@ const buildPrintData = ({ kind, phieu = {}, plans = [], slots = [], dynamicField
         workshop = workshop || text(getFieldValue(dynamicFields, "TrenChuyen_TenDonVi") || phieu.DoiTuong);
         team = team || text(getFieldValue(dynamicFields, "TrenChuyen_TenBoPhan"));
         date = getFieldValue(dynamicFields, "TrenChuyen_NgayKeHoach") || date;
-        qcSigner = text(getFieldValue(dynamicFields, "TrenChuyen_CompletedByName")) || qcSigner;
+        qcSigner = {
+            name: text(getFieldValue(dynamicFields, "TrenChuyen_CompletedByName")) || qcSigner.name,
+            signatureDataUrl: getFieldValue(dynamicFields, "TrenChuyen_CompletedByUserIdSignatureDataUrl") || null,
+            signedAt: getFieldValue(dynamicFields, "TrenChuyen_CompletedAt") || null
+        };
         ttsxSigner = signerByRole(xacNhans, ["TBP"]);
     } else {
         rows = buildCuoiChuyenRows({ phieu, plans, columns, dynamicFields });
         workshop = workshop || text(plans[0]?.TenDonVi || phieu.DoiTuong);
         team = team || text(plans[0]?.TenBoPhan);
         date = plans[0]?.NgayKeHoach || date;
-        qcSigner = text(getFieldValue(dynamicFields, "CuoiChuyen_CompletedByName")) || qcSigner;
+        qcSigner = {
+            name: text(getFieldValue(dynamicFields, "CuoiChuyen_CompletedByName")) || qcSigner.name,
+            signatureDataUrl: getFieldValue(dynamicFields, "CuoiChuyen_CompletedByUserIdSignatureDataUrl") || null,
+            signedAt: getFieldValue(dynamicFields, "CuoiChuyen_CompletedAt") || null
+        };
         ttsxSigner = signerByRole(xacNhans, ["TBP"])
-            || getPersonName(xacNhans[0])
-            || text(getFieldValue(dynamicFields, "CuoiChuyen_ApprovedByName"));
+            || (xacNhans[0] ? toSigner(xacNhans[0]) : null)
+            || { name: text(getFieldValue(dynamicFields, "CuoiChuyen_ApprovedByName")), signatureDataUrl: null };
     }
 
     const pages = [];
@@ -277,13 +291,15 @@ const Header = ({ workshop, team, week }) => (
 );
 
 const Signature = ({ title, signer }) => (
-    <div className="unified-signature">
-        <div className="unified-signature-title">{title}</div>
-        <div className="unified-signature-mark">
-            {signer ? <span>Đã ký</span> : null}
-        </div>
-        <div className="unified-signature-name">{signer}</div>
-    </div>
+    <PrintSignature
+        title={title}
+        name={signer?.name || ""}
+        signedAt={signer?.signedAt || null}
+        signatureDataUrl={signer?.signatureDataUrl || null}
+        imageHeight={42}
+        style={{ minHeight: 64, fontSize: 10 }}
+        titleStyle={{ fontSize: 11 }}
+    />
 );
 
 const UnifiedInspectionPrintTemplate = forwardRef(function UnifiedInspectionPrintTemplate({

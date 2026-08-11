@@ -9,5 +9,6 @@ dist/
 build/
 
 *.sql
+!server/sql/migrations/20260811_user_signature_image.sql
 
 *.xlsx

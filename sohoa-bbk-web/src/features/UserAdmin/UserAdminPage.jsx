@@ -17,7 +17,8 @@ import {
     changeManagedRoleStatus, changeManagedUserStatus, createManagedRole,
     createManagedUser, getManagedRoles, getManagedUser, getManagedUsers,
     getUserAdminMetadata, resetManagedUserPassword, updateManagedRole,
-    updateManagedRolePermissions, updateManagedUser
+    updateManagedRolePermissions, updateManagedUser, uploadManagedUserSignature,
+    deleteManagedUserSignature
 } from "../../api/admin.api";
 import { getCurrentUser } from "../../utils/auth";
 
@@ -61,6 +62,8 @@ export default function UserAdminPage() {
     const [userDialog, setUserDialog] = useState({ open: false, editing: false });
     const [userForm, setUserForm] = useState(emptyUserForm);
     const [userPermissions, setUserPermissions] = useState([]);
+    const [signatureFile, setSignatureFile] = useState(null);
+    const [signaturePreview, setSignaturePreview] = useState(null);
     const [resetTarget, setResetTarget] = useState(null);
     const [resetForm, setResetForm] = useState({ password: "", confirmPassword: "" });
     const [roleDialog, setRoleDialog] = useState({ open: false, editing: false });
@@ -135,6 +138,8 @@ export default function UserAdminPage() {
 
     const openCreateUser = () => {
         setUserPermissions([]);
+        setSignatureFile(null);
+        setSignaturePreview(null);
         setUserForm(emptyUserForm);
         setUserDialog({ open: true, editing: false });
     };
@@ -145,6 +150,8 @@ export default function UserAdminPage() {
             const res = await getManagedUser(user.Id);
             const detail = res.data || {};
             setUserPermissions(detail.permissions || []);
+            setSignatureFile(null);
+            setSignaturePreview(detail.SignatureDataUrl || null);
             setUserForm({
                 username: detail.Username || "",
                 fullName: detail.FullName || "",
@@ -158,6 +165,55 @@ export default function UserAdminPage() {
             setUserDialog({ open: true, editing: true, id: detail.Id });
         } catch (err) {
             setError(errorMessage(err, "Không tải được chi tiết tài khoản"));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const selectSignatureFile = (event) => {
+        const file = event.target.files?.[0] || null;
+        setSignatureFile(file);
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => setSignaturePreview(String(reader.result || "") || null);
+        reader.readAsDataURL(file);
+        event.target.value = "";
+    };
+
+    const saveSignature = async () => {
+        if (!signatureFile || !userDialog.editing) return;
+        setSaving(true);
+        try {
+            const res = await uploadManagedUserSignature(userDialog.id, signatureFile);
+            const updated = res.data?.user;
+            setSignatureFile(null);
+            setSignaturePreview(updated?.SignatureDataUrl || null);
+            if (updated?.RowVersion) {
+                setUserForm((prev) => ({ ...prev, rowVersion: updated.RowVersion }));
+            }
+            patchUser(updated);
+            setNotice(res.data?.message || "Đã cập nhật ảnh chữ ký");
+        } catch (err) {
+            setError(errorMessage(err, "Không cập nhật được ảnh chữ ký"));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const removeSignature = async () => {
+        if (!userDialog.editing || !signaturePreview || !window.confirm("Xóa ảnh chữ ký của tài khoản này?")) return;
+        setSaving(true);
+        try {
+            const res = await deleteManagedUserSignature(userDialog.id);
+            setSignatureFile(null);
+            setSignaturePreview(null);
+            if (res.data?.user?.RowVersion) {
+                setUserForm((prev) => ({ ...prev, rowVersion: res.data.user.RowVersion }));
+            }
+            patchUser(res.data?.user);
+            setNotice(res.data?.message || "Đã xóa ảnh chữ ký");
+        } catch (err) {
+            setError(errorMessage(err, "Không xóa được ảnh chữ ký"));
         } finally {
             setSaving(false);
         }
@@ -392,6 +448,7 @@ export default function UserAdminPage() {
                                                     <TableCell>
                                                         <Typography fontWeight={700}>{user.FullName || "---"}</Typography>
                                                         <Typography variant="caption" color="text.secondary">{user.Username}{user.Email ? ` · ${user.Email}` : ""}</Typography>
+                                                        {user.HasSignature && <Chip size="small" color="info" variant="outlined" label="Có chữ ký" sx={{ ml: 1 }} />}
                                                     </TableCell>
                                                     <TableCell>{user.MaBoPhan && user.TenBoPhan ? `${user.MaBoPhan} - ${user.TenBoPhan}` : user.BoPhan || "Chưa gán"}</TableCell>
                                                     <TableCell><Stack direction="row" spacing={0.5} useFlexGap flexWrap="wrap">{(user.roles || []).map((role) => <Chip key={role.Id} size="small" label={role.RoleCode} color={role.RoleCode === "ADMIN" ? "error" : "default"} />)}</Stack></TableCell>
@@ -490,6 +547,27 @@ export default function UserAdminPage() {
                             <Typography fontWeight={700} sx={{ mb: 1 }}>Permission hiệu lực hiện tại</Typography>
                             <Stack direction="row" spacing={0.5} useFlexGap flexWrap="wrap">{userPermissions.length ? userPermissions.map((permission) => <Chip key={permission.Id} size="small" label={permission.PermissionCode} />) : <Typography variant="body2" color="text.secondary">Không có permission</Typography>}</Stack>
                             <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>Permission mới có hiệu lực sau khi tài khoản đăng nhập lại.</Typography>
+                        </Paper>}
+                        {userDialog.editing && <Paper variant="outlined" sx={{ p: 1.5 }}>
+                            <Typography fontWeight={700}>Ảnh chữ ký</Typography>
+                            <Typography variant="caption" color="text.secondary">PNG, JPEG hoặc WebP; tối đa 2 MB. Ảnh sẽ được chuẩn hóa thành PNG tối đa 800×300.</Typography>
+                            <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }} sx={{ mt: 1.5 }}>
+                                <Box sx={{ width: 260, height: 100, border: "1px dashed", borderColor: "divider", borderRadius: 1, display: "grid", placeItems: "center", bgcolor: "grey.50" }}>
+                                    {signaturePreview
+                                        ? <Box component="img" src={signaturePreview} alt="Chữ ký" sx={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                                        : <Typography variant="body2" color="text.secondary">Chưa có chữ ký</Typography>}
+                                </Box>
+                                <Stack spacing={1} alignItems="flex-start">
+                                    <Button component="label" variant="outlined" disabled={saving}>
+                                        Chọn ảnh
+                                        <input hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={selectSignatureFile} />
+                                    </Button>
+                                    <Stack direction="row" spacing={1}>
+                                        <Button variant="contained" disabled={saving || !signatureFile} onClick={saveSignature}>Tải lên</Button>
+                                        <Button color="error" disabled={saving || !signaturePreview} onClick={removeSignature}>Xóa</Button>
+                                    </Stack>
+                                </Stack>
+                            </Stack>
                         </Paper>}
                     </Stack>
                 </DialogContent>

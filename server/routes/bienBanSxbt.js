@@ -3,6 +3,7 @@ const router = express.Router();
 const sql = require("mssql");
 
 const { poolPromise } = require("../db");
+const { loadSignatureDataUrlMap } = require("../utils/signatureImage");
 const authenticateToken = require("../middlewares/auth.middleware");
 const authorize = require("../middlewares/permission.middleware");
 
@@ -158,11 +159,12 @@ router.get("/:id", authenticateToken, async (req, res) => {
         const confirmSteps = recordsets[4] || [];
         const confirmedUserIds = [...new Set(
             confirmSteps
-                .map((step) => step?.ConfirmedBy)
-                .filter((value) => Number.isInteger(value) || (typeof value === "number" && !Number.isNaN(value)))
+                .map((step) => Number(step?.ConfirmedBy))
+                .filter((value) => Number.isInteger(value) && value > 0)
         )];
 
         let userNameMap = new Map();
+        let signatureMap = new Map();
         if (confirmedUserIds.length > 0) {
             const confirmedUsersResult = await pool.request()
                 .query(`
@@ -177,6 +179,7 @@ router.get("/:id", authenticateToken, async (req, res) => {
                     user.FullName || user.Username || ""
                 ])
             );
+            signatureMap = await loadSignatureDataUrlMap(pool, confirmedUserIds);
         }
 
         res.json({
@@ -187,7 +190,8 @@ router.get("/:id", authenticateToken, async (req, res) => {
             dynamicFields,
             confirmSteps: confirmSteps.map((step) => ({
                 ...step,
-                TenNguoiXacNhan: step?.ConfirmedBy ? userNameMap.get(Number(step.ConfirmedBy)) || "" : ""
+                TenNguoiXacNhan: step?.ConfirmedBy ? userNameMap.get(Number(step.ConfirmedBy)) || "" : "",
+                SignatureDataUrl: step?.ConfirmedBy ? signatureMap.get(Number(step.ConfirmedBy)) || null : null
             }))
         });
     } catch (err) {

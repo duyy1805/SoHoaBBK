@@ -1,9 +1,18 @@
 const express = require("express");
 const crypto = require("crypto");
+const fs = require("fs/promises");
+const path = require("path");
 const sql = require("mssql");
+const multer = require("multer");
+const sharp = require("sharp");
 const authenticateToken = require("../middlewares/auth.middleware");
 const { requireUserAdministrator, USER_ADMIN_PERMISSION } = require("../middlewares/userAdmin.middleware");
 const { poolPromise } = require("../db");
+const {
+    signatureDirectory,
+    resolveSignaturePath,
+    readSignatureDataUrl
+} = require("../utils/signatureImage");
 
 const router = express.Router();
 router.use(authenticateToken, requireUserAdministrator);
@@ -28,7 +37,37 @@ const httpError = (statusCode, message) => Object.assign(new Error(message), { s
 const txRequest = (transaction) => new sql.Request(transaction);
 
 const mapRole = (row) => ({ ...row, RowVersion: encodeRowVersion(row.RowVersion) });
-const mapUser = (row) => ({ ...row, RowVersion: encodeRowVersion(row.RowVersion) });
+const mapUser = (row) => ({
+    ...row,
+    HasSignature: Boolean(row.HasSignature),
+    RowVersion: encodeRowVersion(row.RowVersion)
+});
+const signatureUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 2 * 1024 * 1024, files: 1 },
+    fileFilter: (_req, file, callback) => {
+        const allowed = new Set(["image/png", "image/jpeg", "image/webp"]);
+        callback(allowed.has(file.mimetype) ? null : httpError(400, "Chỉ chấp nhận ảnh PNG, JPEG hoặc WebP"), allowed.has(file.mimetype));
+    }
+});
+const runSignatureUpload = (req, res, next) => {
+    signatureUpload.single("signature")(req, res, (error) => {
+        if (!error) return next();
+        if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+            return res.status(400).json({ message: "Ảnh chữ ký không được lớn hơn 2 MB" });
+        }
+        return res.status(error.statusCode || 400).json({ message: error.message || "Ảnh chữ ký không hợp lệ" });
+    });
+};
+const removeSignatureFile = async (storedPath) => {
+    const filePath = resolveSignaturePath(storedPath);
+    if (!filePath) return;
+    try {
+        await fs.unlink(filePath);
+    } catch (error) {
+        if (error?.code !== "ENOENT") console.warn("Không xóa được ảnh chữ ký cũ:", error.message);
+    }
+};
 
 async function getDepartment(executor, departmentId, activeOnly = true) {
     if (!Number.isInteger(Number(departmentId)) || Number(departmentId) <= 0) {
@@ -74,7 +113,9 @@ async function getUserSnapshot(executor, userId) {
     const result = await request.input("UserId", sql.Int, Number(userId)).query(`
         SELECT u.Id, u.Username, u.FullName, u.Email, u.BoPhanId, u.BoPhan,
                ISNULL(u.TrangThai,0) AS TrangThai, u.CreatedAt, u.UpdatedAt,
-               bp.MaBoPhan, bp.TenBoPhan, u.RowVersion
+               bp.MaBoPhan, bp.TenBoPhan, u.RowVersion,
+               CAST(CASE WHEN NULLIF(LTRIM(RTRIM(u.SignatureImagePath)), N'') IS NULL THEN 0 ELSE 1 END AS bit) AS HasSignature,
+               u.SignatureImagePath
         FROM dbo.USERS u
         LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id=u.BoPhanId
         WHERE u.Id=@UserId;
@@ -92,8 +133,11 @@ async function getUserSnapshot(executor, userId) {
     `);
     const user = result.recordsets[0]?.[0];
     if (!user) return null;
+    const signatureDataUrl = await readSignatureDataUrl(user.SignatureImagePath);
+    delete user.SignatureImagePath;
     return {
         ...mapUser(user),
+        SignatureDataUrl: signatureDataUrl,
         roles: result.recordsets[1] || [],
         permissions: result.recordsets[2] || []
     };
@@ -277,7 +321,8 @@ router.get("/users", async (req, res) => {
 
             SELECT u.Id, u.Username, u.FullName, u.Email, u.BoPhanId, u.BoPhan,
                    ISNULL(u.TrangThai,0) AS TrangThai, u.CreatedAt, u.UpdatedAt,
-                   bp.MaBoPhan, bp.TenBoPhan, u.RowVersion
+                   bp.MaBoPhan, bp.TenBoPhan, u.RowVersion,
+                   CAST(CASE WHEN NULLIF(LTRIM(RTRIM(u.SignatureImagePath)), N'') IS NULL THEN 0 ELSE 1 END AS bit) AS HasSignature
             FROM dbo.USERS u
             LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id=u.BoPhanId
             WHERE (@Keyword IS NULL OR u.Username LIKE N'%'+@Keyword+N'%'
@@ -416,6 +461,127 @@ router.put("/users/:id", async (req, res) => {
     } catch (error) {
         try { await transaction.rollback(); } catch { /* transaction chưa bắt đầu */ }
         handleError(res, error, "Không cập nhật được tài khoản");
+    }
+});
+
+router.post("/users/:id/signature", runSignatureUpload, async (req, res) => {
+    const userId = Number(req.params.id);
+    if (!Number.isInteger(userId) || userId <= 0) {
+        return res.status(400).json({ message: "Tài khoản không hợp lệ" });
+    }
+    if (!req.file?.buffer) {
+        return res.status(400).json({ message: "Vui lòng chọn ảnh chữ ký" });
+    }
+
+    let newFileName = null;
+    let transaction = null;
+    try {
+        const pool = await poolPromise;
+        const currentResult = await pool.request()
+            .input("UserId", sql.Int, userId)
+            .query("SELECT Id, SignatureImagePath FROM dbo.USERS WHERE Id=@UserId");
+        const current = currentResult.recordset?.[0];
+        if (!current) return res.status(404).json({ message: "Không tìm thấy tài khoản" });
+
+        try {
+            const metadata = await sharp(req.file.buffer).metadata();
+            if (!["png", "jpeg", "webp"].includes(metadata.format)) {
+                throw new Error("Định dạng ảnh không hợp lệ");
+            }
+            await fs.mkdir(signatureDirectory, { recursive: true });
+            newFileName = `${userId}-${crypto.randomUUID()}.png`;
+            const outputPath = path.join(signatureDirectory, newFileName);
+            await sharp(req.file.buffer)
+                .rotate()
+                .resize({ width: 800, height: 300, fit: "inside", withoutEnlargement: true })
+                .png({ compressionLevel: 9 })
+                .toFile(outputPath);
+        } catch (error) {
+            throw httpError(400, error.message || "Nội dung file ảnh không hợp lệ");
+        }
+
+        transaction = new sql.Transaction(pool);
+        await transaction.begin();
+        await txRequest(transaction)
+            .input("UserId", sql.Int, userId)
+            .input("SignatureImagePath", sql.NVarChar(500), newFileName)
+            .input("ActorUserId", sql.Int, req.user.userId)
+            .query(`
+                UPDATE dbo.USERS
+                SET SignatureImagePath=@SignatureImagePath,
+                    UpdatedAt=SYSDATETIME(), UpdatedBy=@ActorUserId
+                WHERE Id=@UserId
+            `);
+        await writeAudit(
+            transaction,
+            req.user.userId,
+            current.SignatureImagePath ? "REPLACE_USER_SIGNATURE" : "UPLOAD_USER_SIGNATURE",
+            "USER",
+            userId,
+            { HasSignature: Boolean(current.SignatureImagePath) },
+            { HasSignature: true }
+        );
+        await transaction.commit();
+        transaction = null;
+        newFileName = null;
+        await removeSignatureFile(current.SignatureImagePath);
+
+        const user = await getUserSnapshot(pool, userId);
+        res.json({ message: "Đã cập nhật ảnh chữ ký", user });
+    } catch (error) {
+        if (transaction) {
+            try { await transaction.rollback(); } catch { /* transaction chưa bắt đầu */ }
+        }
+        if (newFileName) await removeSignatureFile(newFileName);
+        handleError(res, error, "Không cập nhật được ảnh chữ ký");
+    }
+});
+
+router.delete("/users/:id/signature", async (req, res) => {
+    const userId = Number(req.params.id);
+    if (!Number.isInteger(userId) || userId <= 0) {
+        return res.status(400).json({ message: "Tài khoản không hợp lệ" });
+    }
+    let transaction = null;
+    try {
+        const pool = await poolPromise;
+        const currentResult = await pool.request()
+            .input("UserId", sql.Int, userId)
+            .query("SELECT Id, SignatureImagePath FROM dbo.USERS WHERE Id=@UserId");
+        const current = currentResult.recordset?.[0];
+        if (!current) return res.status(404).json({ message: "Không tìm thấy tài khoản" });
+
+        transaction = new sql.Transaction(pool);
+        await transaction.begin();
+        await txRequest(transaction)
+            .input("UserId", sql.Int, userId)
+            .input("ActorUserId", sql.Int, req.user.userId)
+            .query(`
+                UPDATE dbo.USERS
+                SET SignatureImagePath=NULL,
+                    UpdatedAt=SYSDATETIME(), UpdatedBy=@ActorUserId
+                WHERE Id=@UserId
+            `);
+        await writeAudit(
+            transaction,
+            req.user.userId,
+            "DELETE_USER_SIGNATURE",
+            "USER",
+            userId,
+            { HasSignature: Boolean(current.SignatureImagePath) },
+            { HasSignature: false }
+        );
+        await transaction.commit();
+        transaction = null;
+        await removeSignatureFile(current.SignatureImagePath);
+
+        const user = await getUserSnapshot(pool, userId);
+        res.json({ message: "Đã xóa ảnh chữ ký", user });
+    } catch (error) {
+        if (transaction) {
+            try { await transaction.rollback(); } catch { /* transaction chưa bắt đầu */ }
+        }
+        handleError(res, error, "Không xóa được ảnh chữ ký");
     }
 });
 

@@ -10,6 +10,15 @@ export const changeManagedUserStatus = (id, trangThai, rowVersion) =>
     axiosClient.patch(`/admin/users/${id}/status`, { trangThai, rowVersion });
 export const resetManagedUserPassword = (id, password, rowVersion) =>
     axiosClient.post(`/admin/users/${id}/reset-password`, { password, rowVersion });
+export const uploadManagedUserSignature = (id, file) => {
+    const formData = new FormData();
+    formData.append("signature", file);
+    return axiosClient.post(`/admin/users/${id}/signature`, formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+    });
+};
+export const deleteManagedUserSignature = (id) =>
+    axiosClient.delete(`/admin/users/${id}/signature`);
 
 export const getManagedRoles = () => axiosClient.get("/admin/roles");
 export const createManagedRole = (data) => axiosClient.post("/admin/roles", data);
@@ -19,4 +28,3 @@ export const changeManagedRoleStatus = (id, trangThai, rowVersion) =>
     axiosClient.patch(`/admin/roles/${id}/status`, { trangThai, rowVersion });
 export const updateManagedRolePermissions = (id, permissionIds, rowVersion) =>
     axiosClient.put(`/admin/roles/${id}/permissions`, { permissionIds, rowVersion });
-

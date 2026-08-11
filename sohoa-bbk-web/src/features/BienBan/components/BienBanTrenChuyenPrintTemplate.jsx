@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Box } from '@mui/material';
+import { PrintSignatureImage } from '../../../components/common/PrintSignature';
 
 export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
     info = {},
@@ -440,13 +441,13 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                     <Box style={styles.signatureCol}>
                                         <div style={styles.text}>{formatSignatureDate(kphBpsxSignature?.ThoiGian)}</div>
                                         <div style={styles.boldText}>TRƯỞNG BỘ PHẬN</div>
-                                        <Box height="60px"></Box>
+                                        <PrintSignatureImage src={kphBpsxSignature?.SignatureDataUrl} height={60} />
                                         <div style={styles.text}>{kphBpsxSignature?.FullName || '(Ký, họ tên)'}</div>
                                     </Box>
                                     <Box style={styles.signatureCol}>
                                         <div style={styles.text}>Ngày</div>
                                         <div style={styles.boldText}>NGƯỜI LẬP</div>
-                                        <Box height="60px"></Box>
+                                        <PrintSignatureImage src={info.NguoiLapSignatureDataUrl} height={60} />
                                         <div style={styles.text}>{info.NguoiLap || '(Ký, họ tên)'}</div>
                                     </Box>
                                 </Box>
@@ -567,7 +568,10 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                                         <td style={styles.td}>{opinion.MaBoPhan || opinion.TenBoPhan}</td>
                                                         <td style={{ ...styles.td, whiteSpace: 'pre-wrap' }}>{opinion.HasOpinion ? opinion.NoiDung : ''}</td>
                                                         <td style={styles.td}>
-                                                            {opinion.HasConfirmed ? (opinion.ConfirmedByName || '') : ''}
+                                                            {opinion.HasConfirmed ? <>
+                                                                <PrintSignatureImage src={opinion.SignatureDataUrl} height={42} />
+                                                                {opinion.ConfirmedByName || ''}
+                                                            </> : ''}
                                                             {opinion.HasConfirmed && opinion.ConfirmedAt ? ` · ${new Date(opinion.ConfirmedAt).toLocaleDateString('vi-VN')}` : ''}
                                                         </td>
                                                     </tr>
@@ -586,7 +590,7 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                                     {formatSignatureDate(item.ThoiGian)}
                                                 </div>
                                                 <div style={styles.signatureDepartment}>{getSignatureDepartmentName(item).toUpperCase()}</div>
-                                                <Box height="90px"></Box>
+                                                <PrintSignatureImage src={item.SignatureDataUrl} height={90} />
                                                 <div style={styles.text}>{item.FullName || '(Ký, họ tên)'}</div>
                                             </Box>
                                         ))}
@@ -613,8 +617,8 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                         <div style={{ textAlign: 'center', width: '250px' }}>
                                             <div style={styles.text}>Ngày</div>
                                             <div style={styles.boldText}>NGƯỜI THEO DÕI</div>
-                                            <Box height="60px"></Box>
-                                            <div style={styles.text}>(Ký, họ tên)</div>
+                                            <PrintSignatureImage src={followUpEvaluation?.SignatureDataUrl} height={60} />
+                                            <div style={styles.text}>{followUpEvaluation?.NguoiTheoDoi || '(Ký, họ tên)'}</div>
                                         </div>
                                     </div>
                                 </Box>

@@ -1,4 +1,5 @@
 import React, { forwardRef, useMemo } from "react";
+import { PrintSignatureImage } from '../../../components/common/PrintSignature';
 
 const FORM_META = {
     companyName: "CÔNG TY TNHH MTV 76",
@@ -328,6 +329,8 @@ const TrenChuyenPrintTemplate = forwardRef(function TrenChuyenPrintTemplate(
         "";
     const tbpApproval = (xacNhans || []).find((item) => String(item?.VaiTro || "").toUpperCase() === "TBP");
     const ttsxSignerName = tbpApproval?.TenNguoiXacNhan || "";
+    const qcSignatureDataUrl = getFieldValue(dynamicFields, "TrenChuyen_CompletedByUserIdSignatureDataUrl") || null;
+    const ttsxSignatureDataUrl = tbpApproval?.SignatureDataUrl || null;
 
     return (
         <div ref={ref} style={styles.page}>
@@ -470,16 +473,12 @@ const TrenChuyenPrintTemplate = forwardRef(function TrenChuyenPrintTemplate(
             <div style={styles.signatures}>
                 <div style={styles.signatureBox}>
                     <div style={styles.signatureTitle}>QC</div>
-                    <div style={styles.signatureSignedText}>
-                        {qcSignerName ? <span style={styles.signatureStamp}>Đã ký</span> : null}
-                    </div>
+                    <PrintSignatureImage src={qcSignatureDataUrl} height={54} />
                     <div style={styles.signatureName}>{qcSignerName}</div>
                 </div>
                 <div style={styles.signatureBox}>
                     <div style={styles.signatureTitle}>TTSX</div>
-                    <div style={styles.signatureSignedText}>
-                        {ttsxSignerName ? <span style={styles.signatureStamp}>Đã ký</span> : null}
-                    </div>
+                    <PrintSignatureImage src={ttsxSignatureDataUrl} height={54} />
                     <div style={styles.signatureName}>{ttsxSignerName}</div>
                 </div>
             </div>

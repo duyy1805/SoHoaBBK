@@ -68,6 +68,7 @@ export default function PhieuKiemDetail() {
     const [checkItems, setCheckItems] = useState([]);
     const [defects, setDefects] = useState([]);
     const [dynamicFields, setDynamicFields] = useState([]);
+    const [xacNhans, setXacNhans] = useState([]);
     const [nhomConfigs, setNhomConfigs] = useState([]);
     const [levels, setLevels] = useState([]);
     const [capabilities, setCapabilities] = useState({});
@@ -145,6 +146,7 @@ export default function PhieuKiemDetail() {
             setCheckItems(data.checkItems);
             setDefects(data.defects);
             setDynamicFields(data.dynamicFields);
+            setXacNhans(data.xacNhans || []);
             setCapabilities(data.capabilities || {});
 
             // Lấy thêm thông số kết quả kiểm tra cấp độ đặc biệt
@@ -837,6 +839,7 @@ export default function PhieuKiemDetail() {
                                     checkItems={checkItems}
                                     defects={defects}
                                     dynamicFields={dynamicFields}
+                                    xacNhans={xacNhans}
                                 />
                             ) : (
                                 <PhieuKiemPrintTemplate
@@ -846,6 +849,7 @@ export default function PhieuKiemDetail() {
                                     checkItems={checkItems}
                                     defects={defects}
                                     dynamicFields={dynamicFields}
+                                    xacNhans={xacNhans}
                                     thongSoList={thongSoList}
                                     thongSoKqList={thongSoKqList}
                                     onRequestProductImageUpload={handleTriggerProductImageUpload}

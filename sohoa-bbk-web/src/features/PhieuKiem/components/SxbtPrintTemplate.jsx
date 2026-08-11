@@ -1,4 +1,5 @@
 import React from 'react';
+import PrintSignature from '../../../components/common/PrintSignature';
 // ============================================================
 // SxbtPrintTemplate — Phiếu kiểm tra sản xuất bổ trợ (A4 đứng)
 // Khớp mẫu: BM.01-HD.07-QT.03-B8
@@ -285,6 +286,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
             title: signatureLabels.SXBT,
             userName: dynVal('SxbtConfirmedByName'),
             date: dynVal('SxbtConfirmedAt'),
+            signatureDataUrl: dynVal('SxbtConfirmedBySignatureDataUrl') || null,
             signed: !!dynVal('SxbtConfirmedBy')
         },
         {
@@ -292,6 +294,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
             title: signatureLabels.KHO,
             userName: dynVal('SxbtKhoConfirmedByName'),
             date: dynVal('SxbtKhoConfirmedAt'),
+            signatureDataUrl: dynVal('SxbtKhoConfirmedBySignatureDataUrl') || null,
             signed: !!dynVal('SxbtKhoConfirmedBy')
         },
         {
@@ -299,6 +302,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
             title: signatureLabels.KCS,
             userName: dynVal('SxbtKcsCompletedByName') || phieu.TenNguoiKiem || '',
             date: dynVal('SxbtKcsCompletedAt') || phieu.NgayKiem,
+            signatureDataUrl: dynVal('SxbtKcsCompletedBySignatureDataUrl') || null,
             signed: !!dynVal('SxbtKcsCompletedBy') || !!phieu.NgayKiem
         }
     ];
@@ -310,6 +314,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
             title: signatureLabels[step.MaBoPhan] || step.TenBoPhan || step.MaBoPhan || `Bộ phận ${index + 1}`,
             userName: step.TenNguoiXacNhan || '',
             date: step.ConfirmedAt,
+            signatureDataUrl: step.SignatureDataUrl || null,
             signed: true
         }));
 
@@ -798,14 +803,9 @@ export const SxbtPrintTemplate = React.forwardRef(({
                         }}
                     >
                         {signatureSlots.map((slot) => (
-                            <div key={slot.key} style={{ flex: 1, textAlign: 'center' }}>
-                                <div style={{ fontStyle: 'italic', marginBottom: '4px' }}>{formatSignatureDate(slot.date)}</div>
-                                <div style={{ fontWeight: 'bold', fontSize: '10pt' }}>{slot.title}</div>
-                                <div style={{ height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    {slot.signed ? <span className="screen-only-signed-stamp" style={s.signedStamp}>ĐÃ KÝ</span> : null}
-                                </div>
-                                <div style={{ fontWeight: 'bold' }}>{slot.userName || ''}</div>
-                            </div>
+                            <PrintSignature key={slot.key} style={{ flex: 1 }} title={slot.title}
+                                name={slot.userName} signedAt={slot.date} signatureDataUrl={slot.signatureDataUrl}
+                                formatDate={formatSignatureDate} imageHeight={70} titleStyle={{ fontSize: '10pt' }} />
                         ))}
                     </div>
                 )}
@@ -1190,14 +1190,9 @@ export const SxbtPrintTemplate = React.forwardRef(({
                                     }}
                                 >
                                     {signatureSlots.map((slot) => (
-                                        <div key={`appendix-${group.key}-${slot.key}`} style={{ flex: 1, textAlign: 'center' }}>
-                                            <div style={{ fontStyle: 'italic', marginBottom: '4px' }}>{formatSignatureDate(slot.date)}</div>
-                                            <div style={{ fontWeight: 'bold', fontSize: '10pt' }}>{slot.title}</div>
-                                            <div style={{ height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                {slot.signed ? <span className="screen-only-signed-stamp" style={s.signedStamp}>ĐÃ KÝ</span> : null}
-                                            </div>
-                                            <div style={{ fontWeight: 'bold' }}>{slot.userName || ''}</div>
-                                        </div>
+                                        <PrintSignature key={`appendix-${group.key}-${slot.key}`} style={{ flex: 1 }} title={slot.title}
+                                            name={slot.userName} signedAt={slot.date} signatureDataUrl={slot.signatureDataUrl}
+                                            formatDate={formatSignatureDate} imageHeight={70} titleStyle={{ fontSize: '10pt' }} />
                                     ))}
                                 </div>
                             )}
