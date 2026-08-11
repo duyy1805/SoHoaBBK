@@ -168,8 +168,17 @@ router.get("/", authenticateToken, async (req, res) => {
         const progressMap = new Map();
         for (const item of progressResult.recordset || []) {
             const key = Number(item.BienBanId);
-            const progress = progressMap.get(key) || { total: 0, done: 0, pending: [] };
+            const progress = progressMap.get(key) || { total: 0, done: 0, pending: [], departments: [] };
             progress.total += 1;
+            const departmentId = Number(item.BoPhanId);
+            if (Number.isInteger(departmentId) && departmentId > 0
+                && !progress.departments.some((department) => department.id === departmentId)) {
+                progress.departments.push({
+                    id: departmentId,
+                    maBoPhan: item.MaBoPhan || null,
+                    tenBoPhan: item.TenBoPhan || null
+                });
+            }
             if (Number(item.DaXacNhan) === 1) progress.done += 1;
             else progress.pending.push(item.TenBoPhan || item.MaBoPhan);
             progressMap.set(key, progress);
@@ -178,14 +187,20 @@ router.get("/", authenticateToken, async (req, res) => {
             const creatorDepartment = creatorDepartmentMap.get(Number(item.BienBanId)) || {};
             const summaryFields = summaryFieldMap.get(Number(item.BienBanId)) || {};
             const progress = progressMap.get(Number(item.BienBanId));
-            if (!progress) return { ...item, ...creatorDepartment, ...summaryFields };
+            if (!progress) return {
+                ...item,
+                ...creatorDepartment,
+                ...summaryFields,
+                OpinionDepartments: []
+            };
             return {
                 ...item,
                 ...creatorDepartment,
                 ...summaryFields,
                 SoBoPhan: progress.total,
                 DaCoYKien: progress.done,
-                BoPhanChuaXacNhanText: progress.pending.filter(Boolean).join(", ") || null
+                BoPhanChuaXacNhanText: progress.pending.filter(Boolean).join(", ") || null,
+                OpinionDepartments: progress.departments
             };
         }));
     } catch (err) {

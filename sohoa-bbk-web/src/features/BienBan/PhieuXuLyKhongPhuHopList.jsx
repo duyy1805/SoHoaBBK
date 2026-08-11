@@ -113,6 +113,7 @@ export default function PhieuXuLyKhongPhuHopList() {
     const [creatorFilter, setCreatorFilter] = useState(() => searchParams.get("creator") || "");
     const [filterPopover, setFilterPopover] = useState({ field: "", anchorEl: null });
     const [departmentFilter, setDepartmentFilter] = useState(() => searchParams.get("creatorDepartment") || "all");
+    const [opinionDepartmentFilter, setOpinionDepartmentFilter] = useState(() => searchParams.get("opinionDepartment") || "all");
     const [dateFrom, setDateFrom] = useState(() => searchParams.get("from") || "");
     const [dateTo, setDateTo] = useState(() => searchParams.get("to") || "");
     const [advancedOpen, setAdvancedOpen] = useState(() => searchParams.get("advanced") === "1");
@@ -160,6 +161,7 @@ export default function PhieuXuLyKhongPhuHopList() {
         setDescriptionFilter(searchParams.get("description") || "");
         setCreatorFilter(searchParams.get("creator") || "");
         setDepartmentFilter(searchParams.get("creatorDepartment") || "all");
+        setOpinionDepartmentFilter(searchParams.get("opinionDepartment") || "all");
         setDateFrom(searchParams.get("from") || "");
         setDateTo(searchParams.get("to") || "");
         setAdvancedOpen(searchParams.get("advanced") === "1");
@@ -211,6 +213,21 @@ export default function PhieuXuLyKhongPhuHopList() {
         return [...options.values()].sort((a, b) => a.label.localeCompare(b.label, "vi"));
     }, [data]);
 
+    const opinionDepartmentOptions = useMemo(() => {
+        const options = new Map();
+        data.forEach((item) => {
+            (Array.isArray(item.OpinionDepartments) ? item.OpinionDepartments : []).forEach((department) => {
+                const id = Number(department.id);
+                if (!Number.isInteger(id) || id <= 0) return;
+                options.set(id, {
+                    id,
+                    label: [department.maBoPhan, department.tenBoPhan].filter(Boolean).join(" - ") || `Bộ phận #${id}`
+                });
+            });
+        });
+        return [...options.values()].sort((a, b) => a.label.localeCompare(b.label, "vi"));
+    }, [data]);
+
     const statusOptions = useMemo(() => [...new Set(data.map((item) => item.TrangThai).filter(Boolean))]
         .map((value) => ({ value, label: getBienBanStatusMeta(value).label }))
         .sort((a, b) => a.label.localeCompare(b.label, "vi")), [data]);
@@ -231,6 +248,11 @@ export default function PhieuXuLyKhongPhuHopList() {
             if (statusFilter && item.TrangThai !== statusFilter) return false;
             if (departmentFilter === "mine" && Number(item.CreatorBoPhanId) !== Number(currentUser.boPhanId)) return false;
             if (!["all", "mine"].includes(departmentFilter) && Number(item.CreatorBoPhanId) !== Number(departmentFilter)) return false;
+            const opinionDepartmentIds = (Array.isArray(item.OpinionDepartments) ? item.OpinionDepartments : [])
+                .map((department) => Number(department.id));
+            if (opinionDepartmentFilter === "mine" && !opinionDepartmentIds.includes(Number(currentUser.boPhanId))) return false;
+            if (!["all", "mine"].includes(opinionDepartmentFilter)
+                && !opinionDepartmentIds.includes(Number(opinionDepartmentFilter))) return false;
 
             const createdAt = item.CreatedAt ? new Date(item.CreatedAt) : null;
             if (dateFrom && (!createdAt || createdAt < new Date(`${dateFrom}T00:00:00`))) return false;
@@ -243,6 +265,9 @@ export default function PhieuXuLyKhongPhuHopList() {
                 item.NguoiLap,
                 item.MaBoPhanTao,
                 item.TenBoPhanTao,
+                ...(Array.isArray(item.OpinionDepartments)
+                    ? item.OpinionDepartments.flatMap((department) => [department.maBoPhan, department.tenBoPhan])
+                    : []),
                 item.MaSanPham,
                 item.TenSanPham,
                 item.DonHang,
@@ -251,7 +276,7 @@ export default function PhieuXuLyKhongPhuHopList() {
             ].filter(Boolean).join(" "));
             return searchableText.includes(normalizeSearchText(keyword));
         });
-    }, [data, searchText, numberFilter, itemFilter, kphFilter, descriptionFilter, creatorFilter, workFilter, statusFilter, departmentFilter, dateFrom, dateTo, currentUser, access]);
+    }, [data, searchText, numberFilter, itemFilter, kphFilter, descriptionFilter, creatorFilter, workFilter, statusFilter, departmentFilter, opinionDepartmentFilter, dateFrom, dateTo, currentUser, access]);
 
     const paginatedData = useMemo(() => {
         const startIndex = page * rowsPerPage;
@@ -370,6 +395,7 @@ export default function PhieuXuLyKhongPhuHopList() {
         setDescriptionFilter("");
         setCreatorFilter("");
         setDepartmentFilter("all");
+        setOpinionDepartmentFilter("all");
         setDateFrom("");
         setDateTo("");
         setWorkFilter("all");
@@ -384,6 +410,7 @@ export default function PhieuXuLyKhongPhuHopList() {
             description: "",
             creator: "",
             creatorDepartment: "",
+            opinionDepartment: "",
             from: "",
             to: "",
             work: "all",
@@ -480,6 +507,20 @@ export default function PhieuXuLyKhongPhuHopList() {
                             <MenuItem value="all">Tất cả bộ phận</MenuItem>
                             {currentUser.boPhanId && <MenuItem value="mine">Bộ phận của tôi</MenuItem>}
                             {departmentOptions.map((department) => (
+                                <MenuItem key={department.id} value={String(department.id)}>{department.label}</MenuItem>
+                            ))}
+                        </TextField>
+                        <TextField
+                            select
+                            size="small"
+                            label="Bộ phận được xin ý kiến"
+                            value={opinionDepartmentFilter}
+                            onChange={(event) => updateFilter(setOpinionDepartmentFilter, "opinionDepartment", event.target.value)}
+                            sx={{ minWidth: { xs: "100%", md: 250 } }}
+                        >
+                            <MenuItem value="all">Tất cả bộ phận được xin ý kiến</MenuItem>
+                            {currentUser.boPhanId && <MenuItem value="mine">Bộ phận của tôi</MenuItem>}
+                            {opinionDepartmentOptions.map((department) => (
                                 <MenuItem key={department.id} value={String(department.id)}>{department.label}</MenuItem>
                             ))}
                         </TextField>
