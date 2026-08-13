@@ -39,8 +39,10 @@ import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
 import SettingsOverscanIcon from '@mui/icons-material/SettingsOverscan';
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import PeopleAltOutlinedIcon from "@mui/icons-material/PeopleAltOutlined";
 import ConfirmDialog from "../../../components/common/ConfirmDialog"
 import SanPhamThongSoDialog from "./SanPhamThongSoDialog";
+import ProductResponsiblesDialog from "./ProductResponsiblesDialog";
 import {
     getSanPhamList,
     createSanPham,
@@ -110,6 +112,7 @@ export default function SanPhamManager() {
     const [nhomDialog, setNhomDialog] = useState(false);
     const [thongSoDialog, setThongSoDialog] = useState(false);
     const [selectedSanPham, setSelectedSanPham] = useState(null);
+    const [responsibleProduct, setResponsibleProduct] = useState(null);
     const [nhomData, setNhomData] = useState([]);
     const [nhomList, setNhomList] = useState([]);
     const [selectedNhomObj, setSelectedNhomObj] = useState(null);
@@ -562,24 +565,34 @@ export default function SanPhamManager() {
                                         <TableCell sx={{ color: "text.secondary" }}>{row.KhachHang || "--"}</TableCell>
                                         <TableCell sx={{ color: "text.secondary" }}>{row.MoTa || "--"}</TableCell>
                                         <TableCell align="center">
-                                            <Button
-                                                size="small"
-                                                variant="outlined"
-                                                startIcon={<AssignmentTurnedInIcon />}
-                                                onClick={() => openNhomManager(row)}
-                                                sx={{ mr: 1 }}
-                                            >
-                                                Nhóm kiểm
-                                            </Button>
-                                            <Button
-                                                size="small"
-                                                variant="outlined"
-                                                color="secondary"
-                                                startIcon={<SettingsOverscanIcon />}
-                                                onClick={() => openThongSoManager(row)}
-                                            >
-                                                Thông số kiểm
-                                            </Button>
+                                            <Stack direction="row" spacing={0.75} justifyContent="center" flexWrap="wrap" useFlexGap>
+                                                <Button
+                                                    size="small"
+                                                    variant="outlined"
+                                                    startIcon={<AssignmentTurnedInIcon />}
+                                                    onClick={() => openNhomManager(row)}
+                                                >
+                                                    Nhóm kiểm
+                                                </Button>
+                                                <Button
+                                                    size="small"
+                                                    variant="outlined"
+                                                    color="secondary"
+                                                    startIcon={<SettingsOverscanIcon />}
+                                                    onClick={() => openThongSoManager(row)}
+                                                >
+                                                    Thông số kiểm
+                                                </Button>
+                                                <Button
+                                                    size="small"
+                                                    variant="outlined"
+                                                    color="info"
+                                                    startIcon={<PeopleAltOutlinedIcon />}
+                                                    onClick={() => setResponsibleProduct(row)}
+                                                >
+                                                    Người phụ trách
+                                                </Button>
+                                            </Stack>
                                             <Tooltip title="Tải danh mục kiểm theo mẫu import">
                                                 <span>
                                                     <IconButton
@@ -1117,6 +1130,11 @@ export default function SanPhamManager() {
                 open={thongSoDialog}
                 onClose={() => setThongSoDialog(false)}
                 selectedSanPham={selectedSanPham}
+            />
+            <ProductResponsiblesDialog
+                open={Boolean(responsibleProduct)}
+                product={responsibleProduct}
+                onClose={() => setResponsibleProduct(null)}
             />
         </Box>
     );

@@ -316,7 +316,7 @@ export default function PhieuKiemDetail() {
     const isLeader = hasPermission("PHAN_BO_KIEM");
     const canEditInspection = capabilities.canEdit ?? (isKCS || isLeader);
     const isPX = hasPermission("XAC_NHAN_PX");
-    const canDeletePhieu = sections.length === 0 && phieu?.TrangThai === "TAO_MOI" && (isKCS || isLeader);
+    const canDeletePhieu = hasPermission("XOA_HO_SO_KCS");
     const isAllConfirmed = sections.length > 0 && sections.every(s => s.KetLuan);
     const hasReject = sections.some(s => s.KetLuan === "REJECT");
     const hasSpecialReject = thongSoKqList.some(kq => {
@@ -369,7 +369,7 @@ export default function PhieuKiemDetail() {
     };
 
     const handleDeletePhieu = async () => {
-        const confirmed = window.confirm("Phiếu sẽ bị xóa cứng và không thể khôi phục. Bạn chắc chắn muốn xóa?");
+        const confirmed = window.confirm("Phiếu kiểm, toàn bộ dữ liệu kiểm và các biên bản phát sinh từ phiếu sẽ bị xóa cứng, không thể khôi phục. Bạn chắc chắn muốn xóa?");
         if (!confirmed) return;
 
         try {

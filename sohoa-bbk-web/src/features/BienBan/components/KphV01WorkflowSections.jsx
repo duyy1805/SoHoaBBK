@@ -167,6 +167,19 @@ export default function KphV01WorkflowSections({
                                         <Divider />
 
                                         <Stack spacing={1.5} sx={{ p: { xs: 1.5, md: 2 } }}>
+                                            {opinion.SuggestedUserName && (
+                                                <Box sx={{ px: 1.25, py: 1, borderRadius: 1.5, bgcolor: "info.50", border: "1px solid", borderColor: "info.100" }}>
+                                                    <Typography variant="body2">
+                                                        Người phụ trách sản phẩm được đề xuất: <strong>{opinion.SuggestedUserName}</strong>
+                                                    </Typography>
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        Bộ phận: {opinion.TenBoPhan || opinion.MaBoPhan || "—"}
+                                                        {opinion.ProductResponsibleAddedAt
+                                                            ? ` · Được gắn với sản phẩm lúc ${new Date(opinion.ProductResponsibleAddedAt).toLocaleString("vi-VN")}`
+                                                            : ""}
+                                                    </Typography>
+                                                </Box>
+                                            )}
                                             {opinion.CanSaveOpinion ? (
                                                 <TextField fullWidth multiline minRows={3} size="small"
                                                     label="Nội dung ý kiến"

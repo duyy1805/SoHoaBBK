@@ -1,12 +1,15 @@
 const express = require("express");
 const router = express.Router();
 const sql = require("mssql");
-const fs = require("fs");
-const path = require("path");
 
 const { poolPromise } = require("../db");
 const authenticateToken = require("../middlewares/auth.middleware");
-const bienBanAttachmentDir = path.join(__dirname, "..", "private-uploads", "bien-ban");
+const requireExactPermission = require("../middlewares/exactPermission.middleware");
+const {
+    getBienBanFiles,
+    deleteBienBanData,
+    removeBienBanFiles
+} = require("../services/kcsRecordDeletion.service");
 
 const hasStrictLeadRole = (user) => Array.isArray(user?.roles) &&
     user.roles.some((role) => String(role || "").toUpperCase().startsWith("TP_"));
@@ -158,11 +161,19 @@ router.get("/", authenticateToken, async (req, res) => {
         );
         const progressResult = await pool.request().query(`
             SELECT yk.BienBanId,yk.BoPhanId,bp.MaBoPhan,bp.TenBoPhan,
+                yk.SuggestedUserId,suggestedUser.FullName AS SuggestedUserName,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM dbo.TRA_LOI_Y_KIEN response
+                    WHERE response.XinYKienId=yk.Id
+                      AND NULLIF(LTRIM(RTRIM(response.NoiDung)),N'') IS NOT NULL
+                ) AND yk.OpinionReviewRound=ISNULL(bb.ReviewRound,1)
+                    THEN 1 ELSE 0 END AS HasOpinion,
                 CASE WHEN yk.ConfirmedAt IS NOT NULL
                     AND yk.ConfirmedReviewRound=ISNULL(bb.ReviewRound,1) THEN 1 ELSE 0 END DaXacNhan
             FROM dbo.XIN_Y_KIEN yk
             JOIN dbo.BIEN_BAN_KIEM bb ON bb.Id=yk.BienBanId
             LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id=yk.BoPhanId
+            LEFT JOIN dbo.USERS suggestedUser ON suggestedUser.Id=yk.SuggestedUserId
             WHERE yk.BienBanId IN (${ids.join(",")}) AND ISNULL(yk.IsActive,1)=1
         `);
         const progressMap = new Map();
@@ -180,7 +191,13 @@ router.get("/", authenticateToken, async (req, res) => {
                 });
             }
             if (Number(item.DaXacNhan) === 1) progress.done += 1;
-            else progress.pending.push(item.TenBoPhan || item.MaBoPhan);
+            else progress.pending.push({
+                departmentId,
+                departmentName: item.TenBoPhan || item.MaBoPhan,
+                suggestedUserId: Number(item.SuggestedUserId) || null,
+                suggestedUserName: item.SuggestedUserName || null,
+                hasOpinion: Number(item.HasOpinion) === 1
+            });
             progressMap.set(key, progress);
         }
         res.json(rows.map((item) => {
@@ -193,13 +210,22 @@ router.get("/", authenticateToken, async (req, res) => {
                 ...summaryFields,
                 OpinionDepartments: []
             };
+            const myPending = progress.pending.find((pending) =>
+                pending.departmentId === Number(req.user.boPhanId)
+            );
             return {
                 ...item,
                 ...creatorDepartment,
                 ...summaryFields,
                 SoBoPhan: progress.total,
                 DaCoYKien: progress.done,
-                BoPhanChuaXacNhanText: progress.pending.filter(Boolean).join(", ") || null,
+                BoPhanChuaXacNhanText: progress.pending.map((pending) =>
+                    [pending.departmentName, pending.suggestedUserName].filter(Boolean).join(" — ")
+                ).filter(Boolean).join(", ") || null,
+                MyPendingSuggestedUserId: myPending?.suggestedUserId || null,
+                MyDepartmentOpinionStatus: myPending
+                    ? (myPending.hasOpinion ? "CHO_TBP_XAC_NHAN" : "CHO_Y_KIEN")
+                    : null,
                 OpinionDepartments: progress.departments
             };
         }));
@@ -401,6 +427,8 @@ router.get("/:id", authenticateToken, async (req, res) => {
                     yk.OpinionSavedAt, yk.OpinionReviewRound,
                     yk.ConfirmedBy, confirmer.FullName AS ConfirmedByName,
                     yk.ConfirmedAt, yk.ConfirmedReviewRound,
+                    yk.SuggestedUserId, suggestedUser.FullName AS SuggestedUserName,
+                    yk.SuggestedAt, responsibleMapping.AddedAt AS ProductResponsibleAddedAt,
                     CAST(CASE WHEN NULLIF(LTRIM(RTRIM(tl.NoiDung)),N'') IS NOT NULL
                         AND yk.OpinionReviewRound=ISNULL(bb.ReviewRound,1) THEN 1 ELSE 0 END AS bit) AS HasOpinion,
                     CAST(CASE WHEN yk.ConfirmedAt IS NOT NULL
@@ -418,6 +446,9 @@ router.get("/:id", authenticateToken, async (req, res) => {
                 LEFT JOIN dbo.USERS u ON u.Id = tl.NguoiTraLoiId
                 LEFT JOIN dbo.USERS opinionSaver ON opinionSaver.Id=yk.OpinionSavedBy
                 LEFT JOIN dbo.USERS confirmer ON confirmer.Id=yk.ConfirmedBy
+                LEFT JOIN dbo.USERS suggestedUser ON suggestedUser.Id=yk.SuggestedUserId
+                LEFT JOIN dbo.DM_SAN_PHAM_NGUOI_PHU_TRACH responsibleMapping
+                    ON responsibleMapping.Id=yk.ProductResponsibleMappingId
                 WHERE yk.BienBanId = @BienBanId
                   AND ISNULL(yk.IsActive, 1) = 1
                 ORDER BY yk.ThuTu, yk.Id;
@@ -749,50 +780,33 @@ router.post("/:id/defects", authenticateToken, async (req, res) => {
     }
 });
 
-router.delete("/:id", authenticateToken, async (req, res) => {
+router.delete("/:id", authenticateToken, requireExactPermission("XOA_HO_SO_KCS"), async (req, res) => {
     try {
         const bienBanId = Number(req.params.id);
+        if (!Number.isInteger(bienBanId) || bienBanId <= 0) {
+            return res.status(400).json({ message: "Id phiếu không hợp lệ" });
+        }
         const pool = await poolPromise;
-        const attachmentResult = await pool.request()
+        const recordResult = await pool.request()
             .input("BienBanId", sql.Int, bienBanId)
             .query(`
-                IF OBJECT_ID(N'dbo.BIEN_BAN_DINH_KEM', N'U') IS NOT NULL
-                    SELECT StoredName FROM dbo.BIEN_BAN_DINH_KEM WHERE BienBanId = @BienBanId;
-                ELSE
-                    SELECT CAST(NULL AS NVARCHAR(255)) AS StoredName WHERE 1 = 0;
+                SELECT TOP(1) Id FROM dbo.BIEN_BAN_KIEM
+                WHERE Id=@BienBanId AND LoaiBienBan=N'STANDALONE';
             `);
+        if (!recordResult.recordset?.length) {
+            return res.status(404).json({ message: "Không tìm thấy phiếu xử lý không phù hợp" });
+        }
+        const files = await getBienBanFiles(pool, [bienBanId]);
         const transaction = new sql.Transaction(pool);
         await transaction.begin();
         try {
-            await new sql.Request(transaction)
-                .input("BienBanId", sql.Int, bienBanId)
-                .query(`
-                    IF OBJECT_ID(N'dbo.BIEN_BAN_KPH_REVIEW_HISTORY',N'U') IS NOT NULL
-                        DELETE FROM dbo.BIEN_BAN_KPH_REVIEW_HISTORY WHERE BienBanId=@BienBanId;
-                    DELETE tl
-                    FROM dbo.TRA_LOI_Y_KIEN tl
-                    JOIN dbo.XIN_Y_KIEN yk ON yk.Id = tl.XinYKienId
-                    WHERE yk.BienBanId = @BienBanId;
-                    DELETE FROM dbo.XIN_Y_KIEN WHERE BienBanId = @BienBanId;
-                    DELETE FROM dbo.BIEN_BAN_THEO_DOI_DANH_GIA WHERE BienBanId = @BienBanId;
-                `);
-            await new sql.Request(transaction)
-                .input("BienBanId", sql.Int, bienBanId)
-                .execute("dbo.sp_PhieuXuLyKPH_Delete");
+            await deleteBienBanData(transaction, [bienBanId], req.user.userId);
             await transaction.commit();
         } catch (error) {
             await transaction.rollback();
             throw error;
         }
-
-        await Promise.all((attachmentResult.recordset || []).map(async ({ StoredName }) => {
-            if (!StoredName || path.basename(StoredName) !== StoredName) return;
-            try {
-                await fs.promises.unlink(path.join(bienBanAttachmentDir, StoredName));
-            } catch (error) {
-                if (error.code !== "ENOENT") console.error("Delete standalone attachment file error:", error);
-            }
-        }));
+        await removeBienBanFiles(files);
 
         res.json({ success: true, message: "Đã xóa phiếu xử lý không phù hợp" });
     } catch (err) {

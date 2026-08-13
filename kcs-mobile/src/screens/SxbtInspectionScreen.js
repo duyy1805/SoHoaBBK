@@ -62,6 +62,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
     const [loaiMau, setLoaiMau] = useState("LAN_1_2");
     const [tyLeMauInput, setTyLeMauInput] = useState("100");
     const [soLuongMau, setSoLuongMau] = useState("");
+    const [soLuongThucTe, setSoLuongThucTe] = useState("");
     const [ketLuan, setKetLuan] = useState("DAT");
 
     // Mục IV: Lỗi
@@ -84,6 +85,9 @@ export default function SxbtInspectionScreen({ route, navigation }) {
         phieu?.TrangThai === "HOAN_THANH" ||
         phieu?.TrangThai === "HOAN_TAT";
     const canEditKhoQuantity = phieu?.TrangThai === "CHO_KHO_XAC_NHAN" && isKhoSXBT;
+    const soLuongKeHoach = Number(phieu?.SoLuongKeHoach ?? phieu?.SoLuong ?? 0);
+    const hasActualQuantity = soLuongThucTe !== "";
+    const soLuongHieuLuc = hasActualQuantity ? Number(soLuongThucTe) : soLuongKeHoach;
 
     console.log("Status check:", { isCompleted, isKCS, status: phieu?.TrangThai });
 
@@ -310,6 +314,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
             const phieuInfo = data.phieu || data; // fallback for older structure if any
 
             setPhieu(phieuInfo);
+            setSoLuongThucTe(phieuInfo.SoLuongThucTe == null ? "" : String(phieuInfo.SoLuongThucTe));
             setUser(userData);
             setSplitInfo(data.splitInfo || null);
 
@@ -333,15 +338,16 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                 if (data.summary.TyLe !== undefined && data.summary.TyLe !== null) {
                     setTyLeMauInput(String(Number(data.summary.TyLe).toFixed(1)).replace(/\.0$/, ""));
                 } else {
-                    const total = phieuInfo.SoLuong || 0;
+                    const total = Number(phieuInfo.SoLuongHieuLuc ?? phieuInfo.SoLuong ?? 0);
                     const savedSamples = Number(data.summary.SoLuongMau) || 0;
                     setTyLeMauInput(total > 0 ? String(((savedSamples / total) * 100).toFixed(1)).replace(/\.0$/, "") : String(getDefaultSampleRate(savedLoaiMau)));
                 }
             } else {
                 setLoaiMau("LAN_1_2");
                 setTyLeMauInput("100");
-                if (phieuInfo.SoLuong) {
-                    setSoLuongMau(String(phieuInfo.SoLuong)); // Mặc định Lần 1,2 là 100%
+                const initialEffectiveQuantity = Number(phieuInfo.SoLuongHieuLuc ?? phieuInfo.SoLuong ?? 0);
+                if (initialEffectiveQuantity) {
+                    setSoLuongMau(String(initialEffectiveQuantity)); // Mặc định Lần 1,2 là 100%
                 }
             }
             if (phieuInfo.KetLuan) setKetLuan(phieuInfo.KetLuan);
@@ -390,7 +396,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
         setLoaiMau(type);
         const rate = getDefaultSampleRate(type);
         setTyLeMauInput(String(rate));
-        const total = phieu?.SoLuong || 0;
+        const total = soLuongHieuLuc;
         if (total > 0) {
             setSoLuongMau(String(Math.ceil(total * rate / 100)));
         }
@@ -400,7 +406,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
         const normalized = value.replace(',', '.');
         setTyLeMauInput(normalized);
         const rate = Number(normalized);
-        const total = phieu?.SoLuong || 0;
+        const total = soLuongHieuLuc;
         if (!Number.isNaN(rate) && total > 0) {
             setSoLuongMau(String(Math.ceil(total * rate / 100)));
         }
@@ -409,9 +415,19 @@ export default function SxbtInspectionScreen({ route, navigation }) {
     const handleSoLuongMauChange = (value) => {
         setSoLuongMau(value);
         const samples = Number(value);
-        const total = phieu?.SoLuong || 0;
+        const total = soLuongHieuLuc;
         if (!Number.isNaN(samples) && total > 0) {
             setTyLeMauInput(formatPercentInput((samples / total) * 100));
+        }
+    };
+
+    const handleSoLuongThucTeChange = (value) => {
+        const normalized = value.replace(/\D/g, "");
+        setSoLuongThucTe(normalized);
+        const nextEffectiveQuantity = normalized === "" ? soLuongKeHoach : Number(normalized);
+        const samples = Number(soLuongMau);
+        if (nextEffectiveQuantity > 0 && soLuongMau !== "" && !Number.isNaN(samples)) {
+            setTyLeMauInput(formatPercentInput(samples * 100 / nextEffectiveQuantity));
         }
     };
 
@@ -503,13 +519,12 @@ export default function SxbtInspectionScreen({ route, navigation }) {
     // Calculate Percentages
     const totalSamples = parseInt(soLuongMau) || 0;
     const totalDefects = defectList.reduce((sum, d) => sum + d.SoLuong, 0);
-    const criticalDefects = defectList.filter(d => d.DefectType === 'Nghiêm trọng').reduce((sum, d) => sum + d.SoLuong, 0);
+    const criticalDefects = defectList
+        .filter(d => ['Nghiêm trọng', 'CRITICAL'].includes(d.DefectType))
+        .reduce((sum, d) => sum + d.SoLuong, 0);
     const majorMinorDefects = totalDefects - criticalDefects;
 
-    const manualSampleRate = Number(tyLeMauInput);
-    const tyLe = tyLeMauInput !== "" && !Number.isNaN(manualSampleRate)
-        ? manualSampleRate
-        : (totalSamples > 0 ? (totalSamples / (phieu?.SoLuong || 1)) * 100 : 0);
+    const tyLe = soLuongHieuLuc > 0 ? (totalSamples / soLuongHieuLuc) * 100 : 0;
     const tyLeLoi = totalSamples > 0 ? (totalDefects / totalSamples) * 100 : 0;
     const tyLeDat = 100 - tyLeLoi;
     const tyLeCritical = totalSamples > 0 ? (criticalDefects / totalSamples) * 100 : 0;
@@ -595,12 +610,21 @@ export default function SxbtInspectionScreen({ route, navigation }) {
     };
 
     const handleSave = async (showSuccessAlert = true) => {
+        if (hasActualQuantity && (!Number.isInteger(Number(soLuongThucTe)) || Number(soLuongThucTe) <= 0)) {
+            Alert.alert("Số lượng không hợp lệ", "Số lượng thực tế phải là số nguyên dương hoặc để trống.");
+            return false;
+        }
+        if (totalSamples > soLuongHieuLuc) {
+            Alert.alert("Số lượng mẫu không hợp lệ", `Số lượng mẫu không được vượt quá ${formatQuantity(soLuongHieuLuc)}.`);
+            return false;
+        }
         try {
             setSaving(true);
             const activeDefects = defectList.filter(d => d.SoLuong > 0);
 
             const payload = {
                 phieuKiemId: id,
+                soLuongThucTe: hasActualQuantity ? Number(soLuongThucTe) : null,
                 dynamicFields: [
                     { FieldCode: "DKVC_THUNG_SAN_XE", Value: dkvcThungSanXe },
                     { FieldCode: "DKVC_NGOAI_QUAN", Value: dkvcNgoaiQuan }
@@ -625,7 +649,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
             return true;
         } catch (error) {
             console.error(error);
-            Alert.alert("Lỗi", "Không thể lưu dữ liệu.");
+            Alert.alert("Lỗi", error?.response?.data?.message || "Không thể lưu dữ liệu.");
             return false;
         } finally {
             setSaving(false);
@@ -682,29 +706,12 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                     onPress: async () => {
                         try {
                             setSaving(true);
-                            // Bước 1: Lưu toàn bộ dữ liệu (không đổi TrangThai)
-                            const activeDefects = defectList.filter(d => d.SoLuong > 0);
-                            const payload = {
-                                phieuKiemId: id,
-                                dynamicFields: [
-                                    { FieldCode: "DKVC_THUNG_SAN_XE", Value: dkvcThungSanXe },
-                                    { FieldCode: "DKVC_NGOAI_QUAN", Value: dkvcNgoaiQuan }
-                                ],
-                                summary: {
-                                    LoaiMau: loaiMau,
-                                    SoLuongMau: totalSamples,
-                                    TyLe: tyLe,
-                                    TyLeDat: tyLeDat,
-                                    TyLeLoiNghiemTrong: tyLeCritical,
-                                    TyLeLoiNangNhe: tyLeMajorMinor
-                                },
-                                ...(SHOW_MANUAL_BTP_LOT_EDITOR ? { btpItems } : {}),
-                                defects: activeDefects
-                                // Không gửi ketLuan ở đây – SP Save không đổi TrangThai
-                            };
-                            await saveSxbtData(payload);
+                            // Bước 1: Lưu và kiểm tra toàn bộ dữ liệu (không đổi TrangThai)
+                            const saved = await handleSave(false);
+                            if (!saved) return;
 
                             // Bước 2: Hoàn tất – gửi kết luận để SP Complete đổi TrangThai
+                            setSaving(true);
                             await completeSxbt(id, ketLuan);
 
                             Alert.alert("Đã hoàn tất", "Chờ Kho xác nhận số lượng");
@@ -914,6 +921,31 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                 <View style={styles.card}>
                     <Text style={styles.sectionTitle}>III. Tỷ lệ kiểm</Text>
 
+                    <View style={styles.quantitySummaryRow}>
+                        <View style={styles.quantitySummaryItem}>
+                            <Text style={styles.inputLabel}>Số lượng kế hoạch</Text>
+                            <Text style={styles.quantityReadonlyValue}>{formatQuantity(soLuongKeHoach)}</Text>
+                        </View>
+                        <View style={styles.quantitySummaryItem}>
+                            <Text style={styles.inputLabel}>Dùng tính tỷ lệ</Text>
+                            <Text style={styles.quantityReadonlyValue}>{formatQuantity(soLuongHieuLuc)}</Text>
+                            <Text style={styles.quantityHint}>{hasActualQuantity ? "Theo thực tế" : "Theo kế hoạch"}</Text>
+                        </View>
+                    </View>
+
+                    <View style={styles.formGroup}>
+                        <Text style={styles.inputLabel}>Số lượng thực tế</Text>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Để trống sẽ dùng số lượng kế hoạch"
+                            placeholderTextColor="#94a3b8"
+                            keyboardType="numeric"
+                            value={soLuongThucTe}
+                            editable={!isCompleted}
+                            onChangeText={handleSoLuongThucTeChange}
+                        />
+                    </View>
+
                     <View style={styles.typeGroup}>
                         {['LAN_1_2', 'LAN_3', 'LO_TRUOC_KHONG_DAT'].map(type => (
                             <TouchableOpacity
@@ -935,6 +967,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                             <TextInput
                                 style={styles.input}
                                 placeholder="Nhập tỷ lệ mẫu"
+                                placeholderTextColor="#94a3b8"
                                 keyboardType="decimal-pad"
                                 value={String(tyLeMauInput)}
                                 editable={!isCompleted}
@@ -946,17 +979,21 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                     <View style={styles.formGroup}>
                         <Text style={styles.inputLabel}>Số lượng mẫu</Text>
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, totalSamples > soLuongHieuLuc && styles.inputError]}
                             placeholder="Số lượng mẫu"
+                            placeholderTextColor="#94a3b8"
                             keyboardType="numeric"
                             value={String(soLuongMau)}
                             editable={!isCompleted}
                             onChangeText={handleSoLuongMauChange}
                         />
+                        {totalSamples > soLuongHieuLuc && (
+                            <Text style={styles.validationText}>Số lượng mẫu không được vượt quá {formatQuantity(soLuongHieuLuc)}.</Text>
+                        )}
                     </View>
 
                     <View style={styles.statsBox}>
-                        <Text>Tỷ lệ mẫu: {tyLe.toFixed(1)}%</Text>
+                        <Text>Tỷ lệ mẫu / {hasActualQuantity ? "số lượng thực tế" : "số lượng kế hoạch"}: {tyLe.toFixed(1)}%</Text>
                         <Text>Tỷ lệ đạt: {tyLeDat.toFixed(1)}%</Text>
                         <Text>Lỗi Nghiêm trọng: {tyLeCritical.toFixed(1)}%</Text>
                         <Text>Lỗi Nặng/Nhẹ: {tyLeMajorMinor.toFixed(1)}%</Text>
@@ -1472,6 +1509,12 @@ const styles = StyleSheet.create({
     typeBtnText: { fontSize: 12, color: "#4b5563" },
     typeBtnTextActive: { color: "#2563eb", fontWeight: "bold" },
     input: { borderWidth: 1, borderColor: "#d1d5db", borderRadius: 6, padding: 10, marginBottom: 12 },
+    inputError: { borderColor: "#dc2626", backgroundColor: "#fef2f2" },
+    validationText: { color: "#dc2626", fontSize: 12, marginTop: -7, marginBottom: 12 },
+    quantitySummaryRow: { flexDirection: "row", gap: 10, marginBottom: 12 },
+    quantitySummaryItem: { flex: 1, padding: 10, borderRadius: 6, backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0" },
+    quantityReadonlyValue: { color: "#0f172a", fontSize: 16, fontWeight: "800" },
+    quantityHint: { color: "#64748b", fontSize: 11, marginTop: 2 },
     statsBox: { backgroundColor: "#f3f4f6", padding: 12, borderRadius: 6, marginBottom: 12 },
     defectTargetCard: { borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 14, padding: 12, marginTop: 12, backgroundColor: "#f8fafc" },
     defectTargetHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },

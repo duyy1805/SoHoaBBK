@@ -40,8 +40,16 @@ const fs = require('fs');
 const { poolPromise } = require('../db');
 const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
+const requireExactPermission = require('../middlewares/exactPermission.middleware');
 const { getClosingScheduleCustomer } = require('../utils/closingScheduleCustomer');
 const { attachSignatureDataUrls, loadSignatureDataUrlMap } = require('../utils/signatureImage');
+const {
+    getBienBanFiles,
+    getPhieuKiemFiles,
+    deleteBienBanData,
+    deletePhieuKiemData,
+    removeBienBanFiles
+} = require('../services/kcsRecordDeletion.service');
 
 const multer = require('multer');
 const path = require('path');
@@ -975,14 +983,11 @@ router.get(
     }
 );
 
-/* =========================================================
-   DELETE /phieu-kiem/:id
-   Xóa cứng phiếu khi chưa tạo section
-========================================================= */
+/* DELETE /phieu-kiem/:id - xóa toàn bộ hồ sơ liên quan, chỉ dành cho permission chuyên biệt. */
 router.delete(
     '/:id',
     authenticateToken,
-    authorize(['PHAN_BO_KIEM', 'THUC_HIEN_KIEM']),
+    requireExactPermission('XOA_HO_SO_KCS'),
     async (req, res) => {
         const phieuKiemId = Number(req.params.id);
 
@@ -1004,16 +1009,11 @@ router.delete(
                         ExistsFlag = CASE WHEN EXISTS (
                             SELECT 1 FROM dbo.PHIEU_KIEM WHERE Id = @PhieuKiemId
                         ) THEN 1 ELSE 0 END,
-                        SectionCount = (
-                            SELECT COUNT(1)
-                            FROM dbo.PHIEU_KIEM_SECTION
-                            WHERE PhieuKiemId = @PhieuKiemId
-                        ),
-                        BienBanCount = (
-                            SELECT COUNT(1)
-                            FROM dbo.BIEN_BAN_KIEM
-                            WHERE PhieuKiemId = @PhieuKiemId
-                        );
+                        BienBanIds = STUFF((
+                            SELECT N','+CONVERT(nvarchar(20),bb.Id)
+                            FROM dbo.BIEN_BAN_KIEM bb WHERE bb.PhieuKiemId=@PhieuKiemId
+                            FOR XML PATH(''),TYPE
+                        ).value('.','nvarchar(max)'),1,1,N'');
                 `);
 
             const info = guard.recordset[0];
@@ -1023,93 +1023,14 @@ router.delete(
                 return res.status(404).json({ message: 'Không tìm thấy phiếu kiểm' });
             }
 
-            if (info.SectionCount > 0 || info.BienBanCount > 0) {
-                await transaction.rollback();
-                return res.status(409).json({
-                    message: 'Không thể xoá vì phiếu đã phát sinh dữ liệu kiểm hoặc biên bản'
-                });
-            }
-
-            await new sql.Request(transaction)
-                .input('PhieuKiemId', sql.Int, phieuKiemId)
-                .query(`
-                    DELETE FROM dbo.PhieuKiem_CustomFields
-                    WHERE PhieuKiemId = @PhieuKiemId;
-
-                    DELETE FROM dbo.PHIEU_KIEM_THONG_SO_KQ
-                    WHERE PhieuKiemId = @PhieuKiemId;
-
-                    DELETE FROM dbo.PHIEU_KIEM_XAC_NHAN
-                    WHERE PhieuKiemId = @PhieuKiemId;
-
-                    DELETE FROM dbo.PHIEU_KIEM_SXBT_SUMMARY
-                    WHERE PhieuKiemId = @PhieuKiemId;
-
-                    IF OBJECT_ID(N'dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY_DEFECT', N'U') IS NOT NULL
-                    BEGIN
-                        EXEC sp_executesql N'
-                            DELETE d
-                            FROM dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY_DEFECT d
-                            INNER JOIN dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY e ON e.Id = d.EntryId
-                            INNER JOIN dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT s ON s.Id = e.SlotId
-                            WHERE s.PhieuKiemId = @InnerPhieuKiemId;
-                        ', N'@InnerPhieuKiemId INT', @InnerPhieuKiemId = @PhieuKiemId;
-                    END
-
-                    IF OBJECT_ID(N'dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY', N'U') IS NOT NULL
-                    BEGIN
-                        EXEC sp_executesql N'
-                            DELETE e
-                            FROM dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY e
-                            INNER JOIN dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT s ON s.Id = e.SlotId
-                            WHERE s.PhieuKiemId = @InnerPhieuKiemId;
-                        ', N'@InnerPhieuKiemId INT', @InnerPhieuKiemId = @PhieuKiemId;
-                    END
-
-                    IF OBJECT_ID(N'dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT', N'U') IS NOT NULL
-                    BEGIN
-                        EXEC sp_executesql N'
-                            DELETE FROM dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT
-                            WHERE PhieuKiemId = @InnerPhieuKiemId;
-                        ', N'@InnerPhieuKiemId INT', @InnerPhieuKiemId = @PhieuKiemId;
-                    END
-
-                    IF OBJECT_ID(N'dbo.PHIEU_KIEM_CUOI_CHUYEN_DEFECT', N'U') IS NOT NULL
-                    BEGIN
-                        EXEC sp_executesql N'
-                            DELETE d
-                            FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_DEFECT d
-                            INNER JOIN dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN p ON p.Id = d.PlanId
-                            WHERE p.PhieuKiemId = @InnerPhieuKiemId;
-                        ', N'@InnerPhieuKiemId INT', @InnerPhieuKiemId = @PhieuKiemId;
-                    END
-
-                    IF OBJECT_ID(N'dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN', N'U') IS NOT NULL
-                    BEGIN
-                        EXEC sp_executesql N'
-                            DELETE FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN
-                            WHERE PhieuKiemId = @InnerPhieuKiemId;
-                        ', N'@InnerPhieuKiemId INT', @InnerPhieuKiemId = @PhieuKiemId;
-                    END
-
-                    IF OBJECT_ID(N'dbo.PHIEU_KIEM_BTP_ITEM_LOT', N'U') IS NOT NULL
-                    BEGIN
-                        EXEC sp_executesql N'
-                            DELETE lot
-                            FROM dbo.PHIEU_KIEM_BTP_ITEM_LOT lot
-                            INNER JOIN dbo.PHIEU_KIEM_BTP_ITEM item ON item.Id = lot.BtpItemId
-                            WHERE item.PhieuKiemId = @InnerPhieuKiemId;
-                        ', N'@InnerPhieuKiemId INT', @InnerPhieuKiemId = @PhieuKiemId;
-                    END
-
-                    DELETE FROM dbo.PHIEU_KIEM_BTP_ITEM
-                    WHERE PhieuKiemId = @PhieuKiemId;
-
-                    DELETE FROM dbo.PHIEU_KIEM
-                    WHERE Id = @PhieuKiemId;
-                `);
+            const bienBanIds = String(info.BienBanIds || '').split(',').map(Number).filter(Number.isInteger);
+            const files = await getBienBanFiles(transaction,bienBanIds);
+            files.push(...await getPhieuKiemFiles(transaction,phieuKiemId));
+            await deleteBienBanData(transaction,bienBanIds,req.user.userId);
+            await deletePhieuKiemData(transaction,phieuKiemId,req.user.userId);
 
             await transaction.commit();
+            await removeBienBanFiles(files);
 
             res.json({ success: true, message: 'Đã xoá phiếu kiểm' });
         } catch (err) {
@@ -3225,32 +3146,101 @@ router.post(
     authenticateToken,
     authorize('THUC_HIEN_KIEM'),
     async (req, res) => {
+        let transaction;
         try {
             const {
                 phieuKiemId,
+                soLuongThucTe: rawSoLuongThucTe,
                 dynamicFields,
                 btpItems,
                 summary,
                 defects
             } = req.body;
 
-            if (!phieuKiemId) {
+            const normalizedPhieuKiemId = Number(phieuKiemId);
+            const soLuongThucTe = optionalNonNegativeInteger(rawSoLuongThucTe);
+            const soLuongMau = optionalNonNegativeInteger(summary?.SoLuongMau);
+            if (!Number.isInteger(normalizedPhieuKiemId) || normalizedPhieuKiemId <= 0) {
                 return res.status(400).json({ message: 'Thiếu phieuKiemId' });
+            }
+            if (Number.isNaN(soLuongThucTe) || soLuongThucTe === 0) {
+                return res.status(400).json({ message: 'Số lượng thực tế phải là số nguyên dương hoặc để trống' });
+            }
+            if (Number.isNaN(soLuongMau)) {
+                return res.status(400).json({ message: 'Số lượng mẫu phải là số nguyên không âm' });
             }
 
             const pool = await poolPromise;
-            const result = await pool.request()
-                .input('PhieuKiemId', sql.Int, phieuKiemId)
+            transaction = new sql.Transaction(pool);
+            await transaction.begin();
+
+            const phieuResult = await new sql.Request(transaction)
+                .input('PhieuKiemId', sql.Int, normalizedPhieuKiemId)
+                .query(`
+                    SELECT Id, LoaiKiemId, SoLuong, SoLuongThucTe, TrangThai
+                    FROM dbo.PHIEU_KIEM WITH (UPDLOCK, HOLDLOCK)
+                    WHERE Id = @PhieuKiemId
+                `);
+            const phieu = phieuResult.recordset[0];
+            if (!phieu) {
+                await transaction.rollback();
+                transaction = null;
+                return res.status(404).json({ message: 'Không tìm thấy phiếu kiểm' });
+            }
+            if (Number(phieu.LoaiKiemId) !== 4) {
+                await transaction.rollback();
+                transaction = null;
+                return res.status(400).json({ message: 'Phiếu kiểm không thuộc loại Sản xuất bổ trợ' });
+            }
+            if (!['TAO_MOI', 'CHUA_KIEM', 'DA_TAO_SECTION', 'DANG_KIEM'].includes(String(phieu.TrangThai || '').toUpperCase())) {
+                await transaction.rollback();
+                transaction = null;
+                return res.status(409).json({ message: 'Phiếu đã chuyển bước nên không thể sửa kết quả kiểm' });
+            }
+
+            const soLuongHieuLuc = soLuongThucTe ?? Number(phieu.SoLuong || 0);
+            if (soLuongMau !== null && soLuongMau > soLuongHieuLuc) {
+                await transaction.rollback();
+                transaction = null;
+                return res.status(400).json({
+                    message: `Số lượng mẫu không được vượt quá số lượng dùng tính tỷ lệ (${soLuongHieuLuc})`
+                });
+            }
+
+            const activeDefects = Array.isArray(defects)
+                ? defects.filter((defect) => Number(defect?.SoLuong) > 0)
+                : [];
+            const totalDefects = activeDefects.reduce((sum, defect) => sum + Number(defect.SoLuong || 0), 0);
+            const criticalDefects = activeDefects
+                .filter((defect) => ['CRITICAL', 'Nghiêm trọng'].includes(defect.DefectType))
+                .reduce((sum, defect) => sum + Number(defect.SoLuong || 0), 0);
+            const safeSampleQuantity = soLuongMau ?? 0;
+            const roundRate = (value) => Math.round(value * 100) / 100;
+            const authoritativeSummary = summary ? {
+                ...summary,
+                SoLuongMau: safeSampleQuantity,
+                TyLe: soLuongHieuLuc > 0 ? roundRate(safeSampleQuantity * 100 / soLuongHieuLuc) : 0,
+                TyLeDat: safeSampleQuantity > 0 ? roundRate(100 - totalDefects * 100 / safeSampleQuantity) : 0,
+                TyLeLoiNghiemTrong: safeSampleQuantity > 0 ? roundRate(criticalDefects * 100 / safeSampleQuantity) : 0,
+                TyLeLoiNangNhe: safeSampleQuantity > 0
+                    ? roundRate((totalDefects - criticalDefects) * 100 / safeSampleQuantity)
+                    : 0
+            } : null;
+
+            const result = await new sql.Request(transaction)
+                .input('PhieuKiemId', sql.Int, normalizedPhieuKiemId)
+                .input('SoLuongThucTe', sql.Int, soLuongThucTe)
+                .input('UpdateSoLuongThucTe', sql.Bit, true)
                 .input('DynamicFieldsJson', sql.NVarChar(sql.MAX), dynamicFields ? JSON.stringify(dynamicFields) : null)
                 .input('BtpItemsJson', sql.NVarChar(sql.MAX), null)
-                .input('SummaryJson', sql.NVarChar(sql.MAX), summary ? JSON.stringify(summary) : null)
-                .input('DefectsJson', sql.NVarChar(sql.MAX), defects ? JSON.stringify(defects) : null)
+                .input('SummaryJson', sql.NVarChar(sql.MAX), authoritativeSummary ? JSON.stringify(authoritativeSummary) : null)
+                .input('DefectsJson', sql.NVarChar(sql.MAX), defects ? JSON.stringify(activeDefects) : null)
                 .input('KetLuan', sql.NVarChar(50), null)
                 .execute('sp_PhieuKiem_SXBT_Save');
 
             if (Array.isArray(btpItems) && btpItems.length > 0) {
-                await pool.request()
-                    .input('PhieuKiemId', sql.Int, phieuKiemId)
+                await new sql.Request(transaction)
+                    .input('PhieuKiemId', sql.Int, normalizedPhieuKiemId)
                     .input('BtpItemsJson', sql.NVarChar(sql.MAX), JSON.stringify(btpItems))
                     .query(`
                         IF @BtpItemsJson IS NOT NULL AND @BtpItemsJson != N'[]'
@@ -3329,14 +3319,27 @@ router.post(
                     `);
             }
 
+            await transaction.commit();
+            transaction = null;
+
             res.json({
                 success: true,
-                message: result.recordset && result.recordset.length > 0 ? result.recordset[0].Message : 'Lưu thành công'
+                message: result.recordset && result.recordset.length > 0 ? result.recordset[0].Message : 'Lưu thành công',
+                quantities: applyQuantityFields({
+                    SoLuong: phieu.SoLuong,
+                    SoLuongThucTe: soLuongThucTe
+                }),
+                summary: authoritativeSummary
             });
 
         } catch (err) {
+            if (transaction) {
+                try { await transaction.rollback(); } catch (rollbackError) {
+                    console.error('SXBT Save rollback error:', rollbackError);
+                }
+            }
             console.error('SXBT Save error:', err);
-            res.status(500).json({ message: 'Lỗi lưu dữ liệu Sản Xuất Bổ Trợ' });
+            res.status(500).json({ message: err.message || 'Lỗi lưu dữ liệu Sản Xuất Bổ Trợ' });
         }
     }
 );

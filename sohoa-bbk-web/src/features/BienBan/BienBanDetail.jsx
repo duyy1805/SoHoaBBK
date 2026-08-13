@@ -77,6 +77,7 @@ import {
     getAssignableUsers,
     assignUser,
     deleteStandaloneBienBan,
+    deleteBienBan,
     searchStandaloneCatalogItems,
     searchStandaloneOrders,
     confirmOpinionDepartments,
@@ -844,6 +845,26 @@ export default function BienBanDetail({ standalone = false }) {
         });
     };
 
+    const handleDeleteBienBan = () => {
+        setConfirmDialog({
+            open: true,
+            title: 'Xóa biên bản',
+            message: 'Biên bản sẽ bị xóa cùng toàn bộ phân công, ý kiến, xác nhận, dữ liệu xử lý và file đính kèm. Phiếu kiểm gốc vẫn được giữ lại. Hành động này không hoàn tác.',
+            type: 'warning',
+            onConfirm: async () => {
+                try {
+                    await deleteBienBan(bienBanId);
+                    showToast("Đã xóa biên bản", "success");
+                    returnToList(false);
+                } catch (err) {
+                    showToast(err?.response?.data?.message || "Không thể xóa biên bản", "error");
+                } finally {
+                    setConfirmDialog(prev => ({ ...prev, open: false }));
+                }
+            }
+        });
+    };
+
     const handlePrintPreview = () => setOpenPrintModal(true);
     const triggerPrint = useReactToPrint({
         contentRef: componentRef,
@@ -992,7 +1013,7 @@ export default function BienBanDetail({ standalone = false }) {
                             {isStandaloneBienBan ? "Danh sách phiếu xử lý không phù hợp" : "Danh sách biên bản"}
                         </Button>
                         <Stack direction="row" spacing={1}>
-                            {isStandaloneBienBan && (
+                            {isStandaloneBienBan && currentUserPermissions.includes("XOA_HO_SO_KCS") && (
                                 <Button
                                     size="small"
                                     variant="outlined"
@@ -1001,6 +1022,12 @@ export default function BienBanDetail({ standalone = false }) {
                                     onClick={handleDeleteStandalone}
                                 >
                                     Xóa phiếu
+                                </Button>
+                            )}
+                            {!isStandaloneBienBan && currentUserPermissions.includes("XOA_HO_SO_KCS") && (
+                                <Button size="small" variant="outlined" color="error"
+                                    startIcon={<DeleteOutlineIcon />} onClick={handleDeleteBienBan}>
+                                    Xóa biên bản
                                 </Button>
                             )}
                             {!isStandaloneBienBan && info.PhieuKiemId && (

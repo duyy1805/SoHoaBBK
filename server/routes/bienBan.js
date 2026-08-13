@@ -4,9 +4,15 @@ const sql = require("mssql");
 
 const { poolPromise } = require("../db");
 const { loadSignatureDataUrlMap } = require("../utils/signatureImage");
+const {
+    getBienBanFiles,
+    deleteBienBanData,
+    removeBienBanFiles
+} = require("../services/kcsRecordDeletion.service");
 
 const authenticateToken = require("../middlewares/auth.middleware");
 const authorize = require("../middlewares/permission.middleware");
+const requireExactPermission = require("../middlewares/exactPermission.middleware");
 
 const hasPermission = (user, permissionCode) =>
     Array.isArray(user?.permissions) && user.permissions.includes(permissionCode);
@@ -165,6 +171,66 @@ const getBienBanAssignRows = async (pool, bienBanId) => {
     return result.recordset;
 };
 
+const snapshotSuggestedProductResponsibles = async (executor, bienBanId, opinionIds) => {
+    const normalizedOpinionIds = [...new Set((opinionIds || []).map(Number)
+        .filter((id) => Number.isInteger(id) && id > 0))];
+    if (normalizedOpinionIds.length === 0) return;
+    await new sql.Request(executor)
+        .input("BienBanId", sql.Int, Number(bienBanId))
+        .input("OpinionIds", sql.NVarChar(sql.MAX), normalizedOpinionIds.join(","))
+        .query(`
+        DECLARE @SanPhamId int;
+        SELECT TOP (1) @SanPhamId=COALESCE(
+            TRY_CONVERT(int,localProductField.FieldValue),
+            inspection.SanPhamId,
+            productByCode.Id
+        )
+        FROM dbo.BIEN_BAN_KIEM bb
+        LEFT JOIN dbo.PHIEU_KIEM inspection ON inspection.Id=bb.PhieuKiemId
+        OUTER APPLY (
+            SELECT TOP (1) customField.FieldValue
+            FROM dbo.BienBan_CustomFields customField
+            WHERE customField.BienBanId=bb.Id AND customField.FieldName=N'LocalProductId'
+        ) localProductField
+        OUTER APPLY (
+            SELECT TOP (1) localProduct.Id
+            FROM dbo.DM_SAN_PHAM localProduct
+            WHERE localProduct.TrangThai=1
+              AND localProduct.MaSanPham=(
+                  SELECT TOP (1) cf.FieldValue
+                  FROM dbo.BienBan_CustomFields cf
+                  WHERE cf.BienBanId=bb.Id AND cf.FieldName=N'MaSanPham'
+              )
+        ) productByCode
+        WHERE bb.Id=@BienBanId;
+
+        IF @SanPhamId IS NOT NULL
+        BEGIN
+            UPDATE opinion
+            SET SuggestedUserId=preferred.UserId,
+                ProductResponsibleMappingId=preferred.MappingId,
+                SuggestedAt=SYSDATETIME()
+            FROM dbo.XIN_Y_KIEN opinion
+            CROSS APPLY (
+                SELECT TOP (1) mapping.Id AS MappingId,mapping.UserId
+                FROM dbo.DM_SAN_PHAM_NGUOI_PHU_TRACH mapping
+                JOIN dbo.USERS responsible ON responsible.Id=mapping.UserId
+                WHERE mapping.SanPhamId=@SanPhamId
+                  AND mapping.IsActive=1
+                  AND ISNULL(responsible.TrangThai,0)=1
+                  AND responsible.BoPhanId=opinion.BoPhanId
+                ORDER BY mapping.AddedAt DESC,mapping.Id DESC
+            ) preferred
+            WHERE opinion.BienBanId=@BienBanId
+              AND ISNULL(opinion.IsActive,1)=1
+              AND opinion.SuggestedUserId IS NULL
+              AND opinion.Id IN (
+                  SELECT TRY_CONVERT(int,[value]) FROM STRING_SPLIT(@OpinionIds,',')
+              );
+        END;
+    `);
+};
+
 const getKphBasicReadiness = async (pool, bienBanId) => {
     const headerResult = await pool.request()
         .input("BienBanId", sql.Int, bienBanId)
@@ -250,6 +316,8 @@ const getKphV01Data = async (pool, bienBanId, user) => {
                 yk.OpinionSavedAt, yk.OpinionReviewRound,
                 yk.ConfirmedBy, confirmer.FullName AS ConfirmedByName,
                 yk.ConfirmedAt, yk.ConfirmedReviewRound,
+                yk.SuggestedUserId, suggestedUser.FullName AS SuggestedUserName,
+                yk.SuggestedAt, responsibleMapping.AddedAt AS ProductResponsibleAddedAt,
                 CAST(CASE WHEN NULLIF(LTRIM(RTRIM(tl.NoiDung)),N'') IS NOT NULL
                     AND yk.OpinionReviewRound=ISNULL(bb.ReviewRound,1) THEN 1 ELSE 0 END AS bit) AS HasOpinion,
                 CAST(CASE WHEN yk.ConfirmedAt IS NOT NULL
@@ -267,6 +335,9 @@ const getKphV01Data = async (pool, bienBanId, user) => {
             LEFT JOIN dbo.USERS responder ON responder.Id = tl.NguoiTraLoiId
             LEFT JOIN dbo.USERS opinionSaver ON opinionSaver.Id=yk.OpinionSavedBy
             LEFT JOIN dbo.USERS confirmer ON confirmer.Id=yk.ConfirmedBy
+            LEFT JOIN dbo.USERS suggestedUser ON suggestedUser.Id=yk.SuggestedUserId
+            LEFT JOIN dbo.DM_SAN_PHAM_NGUOI_PHU_TRACH responsibleMapping
+                ON responsibleMapping.Id=yk.ProductResponsibleMappingId
             WHERE yk.BienBanId = @BienBanId
               AND ISNULL(yk.IsActive, 1) = 1
             ORDER BY yk.ThuTu, yk.Id;
@@ -387,6 +458,8 @@ router.get(
                     bp.MaBoPhan,
                     bp.TenBoPhan,
                     CAST(0 AS bit) AS IsOpinionDepartment,
+                    CAST(NULL AS int) AS SuggestedUserId,
+                    CAST(NULL AS nvarchar(255)) AS SuggestedUserName,
                     CASE WHEN EXISTS (
                         SELECT 1
                         FROM dbo.BIEN_BAN_XAC_NHAN xn
@@ -409,12 +482,15 @@ router.get(
                     bp.MaBoPhan,
                     bp.TenBoPhan,
                     CAST(1 AS bit) AS IsOpinionDepartment,
+                    yk.SuggestedUserId,
+                    suggestedUser.FullName AS SuggestedUserName,
                     CASE WHEN yk.ConfirmedAt IS NOT NULL
                         AND yk.ConfirmedReviewRound=ISNULL(bb.ReviewRound,1)
                         THEN 1 ELSE 0 END AS DaXacNhan
                 FROM dbo.XIN_Y_KIEN yk
                 JOIN dbo.BIEN_BAN_KIEM bb ON bb.Id = yk.BienBanId
                 LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id = yk.BoPhanId
+                LEFT JOIN dbo.USERS suggestedUser ON suggestedUser.Id=yk.SuggestedUserId
                 WHERE yk.BienBanId IN (${bienBanIds.join(",")})
                   AND ISNULL(bb.MauPhieuVersion, 'V00') = 'V01'
                   AND ISNULL(yk.IsActive, 1) = 1
@@ -444,7 +520,10 @@ router.get(
                 if (Number(assign.DaXacNhan) === 1) {
                     progress.done += 1;
                 } else {
-                    const displayName = assign.TenBoPhan || assign.MaBoPhan;
+                    const displayName = [
+                        assign.TenBoPhan || assign.MaBoPhan,
+                        assign.SuggestedUserName
+                    ].filter(Boolean).join(" — ");
                     if (displayName) progress.pendingDepartments.push(displayName);
                 }
                 normalProgressByBienBanId.set(key, progress);
@@ -508,6 +587,8 @@ router.get(
                                 THEN N'CHO_TBP_XAC_NHAN'
                             ELSE N'CHO_Y_KIEN'
                         END AS MyDepartmentOpinionStatus,
+                        myOpinion.SuggestedUserId AS MyPendingSuggestedUserId,
+                        suggestedUser.FullName AS MyPendingSuggestedUserName,
                         CASE
                             WHEN pk.LoaiKiemId = 4
                                 THEN COALESCE(planContractor.Ma_NhaThau, contractor.Ma_NhaThau)
@@ -531,6 +612,7 @@ router.get(
                         WHERE response.XinYKienId = myOpinion.Id
                         ORDER BY response.ThoiGian DESC, response.Id DESC
                     ) myResponse
+                    LEFT JOIN dbo.USERS suggestedUser ON suggestedUser.Id=myOpinion.SuggestedUserId
                     LEFT JOIN dbo.PHIEU_KIEM pk ON pk.Id = bb.PhieuKiemId
                     LEFT JOIN dbo.DM_LOAI_KIEM inspectionType ON inspectionType.Id = pk.LoaiKiemId
                     LEFT JOIN TAG_QTKD.dbo.PhieuNhapBTP receipt
@@ -1661,12 +1743,14 @@ router.post(
                 return res.status(409).json({ message: "Không thể bỏ bộ phận đã có phản hồi" });
             }
 
-            await new sql.Request(transaction)
+            const opinionSyncResult = await new sql.Request(transaction)
                 .input("BienBanId", sql.Int, bienBanId)
                 .input("SelectedIds", sql.NVarChar(sql.MAX), boPhanIds.join(","))
                 .input("UserId", sql.Int, req.user.userId)
                 .input("IsReturned", sql.Bit, access.record.TrangThai === "TRA_LAI_CHINH_SUA")
                 .query(`
+                    DECLARE @NewOpinions TABLE (Id int NOT NULL);
+
                     UPDATE dbo.XIN_Y_KIEN
                     SET IsActive = 0, TrangThai = N'DA_HUY',
                         RemovedBy = @UserId, RemovedAt = SYSDATETIME()
@@ -1687,6 +1771,7 @@ router.post(
 
                     INSERT INTO dbo.XIN_Y_KIEN
                         (BienBanId, BoPhanId, BoPhan, TrangThai, ThuTu, IsActive, CreatedBy, CreatedAt)
+                    OUTPUT inserted.Id INTO @NewOpinions(Id)
                     SELECT @BienBanId, bp.Id, bp.MaBoPhan,
                         CASE WHEN @IsReturned=1 THEN N'CHO_GUI_LAI' ELSE N'CHO_Y_KIEN' END,
                         ROW_NUMBER() OVER (ORDER BY bp.Id) +
@@ -1711,7 +1796,14 @@ router.post(
                             ELSE TrangThai
                         END
                     WHERE Id = @BienBanId;
+
+                    SELECT Id AS XinYKienId FROM @NewOpinions;
                 `);
+            await snapshotSuggestedProductResponsibles(
+                transaction,
+                bienBanId,
+                (opinionSyncResult.recordset || []).map((item) => item.XinYKienId)
+            );
             await transaction.commit();
             transactionStarted = false;
             res.json({ success: true });
@@ -2132,6 +2224,43 @@ router.post('/custom-fields', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error("Lỗi lưu custom fields biên bản:", error);
         res.status(500).json({ success: false, message: 'Lỗi server' });
+    }
+});
+
+router.delete('/:id',authenticateToken,requireExactPermission('XOA_HO_SO_KCS'),async(req,res)=>{
+    const bienBanId=Number(req.params.id);
+    if(!Number.isInteger(bienBanId)||bienBanId<=0){
+        return res.status(400).json({message:'Id biên bản không hợp lệ'});
+    }
+    const pool=await poolPromise;
+    const transaction=new sql.Transaction(pool);
+    let transactionStarted=false;
+    try{
+        const record=await pool.request().input('BienBanId',sql.Int,bienBanId).query(`
+            SELECT TOP(1) Id,LoaiBienBan FROM dbo.BIEN_BAN_KIEM WHERE Id=@BienBanId
+        `);
+        const bienBan=record.recordset?.[0];
+        if(!bienBan)return res.status(404).json({message:'Không tìm thấy biên bản'});
+        if(bienBan.LoaiBienBan==='STANDALONE'){
+            return res.status(409).json({message:'Vui lòng xóa tại màn Phiếu xử lý không phù hợp'});
+        }
+        const files=await getBienBanFiles(pool,[bienBanId]);
+        await transaction.begin();
+        transactionStarted=true;
+        const deletedCount=await deleteBienBanData(transaction,[bienBanId],req.user.userId);
+        if(!deletedCount){
+            await transaction.rollback();
+            transactionStarted=false;
+            return res.status(404).json({message:'Biên bản đã bị xóa hoặc không còn tồn tại'});
+        }
+        await transaction.commit();
+        transactionStarted=false;
+        await removeBienBanFiles(files);
+        res.json({success:true,message:'Đã xóa biên bản và toàn bộ dữ liệu liên quan'});
+    }catch(error){
+        if(transactionStarted){try{await transaction.rollback();}catch{/* no-op */}}
+        console.error('DeleteBienBan error:',error);
+        res.status(500).json({message:error?.originalError?.info?.message||error.message||'Không thể xóa biên bản'});
     }
 });
 module.exports = router;

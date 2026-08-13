@@ -33,6 +33,7 @@ import {
 import { getBienBanSxbtDetail } from "../../../api/bienBan.api";
 import { hasPermission } from "../../../utils/auth";
 import SxbtDraftEditor from "../components/SxbtDraftEditor";
+import DeletePhieuKiemButton from "../components/DeletePhieuKiemButton";
 
 // ============================================================
 // Helpers
@@ -249,6 +250,9 @@ export default function SxbtDetail() {
     const tyLeMajor = summary?.TyLeLoiNangNhe ?? 0;
     const soLuongMau = summary?.SoLuongMau ?? 0;
     const loaiMau = summary?.LoaiMau;
+    const soLuongKeHoach = Number(phieu?.SoLuongKeHoach ?? phieu?.SoLuong ?? 0);
+    const hasActualQuantity = phieu?.SoLuongThucTe !== null && phieu?.SoLuongThucTe !== undefined;
+    const soLuongHieuLuc = Number(phieu?.SoLuongHieuLuc ?? (hasActualQuantity ? phieu.SoLuongThucTe : soLuongKeHoach));
 
     const LOAI_MAU_LABEL = {
         LAN_1_2: "Lần 1, 2 (100%)",
@@ -434,6 +438,7 @@ export default function SxbtDetail() {
                                 <KetLuanChip value={phieu?.KetLuan} />
                             </Stack> */}
                             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap justifyContent={{ xs: "center", sm: "flex-end" }}>
+                                <DeletePhieuKiemButton phieuKiemId={id} soPhieu={phieu?.SoPhieu} onDeleted={returnToList} />
                                 {(capabilities.canEdit ?? (isKCS && !isCompleted)) && (
                                     <Button
                                         variant="contained"
@@ -677,10 +682,33 @@ export default function SxbtDetail() {
                     )}
 
                     {/* ---- III. Tỷ lệ kiểm ---- */}
-                    {summary && (
+                    {(summary || phieu) && (
                         <Card sx={{ mb: 2, borderRadius: 2, boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
                             <CardContent sx={{ p: 2 }}>
                                 <SectionHeader icon={<BarChartIcon sx={{ color: "#fff", fontSize: 20 }} />} title="III. Tỷ lệ kiểm" />
+                                <Grid container spacing={2} sx={{ mb: 2 }}>
+                                    <Grid size={{ xs: 12, sm: 4 }}>
+                                        <InfoItem label="Số lượng kế hoạch">
+                                            <Typography fontWeight={700}>{soLuongKeHoach.toLocaleString("vi-VN")}</Typography>
+                                        </InfoItem>
+                                    </Grid>
+                                    <Grid size={{ xs: 12, sm: 4 }}>
+                                        <InfoItem label="Số lượng thực tế">
+                                            <Typography fontWeight={700}>
+                                                {hasActualQuantity ? Number(phieu.SoLuongThucTe).toLocaleString("vi-VN") : "—"}
+                                            </Typography>
+                                        </InfoItem>
+                                    </Grid>
+                                    <Grid size={{ xs: 12, sm: 4 }}>
+                                        <InfoItem label="Số lượng dùng tính tỷ lệ">
+                                            <Typography fontWeight={700}>{soLuongHieuLuc.toLocaleString("vi-VN")}</Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                                {hasActualQuantity ? "Theo số lượng thực tế" : "Theo số lượng kế hoạch"}
+                                            </Typography>
+                                        </InfoItem>
+                                    </Grid>
+                                </Grid>
+                                <Divider sx={{ mb: 2 }} />
                                 <Grid container spacing={2} sx={{ mb: 2 }}>
                                     <Grid size={{ xs: 12, sm: 4 }}>
                                         <InfoItem label="Loại mẫu">
@@ -693,7 +721,7 @@ export default function SxbtDetail() {
                                         </InfoItem>
                                     </Grid>
                                     <Grid size={{ xs: 12, sm: 4 }}>
-                                        <InfoItem label="Tỷ lệ mẫu / tổng">
+                                        <InfoItem label={`Tỷ lệ mẫu / ${hasActualQuantity ? "số lượng thực tế" : "số lượng kế hoạch"}`}>
                                             <Typography fontWeight={700} fontSize={20}>{Number(tyLe).toFixed(1)}%</Typography>
                                         </InfoItem>
                                     </Grid>

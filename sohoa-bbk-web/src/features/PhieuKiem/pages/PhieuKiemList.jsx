@@ -28,10 +28,11 @@ import {
     Add as AddIcon,
     FilterList as FilterListIcon,
     Search as SearchIcon,
-    Visibility as VisibilityIcon
+    Visibility as VisibilityIcon,
+    DeleteOutline as DeleteOutlineIcon
 } from "@mui/icons-material";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { getPhieuKiem } from "../../../api/phieuKiem.api";
+import { deletePhieuKiem, getPhieuKiem } from "../../../api/phieuKiem.api";
 import { hasPermission } from "../../../utils/auth";
 
 const VALID_PAGE_SIZES = [5, 10, 25, 50];
@@ -45,6 +46,7 @@ export default function PhieuKiemList() {
     const location = useLocation();
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [deletingId, setDeletingId] = useState(null);
 
     // Filter & Pagination states
     const [filterStatus, setFilterStatus] = useState(() => searchParams.get("status") || "");
@@ -245,6 +247,23 @@ export default function PhieuKiemList() {
             sessionStorage.setItem(scrollStorageKey, String(tableContainerRef.current.scrollTop));
         }
         navigate(getDetailPath(item), { state: { returnTo: listUrl } });
+    };
+
+    const handleDelete = async (event, item) => {
+        event.stopPropagation();
+        const confirmed = window.confirm(
+            `Xóa phiếu ${item.SoPhieu || item.Id} cùng toàn bộ dữ liệu kiểm và biên bản liên quan? Hành động này không thể hoàn tác.`
+        );
+        if (!confirmed) return;
+        try {
+            setDeletingId(item.Id);
+            await deletePhieuKiem(item.Id);
+            setData((current) => current.filter((row) => Number(row.Id) !== Number(item.Id)));
+        } catch (error) {
+            window.alert(error?.response?.data?.message || "Không thể xóa phiếu kiểm");
+        } finally {
+            setDeletingId(null);
+        }
     };
 
     const closeFilterPopover = () => {
@@ -469,6 +488,12 @@ export default function PhieuKiemList() {
                                     }}>
                                         Mở phiếu
                                     </Button>
+                                    {hasPermission("XOA_HO_SO_KCS") && (
+                                        <Button fullWidth variant="outlined" color="error" startIcon={<DeleteOutlineIcon />}
+                                            disabled={deletingId === item.Id} onClick={(event) => handleDelete(event, item)}>
+                                            {deletingId === item.Id ? "Đang xóa…" : "Xóa phiếu"}
+                                        </Button>
+                                    )}
                                 </Stack>
                             </Card>
                         ))}
@@ -544,7 +569,7 @@ export default function PhieuKiemList() {
                                         })}
                                     </TableCell>
                                     <TableCell sx={{ width: 135 }} align="center">Trạng thái</TableCell>
-                                    <TableCell sx={{ width: 65 }} align="center">Xem</TableCell>
+                                    <TableCell sx={{ width: hasPermission("XOA_HO_SO_KCS") ? 100 : 65 }} align="center">Thao tác</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
@@ -639,18 +664,23 @@ export default function PhieuKiemList() {
                                                 {renderTrangThaiChip(item.TrangThai)}
                                             </TableCell>
                                             <TableCell align="center">
-                                                <Tooltip title="Xem chi tiết">
-                                                    <IconButton
-                                                        color="primary"
-                                                        size="small"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            openDetail(item);
-                                                        }}
-                                                    >
-                                                        <VisibilityIcon fontSize="small" />
-                                                    </IconButton>
-                                                </Tooltip>
+                                                <Stack direction="row" spacing={0.25} justifyContent="center">
+                                                    <Tooltip title="Xem chi tiết">
+                                                        <IconButton color="primary" size="small" onClick={(e) => { e.stopPropagation(); openDetail(item); }}>
+                                                            <VisibilityIcon fontSize="small" />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                    {hasPermission("XOA_HO_SO_KCS") && (
+                                                        <Tooltip title="Xóa toàn bộ phiếu và dữ liệu liên quan">
+                                                            <span>
+                                                                <IconButton color="error" size="small" disabled={deletingId === item.Id}
+                                                                    onClick={(event) => handleDelete(event, item)}>
+                                                                    <DeleteOutlineIcon fontSize="small" />
+                                                                </IconButton>
+                                                            </span>
+                                                        </Tooltip>
+                                                    )}
+                                                </Stack>
                                             </TableCell>
                                         </TableRow>
                                     ))

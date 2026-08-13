@@ -41,6 +41,7 @@ import TrenChuyenPrintTemplate from "../components/TrenChuyenPrintTemplate";
 import InspectionPrintCompareDialog from "../components/InspectionPrintCompareDialog";
 import UnifiedInspectionPrintTemplate from "../components/UnifiedInspectionPrintTemplate";
 import TrenChuyenSlotEditor from "../components/TrenChuyenSlotEditor";
+import DeletePhieuKiemButton from "../components/DeletePhieuKiemButton";
 
 const getFieldValue = (dynamicFields = [], name) =>
     dynamicFields.find((field) => field?.FieldName === name)?.FieldValue ?? "";
@@ -351,6 +352,7 @@ export default function TrenChuyenDetail() {
                                 Danh sách phiếu kiểm
                             </Button>
                             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                <DeletePhieuKiemButton phieuKiemId={id} soPhieu={phieu?.SoPhieu} onDeleted={returnToList} />
                                 {canApprove ? (
                                     <Button
                                         variant="contained"

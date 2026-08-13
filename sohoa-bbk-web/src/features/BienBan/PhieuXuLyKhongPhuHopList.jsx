@@ -83,6 +83,9 @@ const ACTIONABLE_MANAGER_STATUSES = new Set([
 
 const getWorkBucket = (item, currentUser, access) => {
     if (["HOAN_TAT", "HOAN_THANH", "DA_XAC_NHAN"].includes(item.TrangThai)) return "done";
+    if (!access.isGlobalManager && item.MyDepartmentOpinionStatus === "CHO_Y_KIEN" && item.MyPendingSuggestedUserId) {
+        return Number(item.MyPendingSuggestedUserId) === Number(currentUser.userId) ? "action" : "waiting";
+    }
     const hasServerDecision = item.CanCurrentUserAct !== null && item.CanCurrentUserAct !== undefined;
     const explicitMyTurn = hasServerDecision
         ? item.CanCurrentUserAct === true || item.CanCurrentUserAct === 1

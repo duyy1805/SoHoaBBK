@@ -10,5 +10,8 @@ build/
 
 *.sql
 !server/sql/migrations/20260811_user_signature_image.sql
+!server/sql/migrations/20260811_product_responsible_opinion_routing.sql
+!server/sql/migrations/20260812_delete_kcs_records_permission.sql
+!server/sql/migrations/20260813_sxbt_actual_quantity.sql
 
 *.xlsx

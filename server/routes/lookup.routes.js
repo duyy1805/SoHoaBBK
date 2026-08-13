@@ -2064,6 +2064,121 @@ router.get(
   }
 );
 
+router.get("/san-pham-responsible-users", authenticateToken, authorize("QUAN_TRI_DM"), async (req, res) => {
+  try {
+    const keyword = String(req.query.keyword || "").trim();
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("Keyword", sql.NVarChar(200), keyword || null)
+      .query(`
+        SELECT TOP (30) u.Id, u.Username, u.FullName, u.BoPhanId,
+          bp.MaBoPhan, bp.TenBoPhan
+        FROM dbo.USERS u
+        LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id=u.BoPhanId
+        WHERE ISNULL(u.TrangThai,0)=1
+          AND (@Keyword IS NULL OR u.Username LIKE N'%'+@Keyword+N'%'
+               OR u.FullName LIKE N'%'+@Keyword+N'%'
+               OR bp.MaBoPhan LIKE N'%'+@Keyword+N'%'
+               OR bp.TenBoPhan LIKE N'%'+@Keyword+N'%')
+        ORDER BY u.FullName,u.Id;
+      `);
+    res.json(result.recordset || []);
+  } catch (error) {
+    console.error("SearchProductResponsibleUsers error:", error);
+    res.status(500).json({ message: "Không tìm được người phụ trách" });
+  }
+});
+
+router.get("/san-pham/:id/responsibles", authenticateToken, authorize("QUAN_TRI_DM"), async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().input("SanPhamId", sql.Int, Number(req.params.id)).query(`
+      SELECT mapping.Id,mapping.SanPhamId,mapping.UserId,mapping.AddedAt,mapping.IsActive,
+        mapping.RemovedAt,u.Username,u.FullName,u.BoPhanId,bp.MaBoPhan,bp.TenBoPhan,
+        CONVERT(varchar(18),mapping.RowVersion,1) AS RowVersion,
+        addedBy.FullName AS AddedByName,removedBy.FullName AS RemovedByName,
+        CAST(CASE WHEN mapping.IsActive=1 AND mapping.Id=(
+          SELECT TOP (1) newest.Id
+          FROM dbo.DM_SAN_PHAM_NGUOI_PHU_TRACH newest
+          JOIN dbo.USERS newestUser ON newestUser.Id=newest.UserId
+          WHERE newest.SanPhamId=mapping.SanPhamId AND newest.IsActive=1
+            AND newestUser.BoPhanId=u.BoPhanId AND ISNULL(newestUser.TrangThai,0)=1
+          ORDER BY newest.AddedAt DESC,newest.Id DESC
+        ) THEN 1 ELSE 0 END AS bit) AS IsPreferredInDepartment
+      FROM dbo.DM_SAN_PHAM_NGUOI_PHU_TRACH mapping
+      JOIN dbo.USERS u ON u.Id=mapping.UserId
+      LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id=u.BoPhanId
+      LEFT JOIN dbo.USERS addedBy ON addedBy.Id=mapping.AddedBy
+      LEFT JOIN dbo.USERS removedBy ON removedBy.Id=mapping.RemovedBy
+      WHERE mapping.SanPhamId=@SanPhamId
+      ORDER BY mapping.IsActive DESC,mapping.AddedAt DESC,mapping.Id DESC;
+    `);
+    res.json(result.recordset || []);
+  } catch (error) {
+    console.error("GetProductResponsibles error:", error);
+    res.status(500).json({ message: "Không tải được người phụ trách sản phẩm" });
+  }
+});
+
+router.post("/san-pham/:id/responsibles", authenticateToken, authorize("QUAN_TRI_DM"), async (req, res) => {
+  try {
+    const sanPhamId = Number(req.params.id);
+    const userId = Number(req.body?.userId);
+    if (!Number.isInteger(sanPhamId) || sanPhamId <= 0 || !Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ message: "Sản phẩm hoặc người phụ trách không hợp lệ" });
+    }
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("SanPhamId", sql.Int, sanPhamId)
+      .input("UserId", sql.Int, userId)
+      .input("AddedBy", sql.Int, Number(req.user.userId))
+      .query(`
+        IF NOT EXISTS (SELECT 1 FROM dbo.DM_SAN_PHAM WHERE Id=@SanPhamId AND TrangThai=1)
+          THROW 51001,N'Sản phẩm không tồn tại hoặc đã ngưng sử dụng',1;
+        IF NOT EXISTS (SELECT 1 FROM dbo.USERS WHERE Id=@UserId AND ISNULL(TrangThai,0)=1)
+          THROW 51002,N'Người dùng không tồn tại hoặc đã ngưng hoạt động',1;
+        IF EXISTS (SELECT 1 FROM dbo.DM_SAN_PHAM_NGUOI_PHU_TRACH WHERE SanPhamId=@SanPhamId AND UserId=@UserId AND IsActive=1)
+          THROW 51003,N'Người này đang được gắn với sản phẩm',1;
+        INSERT dbo.DM_SAN_PHAM_NGUOI_PHU_TRACH(SanPhamId,UserId,AddedBy)
+        OUTPUT inserted.Id
+        VALUES(@SanPhamId,@UserId,@AddedBy);
+      `);
+    res.status(201).json({ id: result.recordset?.[0]?.Id });
+  } catch (error) {
+    console.error("AddProductResponsible error:", error);
+    const errorNumber = Number(error?.number || error?.originalError?.info?.number);
+    res.status(errorNumber >= 51001 && errorNumber <= 51003 ? 400 : 500)
+      .json({ message: error?.originalError?.info?.message || error.message || "Không thể thêm người phụ trách" });
+  }
+});
+
+router.delete("/san-pham-responsibles/:mappingId", authenticateToken, authorize("QUAN_TRI_DM"), async (req, res) => {
+  try {
+    const mappingId = Number(req.params.mappingId);
+    const rowVersion = String(req.body?.rowVersion || "").trim();
+    if (!Number.isInteger(mappingId) || mappingId <= 0 || !/^0x[0-9A-Fa-f]{16}$/.test(rowVersion)) {
+      return res.status(400).json({ message: "Phiên bản dữ liệu không hợp lệ, vui lòng tải lại danh sách" });
+    }
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("MappingId", sql.Int, mappingId)
+      .input("RemovedBy", sql.Int, Number(req.user.userId))
+      .input("RowVersion", sql.VarChar(18), rowVersion)
+      .query(`
+        UPDATE dbo.DM_SAN_PHAM_NGUOI_PHU_TRACH
+        SET IsActive=0,RemovedBy=@RemovedBy,RemovedAt=SYSDATETIME()
+        WHERE Id=@MappingId AND IsActive=1
+          AND RowVersion=CONVERT(binary(8),@RowVersion,1);
+        SELECT @@ROWCOUNT AS Affected;
+      `);
+    if (!Number(result.recordset?.[0]?.Affected)) return res.status(409).json({ message: "Dữ liệu đã thay đổi, vui lòng tải lại trước khi thao tác" });
+    res.json({ success: true });
+  } catch (error) {
+    console.error("RemoveProductResponsible error:", error);
+    res.status(500).json({ message: "Không thể ngừng gắn người phụ trách" });
+  }
+});
+
 router.post(
   "/san-pham-image",
   authenticateToken,

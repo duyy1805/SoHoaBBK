@@ -73,6 +73,9 @@ const getWorkBucket = (item, currentUser, isManager, isSxbt) => {
             : "waiting";
     }
     if (["HOAN_TAT", "HOAN_THANH", "DA_XAC_NHAN"].includes(item.TrangThai)) return "done";
+    if (!isManager && item.MyDepartmentOpinionStatus === "CHO_Y_KIEN" && item.MyPendingSuggestedUserId) {
+        return Number(item.MyPendingSuggestedUserId) === Number(currentUser.userId) ? "action" : "waiting";
+    }
     const explicitMyTurn = item.CanCurrentUserAct === true || item.CanCurrentUserAct === 1 ||
         Number(item.NguoiXuLyId) === Number(currentUser.userId) ||
         Number(item.BoPhanId) === Number(currentUser.boPhanId) ||

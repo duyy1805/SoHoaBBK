@@ -62,6 +62,7 @@ export default function SxbtDraftEditor({
     const [sampleType, setSampleType] = useState("LAN_1_2");
     const [sampleRate, setSampleRate] = useState("100");
     const [sampleQuantity, setSampleQuantity] = useState("");
+    const [actualQuantity, setActualQuantity] = useState("");
     const [conclusion, setConclusion] = useState("DAT");
     const [defects, setDefects] = useState([]);
     const [catalog, setCatalog] = useState([]);
@@ -80,6 +81,7 @@ export default function SxbtDraftEditor({
         setSampleType(sourceSummary?.LoaiMau || "LAN_1_2");
         setSampleRate(sourceSummary?.TyLe == null ? "100" : String(sourceSummary.TyLe));
         setSampleQuantity(sourceSummary?.SoLuongMau == null ? String(phieu?.SoLuong || "") : String(sourceSummary.SoLuongMau));
+        setActualQuantity(phieu?.SoLuongThucTe == null ? "" : String(phieu.SoLuongThucTe));
         setConclusion(phieu?.KetLuan || "DAT");
         setDefects(sourceDefects.filter((defect) => Number(defect.SoLuong) > 0).map((defect, index) => ({
             localId: defect.Id || `defect-${index}`,
@@ -109,10 +111,41 @@ export default function SxbtDraftEditor({
         }))
     ), [btpItems]);
     const totalSamples = Number(sampleQuantity || 0);
+    const effectiveQuantity = actualQuantity === ""
+        ? Number(phieu?.SoLuong || 0)
+        : Number(actualQuantity);
     const totalDefects = defects.reduce((sum, defect) => sum + Number(defect.SoLuong || 0), 0);
     const criticalDefects = defects.filter((defect) => ["Nghiêm trọng", "CRITICAL"].includes(defect.DefectType))
         .reduce((sum, defect) => sum + Number(defect.SoLuong || 0), 0);
     const rate = Number(sampleRate || 0);
+    const sampleExceedsEffective = effectiveQuantity >= 0 && totalSamples > effectiveQuantity;
+    const formatRate = (value) => String(Math.round(Number(value) * 100) / 100);
+
+    const handleActualQuantityChange = (value) => {
+        const normalized = value.replace(/\D/g, "");
+        setActualQuantity(normalized);
+        const nextEffectiveQuantity = normalized === "" ? Number(phieu?.SoLuong || 0) : Number(normalized);
+        if (nextEffectiveQuantity > 0 && sampleQuantity !== "") {
+            setSampleRate(formatRate(Number(sampleQuantity || 0) * 100 / nextEffectiveQuantity));
+        }
+    };
+
+    const handleSampleRateChange = (value) => {
+        const normalized = value.replace(',', '.').replace(/[^0-9.]/g, "");
+        setSampleRate(normalized);
+        const nextRate = Number(normalized);
+        if (!Number.isNaN(nextRate) && effectiveQuantity > 0) {
+            setSampleQuantity(String(Math.ceil(effectiveQuantity * nextRate / 100)));
+        }
+    };
+
+    const handleSampleQuantityChange = (value) => {
+        const normalized = value.replace(/\D/g, "");
+        setSampleQuantity(normalized);
+        if (effectiveQuantity > 0 && normalized !== "") {
+            setSampleRate(formatRate(Number(normalized) * 100 / effectiveQuantity));
+        }
+    };
 
     const updateLot = (itemId, rowIndex, patch) => setBtpItems((current) => current.map((item) =>
         Number(item.Id) !== Number(itemId) ? item : {
@@ -150,8 +183,16 @@ export default function SxbtDraftEditor({
     };
 
     const handleSave = async () => {
+        if ((actualQuantity !== "" && (!Number.isInteger(Number(actualQuantity)) || Number(actualQuantity) <= 0))) {
+            setError("Số lượng thực tế phải là số nguyên dương hoặc để trống.");
+            return;
+        }
         if (!Number.isInteger(totalSamples) || totalSamples < 0 || Number.isNaN(rate) || rate < 0) {
             setError("Số lượng mẫu và tỷ lệ mẫu không hợp lệ.");
+            return;
+        }
+        if (sampleExceedsEffective) {
+            setError(`Số lượng mẫu không được vượt quá số lượng dùng tính tỷ lệ (${effectiveQuantity}).`);
             return;
         }
         if (defects.some((defect) => !Number.isInteger(Number(defect.SoLuong)) || Number(defect.SoLuong) <= 0)) {
@@ -164,6 +205,7 @@ export default function SxbtDraftEditor({
             const tyLeDat = totalSamples > 0 ? 100 - totalDefects * 100 / totalSamples : 0;
             await saveSxbtData({
                 phieuKiemId: phieu.Id,
+                soLuongThucTe: actualQuantity === "" ? null : Number(actualQuantity),
                 dynamicFields: [
                     { FieldCode: "DKVC_THUNG_SAN_XE", Value: conditions.thung },
                     { FieldCode: "DKVC_NGOAI_QUAN", Value: conditions.ngoaiQuan }
@@ -228,14 +270,40 @@ export default function SxbtDraftEditor({
                         </Box>
                     ))}
                     <Typography variant="h6">III. Tỷ lệ kiểm</Typography>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                        <TextField fullWidth label="Số lượng kế hoạch" value={phieu?.SoLuong ?? 0} disabled />
+                        <TextField
+                            fullWidth
+                            label="Số lượng thực tế"
+                            type="number"
+                            value={actualQuantity}
+                            onChange={(event) => handleActualQuantityChange(event.target.value)}
+                            inputProps={{ min: 1, step: 1 }}
+                            helperText="Để trống sẽ dùng số lượng kế hoạch"
+                        />
+                        <TextField
+                            fullWidth
+                            label="Số lượng dùng tính tỷ lệ"
+                            value={effectiveQuantity}
+                            disabled
+                        />
+                    </Stack>
                     <TextField select label="Loại mẫu" value={sampleType} onChange={(event) => setSampleType(event.target.value)}>
                         <MenuItem value="LAN_1_2">Lần 1, 2</MenuItem>
                         <MenuItem value="LAN_3">Lần 3</MenuItem>
                         <MenuItem value="LO_TRUOC_KHONG_DAT">Lô trước không đạt</MenuItem>
                     </TextField>
                     <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                        <TextField fullWidth label="Tỷ lệ mẫu (%)" type="number" value={sampleRate} onChange={(event) => setSampleRate(event.target.value.replace(/[^0-9.]/g, ""))} />
-                        <TextField fullWidth label="Số lượng mẫu" type="number" value={sampleQuantity} onChange={(event) => setSampleQuantity(event.target.value.replace(/\D/g, ""))} />
+                        <TextField fullWidth label="Tỷ lệ mẫu (%)" type="number" value={sampleRate} onChange={(event) => handleSampleRateChange(event.target.value)} />
+                        <TextField
+                            fullWidth
+                            label="Số lượng mẫu"
+                            type="number"
+                            value={sampleQuantity}
+                            onChange={(event) => handleSampleQuantityChange(event.target.value)}
+                            error={sampleExceedsEffective}
+                            helperText={sampleExceedsEffective ? `Không được vượt quá ${effectiveQuantity}` : " "}
+                        />
                     </Stack>
                     <Condition label="Kết luận phiếu" value={conclusion} onChange={setConclusion} />
                     <Typography variant="h6">IV. Ghi nhận lỗi</Typography>

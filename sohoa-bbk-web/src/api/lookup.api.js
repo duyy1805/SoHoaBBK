@@ -188,6 +188,14 @@ export const getSanPhamList = (page = 0, pageSize = 20, keyword = "") =>
     axiosClient.get("/lookup/san-pham", {
         params: { page, pageSize, keyword }
     });
+export const getSanPhamResponsibles = (sanPhamId) =>
+    axiosClient.get(`/lookup/san-pham/${sanPhamId}/responsibles`);
+export const searchSanPhamResponsibleUsers = (keyword = "") =>
+    axiosClient.get("/lookup/san-pham-responsible-users", { params: { keyword } });
+export const addSanPhamResponsible = (sanPhamId, userId) =>
+    axiosClient.post(`/lookup/san-pham/${sanPhamId}/responsibles`, { userId });
+export const removeSanPhamResponsible = (mappingId, rowVersion) =>
+    axiosClient.delete(`/lookup/san-pham-responsibles/${mappingId}`, { data: { rowVersion } });
 export const createSanPham = (data) =>
     axiosClient.post("/lookup/san-pham", data);
 

@@ -167,6 +167,10 @@ export const deleteStandaloneBienBan = (bienBanId) => {
     return axiosClient.delete(`/phieu-xu-ly-khong-phu-hop/${bienBanId}`);
 };
 
+export const deleteBienBan = (bienBanId) => {
+    return axiosClient.delete(`/bien-ban/${bienBanId}`);
+};
+
 /* ================================
    File đính kèm biên bản
 ================================ */

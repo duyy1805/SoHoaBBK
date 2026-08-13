@@ -40,6 +40,7 @@ import CuoiChuyenPrintTemplate from "../components/CuoiChuyenPrintTemplate";
 import InspectionPrintCompareDialog from "../components/InspectionPrintCompareDialog";
 import UnifiedInspectionPrintTemplate from "../components/UnifiedInspectionPrintTemplate";
 import CuoiChuyenPlanEditor from "../components/CuoiChuyenPlanEditor";
+import DeletePhieuKiemButton from "../components/DeletePhieuKiemButton";
 
 const getFieldValue = (dynamicFields = [], name) =>
     dynamicFields.find((field) => field?.FieldName === name)?.FieldValue ?? "";
@@ -271,6 +272,7 @@ export default function CuoiChuyenDetail() {
                 </Stack>
 
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <DeletePhieuKiemButton phieuKiemId={id} soPhieu={phieu?.SoPhieu} onDeleted={returnToList} />
                     <Button startIcon={<PrintIcon />} variant="outlined" onClick={() => setOpenPrint(true)}>
                         In phiếu
                     </Button>
