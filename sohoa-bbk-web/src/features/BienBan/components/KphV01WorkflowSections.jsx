@@ -1,13 +1,14 @@
 import { useState } from "react";
 import {
     Alert, Box, Button, Card, CardContent, Chip, Dialog, DialogActions,
-    DialogContent, DialogTitle, Divider, MenuItem, Stack, TextField, Typography
+    DialogContent, DialogTitle, MenuItem, Stack, TextField, Typography
 } from "@mui/material";
 import {
     confirmSpecialistOpinion, returnSpecialistOpinion, saveFollowUpEvaluation,
     saveSpecialistOpinionDraft
 } from "../../../api/bienBan.api";
 import { getCurrentUser } from "../../../utils/auth";
+import ResponsiveDataList from "./ResponsiveDataList";
 
 export default function KphV01WorkflowSections({
     bienBanId,
@@ -21,7 +22,9 @@ export default function KphV01WorkflowSections({
     onPatchOpinion,
     onReturned,
     reload,
-    showToast
+    showToast,
+    canManageDepartments = false,
+    onManageDepartments
 }) {
     const [responses, setResponses] = useState({});
     const [returnDialog, setReturnDialog] = useState({ open: false, opinion: null, reason: "" });
@@ -127,11 +130,18 @@ export default function KphV01WorkflowSections({
 
     return (
         <Stack spacing={2}>
-            <Card elevation={0} sx={{ border: "1px solid #e0e0e0", borderRadius: 2 }}>
+            <Card id="bien-ban-y-kien-chuyen-mon" elevation={0} sx={{ border: "1px solid #e0e0e0", borderRadius: 2, scrollMarginTop: 86 }}>
                 <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
-                    <Typography variant="h6" sx={{ mb: 1.5 }}>Ý kiến phòng ban chuyên môn</Typography>
+                    <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }} spacing={1} sx={{ mb: 1.5 }}>
+                        <Typography variant="h6">Ý kiến phòng ban chuyên môn</Typography>
+                        {canManageDepartments && onManageDepartments && (
+                            <Button size="small" variant="outlined" onClick={onManageDepartments}>
+                                {opinions.length ? "Bổ sung / cập nhật bộ phận" : "Chọn bộ phận"}
+                            </Button>
+                        )}
+                    </Stack>
                     {Boolean(info.OpinionDepartmentsConfirmed) && !info.CreatorConfirmedAt && (
-                        <Alert severity="info" sx={{ mb: 2, py: 0.5, alignItems: "center" }}>
+                        <Alert severity="info" sx={{ mb: 1.5, py: 0.25, alignItems: "center" }}>
                             <Typography variant="body2">
                                 <strong>Quy trình:</strong> Nhân viên lưu ý kiến chung, sau đó TBP xác nhận hoặc trả lại.
                             </Typography>
@@ -141,105 +151,105 @@ export default function KphV01WorkflowSections({
                     {opinions.length === 0 ? (
                         <Typography color="text.secondary">Bộ phận tạo phiếu chưa gửi danh sách cần lấy ý kiến.</Typography>
                     ) : (
-                        <Stack spacing={1.5}>
-                            {opinions.map((opinion) => {
-                                const busy = savingId === opinion.Id;
-                                const canLeadAct = Boolean(opinion.CanConfirmOpinion || opinion.CanReturn);
-                                const status = opinion.HasConfirmed
-                                    ? { label: "Đã xác nhận", color: "success" }
-                                    : opinion.HasOpinion
-                                        ? { label: "Chờ TBP xác nhận", color: "warning" }
-                                        : { label: "Chờ nhập ý kiến", color: "default" };
-                                const savedBy = opinion.OpinionSavedByName || opinion.NguoiTraLoi;
-                                const savedAt = opinion.OpinionSavedAt || opinion.ThoiGian;
-                                return (
-                                    <Box key={opinion.Id} sx={{ border: "1px solid #e2e8f0", borderRadius: 2, overflow: "hidden", bgcolor: "#fff" }}>
-                                        <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}
-                                            sx={{ px: { xs: 1.5, md: 2 }, py: 1.25, bgcolor: "#f8fafc" }}>
-                                            <Box sx={{ minWidth: 0 }}>
-                                                <Typography fontWeight={800}>{opinion.TenBoPhan || opinion.MaBoPhan}</Typography>
-                                                {opinion.MaBoPhan && opinion.MaBoPhan !== opinion.TenBoPhan && (
-                                                    <Typography variant="caption" color="text.secondary">{opinion.MaBoPhan}</Typography>
-                                                )}
-                                            </Box>
-                                            <Chip size="small" color={status.color} label={status.label} sx={{ flexShrink: 0 }} />
-                                        </Stack>
-                                        <Divider />
-
-                                        <Stack spacing={1.5} sx={{ p: { xs: 1.5, md: 2 } }}>
+                        <ResponsiveDataList
+                            rows={opinions}
+                            getRowKey={(opinion) => opinion.Id}
+                            columns={[
+                                {
+                                    key: "department",
+                                    label: "Bộ phận",
+                                    cellSx: { width: 170, verticalAlign: "top" },
+                                    render: (opinion) => (
+                                        <Stack spacing={0.25}>
+                                            <Typography variant="body2" fontWeight={800}>{opinion.TenBoPhan || opinion.MaBoPhan || "—"}</Typography>
+                                            {opinion.MaBoPhan && opinion.MaBoPhan !== opinion.TenBoPhan && (
+                                                <Typography variant="caption" color="text.secondary">{opinion.MaBoPhan}</Typography>
+                                            )}
                                             {opinion.SuggestedUserName && (
-                                                <Box sx={{ px: 1.25, py: 1, borderRadius: 1.5, bgcolor: "info.50", border: "1px solid", borderColor: "info.100" }}>
-                                                    <Typography variant="body2">
-                                                        Người phụ trách sản phẩm được đề xuất: <strong>{opinion.SuggestedUserName}</strong>
-                                                    </Typography>
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        Bộ phận: {opinion.TenBoPhan || opinion.MaBoPhan || "—"}
-                                                        {opinion.ProductResponsibleAddedAt
-                                                            ? ` · Được gắn với sản phẩm lúc ${new Date(opinion.ProductResponsibleAddedAt).toLocaleString("vi-VN")}`
-                                                            : ""}
-                                                    </Typography>
-                                                </Box>
-                                            )}
-                                            {opinion.CanSaveOpinion ? (
-                                                <TextField fullWidth multiline minRows={3} size="small"
-                                                    label="Nội dung ý kiến"
-                                                    placeholder="Nếu không có góp ý, nhập “Không có ý kiến”"
-                                                    value={opinionValue(opinion)}
-                                                    onChange={(event) => setResponses((prev) => ({ ...prev, [opinion.Id]: event.target.value }))}
-                                                />
-                                            ) : (
-                                                <Box sx={{ p: 1.5, minHeight: 64, borderRadius: 1.5, bgcolor: "#f8fafc" }}>
-                                                    <Typography variant="caption" color="text.secondary">Nội dung ý kiến</Typography>
-                                                    <Typography sx={{ mt: 0.5, whiteSpace: "pre-wrap" }}>{opinion.NoiDung || "—"}</Typography>
-                                                </Box>
-                                            )}
-
-                                            {(savedBy || opinion.ConfirmedByName) && (
-                                                <Stack direction={{ xs: "column", sm: "row" }} spacing={{ xs: 0.5, sm: 3 }}>
-                                                    {savedBy && (
-                                                        <Typography variant="caption" color="text.secondary">
-                                                            Người nhập: <strong>{savedBy}</strong>
-                                                            {savedAt ? ` · ${new Date(savedAt).toLocaleString("vi-VN")}` : ""}
-                                                        </Typography>
-                                                    )}
-                                                    {opinion.ConfirmedByName && (
-                                                        <Typography variant="caption" color="success.main">
-                                                            Người xác nhận: <strong>{opinion.ConfirmedByName}</strong>
-                                                            {opinion.ConfirmedAt ? ` · ${new Date(opinion.ConfirmedAt).toLocaleString("vi-VN")}` : ""}
-                                                        </Typography>
-                                                    )}
-                                                </Stack>
-                                            )}
-
-                                            {(opinion.CanSaveOpinion || canLeadAct) && (
-                                                <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={1}>
-                                                    <Box>
-                                                        {opinion.CanSaveOpinion && (
-                                                            <Button variant="outlined" size="small" disabled={busy} onClick={() => submitOpinion(opinion)}>
-                                                                {busy ? "Đang lưu…" : (opinion.HasOpinion ? "Cập nhật ý kiến" : "Lưu ý kiến")}
-                                                            </Button>
-                                                        )}
-                                                    </Box>
-                                                    {canLeadAct && (
-                                                        <Stack direction="row" spacing={1} justifyContent="flex-end">
-                                                            <Button size="small" variant="outlined" color="error" disabled={busy}
-                                                                onClick={() => setReturnDialog({ open: true, opinion, reason: "" })}>Trả lại</Button>
-                                                            <Button size="small" variant="contained" color="success" disabled={busy}
-                                                                onClick={() => confirmOpinion(opinion)}>TBP xác nhận</Button>
-                                                        </Stack>
-                                                    )}
-                                                </Stack>
+                                                <Typography variant="caption" color="info.main">
+                                                    Phụ trách: <strong>{opinion.SuggestedUserName}</strong>
+                                                </Typography>
                                             )}
                                         </Stack>
-                                    </Box>
-                                );
-                            })}
-                        </Stack>
+                                    )
+                                },
+                                {
+                                    key: "opinion",
+                                    label: "Nội dung ý kiến",
+                                    cellSx: { minWidth: 260, verticalAlign: "top" },
+                                    render: (opinion) => opinion.CanSaveOpinion ? (
+                                        <TextField fullWidth multiline minRows={2} size="small"
+                                            placeholder="Nếu không có góp ý, nhập “Không có ý kiến”"
+                                            value={opinionValue(opinion)}
+                                            onChange={(event) => setResponses((prev) => ({ ...prev, [opinion.Id]: event.target.value }))}
+                                        />
+                                    ) : (
+                                        <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>{opinion.NoiDung || "—"}</Typography>
+                                    )
+                                },
+                                {
+                                    key: "people",
+                                    label: "Người thực hiện",
+                                    cellSx: { width: 210, verticalAlign: "top" },
+                                    render: (opinion) => {
+                                        const savedBy = opinion.OpinionSavedByName || opinion.NguoiTraLoi;
+                                        const savedAt = opinion.OpinionSavedAt || opinion.ThoiGian;
+                                        return (
+                                            <Stack spacing={0.5}>
+                                                <PersonTime label="Nhập" name={savedBy} time={savedAt} />
+                                                <PersonTime label="Xác nhận" name={opinion.ConfirmedByName} time={opinion.ConfirmedAt} color="success.main" />
+                                            </Stack>
+                                        );
+                                    }
+                                },
+                                {
+                                    key: "status",
+                                    label: "Trạng thái",
+                                    cellSx: { width: 145, verticalAlign: "top" },
+                                    render: (opinion) => {
+                                        const status = opinion.HasConfirmed
+                                            ? { label: "Đã xác nhận", color: "success" }
+                                            : opinion.HasOpinion
+                                                ? { label: "Chờ TBP xác nhận", color: "warning" }
+                                                : { label: "Chờ nhập ý kiến", color: "default" };
+                                        return <Chip size="small" color={status.color} label={status.label} />;
+                                    }
+                                },
+                                {
+                                    key: "actions",
+                                    label: "Thao tác",
+                                    align: "right",
+                                    cellSx: { width: 170, verticalAlign: "top" },
+                                    render: (opinion) => {
+                                        const busy = savingId === opinion.Id;
+                                        const canLeadAct = Boolean(opinion.CanConfirmOpinion || opinion.CanReturn);
+                                        if (!opinion.CanSaveOpinion && !canLeadAct) return "—";
+                                        return (
+                                            <Stack spacing={0.75} alignItems={{ xs: "stretch", md: "flex-end" }}>
+                                                {opinion.CanSaveOpinion && (
+                                                    <Button variant="outlined" size="small" disabled={busy} onClick={() => submitOpinion(opinion)}>
+                                                        {busy ? "Đang lưu…" : (opinion.HasOpinion ? "Cập nhật" : "Lưu ý kiến")}
+                                                    </Button>
+                                                )}
+                                                {canLeadAct && (
+                                                    <Stack direction="row" spacing={0.75}>
+                                                        <Button size="small" variant="text" color="error" disabled={busy}
+                                                            onClick={() => setReturnDialog({ open: true, opinion, reason: "" })}>Trả lại</Button>
+                                                        <Button size="small" variant="contained" color="success" disabled={busy}
+                                                            onClick={() => confirmOpinion(opinion)}>Xác nhận</Button>
+                                                    </Stack>
+                                                )}
+                                            </Stack>
+                                        );
+                                    }
+                                }
+                            ]}
+                        />
                     )}
                 </CardContent>
             </Card>
 
-            <Card elevation={0} sx={{ border: "1px solid #e0e0e0", borderRadius: 2 }}>
+            <Card id="bien-ban-theo-doi" elevation={0} sx={{ border: "1px solid #e0e0e0", borderRadius: 2, scrollMarginTop: 86 }}>
                 <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
                     <Typography variant="h6" sx={{ mb: 2 }}>Theo dõi đánh giá</Typography>
                     {evaluation ? (
@@ -280,5 +290,15 @@ export default function KphV01WorkflowSections({
                 </DialogActions>
             </Dialog>
         </Stack>
+    );
+}
+
+function PersonTime({ label, name, time, color = "text.secondary" }) {
+    if (!name) return <Typography variant="caption" color="text.disabled">{label}: —</Typography>;
+    return (
+        <Box>
+            <Typography variant="caption" color={color} display="block">{label}: <strong>{name}</strong></Typography>
+            {time && <Typography variant="caption" color="text.secondary">{new Date(time).toLocaleString("vi-VN")}</Typography>}
+        </Box>
     );
 }

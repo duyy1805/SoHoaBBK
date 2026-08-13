@@ -36,10 +36,14 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
         customData.TrenChuyen_MaBoPhan ||
         info.MaBoPhan ||
         '';
-    const bienBanSoLuongKhongPhuHop =
-        customData.SoLuongKPH ||
-        customData.TrenChuyen_NangSuatDuKien ||
-        '';
+    const bienBanSoLuongKhongPhuHop = [
+        customData.SoLuongKPH,
+        customData.TrenChuyen_NangSuatDuKien,
+        info.SoLuongThucTe,
+        info.SoLuongHieuLuc,
+        info.SoLuongKeHoach,
+        info.SoLuong
+    ].find((value) => value !== null && value !== undefined && value !== '') ?? '';
 
     const normalizeText = (value) =>
         String(value || '')

@@ -1,89 +1,66 @@
 import {
-    Box,
-    Button,
-    Card,
-    CardContent,
-    Chip,
-    Stack,
-    Typography
+    Box, IconButton, Stack, Tooltip, Typography
 } from "@mui/material";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import RadioButtonCheckedIcon from "@mui/icons-material/RadioButtonChecked";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
-import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
-import { getBienBanStatusMeta } from "./bienBanWorkflow";
 
-export default function BienBanWorkflowGuide({ workflow, status }) {
-    const statusMeta = getBienBanStatusMeta(status);
-    const { activeStep, guidance, steps } = workflow;
-    const palette = guidance.tone === "success"
-        ? { border: "#86efac", bg: "#f0fdf4", accent: "#15803d" }
-        : guidance.tone === "warning"
-            ? { border: "#facc15", bg: "#fffbeb", accent: "#a16207" }
-            : { border: "#93c5fd", bg: "#eff6ff", accent: "#1d4ed8" };
+const STEP_HELP = [
+    "Người lập hoàn thiện thông tin sự không phù hợp và danh sách lỗi.",
+    "Người có quyền quản lý chọn và chốt các bộ phận cần phối hợp hoặc cho ý kiến.",
+    "Các bộ phận ghi nhận đề xuất, chi phí và hành động xử lý nếu có.",
+    "Nhân viên bộ phận nhập ý kiến; Trưởng bộ phận kiểm tra và xác nhận.",
+    "Các xác nhận bắt buộc được hoàn thành trước khi chuyển sang theo dõi.",
+    "Người có quyền theo dõi đánh giá hiệu lực và hoàn tất hồ sơ."
+];
+
+export default function BienBanWorkflowGuide({ workflow, sectionItems = [], onNavigate }) {
+    const { activeStep, steps } = workflow;
 
     return (
-        <Stack spacing={1.25} sx={{ mb: 2 }}>
-            <Card elevation={0} sx={{ border: `1px solid ${palette.border}`, bgcolor: palette.bg, borderRadius: 2 }}>
-                <CardContent sx={{ p: { xs: 1.5, md: 1.75 }, "&:last-child": { pb: { xs: 1.5, md: 1.75 } } }}>
-                    <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={1.25} alignItems={{ md: "center" }}>
-                        <Box>
-                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.25 }}>
-                                <Typography
-                                    variant="subtitle2"
-                                    sx={{
-                                        color: palette.accent,
-                                        fontWeight: 700,
-                                        fontSize: "0.8rem",
-                                        lineHeight: 1.4,
-                                        letterSpacing: "0.025em"
-                                    }}
-                                >
-                                    {guidance.eyebrow}
-                                </Typography>
-                                <Chip size="small" color={statusMeta.color} label={statusMeta.label} />
-                            </Stack>
-                            <Typography variant="subtitle1" sx={{ fontWeight: 750, color: "text.primary", lineHeight: 1.35 }}>
-                                {guidance.title}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                                {guidance.description}
-                            </Typography>
-                        </Box>
-                        {guidance.actionLabel && guidance.onAction && (
-                            <Button
-                                size="small"
-                                variant="contained"
-                                color={guidance.tone === "success" ? "success" : "primary"}
-                                endIcon={<ArrowForwardIcon />}
-                                onClick={guidance.onAction}
-                                sx={{ alignSelf: { xs: "stretch", md: "center" }, whiteSpace: "nowrap" }}
-                            >
-                                {guidance.actionLabel}
-                            </Button>
-                        )}
-                    </Stack>
-                </CardContent>
-            </Card>
-
-            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)", lg: "repeat(6, 1fr)" }, gap: 1 }}>
+        <Stack spacing={0.75} sx={{ mb: 1.5 }}>
+            <Typography variant="caption" color="text.secondary" fontWeight={800} sx={{ letterSpacing: "0.04em" }}>
+                TIẾN ĐỘ XỬ LÝ
+            </Typography>
+            <Box
+                sx={{
+                    display: "grid",
+                    gridAutoFlow: { xs: "column", lg: "row" },
+                    gridAutoColumns: { xs: "minmax(190px, 72vw)", sm: "minmax(180px, 38vw)", lg: "auto" },
+                    gridTemplateColumns: { lg: "repeat(6, minmax(0, 1fr))" },
+                    gap: 0.75,
+                    overflowX: { xs: "auto", lg: "visible" },
+                    pb: { xs: 0.75, lg: 0 },
+                    scrollbarWidth: "thin"
+                }}
+            >
                 {steps.map((step, index) => {
                     const completed = index < activeStep;
                     const current = index === activeStep && activeStep < steps.length;
+                    const targetId = sectionItems[index]?.id;
                     return (
                         <Box
                             key={step}
+                            component={targetId ? "button" : "div"}
+                            type={targetId ? "button" : undefined}
+                            onClick={targetId ? () => onNavigate?.(targetId) : undefined}
                             sx={{
                                 display: "flex",
                                 alignItems: "center",
-                                gap: 1,
-                                minHeight: 44,
-                                px: 1,
-                                py: 0.5,
+                                gap: 0.75,
+                                minHeight: 42,
+                                px: 0.875,
+                                py: 0.375,
                                 borderRadius: 1.5,
                                 border: "1px solid",
                                 borderColor: completed ? "success.light" : current ? "primary.main" : "divider",
-                                bgcolor: completed ? "#f0fdf4" : current ? "#eff6ff" : "background.paper"
+                                bgcolor: completed ? "#f0fdf4" : current ? "#eff6ff" : "background.paper",
+                                color: "text.primary",
+                                textAlign: "left",
+                                font: "inherit",
+                                cursor: targetId ? "pointer" : "default",
+                                "&:hover": targetId ? { borderColor: current ? "primary.dark" : "primary.light", bgcolor: current ? "#e0edff" : "#f8fafc" } : undefined
                             }}
                         >
                             {completed ? (
@@ -93,12 +70,23 @@ export default function BienBanWorkflowGuide({ workflow, status }) {
                             ) : (
                                 <LockOutlinedIcon color="disabled" fontSize="small" />
                             )}
-                            <Box>
-                                <Typography variant="caption" color="text.secondary">Bước {index + 1}</Typography>
-                                <Typography variant="body2" sx={{ fontWeight: current || completed ? 700 : 500, lineHeight: 1.2 }}>
+                            <Box sx={{ minWidth: 0, flex: 1 }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1 }}>Bước {index + 1}</Typography>
+                                <Typography variant="body2" noWrap sx={{ fontWeight: current || completed ? 700 : 500, lineHeight: 1.15 }}>
                                     {step}
                                 </Typography>
                             </Box>
+                            <Tooltip title={STEP_HELP[index]} arrow>
+                                <IconButton
+                                    component="span"
+                                    size="small"
+                                    aria-label={`Giải thích bước ${index + 1}`}
+                                    onClick={(event) => event.stopPropagation()}
+                                    sx={{ p: 0.25, flexShrink: 0 }}
+                                >
+                                    <InfoOutlinedIcon sx={{ fontSize: 16 }} />
+                                </IconButton>
+                            </Tooltip>
                         </Box>
                     );
                 })}

@@ -714,14 +714,21 @@ router.get(
                 ? await pool.request()
                     .input("PhieuKiemId", sql.Int, Number(baseInfo.PhieuKiemId))
                     .query(`
-                        SELECT CASE WHEN EXISTS (
+                        SELECT
+                            CASE WHEN EXISTS (
                             SELECT 1
                             FROM dbo.PHIEU_KIEM_CONG_DOAN_HEADER
                             WHERE PhieuKiemId = @PhieuKiemId
-                        ) THEN 1 ELSE 0 END AS IsCongDoan
+                            ) THEN 1 ELSE 0 END AS IsCongDoan,
+                            pk.SoLuong AS SoLuongKeHoach,
+                            pk.SoLuongThucTe,
+                            COALESCE(pk.SoLuongThucTe, pk.SoLuong) AS SoLuongHieuLuc
+                        FROM dbo.PHIEU_KIEM pk
+                        WHERE pk.Id = @PhieuKiemId
                     `)
                 : null;
-            const isCongDoan = Boolean(subtypeResult?.recordset?.[0]?.IsCongDoan);
+            const inspectionQuantity = subtypeResult?.recordset?.[0] || {};
+            const isCongDoan = Boolean(inspectionQuantity.IsCongDoan);
             const defectResult = await pool.request()
                 .input("BienBanId", sql.Int, id)
                 .execute(isCongDoan
@@ -874,6 +881,9 @@ router.get(
                 info: info ? {
                     ...info,
                     IsCongDoan: isCongDoan,
+                    SoLuongKeHoach: inspectionQuantity.SoLuongKeHoach ?? info.SoLuongKeHoach ?? info.SoLuong ?? null,
+                    SoLuongThucTe: inspectionQuantity.SoLuongThucTe ?? info.SoLuongThucTe ?? null,
+                    SoLuongHieuLuc: inspectionQuantity.SoLuongHieuLuc ?? info.SoLuongHieuLuc ?? info.SoLuong ?? null,
                     MauPhieuVersion: v01Data.meta.MauPhieuVersion,
                     NguoiLapId: v01Data.meta.NguoiLapId ?? info.NguoiLapId,
                     LoaiBienBan: v01Data.meta.LoaiBienBan ?? info.LoaiBienBan,

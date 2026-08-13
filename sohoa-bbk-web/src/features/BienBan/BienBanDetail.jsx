@@ -32,7 +32,6 @@ import {
     FormControl,
     InputLabel,
     Divider,
-    Container,
     List,
     ListItem,
     ListItemButton,
@@ -41,7 +40,6 @@ import {
 } from "@mui/material";
 
 // --- MUI Icons ---
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PrintIcon from "@mui/icons-material/Print";
 import DescriptionIcon from '@mui/icons-material/Description';
 import BugReportIcon from '@mui/icons-material/BugReport';
@@ -91,7 +89,10 @@ import { BienBanPrintTemplate } from "./components/BienBanPrintTemplate";
 import { BienBanTrenChuyenPrintTemplate } from "./components/BienBanTrenChuyenPrintTemplate";
 import { PhieuXuLyKhongPhuHopPrintTemplate } from "./components/PhieuXuLyKhongPhuHopPrintTemplate";
 import KphV01WorkflowSections from "./components/KphV01WorkflowSections";
+import BienBanDetailSidebar from "./components/BienBanDetailSidebar";
+import BienBanDetailToolbar from "./components/BienBanDetailToolbar";
 import BienBanWorkflowGuide from "./components/BienBanWorkflowGuide";
+import ResponsiveDataList from "./components/ResponsiveDataList";
 import DefectImageGalleryDialog from "./components/DefectImageGalleryDialog";
 import BienBanAttachments from "./components/BienBanAttachments";
 import DefectPickerDialog from "../PhieuKiem/components/DefectPickerDialog";
@@ -116,6 +117,14 @@ const KPH_HEADER_FIELDS = [
     ["Mã truy nguyên", "MaTruyNguyen"], ["Số lượng", "SoLuongKPH"],
     ["Đơn hàng", "DonHang"], ["Lô/Lot sản xuất", "Lot"], ["Dấu tuần", "DauTuan"]
 ];
+const DETAIL_SECTIONS = [
+    { id: "bien-ban-thong-tin", label: "Thông tin & lỗi" },
+    { id: "bien-ban-phan-cong", label: "Phân công" },
+    { id: "bien-ban-phuong-an", label: "Phương án xử lý" },
+    { id: "bien-ban-y-kien-chuyen-mon", label: "Ý kiến chuyên môn" },
+    { id: "bien-ban-xac-nhan", label: "Xác nhận" },
+    { id: "bien-ban-theo-doi", label: "Theo dõi & hoàn tất" }
+];
 
 export default function BienBanDetail({ standalone = false }) {
     const { id: bienBanId } = useParams();
@@ -126,6 +135,7 @@ export default function BienBanDetail({ standalone = false }) {
     const hasLoadedRef = useRef(false);
     const serverDraftSnapshotRef = useRef(null);
     const confirmSavingRef = useRef(false);
+    const dirtyRef = useRef(false);
     const { showToast } = useToast();
 
     const returnToList = (isStandalone = standalone) => {
@@ -179,6 +189,7 @@ export default function BienBanDetail({ standalone = false }) {
     const [dynamicFields, setDynamicFields] = useState([]);
     const [canEditKphCustomFields, setCanEditKphCustomFields] = useState(false);
     const [isEditingKphHeader, setIsEditingKphHeader] = useState(false);
+    const [isEditingStandaloneHeader, setIsEditingStandaloneHeader] = useState(false);
     const [headerFields, setHeaderFields] = useState({
         TenBoPhan: "",
         MaBoPhan: "",
@@ -215,6 +226,18 @@ export default function BienBanDetail({ standalone = false }) {
         onConfirm: null
     });
     const [confirmSaving, setConfirmSaving] = useState(false);
+
+    useEffect(() => {
+        const dirty = isEditingKphHeader || isEditingStandaloneHeader || isEditingStandaloneDefects;
+        dirtyRef.current = dirty;
+        const warnBeforeLeave = (event) => {
+            if (!dirty) return;
+            event.preventDefault();
+            event.returnValue = "";
+        };
+        window.addEventListener("beforeunload", warnBeforeLeave);
+        return () => window.removeEventListener("beforeunload", warnBeforeLeave);
+    }, [isEditingKphHeader, isEditingStandaloneHeader, isEditingStandaloneDefects]);
 
     useEffect(() => {
         hasLoadedRef.current = false;
@@ -348,7 +371,9 @@ export default function BienBanDetail({ standalone = false }) {
                 MaTruyNguyen: fieldsMap.MaTruyNguyen || "",
                 DonHang: fieldsMap.DonHang || "",
                 Lot: fieldsMap.Lot || res.data.info?.Lot || "",
-                SoLuongKPH: fieldsMap.SoLuongKPH || "",
+                SoLuongKPH: fieldsMap.SoLuongKPH !== "" && fieldsMap.SoLuongKPH != null
+                    ? fieldsMap.SoLuongKPH
+                    : (res.data.info?.SoLuongThucTe ?? res.data.info?.SoLuongKeHoach ?? ""),
                 DauTuan: fieldsMap.DauTuan || "",
                 PhatHienTu: fieldsMap.PhatHienTu || "",
                 MucDo: fieldsMap.MucDo || "",
@@ -383,6 +408,7 @@ export default function BienBanDetail({ standalone = false }) {
                 setMoTaConfirmed(Boolean(moTa));
             }
             if (!background) {
+                setIsEditingStandaloneHeader(!moTa && Boolean(res.data.info?.CanManageKphFlow));
                 setIsEditingStandaloneDefects(
                     (res.data.defects || []).length === 0 && Boolean(res.data.info?.CanManageKphFlow)
                 );
@@ -427,6 +453,15 @@ export default function BienBanDetail({ standalone = false }) {
             setDefects(snapshot.defects);
             setIsEditingStandaloneDefects(false);
         }
+    };
+
+    const restoreStandaloneHeader = () => {
+        const snapshot = serverDraftSnapshotRef.current;
+        if (!snapshot) return;
+        restoreServerDrafts({ header: true });
+        setMoTaChung(snapshot.moTaChung || "");
+        setMoTaConfirmed(Boolean(snapshot.moTaConfirmed));
+        setIsEditingStandaloneHeader(false);
     };
 
     const handleHeaderFieldChange = (fieldName, value) => {
@@ -494,6 +529,7 @@ export default function BienBanDetail({ standalone = false }) {
         if (actionSaving.description) return;
         if (!moTaChung.trim()) {
             showToast("Vui lòng nhập mô tả chung!", "warning");
+            focusFirstFieldInSection("bien-ban-thong-tin");
             return;
         }
         try {
@@ -513,6 +549,7 @@ export default function BienBanDetail({ standalone = false }) {
         if (actionSaving.description) return;
         if (!moTaChung.trim()) {
             showToast("Vui lòng nhập mô tả chung!", "warning");
+            focusFirstFieldInSection("bien-ban-thong-tin");
             return;
         }
 
@@ -523,6 +560,7 @@ export default function BienBanDetail({ standalone = false }) {
                 fields: headerFields
             });
             setMoTaConfirmed(true);
+            setIsEditingStandaloneHeader(false);
             showToast("Đã lưu thông tin phiếu", "success");
             await refreshData();
         } catch (err) {
@@ -580,6 +618,7 @@ export default function BienBanDetail({ standalone = false }) {
         if (actionSaving.defects) return;
         if (defects.length === 0 || defects.some((item) => !item.DefectId)) {
             showToast("Mỗi dòng lỗi phải được chọn từ ngân hàng lỗi", "warning");
+            focusFirstFieldInSection("bien-ban-thong-tin");
             return;
         }
         const payload = defects
@@ -945,8 +984,21 @@ export default function BienBanDetail({ standalone = false }) {
         isAssigned && !isConfirmed && hasXuLy;
     const defectCount = defects.length;
     const totalDefectQty = defects.reduce((sum, item) => sum + (Number(item.SoLuong) || 0), 0);
-    const scrollToSection = (sectionId) => {
-        document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const scrollToSection = (sectionId, { focus = false } = {}) => {
+        const target = document.getElementById(sectionId) || document.getElementById("bien-ban-xu-ly");
+        target?.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (focus && target) {
+            window.setTimeout(() => {
+                target.querySelector("input:not([disabled]), textarea:not([disabled]), button:not([disabled])")?.focus();
+            }, 450);
+        }
+    };
+    const focusFirstFieldInSection = (sectionId) => {
+        scrollToSection(sectionId);
+        window.setTimeout(() => {
+            const section = document.getElementById(sectionId);
+            section?.querySelector('[aria-invalid="true"], input:not([disabled]), textarea:not([disabled])')?.focus();
+        }, 450);
     };
     const workflow = buildBienBanWorkflow({
         info,
@@ -962,17 +1014,75 @@ export default function BienBanDetail({ standalone = false }) {
         canConfirmProcessing,
         canSubmitCompletion,
         actions: {
-            editInfo: () => scrollToSection("bien-ban-thong-tin"),
+            editInfo: () => scrollToSection("bien-ban-thong-tin", { focus: true }),
             manageAssignments: () => setOpenAssignModal(true),
             confirmAssignments: handleConfirmAssign,
             addProcessing: () => setOpenXuLyModal(true),
-            openOpinions: () => scrollToSection("bien-ban-y-kien-chuyen-mon"),
+            openOpinions: () => scrollToSection("bien-ban-y-kien-chuyen-mon", { focus: true }),
             confirmProcessing: handleConfirmUser,
             complete: handleComplete,
-            openFollowUp: () => scrollToSection("bien-ban-y-kien-chuyen-mon")
+            openFollowUp: () => scrollToSection("bien-ban-theo-doi", { focus: true })
         }
     });
     const statusMeta = getBienBanStatusMeta(info?.TrangThai);
+    const missingItems = [
+        !moTaConfirmed ? "Mô tả sự không phù hợp" : null,
+        defects.length === 0 ? "Ít nhất một dòng lỗi" : null,
+        moTaConfirmed && workflowDepartments.length === 0 ? (isV01 ? "Bộ phận cần lấy ý kiến" : "Bộ phận phối hợp xử lý") : null,
+        isV01 && specialistOpinions.some((item) => !item.HasConfirmed) ? "Ý kiến hoặc xác nhận của bộ phận" : null
+    ].filter(Boolean);
+    const departmentsForSidebar = workflowDepartments.map((department) => ({
+        ...department,
+        IsConfirmed: isV01
+            ? Boolean(department.HasConfirmed)
+            : xacNhan.some((item) => Number(item.BoPhanId) === Number(department.BoPhanId))
+    }));
+    const sidebarFields = {
+        ...headerFields,
+        PhatHienTu: PHAT_HIEN_TU_OPTIONS.find(([value]) => value === headerFields.PhatHienTu)?.[1] || headerFields.PhatHienTu,
+        MucDo: MUC_DO_KPH_OPTIONS.find(([value]) => value === headerFields.MucDo)?.[1] || headerFields.MucDo
+    };
+    const primaryAction = workflow.guidance.actionLabel && workflow.guidance.onAction ? {
+        label: workflow.guidance.actionLabel,
+        onClick: workflow.guidance.onAction,
+        color: workflow.guidance.tone === "success" ? "success" : "primary"
+    } : null;
+    const isSavingAny = Object.values(actionSaving).some(Boolean) || confirmSaving;
+    const hasUnsavedChanges = isEditingKphHeader || isEditingStandaloneHeader || isEditingStandaloneDefects;
+    const saveState = isSavingAny
+        ? { label: "Đang lưu…", color: "primary.main" }
+        : hasUnsavedChanges
+            ? { label: "Có thay đổi chưa lưu", color: "warning.main" }
+            : { label: "Đã đồng bộ", color: "success.main" };
+    const renderDefectDetails = (defect, index) => (
+        <Box>
+            <Typography variant="body2" fontWeight="bold" color="primary">
+                {defect.TenLoi || defect.TenLoiTuNhap || defect.MaLoi || `Dòng lỗi ${index + 1}`}
+            </Typography>
+            {defect.MoTa && <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>{defect.MoTa}</Typography>}
+            {Array.isArray(defect.ImageUrls) && defect.ImageUrls.length > 0 && (
+                <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: "wrap", gap: 1 }}>
+                    {defect.ImageUrls.map((url, imageIndex) => (
+                        <Box
+                            key={url || imageIndex}
+                            component="img"
+                            src={url.startsWith("http") ? url : `https://z76api.z76.vn${url}`}
+                            alt={`Ảnh lỗi ${imageIndex + 1}`}
+                            sx={{ width: 56, height: 56, objectFit: "cover", borderRadius: 1, cursor: "pointer", border: "1px solid", borderColor: "divider" }}
+                            onClick={() => setImagePreview({
+                                images: defect.ImageUrls.map((item) => item.startsWith("http") ? item : `https://z76api.z76.vn${item}`),
+                                index: imageIndex
+                            })}
+                        />
+                    ))}
+                </Stack>
+            )}
+        </Box>
+    );
+    const leaveDetail = () => {
+        if (dirtyRef.current && !window.confirm("Bạn có thay đổi chưa lưu. Bạn vẫn muốn rời trang?")) return;
+        returnToList(isStandaloneBienBan);
+    };
 
     if (loading) {
         return (
@@ -1000,68 +1110,29 @@ export default function BienBanDetail({ standalone = false }) {
 
     return (
         <Box sx={{ bgcolor: '#f4f6f8', minHeight: '100vh', pb: 3 }}>
-            {/* Top Toolbar */}
-            <Paper elevation={0} sx={{ py: 1, px: 1.5, mb: 1.5, borderBottom: '1px solid #e0e0e0', position: 'sticky', top: 0, zIndex: 10 }}>
-                <Container maxWidth="xl">
-                    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems="center" spacing={1}>
-                        <Button
-                            size="small"
-                            startIcon={<ArrowBackIcon />}
-                            onClick={() => returnToList(isStandaloneBienBan)}
-                            color="inherit"
-                        >
-                            {isStandaloneBienBan ? "Danh sách phiếu xử lý không phù hợp" : "Danh sách biên bản"}
-                        </Button>
-                        <Stack direction="row" spacing={1}>
-                            {isStandaloneBienBan && currentUserPermissions.includes("XOA_HO_SO_KCS") && (
-                                <Button
-                                    size="small"
-                                    variant="outlined"
-                                    color="error"
-                                    startIcon={<DeleteOutlineIcon />}
-                                    onClick={handleDeleteStandalone}
-                                >
-                                    Xóa phiếu
-                                </Button>
-                            )}
-                            {!isStandaloneBienBan && currentUserPermissions.includes("XOA_HO_SO_KCS") && (
-                                <Button size="small" variant="outlined" color="error"
-                                    startIcon={<DeleteOutlineIcon />} onClick={handleDeleteBienBan}>
-                                    Xóa biên bản
-                                </Button>
-                            )}
-                            {!isStandaloneBienBan && info.PhieuKiemId && (
-                                <Button
-                                    size="small"
-                                    variant="outlined"
-                                    startIcon={<AssignmentTurnedInIcon />}
-                                    onClick={() => navigate(info.IsCongDoan
-                                        ? `/phieu-kiem/cong-doan/${info.PhieuKiemId}`
-                                        : `/phieu-kiem/${info.PhieuKiemId}`)}
-                                >
-                                    Xem phiếu kiểm
-                                </Button>
-                            )}
-                            <Button
-                                size="small"
-                                variant="outlined"
-                                startIcon={<PrintIcon />}
-                                onClick={handlePrintPreview}
-                                sx={{ bgcolor: 'white' }}
-                            >
-                                In PDF
-                            </Button>
-                        </Stack>
-                    </Stack>
-                </Container>
-            </Paper>
+            <BienBanDetailToolbar
+                recordNumber={isStandaloneBienBan ? info.SoBienBan : info.SoPhieu}
+                statusMeta={statusMeta}
+                backLabel={isStandaloneBienBan ? "Danh sách phiếu xử lý không phù hợp" : "Danh sách biên bản"}
+                onBack={leaveDetail}
+                primaryAction={primaryAction}
+                saveState={saveState}
+                onPrint={handlePrintPreview}
+                onOpenInspection={!isStandaloneBienBan && info.PhieuKiemId ? () => navigate(info.IsCongDoan
+                    ? `/phieu-kiem/cong-doan/${info.PhieuKiemId}`
+                    : `/phieu-kiem/${info.PhieuKiemId}`) : null}
+                onDelete={currentUserPermissions.includes("XOA_HO_SO_KCS")
+                    ? (isStandaloneBienBan ? handleDeleteStandalone : handleDeleteBienBan)
+                    : null}
+                deleteLabel={isStandaloneBienBan ? "Xóa phiếu" : "Xóa biên bản"}
+            />
 
-            <Box sx={{ px: { xs: 1.5, md: 3 } }}>
-                <BienBanWorkflowGuide workflow={workflow} status={info.TrangThai} />
+            <Box sx={{ px: { xs: 1, sm: 1.5, md: 3 }, pt: 1.5 }}>
+                <BienBanWorkflowGuide workflow={workflow} sectionItems={DETAIL_SECTIONS} onNavigate={scrollToSection} />
                 {info.TrangThai === "TRA_LAI_CHINH_SUA" && (
                     <Paper variant="outlined" sx={{ mb: 2, p: 1.5, borderColor: "error.main", bgcolor: "#fff5f5" }}>
                         <Stack direction={{ xs: "column", md: "row" }} spacing={2} justifyContent="space-between" alignItems={{ md: "center" }}>
-                            <Box>
+                            <Box id={!isV01 ? "bien-ban-y-kien-chuyen-mon" : undefined} sx={{ scrollMarginTop: 86 }}>
                                 <Typography color="error.main" fontWeight={800}>Biên bản đã được trả lại để chỉnh sửa</Typography>
                                 <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: "pre-wrap" }}>{info.LastReturnReason || "Chưa ghi nhận lý do"}</Typography>
                                 <Typography variant="caption" color="text.secondary">
@@ -1075,20 +1146,31 @@ export default function BienBanDetail({ standalone = false }) {
                         </Stack>
                     </Paper>
                 )}
-                {/* <Container > */}
-                <Grid container spacing={2}>
+                <Box
+                    sx={{
+                        display: "grid",
+                        gridTemplateColumns: { xs: "minmax(0, 1fr)", lg: "minmax(0, 3fr) minmax(280px, 1fr)" },
+                        gridTemplateAreas: { xs: '"sidebar" "main"', lg: '"main sidebar"' },
+                        gap: { xs: 1.5, md: 2 },
+                        alignItems: "start"
+                    }}
+                >
+                    <Box sx={{
+                        gridArea: "main",
+                        minWidth: 0,
+                        "& .MuiCard-root": { borderRadius: 2 },
+                        "& .MuiCardContent-root": { p: { xs: 1.25, md: 1.5 } },
+                        "& .MuiCardContent-root:last-child": { pb: { xs: 1.25, md: 1.5 } },
+                        "& .MuiTypography-h6": { fontSize: { xs: "1rem", md: "1.075rem" }, lineHeight: 1.3 }
+                    }}>
+                    <Grid container spacing={1.5}>
                     {/* Thông tin chung & lỗi: dùng toàn chiều rộng theo bố cục hồ sơ một cột. */}
                     <Grid id="bien-ban-thong-tin" size={{ xs: 12 }} sx={{ scrollMarginTop: 100 }}>
                         <Stack spacing={2}>
                             {/* Card Header Info */}
                             <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
                                 <CardContent sx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}>
-                                    <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.25}>
-                                        <Typography variant="h6" color="primary.main" fontWeight="bold">
-                                            {isStandaloneBienBan ? info.SoBienBan : info.SoPhieu}
-                                        </Typography>
-                                        <Chip label={statusMeta.label} color={statusMeta.color} variant="filled" size="small" />
-                                    </Stack>
+                                    <Typography variant="subtitle1" fontWeight={800} mb={1}>Thông tin chung</Typography>
                                     <Divider sx={{ mb: 1 }} />
                                     {isStandaloneBienBan ? (
                                         <Stack spacing={1.5}>
@@ -1112,14 +1194,11 @@ export default function BienBanDetail({ standalone = false }) {
                                                     </Typography>
                                                 </Grid>
                                             </Grid>
-                                            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                                            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                                                 <Chip size="small" variant="outlined" label={`Số dòng lỗi: ${defectCount}`} />
                                                 <Chip size="small" variant="outlined" label={`Tổng SL lỗi: ${totalDefectQty}`} />
                                                 <Chip size="small" variant="outlined" label={`${isV01 ? "Bộ phận cần ý kiến" : "Bộ phận xử lý"}: ${workflowDepartments.length}`} />
                                             </Stack>
-                                            <Typography variant="body2" color="text.secondary">
-                                                Nhập thông tin từ trên xuống, lưu phần đầu phiếu trước, sau đó bổ sung các dòng lỗi và tiếp tục các bước xử lý phía dưới.
-                                            </Typography>
                                         </Stack>
                                     ) : (
                                         <Grid container spacing={{ xs: 1, md: 2 }} alignItems="start">
@@ -1162,12 +1241,14 @@ export default function BienBanDetail({ standalone = false }) {
                             {isStandaloneBienBan ? (
                                 <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
                                     <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                                        <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                                            <DescriptionIcon color="action" /> Thông tin phiếu
-                                        </Typography>
-                                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                                            Phần đầu phiếu này độc lập với phiếu kiểm. Toàn bộ thông tin được nhập tay và dùng lại cho bản in.
-                                        </Typography>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+                                            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                <DescriptionIcon color="action" /> Thông tin phiếu
+                                            </Typography>
+                                            {info.CanManageKphFlow && !isEditingStandaloneHeader && (
+                                                <Button size="small" variant="outlined" onClick={() => setIsEditingStandaloneHeader(true)}>Chỉnh sửa</Button>
+                                            )}
+                                        </Stack>
                                         <Typography variant="subtitle2" sx={{ mb: 1.5, color: 'text.secondary' }}>
                                             Thông tin nhận diện
                                         </Typography>
@@ -1181,7 +1262,7 @@ export default function BienBanDetail({ standalone = false }) {
                                                 ["Dấu tuần", "DauTuan"]
                                             ].map(([label, field]) => (
                                                 <Grid size={{ xs: 12, sm: 6, lg: 4 }} key={field}>
-                                                    {info.CanManageKphFlow ? (
+                                                    {isEditingStandaloneHeader ? (
                                                         <TextField
                                                             fullWidth
                                                             size="small"
@@ -1198,7 +1279,7 @@ export default function BienBanDetail({ standalone = false }) {
                                                 </Grid>
                                             ))}
                                             <Grid size={{ xs: 12, md: 8 }}>
-                                                {info.CanManageKphFlow ? (
+                                                {isEditingStandaloneHeader ? (
                                                     <Autocomplete
                                                         options={catalogItemOptions}
                                                         value={selectedCatalogItem}
@@ -1244,7 +1325,7 @@ export default function BienBanDetail({ standalone = false }) {
                                                 )}
                                             </Grid>
                                             <Grid size={{ xs: 12, md: 4 }}>
-                                                    {info.CanManageKphFlow ? (
+                                                    {isEditingStandaloneHeader ? (
                                                         <Autocomplete
                                                             options={orderOptions}
                                                             value={selectedOrder}
@@ -1288,7 +1369,7 @@ export default function BienBanDetail({ standalone = false }) {
                                                 ["3. Mức độ không phù hợp", "MucDo", MUC_DO_KPH_OPTIONS]
                                             ].map(([label, field, options]) => (
                                                 <Grid size={{ xs: 12, md: 6 }} key={field}>
-                                                    {info.CanManageKphFlow ? (
+                                                    {isEditingStandaloneHeader ? (
                                                         <TextField
                                                             fullWidth
                                                             select
@@ -1321,7 +1402,7 @@ export default function BienBanDetail({ standalone = false }) {
                                                 </Typography>
                                             </Grid>
                                             <Grid size={{ xs: 12 }}>
-                                                {info.CanManageKphFlow ? (
+                                                {isEditingStandaloneHeader ? (
                                                     <TextField
                                                         fullWidth
                                                         multiline
@@ -1347,11 +1428,14 @@ export default function BienBanDetail({ standalone = false }) {
                                                 )}
                                             </Grid>
                                         </Grid>
-                                        {info.CanManageKphFlow && <Box sx={{ mt: 2, textAlign: 'right' }}>
-                                            <Button disabled={actionSaving.description} variant="contained" startIcon={<SaveIcon />} onClick={handleSaveStandaloneHeader}>
-                                                {actionSaving.description ? "Đang lưu..." : "Lưu thông tin phiếu"}
-                                            </Button>
-                                        </Box>}
+                                        {isEditingStandaloneHeader && (
+                                            <Stack direction="row" justifyContent="flex-end" spacing={1} mt={2}>
+                                                <Button disabled={actionSaving.description} color="inherit" onClick={restoreStandaloneHeader}>Hủy</Button>
+                                                <Button disabled={actionSaving.description} variant="contained" startIcon={<SaveIcon />} onClick={handleSaveStandaloneHeader}>
+                                                    {actionSaving.description ? "Đang lưu..." : "Lưu thông tin phiếu"}
+                                                </Button>
+                                            </Stack>
+                                        )}
                                     </CardContent>
                                 </Card>
                             ) : (
@@ -1582,73 +1666,22 @@ export default function BienBanDetail({ standalone = false }) {
                                                 <BugReportIcon color="error" /> Chi tiết lỗi
                                             </Typography>
                                         </Box>
-                                        <TableContainer>
-                                            <Table size="small">
-                                                <TableHead sx={{ bgcolor: '#f8fafc' }}>
-                                                    <TableRow>
-                                                        <TableCell>Thông tin lỗi</TableCell>
-                                                        <TableCell align="center" sx={{ width: 100 }}>Mức độ</TableCell>
-                                                        <TableCell align="right" sx={{ width: 60 }}>SL</TableCell>
-                                                    </TableRow>
-                                                </TableHead>
-                                                <TableBody>
-                                                    {defects.length === 0 ? (
-                                                        <TableRow>
-                                                            <TableCell colSpan={3} align="center" sx={{ py: 3, color: 'text.secondary' }}>Chưa có dữ liệu lỗi</TableCell>
-                                                        </TableRow>
-                                                    ) : (
-                                                        defects.map((d, i) => (
-                                                            <TableRow key={i} hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
-                                                                <TableCell>
-                                                                    <Typography variant="body2" fontWeight="bold" color="primary">
-                                                                        {d.TenLoi || d.TenLoiTuNhap || d.MaLoi || `Dòng lỗi ${i + 1}`}
-                                                                    </Typography>
-                                                                    {d.MoTa && (
-                                                                        <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
-                                                                            {d.MoTa}
-                                                                        </Typography>
-                                                                    )}
-                                                                    {Array.isArray(d.ImageUrls) && d.ImageUrls.length > 0 && (
-                                                                        <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap', gap: 1 }}>
-                                                                            {d.ImageUrls.map((url, idx) => (
-                                                                                <Box
-                                                                                    key={idx}
-                                                                                    component="img"
-                                                                                    src={url.startsWith('http') ? url : `https://z76api.z76.vn${url}`}
-                                                                                    sx={{
-                                                                                        width: 60,
-                                                                                        height: 60,
-                                                                                        objectFit: 'cover',
-                                                                                        borderRadius: 1,
-                                                                                        cursor: 'pointer',
-                                                                                        border: '1px solid #e0e0e0',
-                                                                                        '&:hover': { opacity: 0.8 }
-                                                                                    }}
-                                                                                    onClick={() => setImagePreview({
-                                                                                        images: d.ImageUrls.map((item) => item.startsWith('http') ? item : `https://z76api.z76.vn${item}`),
-                                                                                        index: idx
-                                                                                    })}
-                                                                                />
-                                                                            ))}
-                                                                        </Stack>
-                                                                    )}
-                                                                </TableCell>
-                                                                <TableCell align="center">
-                                                                    <Chip label={d.DefectType} color={getDefectColor(d.DefectType)} size="small" variant="outlined" />
-                                                                </TableCell>
-                                                                <TableCell align="right">
-                                                                    <Typography variant="body2" fontWeight="bold">{d.SoLuong}</Typography>
-                                                                </TableCell>
-                                                            </TableRow>
-                                                        ))
-                                                    )}
-                                                </TableBody>
-                                            </Table>
-                                        </TableContainer>
+                                        <Box sx={{ px: { xs: 1.25, md: 2 }, pb: 1.5 }}>
+                                            <ResponsiveDataList
+                                                rows={defects}
+                                                emptyText="Chưa có dữ liệu lỗi"
+                                                columns={[
+                                                    { key: "info", label: "Thông tin lỗi", render: renderDefectDetails },
+                                                    { key: "mucDo", label: "Mức độ", align: "center", render: (row) => <Chip label={row.DefectType || "—"} color={getDefectColor(row.DefectType)} size="small" variant="outlined" /> },
+                                                    { key: "soLuong", label: "Số lượng", align: "right", render: (row) => <Typography variant="body2" fontWeight="bold">{row.SoLuong}</Typography> }
+                                                ]}
+                                            />
+                                        </Box>
                                     </CardContent>
                                 )}
                             </Card>
 
+                            <Box id="bien-ban-xac-nhan" sx={{ scrollMarginTop: 86 }} />
                             {isStandaloneBienBan && isV01 && (
                                 <Card
                                     elevation={0}
@@ -1713,8 +1746,8 @@ export default function BienBanDetail({ standalone = false }) {
                         <Stack spacing={2}>
 
                             {/* Phân công xử lý */}
-                            {moTaConfirmed && (
-                                <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                            {moTaConfirmed && !isV01 && (
+                                <Card id="bien-ban-phan-cong" elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2, scrollMarginTop: 86 }}>
                                     <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                                         <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.25}>
                                             <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1731,12 +1764,20 @@ export default function BienBanDetail({ standalone = false }) {
                                         {workflowDepartments.length === 0 ? (
                                             <Typography color="text.secondary" fontStyle="italic">Chưa có bộ phận được chọn.</Typography>
                                         ) : (
-                                            <TableContainer sx={{ border: '1px solid #e5e7eb', borderRadius: 1 }}>
-                                                <Table size="small">
-                                                    <TableHead sx={{ bgcolor: '#f8fafc' }}><TableRow><TableCell>Bộ phận</TableCell><TableCell>Mã bộ phận</TableCell><TableCell align="right">Trạng thái</TableCell></TableRow></TableHead>
-                                                    <TableBody>{workflowDepartments.map((a, i) => <TableRow key={a.Id || i} hover><TableCell sx={{ fontWeight: 700 }}>{a.TenBoPhan || '—'}</TableCell><TableCell>{a.MaBoPhan || '—'}</TableCell><TableCell align="right"><Chip size="small" label={isV01 ? (a.HasConfirmed ? "Đã xác nhận" : a.HasOpinion ? "Chờ TBP xác nhận" : "Chờ ý kiến") : getStatusText(a.BoPhanId)} color={isV01 ? (a.HasConfirmed ? "success" : a.HasOpinion ? "warning" : "default") : getStatusColor(a.BoPhanId)} /></TableCell></TableRow>)}</TableBody>
-                                                </Table>
-                                            </TableContainer>
+                                            <ResponsiveDataList
+                                                rows={workflowDepartments}
+                                                emptyText="Chưa có bộ phận được chọn."
+                                                columns={[
+                                                    { key: "boPhan", label: "Bộ phận", cellSx: { fontWeight: 700 }, render: (row) => row.TenBoPhan || "—" },
+                                                    { key: "ma", label: "Mã bộ phận", render: (row) => row.MaBoPhan || "—" },
+                                                    {
+                                                        key: "trangThai", label: "Trạng thái", align: "right",
+                                                        render: (row) => <Chip size="small"
+                                                            label={isV01 ? (row.HasConfirmed ? "Đã xác nhận" : row.HasOpinion ? "Chờ TBP xác nhận" : "Chờ ý kiến") : getStatusText(row.BoPhanId)}
+                                                            color={isV01 ? (row.HasConfirmed ? "success" : row.HasOpinion ? "warning" : "default") : getStatusColor(row.BoPhanId)} />
+                                                    }
+                                                ]}
+                                            />
                                         )}
                                         {!isV01 && isAdminUser && info.AssignConfirmed && <Stack direction="row" flexWrap="wrap" sx={{ mt: 2, gap: 1 }}>{assigns.filter((a) => !xacNhan.some((x) => Number(x.BoPhanId) === Number(a.BoPhanId))).map((a) => <Button key={a.BoPhanId} size="small" variant="outlined" onClick={() => handleConfirmUser(a.BoPhanId)}>Xác nhận thay {a.MaBoPhan}</Button>)}</Stack>}
 
@@ -1752,7 +1793,7 @@ export default function BienBanDetail({ standalone = false }) {
                             )}
 
                             {/* Ý kiến xử lý */}
-                            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                            <Card id="bien-ban-phuong-an" elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2, scrollMarginTop: 86 }}>
                                 <CardContent sx={{ p: 0 }}>
                                     <Box sx={{ px: 2, py: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1764,34 +1805,19 @@ export default function BienBanDetail({ standalone = false }) {
                                             </Button>
                                         )}
                                     </Box>
-                                    <TableContainer>
-                                        <Table>
-                                            <TableHead sx={{ bgcolor: '#f8fafc' }}>
-                                                <TableRow>
-                                                    <TableCell>Nội dung ý kiến</TableCell>
-                                                    <TableCell>Đề nghị xử lý</TableCell>
-                                                    <TableCell>Trách nhiệm</TableCell>
-                                                    <TableCell>Theo dõi</TableCell>
-                                                    <TableCell>Thời hạn</TableCell>
-                                                </TableRow>
-                                            </TableHead>
-                                            <TableBody>
-                                                {xuLy.length === 0 ? (
-                                                    <TableRow><TableCell colSpan={5} align="center" sx={{ py: 3, color: 'text.secondary' }}>Chưa có ý kiến xử lý</TableCell></TableRow>
-                                                ) : (
-                                                    xuLy.map((x, i) => (
-                                                        <TableRow key={i} hover>
-                                                            <TableCell sx={{ whiteSpace: 'pre-wrap', minWidth: 220 }}>{x.NoiDung || '—'}</TableCell>
-                                                            <TableCell>{x.DeNghiXuLy || '—'}</TableCell>
-                                                            <TableCell>{x.TrachNhiem || '—'}</TableCell>
-                                                            <TableCell sx={{ fontWeight: 600 }}>{x.TheoDoi || '—'}</TableCell>
-                                                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'error.main' }}>{x.ThoiHan ? new Date(x.ThoiHan).toLocaleDateString("vi-VN") : '—'}</TableCell>
-                                                        </TableRow>
-                                                    ))
-                                                )}
-                                            </TableBody>
-                                        </Table>
-                                    </TableContainer>
+                                    <Box sx={{ px: { xs: 1.25, md: 2 }, pb: 1.5 }}>
+                                        <ResponsiveDataList
+                                            rows={xuLy}
+                                            emptyText="Chưa có ý kiến xử lý"
+                                            columns={[
+                                                { key: "noiDung", label: "Nội dung ý kiến", cellSx: { whiteSpace: "pre-wrap", minWidth: 220 }, render: (row) => row.NoiDung || "—" },
+                                                { key: "deNghi", label: "Đề nghị xử lý", render: (row) => row.DeNghiXuLy || "—" },
+                                                { key: "trachNhiem", label: "Trách nhiệm", render: (row) => row.TrachNhiem || "—" },
+                                                { key: "theoDoi", label: "Theo dõi", cellSx: { fontWeight: 600 }, render: (row) => row.TheoDoi || "—" },
+                                                { key: "thoiHan", label: "Thời hạn", cellSx: { whiteSpace: "nowrap", color: "error.main" }, render: (row) => row.ThoiHan ? new Date(row.ThoiHan).toLocaleDateString("vi-VN") : "—" }
+                                            ]}
+                                        />
+                                    </Box>
                                 </CardContent>
                             </Card>
 
@@ -1817,12 +1843,15 @@ export default function BienBanDetail({ standalone = false }) {
                                                 </Stack>
                                             </Stack>
                                             <Divider sx={{ mb: 2 }} />
-                                            <TableContainer sx={{ border: '1px solid #e5e7eb', borderRadius: 1 }}>
-                                                <Table size="small">
-                                                    <TableHead sx={{ bgcolor: '#f8fafc' }}><TableRow><TableCell>Loại chi phí</TableCell><TableCell>Bộ phận</TableCell><TableCell align="right">Giá trị</TableCell></TableRow></TableHead>
-                                                    <TableBody>{chiPhi.length === 0 ? <TableRow><TableCell colSpan={3} align="center" sx={{ color: 'text.secondary' }}>Không ghi nhận chi phí.</TableCell></TableRow> : chiPhi.map((c, i) => <TableRow key={i} hover><TableCell>{c.LoaiChiPhi || '—'}</TableCell><TableCell>{c.TenBoPhan || '—'}</TableCell><TableCell align="right" sx={{ color: 'success.main', fontWeight: 700, whiteSpace: 'nowrap' }}>{Number(c.GiaTri || 0).toLocaleString("vi-VN")} đ</TableCell></TableRow>)}</TableBody>
-                                                </Table>
-                                            </TableContainer>
+                                            <ResponsiveDataList
+                                                rows={chiPhi}
+                                                emptyText="Không ghi nhận chi phí."
+                                                columns={[
+                                                    { key: "loai", label: "Loại chi phí", render: (row) => row.LoaiChiPhi || "—" },
+                                                    { key: "boPhan", label: "Bộ phận", render: (row) => row.TenBoPhan || "—" },
+                                                    { key: "giaTri", label: "Giá trị", align: "right", cellSx: { color: "success.main", fontWeight: 700, whiteSpace: "nowrap" }, render: (row) => `${Number(row.GiaTri || 0).toLocaleString("vi-VN")} đ` }
+                                                ]}
+                                            />
                                         </CardContent>
                                     </Card>
                                 </Grid>
@@ -1847,18 +1876,23 @@ export default function BienBanDetail({ standalone = false }) {
                                                 </Stack>
                                             </Stack>
                                             <Divider sx={{ mb: 2 }} />
-                                            <TableContainer sx={{ border: '1px solid #e5e7eb', borderRadius: 1 }}>
-                                                <Table size="small">
-                                                    <TableHead sx={{ bgcolor: '#f8fafc' }}><TableRow><TableCell>Nội dung</TableCell><TableCell>Bộ phận</TableCell><TableCell>Thời hạn</TableCell><TableCell>Người theo dõi</TableCell></TableRow></TableHead>
-                                                    <TableBody>{hanhDong.length === 0 ? <TableRow><TableCell colSpan={4} align="center" sx={{ color: 'text.secondary' }}>Chưa có hành động cụ thể.</TableCell></TableRow> : hanhDong.map((h, i) => <TableRow key={i} hover><TableCell sx={{ whiteSpace: 'pre-wrap' }}>{h.NoiDung || '—'}</TableCell><TableCell>{h.TenBoPhan || '—'}</TableCell><TableCell sx={{ color: 'error.main', whiteSpace: 'nowrap' }}>{h.ThoiHan ? new Date(h.ThoiHan).toLocaleDateString("vi-VN") : '—'}</TableCell><TableCell>{h.NguoiTheoDoi || h.NguoiXuLy || h.TheoDoi || '—'}</TableCell></TableRow>)}</TableBody>
-                                                </Table>
-                                            </TableContainer>
+                                            <ResponsiveDataList
+                                                rows={hanhDong}
+                                                emptyText="Chưa có hành động cụ thể."
+                                                columns={[
+                                                    { key: "noiDung", label: "Nội dung", cellSx: { whiteSpace: "pre-wrap" }, render: (row) => row.NoiDung || "—" },
+                                                    { key: "boPhan", label: "Bộ phận", render: (row) => row.TenBoPhan || "—" },
+                                                    { key: "thoiHan", label: "Thời hạn", cellSx: { color: "error.main", whiteSpace: "nowrap" }, render: (row) => row.ThoiHan ? new Date(row.ThoiHan).toLocaleDateString("vi-VN") : "—" },
+                                                    { key: "theoDoi", label: "Người theo dõi", render: (row) => row.NguoiTheoDoi || row.NguoiXuLy || row.TheoDoi || "—" }
+                                                ]}
+                                            />
                                         </CardContent>
                                     </Card>
                                 </Grid>
                             </Grid>
 
-                            <Box id="bien-ban-y-kien-chuyen-mon" sx={{ scrollMarginTop: 100 }}>
+                            {isV01 && <Box id="bien-ban-phan-cong" sx={{ scrollMarginTop: 86 }} />}
+                            <Box>
                                 <KphV01WorkflowSections
                                     bienBanId={bienBanId} info={info}
                                     opinions={specialistOpinions} evaluation={followUpEvaluation}
@@ -1868,10 +1902,13 @@ export default function BienBanDetail({ standalone = false }) {
                                     onPatchOpinion={patchSpecialistOpinion}
                                     onReturned={handleReviewReturned}
                                     reload={refreshData} showToast={showToast}
+                                    canManageDepartments={Boolean(info.CanManageKphFlow && !info.CreatorConfirmedAt)}
+                                    onManageDepartments={() => setOpenAssignModal(true)}
                                 />
                             </Box>
 
                             {/* Lịch sử xác nhận */}
+                            {!isV01 && <Box id="bien-ban-theo-doi" sx={{ scrollMarginTop: 86 }} />}
                             {xacNhan.length > 0 && (
                                 <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
                                     <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
@@ -1893,32 +1930,28 @@ export default function BienBanDetail({ standalone = false }) {
                             )}
                         </Stack>
                     </Grid>
-                </Grid>
+                    </Grid>
 
-                <Box sx={{ mt: 2 }}>
-                    <BienBanAttachments bienBanId={bienBanId} />
+                    <Box id="bien-ban-tai-lieu" sx={{ mt: 1.5, scrollMarginTop: 86 }}>
+                        <BienBanAttachments bienBanId={bienBanId} />
+                    </Box>
+                    </Box>
+
+                    <Box sx={{ gridArea: "sidebar", minWidth: 0 }}>
+                        <BienBanDetailSidebar
+                            workflow={workflow}
+                            info={info}
+                            headerFields={sidebarFields}
+                            defectsCount={defectCount}
+                            totalDefectQty={totalDefectQty}
+                            departments={departmentsForSidebar}
+                            missingItems={missingItems}
+                            sectionItems={DETAIL_SECTIONS}
+                            onNavigate={scrollToSection}
+                        />
+                    </Box>
                 </Box>
 
-                {/* Floating Bottom Action Bar */}
-                {(canConfirmProcessing || canSubmitCompletion) && (
-                    <Paper elevation={4} sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, py: 1, px: 2, bgcolor: 'white', zIndex: 100, borderTop: '1px solid #e0e0e0' }}>
-                        <Container maxWidth="xl">
-                            <Stack direction="row" justifyContent="flex-end" spacing={2}>
-                                {canConfirmProcessing && (
-                                    <Button variant="contained" color="warning" onClick={() => handleConfirmUser()} startIcon={<VerifiedIcon />}>
-                                        Xác nhận tiến độ xử lý của bộ phận
-                                    </Button>
-                                )}
-                                {canSubmitCompletion && (
-                                    <Button variant="contained" color="success" onClick={handleComplete} startIcon={<SaveIcon />}>
-                                        {isV01 ? "Xác nhận và chuyển theo dõi" : "Hoàn tất Biên Bản"}
-                                    </Button>
-                                )}
-                            </Stack>
-                        </Container>
-                    </Paper>
-                )}
-                {/* </Container> */}
             </Box>
             {/* --- Dialogs (Giữ nguyên logic, chỉnh nhẹ CSS) --- */}
 
