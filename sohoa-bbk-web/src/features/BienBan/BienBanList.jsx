@@ -66,9 +66,10 @@ const getMyDepartmentOpinionMeta = (status) => {
 };
 
 const getWorkBucket = (item, currentUser, isManager, isSxbt) => {
+    const managedDepartmentIds = new Set((currentUser.managedBoPhanIds || [currentUser.boPhanId]).map(Number));
     if (isSxbt) {
         if (item.TrangThai === "BB_SXBT_HOAN_TAT") return "done";
-        return Number(item.BoPhanDangChoId) === Number(currentUser.boPhanId)
+        return managedDepartmentIds.has(Number(item.BoPhanDangChoId))
             ? "action"
             : "waiting";
     }
@@ -78,8 +79,8 @@ const getWorkBucket = (item, currentUser, isManager, isSxbt) => {
     }
     const explicitMyTurn = item.CanCurrentUserAct === true || item.CanCurrentUserAct === 1 ||
         Number(item.NguoiXuLyId) === Number(currentUser.userId) ||
-        Number(item.BoPhanId) === Number(currentUser.boPhanId) ||
-        Number(item.BoPhanDangChoId) === Number(currentUser.boPhanId);
+        managedDepartmentIds.has(Number(item.BoPhanId)) ||
+        managedDepartmentIds.has(Number(item.BoPhanDangChoId));
     const managerTurn = isManager && ["BB_MOI", "CHO_PHAN_BO_XU_LY", "CHO_PHAN_BO_XY_LY", "CHO_TP_B8", "TRA_LAI_CHINH_SUA"].includes(item.TrangThai);
     return explicitMyTurn || managerTurn ? "action" : "waiting";
 };
@@ -115,6 +116,9 @@ export default function BienBanList() {
     const tableContainerRef = useRef(null);
     const restoredScrollKeyRef = useRef("");
     const currentUser = useMemo(() => decodeToken() || {}, []);
+    const managedDepartmentIds = useMemo(() => new Set(
+        (currentUser.managedBoPhanIds || [currentUser.boPhanId]).map(Number)
+    ), [currentUser]);
     const isManager = (currentUser.roles || []).some((role) =>
         String(role || "").toUpperCase().startsWith("TP_")
     ) || (currentUser.permissions || []).some((permission) =>
@@ -283,11 +287,11 @@ export default function BienBanList() {
             if (filterCreator && !normalizeSearchText(`${item.NguoiLap || ""} ${item.MaBoPhanTao || ""} ${item.TenBoPhanTao || ""}`)
                 .includes(normalizeSearchText(filterCreator))) return false;
             if (workFilter !== "all" && getWorkBucket(item, currentUser, isManager, isSxbtBienBan(item)) !== workFilter) return false;
-            if (departmentFilter === "mine" && Number(item.BoPhanTaoId) !== Number(currentUser.boPhanId)) return false;
+            if (departmentFilter === "mine" && !managedDepartmentIds.has(Number(item.BoPhanTaoId))) return false;
             if (!["all", "mine"].includes(departmentFilter) && Number(item.BoPhanTaoId) !== Number(departmentFilter)) return false;
             const opinionDepartmentIds = (Array.isArray(item.OpinionDepartments) ? item.OpinionDepartments : [])
                 .map((department) => Number(department.id));
-            if (opinionDepartmentFilter === "mine" && !opinionDepartmentIds.includes(Number(currentUser.boPhanId))) return false;
+            if (opinionDepartmentFilter === "mine" && !opinionDepartmentIds.some((id) => managedDepartmentIds.has(Number(id)))) return false;
             if (!["all", "mine"].includes(opinionDepartmentFilter) && !opinionDepartmentIds.includes(Number(opinionDepartmentFilter))) return false;
             if (typeFilter === "sxbt" && !isSxbtBienBan(item)) return false;
             if (typeFilter === "normal" && isSxbtBienBan(item)) return false;
@@ -319,7 +323,7 @@ export default function BienBanList() {
             }
             return true;
         });
-    }, [data, filterStatus, filterSoPhieu, filterLoaiKiem, filterProduct, filterCreator, searchText, workFilter, departmentFilter, opinionDepartmentFilter, typeFilter, dateFrom, dateTo, currentUser, isManager]);
+    }, [data, filterStatus, filterSoPhieu, filterLoaiKiem, filterProduct, filterCreator, searchText, workFilter, departmentFilter, opinionDepartmentFilter, typeFilter, dateFrom, dateTo, currentUser, isManager, managedDepartmentIds]);
 
     const resetFilters = () => {
         setSearchText("");

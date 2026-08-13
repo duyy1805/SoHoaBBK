@@ -13,6 +13,7 @@ const {
 const authenticateToken = require("../middlewares/auth.middleware");
 const authorize = require("../middlewares/permission.middleware");
 const requireExactPermission = require("../middlewares/exactPermission.middleware");
+const { getManagedDepartmentIds, canLeadDepartment } = require("../utils/managedDepartments");
 
 const hasPermission = (user, permissionCode) =>
     Array.isArray(user?.permissions) && user.permissions.includes(permissionCode);
@@ -49,8 +50,7 @@ const getKphV01FlowAccess = async (pool, bienBanId, user) => {
 
     const isKphV01 = record.MauPhieuVersion === "V01" && record.LoaiBienBan !== "SXBT";
     const isCreator = Number(record.NguoiLapId) === Number(user?.userId);
-    const isCreatorDepartmentLead = Number(record.BoPhanTaoId) === Number(user?.boPhanId) &&
-        hasStrictLeadRole(user);
+    const isCreatorDepartmentLead = await canLeadDepartment(pool, user, record.BoPhanTaoId);
     const canManage = isCreator || isCreatorDepartmentLead || isAdmin(user);
     const canEdit = isKphV01 && canManage && !record.CreatorConfirmedAt &&
         !["CHO_THEO_DOI", "HOAN_TAT"].includes(record.TrangThai) &&
@@ -80,7 +80,7 @@ const getKphCustomFieldAccess = async (pool, bienBanId, user) => {
     const record = result.recordset?.[0];
     if (!record) return { exists: false, canEdit: false, record: null };
     const isCreator = Number(record.NguoiLapId) === Number(user?.userId);
-    const isCreatorDepartmentLead = Number(record.CreatorBoPhanId) === Number(user?.boPhanId) && hasStrictLeadRole(user);
+    const isCreatorDepartmentLead = await canLeadDepartment(pool, user, record.CreatorBoPhanId);
     const canEdit = record.MauPhieuVersion === "V01" && !record.CreatorConfirmedAt &&
         !["CHO_THEO_DOI", "HOAN_TAT"].includes(record.TrangThai) &&
         (!record.OpinionDepartmentsConfirmedAt || record.TrangThai === "TRA_LAI_CHINH_SUA") &&
@@ -93,16 +93,22 @@ const getKphSectionContributionAccess = async (pool, bienBanId, user, existingFl
     if (!flowAccess.exists || !flowAccess.isKphV01) {
         return { ...flowAccess, canContribute: false, isAssignedDepartment: false, targetBoPhanId: null };
     }
+    const managedDepartmentIds = await getManagedDepartmentIds(pool, user?.userId, user?.boPhanId);
     const assignmentResult = await pool.request()
         .input("BienBanId", sql.Int, bienBanId)
-        .input("BoPhanId", sql.Int, Number(user?.boPhanId) || null)
+        .input("ManagedDepartmentIds", sql.NVarChar(sql.MAX), managedDepartmentIds.join(","))
+        .input("PrimaryBoPhanId", sql.Int, Number(user?.boPhanId) || null)
         .query(`
-            SELECT CASE WHEN EXISTS (
-                SELECT 1 FROM dbo.XIN_Y_KIEN
-                WHERE BienBanId=@BienBanId AND BoPhanId=@BoPhanId AND ISNULL(IsActive,1)=1
-            ) THEN 1 ELSE 0 END AS IsAssignedDepartment
+            SELECT TOP 1 opinion.BoPhanId AS AssignedBoPhanId
+            FROM dbo.XIN_Y_KIEN opinion
+            WHERE opinion.BienBanId=@BienBanId AND ISNULL(opinion.IsActive,1)=1
+              AND opinion.BoPhanId IN (
+                  SELECT TRY_CONVERT(int,[value]) FROM STRING_SPLIT(@ManagedDepartmentIds,',')
+              )
+            ORDER BY CASE WHEN opinion.BoPhanId=@PrimaryBoPhanId THEN 0 ELSE 1 END, opinion.Id
         `);
-    const isAssignedDepartment = Boolean(assignmentResult.recordset?.[0]?.IsAssignedDepartment);
+    const assignedBoPhanId = Number(assignmentResult.recordset?.[0]?.AssignedBoPhanId) || null;
+    const isAssignedDepartment = Boolean(assignedBoPhanId);
     const isFinalLocked = Boolean(flowAccess.record.CreatorConfirmedAt) ||
         ["CHO_THEO_DOI", "HOAN_TAT"].includes(flowAccess.record.TrangThai);
     const isReturned = flowAccess.record.TrangThai === "TRA_LAI_CHINH_SUA";
@@ -114,7 +120,7 @@ const getKphSectionContributionAccess = async (pool, bienBanId, user, existingFl
         canContribute,
         isAssignedDepartment,
         targetBoPhanId: isAssignedDepartment
-            ? Number(user?.boPhanId)
+            ? assignedBoPhanId
             : Number(flowAccess.record.BoPhanTaoId)
     };
 };
@@ -140,12 +146,12 @@ const hasLeadRole = (user) => {
     );
 };
 
-const canManageDepartmentAssign = (user, boPhanId) => {
+const canManageDepartmentAssign = async (pool, user, boPhanId) => {
     if (isAdmin(user) || hasPermission(user, "XAC_NHAN_NGUOI_XU_LY")) {
         return true;
     }
 
-    return user?.boPhanId === boPhanId && hasLeadRole(user);
+    return canLeadDepartment(pool, user, boPhanId);
 };
 
 const getBienBanAssignRows = async (pool, bienBanId) => {
@@ -358,7 +364,8 @@ const getKphV01Data = async (pool, bienBanId, user) => {
     const meta = result.recordsets?.[0]?.[0] || { MauPhieuVersion: "V00" };
     const activeReview = Boolean(meta.OpinionDepartmentsConfirmed) &&
         !meta.CreatorConfirmedAt && !["TRA_LAI_CHINH_SUA", "CHO_THEO_DOI", "HOAN_TAT"].includes(meta.TrangThai);
-    const sameDepartment = (departmentId) => Number(departmentId) === Number(user?.boPhanId);
+    const managedDepartmentIds = await getManagedDepartmentIds(pool, user?.userId, user?.boPhanId);
+    const sameDepartment = (departmentId) => managedDepartmentIds.includes(Number(departmentId));
     const specialistOpinions = (result.recordsets?.[1] || []).map((opinion) => {
         const ownsDepartment = sameDepartment(opinion.BoPhanId);
         const canSave = activeReview && !opinion.HasConfirmed && (isAdmin(user) || ownsDepartment);
@@ -561,9 +568,10 @@ router.get(
                     : 0;
             }
 
+            const managedDepartmentIds = await getManagedDepartmentIds(pool, req.user.userId, req.user.boPhanId);
             const listMetaResult = await pool.request()
                 .input("BienBanIds", sql.NVarChar(sql.MAX), bienBanIds.join(","))
-                .input("CurrentBoPhanId", sql.Int, Number(req.user.boPhanId) || null)
+                .input("ManagedDepartmentIds", sql.NVarChar(sql.MAX), managedDepartmentIds.join(","))
                 .query(`
                     SELECT
                         bb.Id AS BienBanId,
@@ -602,7 +610,9 @@ router.get(
                         SELECT TOP 1 opinion.*
                         FROM dbo.XIN_Y_KIEN opinion
                         WHERE opinion.BienBanId = bb.Id
-                          AND opinion.BoPhanId = @CurrentBoPhanId
+                          AND opinion.BoPhanId IN (
+                              SELECT TRY_CONVERT(int,[value]) FROM STRING_SPLIT(@ManagedDepartmentIds,',')
+                          )
                           AND ISNULL(opinion.IsActive, 1) = 1
                         ORDER BY opinion.Id DESC
                     ) myOpinion
@@ -863,6 +873,11 @@ router.get(
                 phieuKiemXacNhan = xacNhanResult.recordset || [];
             }
 
+            const phieuKiemTbpXacNhan = phieuKiemXacNhan.find((item) =>
+                ["TBP", "TBP_CONG_DOAN"].includes(String(item?.VaiTro || "").trim().toUpperCase()) &&
+                String(item?.TrangThai || "").trim().toUpperCase() !== "TU_CHOI"
+            ) || null;
+
             const bienBanXacNhanRows = bienBanXacNhanResult.recordset || [];
             const signatureMap = await loadSignatureDataUrlMap(pool, [
                 ...bienBanXacNhanRows.map((item) => item.NguoiXacNhanId),
@@ -897,6 +912,12 @@ router.get(
                     CreatorConfirmerName: v01Data.meta.CreatorConfirmerName,
                     CreatorSignatureDataUrl: signatureMap.get(Number(v01Data.meta.CreatorConfirmedBy)) || null,
                     NguoiLapSignatureDataUrl: signatureMap.get(Number(v01Data.meta.NguoiLapId ?? info.NguoiLapId)) || null,
+                    PhieuKiemTbpXacNhanId: phieuKiemTbpXacNhan?.NguoiXacNhanId || null,
+                    PhieuKiemTbpXacNhanName: phieuKiemTbpXacNhan?.TenNguoiXacNhan || null,
+                    PhieuKiemTbpXacNhanAt: phieuKiemTbpXacNhan?.ThoiGian || null,
+                    PhieuKiemTbpSignatureDataUrl: phieuKiemTbpXacNhan
+                        ? signatureMap.get(Number(phieuKiemTbpXacNhan.NguoiXacNhanId)) || null
+                        : null,
                     ReviewRound: v01Data.meta.ReviewRound,
                     LastReturnedBy: v01Data.meta.LastReturnedBy,
                     LastReturnedByName: v01Data.meta.LastReturnedByName,
@@ -916,9 +937,7 @@ router.get(
                         !["TRA_LAI_CHINH_SUA", "CHO_THEO_DOI", "HOAN_TAT"].includes(v01Data.meta.TrangThai) &&
                         v01Data.specialistOpinions.length > 0 &&
                         v01Data.specialistOpinions.every((opinion) => Boolean(opinion.HasConfirmed)) &&
-                        (isAdmin(req.user) || (
-                            Number(flowAccess.record.BoPhanTaoId) === Number(req.user.boPhanId) && hasStrictLeadRole(req.user)
-                        )),
+                        (isAdmin(req.user) || await canLeadDepartment(pool, req.user, flowAccess.record.BoPhanTaoId)),
                     IsAdmin: isAdmin(req.user),
                     canEditKphCustomFields: customFieldAccess.canEdit
                 } : null,
@@ -1281,7 +1300,7 @@ router.get(
                 });
             }
 
-            if (!canManageDepartmentAssign(req.user, targetBoPhanId)) {
+            if (!await canManageDepartmentAssign(pool, req.user, targetBoPhanId)) {
                 return res.status(403).json({
                     message: "Không được phép xem danh sách nhân sự của bộ phận này"
                 });
@@ -1608,7 +1627,12 @@ router.post(
             if (version.recordset?.[0]?.MauPhieuVersion === "V01") {
                 return res.status(409).json({ message: "KPH V01 không sử dụng xác nhận tiến độ theo bộ phận" });
             }
-            const targetBoPhanId = isAdmin(req.user) && req.body.boPhanId ? Number(req.body.boPhanId) : Number(req.user.boPhanId)
+            const requestedBoPhanId = Number(req.body.boPhanId) || null;
+            const targetBoPhanId = requestedBoPhanId || Number(req.user.boPhanId);
+            if (!isAdmin(req.user) && !await canLeadDepartment(pool, req.user, targetBoPhanId) &&
+                Number(targetBoPhanId) !== Number(req.user.boPhanId)) {
+                return res.status(403).json({ message: "Bạn không được xác nhận cho bộ phận này" });
+            }
 
             const pendingOpinion = await pool.request()
                 .input("BienBanId", sql.Int, bienBanId)
@@ -1840,8 +1864,7 @@ router.post(
             if (!access.isKphV01) {
                 return res.status(409).json({ message: "Biên bản không sử dụng luồng KPH V01" });
             }
-            const isCreatorDepartmentLead = Number(access.record.BoPhanTaoId) === Number(req.user.boPhanId) &&
-                hasStrictLeadRole(req.user);
+            const isCreatorDepartmentLead = await canLeadDepartment(pool, req.user, access.record.BoPhanTaoId);
             if (!isAdmin(req.user) && !isCreatorDepartmentLead) {
                 return res.status(403).json({ message: "Chỉ Trưởng bộ phận tạo phiếu hoặc ADMIN được xác nhận cuối" });
             }
@@ -1939,7 +1962,8 @@ router.put("/:id/specialist-opinions/:opinionId/draft", authenticateToken, async
             `);
         const row = current.recordset?.[0];
         if (!row) throw Object.assign(new Error("Yêu cầu ý kiến không còn ở trạng thái nhập ý kiến"), { statusCode: 409 });
-        if (!isAdmin(req.user) && Number(row.BoPhanId) !== Number(req.user.boPhanId)) {
+        const managedDepartmentIds = await getManagedDepartmentIds(transaction, req.user.userId, req.user.boPhanId);
+        if (!isAdmin(req.user) && !managedDepartmentIds.includes(Number(row.BoPhanId))) {
             throw Object.assign(new Error("Bạn không thuộc bộ phận được xin ý kiến"), { statusCode: 403 });
         }
         if (row.ConfirmedAt && Number(row.ConfirmedReviewRound) === Number(row.ReviewRound)) {
@@ -2008,8 +2032,8 @@ router.post("/:id/specialist-opinions/:opinionId/confirm", authenticateToken, as
             `);
         const row = current.recordset?.[0];
         if (!row) throw Object.assign(new Error("Yêu cầu ý kiến không còn hiệu lực"), { statusCode: 409 });
-        const ownsDepartment = Number(row.BoPhanId) === Number(req.user.boPhanId);
-        if (!isAdmin(req.user) && (!ownsDepartment || !hasStrictLeadRole(req.user))) {
+        const ownsDepartment = await canLeadDepartment(transaction, req.user, row.BoPhanId);
+        if (!isAdmin(req.user) && !ownsDepartment) {
             throw Object.assign(new Error("Chỉ Trưởng bộ phận được xin ý kiến hoặc ADMIN được xác nhận"), { statusCode: 403 });
         }
         if (!row.NoiDung?.trim() || Number(row.OpinionReviewRound) !== Number(row.ReviewRound)) {
@@ -2065,8 +2089,8 @@ router.post("/:id/specialist-opinions/:opinionId/return", authenticateToken, asy
             `);
         const row = current.recordset?.[0];
         if (!row) throw Object.assign(new Error("Yêu cầu ý kiến không còn hiệu lực"), { statusCode: 409 });
-        const ownsDepartment = Number(row.BoPhanId) === Number(req.user.boPhanId);
-        if (!isAdmin(req.user) && (!ownsDepartment || !hasStrictLeadRole(req.user))) {
+        const ownsDepartment = await canLeadDepartment(transaction, req.user, row.BoPhanId);
+        if (!isAdmin(req.user) && !ownsDepartment) {
             throw Object.assign(new Error("Chỉ Trưởng bộ phận được xin ý kiến hoặc ADMIN được trả lại"), { statusCode: 403 });
         }
         if (!row.NoiDung?.trim() || Number(row.OpinionReviewRound) !== Number(row.ReviewRound)) {

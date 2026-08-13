@@ -5,6 +5,7 @@ const sql = require("mssql");
 const { poolPromise } = require("../db");
 const authenticateToken = require("../middlewares/auth.middleware");
 const requireExactPermission = require("../middlewares/exactPermission.middleware");
+const { getManagedDepartmentIds, canLeadDepartment } = require("../utils/managedDepartments");
 const {
     getBienBanFiles,
     deleteBienBanData,
@@ -36,16 +37,30 @@ const getStandaloneReadAccess = async (pool, bienBanId, user) => {
                 CAST(CASE WHEN @CanViewAll = 1
                     OR bb.NguoiLapId = @UserId
                     OR (@IsDepartmentLead = 1
-                        AND COALESCE(bb.BoPhanTaoId, creator.BoPhanId) = @BoPhanId)
+                        AND (COALESCE(bb.BoPhanTaoId, creator.BoPhanId) = @BoPhanId
+                            OR EXISTS (
+                                SELECT 1 FROM dbo.USER_BO_PHAN_QUAN_LY managed
+                                WHERE managed.UserId=@UserId AND managed.IsActive=1
+                                  AND managed.BoPhanId=COALESCE(bb.BoPhanTaoId, creator.BoPhanId)
+                            )))
                     OR EXISTS (
                         SELECT 1 FROM dbo.BIEN_BAN_ASSIGN assignment
                         WHERE assignment.BienBanId = bb.Id
-                          AND (assignment.BoPhanId = @BoPhanId OR assignment.NguoiXuLyId = @UserId)
+                          AND (assignment.BoPhanId = @BoPhanId OR assignment.NguoiXuLyId = @UserId
+                            OR (@IsDepartmentLead=1 AND EXISTS (
+                                SELECT 1 FROM dbo.USER_BO_PHAN_QUAN_LY managed
+                                WHERE managed.UserId=@UserId AND managed.IsActive=1
+                                  AND managed.BoPhanId=assignment.BoPhanId
+                            )))
                     )
                     OR EXISTS (
                         SELECT 1 FROM dbo.XIN_Y_KIEN opinion
                         WHERE opinion.BienBanId = bb.Id
-                          AND opinion.BoPhanId = @BoPhanId
+                          AND (opinion.BoPhanId = @BoPhanId OR (@IsDepartmentLead=1 AND EXISTS (
+                              SELECT 1 FROM dbo.USER_BO_PHAN_QUAN_LY managed
+                              WHERE managed.UserId=@UserId AND managed.IsActive=1
+                                AND managed.BoPhanId=opinion.BoPhanId
+                          )))
                           AND ISNULL(opinion.IsActive, 1) = 1
                     )
                     OR EXISTS (
@@ -78,7 +93,7 @@ const getHeaderAccess = async (pool, bienBanId, user) => {
         !["CHO_THEO_DOI", "HOAN_TAT"].includes(record.TrangThai) &&
         (!record.OpinionDepartmentsConfirmedAt || record.TrangThai === "TRA_LAI_CHINH_SUA") && (
         Number(record.NguoiLapId) === Number(user?.userId) ||
-        (Number(record.CreatorBoPhanId) === Number(user?.boPhanId) && hasStrictLeadRole(user)) ||
+        await canLeadDepartment(pool, user, record.CreatorBoPhanId) ||
         isAdmin(user)
     );
     return { exists: true, canEdit, record };
@@ -117,15 +132,23 @@ router.get("/", authenticateToken, async (req, res) => {
         const pool = await poolPromise;
         const canViewAll = hasGlobalKphVisibility(req.user);
 
-        const request = pool.request();
-        if (!canViewAll) {
-            request.input("UserId", sql.Int, req.user.userId);
-            request.input("BoPhanId", sql.Int, req.user.boPhanId);
-            request.input("IsDepartmentLead", sql.Bit, isDepartmentLead(req.user));
+        const managedDepartmentIds = await getManagedDepartmentIds(pool, req.user.userId, req.user.boPhanId);
+        let rows = [];
+        if (canViewAll) {
+            const result = await pool.request().execute("sp_PhieuXuLyKPH_GetList");
+            rows = result.recordset || [];
+        } else {
+            const rowsById = new Map();
+            for (const departmentId of managedDepartmentIds) {
+                const result = await pool.request()
+                    .input("UserId", sql.Int, req.user.userId)
+                    .input("BoPhanId", sql.Int, departmentId)
+                    .input("IsDepartmentLead", sql.Bit, isDepartmentLead(req.user))
+                    .execute("sp_PhieuXuLyKPH_GetList");
+                (result.recordset || []).forEach((item) => rowsById.set(Number(item.BienBanId), item));
+            }
+            rows = [...rowsById.values()];
         }
-
-        const result = await request.execute("sp_PhieuXuLyKPH_GetList");
-        const rows = result.recordset || [];
         const ids = rows.map((item) => Number(item.BienBanId)).filter((id) => Number.isInteger(id) && id > 0);
         if (!ids.length) return res.json(rows);
         const creatorDepartmentResult = await pool.request().query(`
@@ -211,7 +234,7 @@ router.get("/", authenticateToken, async (req, res) => {
                 OpinionDepartments: []
             };
             const myPending = progress.pending.find((pending) =>
-                pending.departmentId === Number(req.user.boPhanId)
+                managedDepartmentIds.includes(pending.departmentId)
             );
             return {
                 ...item,
@@ -460,6 +483,7 @@ router.get("/:id", authenticateToken, async (req, res) => {
             `);
         const printMeta = v01Result.recordsets?.[0]?.[0] || { MauPhieuVersion: "V00" };
         const headerAccess = await getHeaderAccess(pool, bienBanId, req.user);
+        const managedDepartmentIds = await getManagedDepartmentIds(pool, req.user.userId, req.user.boPhanId);
         const proposalResult = await pool.request()
             .input("BienBanId", sql.Int, bienBanId)
             .query(`
@@ -490,10 +514,10 @@ router.get("/:id", authenticateToken, async (req, res) => {
             info.CanResubmit = info.CanEditReturned;
             const opinionRows = v01Result.recordsets?.[1] || [];
             const isAssignedDepartment = opinionRows.some((opinion) =>
-                Number(opinion.BoPhanId) === Number(req.user.boPhanId)
+                managedDepartmentIds.includes(Number(opinion.BoPhanId))
             );
             const canManageAsCreator = Number(headerAccess.record?.NguoiLapId) === Number(req.user.userId) ||
-                (Number(headerAccess.record?.CreatorBoPhanId) === Number(req.user.boPhanId) && hasStrictLeadRole(req.user)) ||
+                await canLeadDepartment(pool, req.user, headerAccess.record?.CreatorBoPhanId) ||
                 isAdmin(req.user);
             info.CanContributeKphSections = !printMeta.CreatorConfirmedAt &&
                 !["CHO_THEO_DOI", "HOAN_TAT"].includes(printMeta.TrangThai) &&
@@ -504,9 +528,7 @@ router.get("/:id", authenticateToken, async (req, res) => {
                 !printMeta.CreatorConfirmedAt &&
                 !["TRA_LAI_CHINH_SUA", "CHO_THEO_DOI", "HOAN_TAT"].includes(printMeta.TrangThai) &&
                 opinionRows.length > 0 && opinionRows.every((opinion) => Boolean(opinion.HasConfirmed)) &&
-                (isAdmin(req.user) || (
-                    Number(info.BoPhanTaoId) === Number(req.user.boPhanId) && hasStrictLeadRole(req.user)
-                ));
+                (isAdmin(req.user) || await canLeadDepartment(pool, req.user, info.BoPhanTaoId));
         }
 
         const defectResult = await pool.request()
@@ -540,7 +562,7 @@ router.get("/:id", authenticateToken, async (req, res) => {
                 const activeReview = Boolean(printMeta.OpinionDepartmentsConfirmed) &&
                     !printMeta.CreatorConfirmedAt &&
                     !["TRA_LAI_CHINH_SUA", "CHO_THEO_DOI", "HOAN_TAT"].includes(printMeta.TrangThai);
-                const ownsDepartment = Number(opinion.BoPhanId) === Number(req.user.boPhanId);
+                const ownsDepartment = managedDepartmentIds.includes(Number(opinion.BoPhanId));
                 const canSave = activeReview && !opinion.HasConfirmed && (isAdmin(req.user) || ownsDepartment);
                 const canLeadAct = canSave && Boolean(opinion.HasOpinion) &&
                     (isAdmin(req.user) || (ownsDepartment && hasStrictLeadRole(req.user)));

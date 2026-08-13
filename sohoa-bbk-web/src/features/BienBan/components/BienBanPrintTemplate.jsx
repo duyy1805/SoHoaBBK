@@ -271,10 +271,10 @@ export const BienBanPrintTemplate = React.forwardRef(({
     const inspectionTbpSignature = (phieuKiemXacNhan || []).find((item) =>
         ['TBP_CONG_DOAN', 'TBP'].includes(String(item?.VaiTro || '').toUpperCase())
     );
-    const v01TbpSignature = inspectionTbpSignature ? {
-        ThoiGian: inspectionTbpSignature.ThoiGian,
-        FullName: inspectionTbpSignature.TenNguoiXacNhan || inspectionTbpSignature.FullName,
-        SignatureDataUrl: inspectionTbpSignature.SignatureDataUrl || null
+    const v01TbpSignature = (inspectionTbpSignature || info.PhieuKiemTbpXacNhanId) ? {
+        ThoiGian: inspectionTbpSignature?.ThoiGian || info.PhieuKiemTbpXacNhanAt,
+        FullName: inspectionTbpSignature?.TenNguoiXacNhan || inspectionTbpSignature?.FullName || info.PhieuKiemTbpXacNhanName,
+        SignatureDataUrl: inspectionTbpSignature?.SignatureDataUrl || info.PhieuKiemTbpSignatureDataUrl || null
     } : {
         ThoiGian: info.CreatorConfirmedAt,
         FullName: info.CreatorConfirmerName,

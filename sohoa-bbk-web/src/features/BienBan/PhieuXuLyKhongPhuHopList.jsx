@@ -82,6 +82,7 @@ const ACTIONABLE_MANAGER_STATUSES = new Set([
 ]);
 
 const getWorkBucket = (item, currentUser, access) => {
+    const managedDepartmentIds = new Set((currentUser.managedBoPhanIds || [currentUser.boPhanId]).map(Number));
     if (["HOAN_TAT", "HOAN_THANH", "DA_XAC_NHAN"].includes(item.TrangThai)) return "done";
     if (!access.isGlobalManager && item.MyDepartmentOpinionStatus === "CHO_Y_KIEN" && item.MyPendingSuggestedUserId) {
         return Number(item.MyPendingSuggestedUserId) === Number(currentUser.userId) ? "action" : "waiting";
@@ -90,11 +91,11 @@ const getWorkBucket = (item, currentUser, access) => {
     const explicitMyTurn = hasServerDecision
         ? item.CanCurrentUserAct === true || item.CanCurrentUserAct === 1
         : Number(item.NguoiXuLyId) === Number(currentUser.userId) ||
-            Number(item.BoPhanId) === Number(currentUser.boPhanId) ||
-            Number(item.BoPhanDangChoId) === Number(currentUser.boPhanId);
+            managedDepartmentIds.has(Number(item.BoPhanId)) ||
+            managedDepartmentIds.has(Number(item.BoPhanDangChoId));
     const globalManagerTurn = access.isGlobalManager && ACTIONABLE_MANAGER_STATUSES.has(item.TrangThai);
     const departmentLeadFallback = !hasServerDecision && access.isDepartmentLead &&
-        Number(item.CreatorBoPhanId) === Number(currentUser.boPhanId) &&
+        managedDepartmentIds.has(Number(item.CreatorBoPhanId)) &&
         ACTIONABLE_MANAGER_STATUSES.has(item.TrangThai);
     return explicitMyTurn || globalManagerTurn || departmentLeadFallback ? "action" : "waiting";
 };
@@ -129,6 +130,9 @@ export default function PhieuXuLyKhongPhuHopList() {
     const restoredScrollKeyRef = useRef("");
     const initialWorkFilterResolvedRef = useRef(searchParams.has("work"));
     const currentUser = useMemo(() => decodeToken() || {}, []);
+    const managedDepartmentIds = useMemo(() => new Set(
+        (currentUser.managedBoPhanIds || [currentUser.boPhanId]).map(Number)
+    ), [currentUser]);
     const access = useMemo(() => {
         const permissions = currentUser.permissions || [];
         const roles = (currentUser.roles || []).map((role) => String(role || "").toUpperCase());
@@ -249,11 +253,11 @@ export default function PhieuXuLyKhongPhuHopList() {
                 .includes(normalizeSearchText(creatorFilter))) return false;
             if (workFilter !== "all" && getWorkBucket(item, currentUser, access) !== workFilter) return false;
             if (statusFilter && item.TrangThai !== statusFilter) return false;
-            if (departmentFilter === "mine" && Number(item.CreatorBoPhanId) !== Number(currentUser.boPhanId)) return false;
+            if (departmentFilter === "mine" && !managedDepartmentIds.has(Number(item.CreatorBoPhanId))) return false;
             if (!["all", "mine"].includes(departmentFilter) && Number(item.CreatorBoPhanId) !== Number(departmentFilter)) return false;
             const opinionDepartmentIds = (Array.isArray(item.OpinionDepartments) ? item.OpinionDepartments : [])
                 .map((department) => Number(department.id));
-            if (opinionDepartmentFilter === "mine" && !opinionDepartmentIds.includes(Number(currentUser.boPhanId))) return false;
+            if (opinionDepartmentFilter === "mine" && !opinionDepartmentIds.some((id) => managedDepartmentIds.has(Number(id)))) return false;
             if (!["all", "mine"].includes(opinionDepartmentFilter)
                 && !opinionDepartmentIds.includes(Number(opinionDepartmentFilter))) return false;
 
@@ -279,7 +283,7 @@ export default function PhieuXuLyKhongPhuHopList() {
             ].filter(Boolean).join(" "));
             return searchableText.includes(normalizeSearchText(keyword));
         });
-    }, [data, searchText, numberFilter, itemFilter, kphFilter, descriptionFilter, creatorFilter, workFilter, statusFilter, departmentFilter, opinionDepartmentFilter, dateFrom, dateTo, currentUser, access]);
+    }, [data, searchText, numberFilter, itemFilter, kphFilter, descriptionFilter, creatorFilter, workFilter, statusFilter, departmentFilter, opinionDepartmentFilter, dateFrom, dateTo, currentUser, access, managedDepartmentIds]);
 
     const paginatedData = useMemo(() => {
         const startIndex = page * rowsPerPage;

@@ -35,6 +35,9 @@ const decodeRowVersion = (value) => {
 const encodeRowVersion = (value) => value?.toString("base64") || null;
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 const txRequest = (transaction) => new sql.Request(transaction);
+const hasDepartmentLeadRole = (roles) => (roles || []).some((role) =>
+    String(role?.RoleCode || role || "").toUpperCase() === "TP_BP"
+);
 
 const mapRole = (row) => ({ ...row, RowVersion: encodeRowVersion(row.RowVersion) });
 const mapUser = (row) => ({
@@ -130,6 +133,13 @@ async function getUserSnapshot(executor, userId) {
         JOIN dbo.PERMISSIONS p ON p.Id=rp.PermissionId
         WHERE ur.UserId=@UserId
         ORDER BY p.PermissionCode;
+        SELECT mapping.BoPhanId, bp.MaBoPhan, bp.TenBoPhan, mapping.AddedAt,
+               addedBy.FullName AS AddedByName
+        FROM dbo.USER_BO_PHAN_QUAN_LY mapping
+        JOIN dbo.DM_BO_PHAN bp ON bp.Id=mapping.BoPhanId
+        LEFT JOIN dbo.USERS addedBy ON addedBy.Id=mapping.AddedBy
+        WHERE mapping.UserId=@UserId AND mapping.IsActive=1
+        ORDER BY bp.MaBoPhan, bp.TenBoPhan;
     `);
     const user = result.recordsets[0]?.[0];
     if (!user) return null;
@@ -139,7 +149,9 @@ async function getUserSnapshot(executor, userId) {
         ...mapUser(user),
         SignatureDataUrl: signatureDataUrl,
         roles: result.recordsets[1] || [],
-        permissions: result.recordsets[2] || []
+        permissions: result.recordsets[2] || [],
+        managedDepartments: result.recordsets[3] || [],
+        managedBoPhanIds: (result.recordsets[3] || []).map((item) => Number(item.BoPhanId))
     };
 }
 
@@ -190,6 +202,44 @@ async function replaceUserRoles(transaction, userId, roleIds) {
             .input("RoleId", sql.Int, roleId)
             .query("INSERT dbo.USER_ROLE (UserId, RoleId) VALUES (@UserId,@RoleId)");
     }
+}
+
+async function replaceManagedDepartments(transaction, userId, departmentIds, actorUserId) {
+    const ids = uniqueIds(departmentIds);
+    if (ids.length) {
+        const activeDepartments = await new sql.Request(transaction).query(`
+            SELECT Id FROM dbo.DM_BO_PHAN WHERE ISNULL(TrangThai,1)=1
+        `);
+        const validIds = new Set((activeDepartments.recordset || []).map((row) => Number(row.Id)));
+        if (ids.some((id) => !validIds.has(id))) throw httpError(400, "Có bộ phận quản lý không hợp lệ");
+    }
+
+    await txRequest(transaction)
+        .input("UserId", sql.Int, userId)
+        .input("ActorUserId", sql.Int, actorUserId)
+        .input("SelectedIds", sql.NVarChar(sql.MAX), ids.join(","))
+        .query(`
+            UPDATE dbo.USER_BO_PHAN_QUAN_LY
+            SET IsActive=0, RemovedBy=@ActorUserId, RemovedAt=SYSDATETIME()
+            WHERE UserId=@UserId AND IsActive=1
+              AND BoPhanId NOT IN (
+                  SELECT TRY_CONVERT(int,[value]) FROM STRING_SPLIT(@SelectedIds,',')
+              );
+
+            INSERT dbo.USER_BO_PHAN_QUAN_LY (UserId,BoPhanId,IsActive,AddedBy,AddedAt)
+            SELECT @UserId,selected.BoPhanId,1,@ActorUserId,SYSDATETIME()
+            FROM (
+                SELECT DISTINCT TRY_CONVERT(int,[value]) AS BoPhanId
+                FROM STRING_SPLIT(@SelectedIds,',')
+                WHERE TRY_CONVERT(int,[value]) IS NOT NULL
+            ) selected
+            WHERE NOT EXISTS (
+                SELECT 1 FROM dbo.USER_BO_PHAN_QUAN_LY currentMapping
+                WHERE currentMapping.UserId=@UserId
+                  AND currentMapping.BoPhanId=selected.BoPhanId
+                  AND currentMapping.IsActive=1
+            );
+        `);
 }
 
 async function replaceRolePermissions(transaction, roleId, permissionIds) {
@@ -406,6 +456,11 @@ router.post("/users", async (req, res) => {
             `);
         const userId = inserted.recordset[0].Id;
         await replaceUserRoles(transaction, userId, roles.map((role) => role.Id));
+        await replaceManagedDepartments(
+            transaction, userId,
+            hasDepartmentLeadRole(roles) ? req.body.managedBoPhanIds : [],
+            req.user.userId
+        );
         const after = await getUserSnapshot(transaction, userId);
         await writeAudit(transaction, req.user.userId, "CREATE_USER", "USER", userId, null, after);
         await transaction.commit();
@@ -446,6 +501,11 @@ router.put("/users/:id", async (req, res) => {
             `);
         if (!updated.recordset.length) throw httpError(409, "Tài khoản đã được người khác cập nhật, vui lòng tải lại");
         await replaceUserRoles(transaction, userId, roles.map((role) => role.Id));
+        await replaceManagedDepartments(
+            transaction, userId,
+            hasDepartmentLeadRole(roles) ? req.body.managedBoPhanIds : [],
+            req.user.userId
+        );
         const actorId = Number(req.user.userId);
         const targetStillManager = await userHasManagementAccess(transaction, userId);
         if (userId === actorId && !targetStillManager) {

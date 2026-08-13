@@ -31,6 +31,9 @@ export default function KphV01WorkflowSections({
     const [followUp, setFollowUp] = useState({ ketQua: "", phieuKphMoiSo: "", ghiChu: "" });
     const [savingId, setSavingId] = useState(null);
     const currentUser = getCurrentUser() || {};
+    const managedDepartmentIds = new Set(
+        (currentUser.managedBoPhanIds || [currentUser.boPhanId, currentUserBoPhanId]).map(Number)
+    );
     const isDepartmentLead = roles.some((role) => String(role || "").toUpperCase().startsWith("TP_"));
     const canFollowUp = isAdmin || permissions.includes("THEO_DOI_KPH") ||
         permissions.includes("KET_LUAN") || permissions.includes("QUAN_TRI_DM");
@@ -46,7 +49,7 @@ export default function KphV01WorkflowSections({
         try {
             setSavingId(opinion.Id);
             const response = await saveSpecialistOpinionDraft(bienBanId, opinion.Id, { noiDung });
-            const ownsDepartment = Number(opinion.BoPhanId) === Number(currentUserBoPhanId);
+            const ownsDepartment = managedDepartmentIds.has(Number(opinion.BoPhanId));
             onPatchOpinion?.(opinion.Id, {
                 NoiDung: noiDung,
                 NguoiTraLoi: currentUser.fullName || currentUser.username || "Người dùng hiện tại",

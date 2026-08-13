@@ -83,12 +83,28 @@ router.post('/login', async (req, res) => {
 
         const permissions = permResult.recordset.map(p => p.PermissionCode);
 
+        const managedDepartmentResult = await pool.request()
+            .input('UserId', sql.Int, user.Id)
+            .query(`
+                SELECT mapping.BoPhanId
+                FROM dbo.USER_BO_PHAN_QUAN_LY mapping
+                JOIN dbo.DM_BO_PHAN department ON department.Id=mapping.BoPhanId
+                WHERE mapping.UserId=@UserId AND mapping.IsActive=1
+                  AND ISNULL(department.TrangThai,1)=1
+                ORDER BY mapping.BoPhanId
+            `);
+        const managedBoPhanIds = [...new Set([
+            Number(user.BoPhanId),
+            ...managedDepartmentResult.recordset.map((item) => Number(item.BoPhanId))
+        ].filter((id) => Number.isInteger(id) && id > 0))];
+
         /* 5️⃣ Tạo JWT */
         const token = jwt.sign(
             {
                 userId: user.Id,
                 username: user.Username,
                 boPhanId: user.BoPhanId,
+                managedBoPhanIds,
                 roles,
                 permissions
             },
@@ -105,6 +121,7 @@ router.post('/login', async (req, res) => {
                 boPhan: user.BoPhan,
                 tenBoPhan: user.TenBoPhan,
                 boPhanId: user.BoPhanId,
+                managedBoPhanIds,
                 roles,
                 permissions
             }

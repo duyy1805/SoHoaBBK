@@ -9,6 +9,7 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
     chiPhi = [],
     hanhDong = [],
     xacNhan = [],
+    phieuKiemXacNhan = [],
     assigns = [],
     dynamicFields = [],
     specialistOpinions = [],
@@ -243,7 +244,19 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
             return map;
         }, new Map()).values()
     );
-    const kphBpsxSignature = (xacNhan || []).find(item => item.VaiTro === 'KPH_BPSX');
+    const inspectionTbpSignature = (phieuKiemXacNhan || []).find((item) =>
+        ['TBP', 'TBP_CONG_DOAN'].includes(String(item?.VaiTro || '').trim().toUpperCase()) &&
+        String(item?.TrangThai || '').trim().toUpperCase() !== 'TU_CHOI'
+    );
+    const kphBpsxSignature = inspectionTbpSignature ? {
+        ThoiGian: inspectionTbpSignature.ThoiGian,
+        FullName: inspectionTbpSignature.TenNguoiXacNhan || inspectionTbpSignature.FullName,
+        SignatureDataUrl: inspectionTbpSignature.SignatureDataUrl || null
+    } : info.PhieuKiemTbpXacNhanId ? {
+        ThoiGian: info.PhieuKiemTbpXacNhanAt,
+        FullName: info.PhieuKiemTbpXacNhanName,
+        SignatureDataUrl: info.PhieuKiemTbpSignatureDataUrl || null
+    } : (xacNhan || []).find(item => item.VaiTro === 'KPH_BPSX');
 
     return (
         <div ref={ref} style={styles.previewBackground} className="preview-background">

@@ -24,6 +24,7 @@ import { getCurrentUser } from "../../utils/auth";
 
 const emptyUserForm = {
     username: "", fullName: "", email: "", boPhanId: "", roleIds: [],
+    managedBoPhanIds: [],
     password: "", confirmPassword: "", rowVersion: ""
 };
 const emptyRoleForm = {
@@ -158,6 +159,7 @@ export default function UserAdminPage() {
                 email: detail.Email || "",
                 boPhanId: detail.BoPhanId || "",
                 roleIds: (detail.roles || []).map((role) => role.Id),
+                managedBoPhanIds: detail.managedBoPhanIds || [],
                 password: "",
                 confirmPassword: "",
                 rowVersion: detail.RowVersion || ""
@@ -240,6 +242,7 @@ export default function UserAdminPage() {
                 email: userForm.email.trim() || null,
                 boPhanId: Number(userForm.boPhanId),
                 roleIds: userForm.roleIds.map(Number),
+                managedBoPhanIds: userForm.managedBoPhanIds.map(Number),
                 rowVersion: userForm.rowVersion
             };
             const res = userDialog.editing
@@ -373,6 +376,10 @@ export default function UserAdminPage() {
 
     const activeRoles = useMemo(() => metadata.roles.filter((role) => role.TrangThai !== false && role.TrangThai !== 0), [metadata.roles]);
     const activeDepartments = useMemo(() => metadata.departments.filter((department) => department.TrangThai !== false && department.TrangThai !== 0), [metadata.departments]);
+    const hasTpBpRole = useMemo(() => userForm.roleIds.some((roleId) => {
+        const role = metadata.roles.find((item) => Number(item.Id) === Number(roleId));
+        return String(role?.RoleCode || "").toUpperCase() === "TP_BP";
+    }), [metadata.roles, userForm.roleIds]);
     const managementPermissionId = metadata.permissions.find((permission) => permission.PermissionCode === "QUAN_TRI_NGUOI_DUNG")?.Id;
     const newRoleGrantsManagement = Boolean(managementPermissionId && roleForm.permissionIds.includes(managementPermissionId));
     const permissionEditGrantsManagement = Boolean(managementPermissionId && permissionIds.includes(managementPermissionId));
@@ -539,6 +546,33 @@ export default function UserAdminPage() {
                                 {activeRoles.map((role) => <MenuItem key={role.Id} value={role.Id}><Checkbox checked={userForm.roleIds.includes(Number(role.Id))} />{role.RoleCode} - {role.RoleName}</MenuItem>)}
                             </Select>
                         </FormControl>
+                        {hasTpBpRole && (
+                            <FormControl fullWidth>
+                                <InputLabel>Đơn vị được quản lý</InputLabel>
+                                <Select
+                                    multiple
+                                    label="Đơn vị được quản lý"
+                                    value={userForm.managedBoPhanIds}
+                                    onChange={(event) => setUserForm((prev) => ({
+                                        ...prev,
+                                        managedBoPhanIds: event.target.value.map(Number)
+                                    }))}
+                                    renderValue={(selected) => (
+                                        <MultiSelectValue values={selected} source={activeDepartments} labelField="MaBoPhan" />
+                                    )}
+                                >
+                                    {activeDepartments.map((department) => (
+                                        <MenuItem key={department.Id} value={department.Id}>
+                                            <Checkbox checked={userForm.managedBoPhanIds.includes(Number(department.Id))} />
+                                            {department.MaBoPhan} - {department.TenBoPhan}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75 }}>
+                                    TP_BP được nhập, xác nhận và trả lại ý kiến thay cho các đơn vị này. Đơn vị chính vẫn được giữ riêng ở trên.
+                                </Typography>
+                            </FormControl>
+                        )}
                         {!userDialog.editing && <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                             <TextField fullWidth required type="password" label="Mật khẩu" value={userForm.password} onChange={(event) => setUserForm((prev) => ({ ...prev, password: event.target.value }))} />
                             <TextField fullWidth required type="password" label="Xác nhận mật khẩu" value={userForm.confirmPassword} onChange={(event) => setUserForm((prev) => ({ ...prev, confirmPassword: event.target.value }))} />

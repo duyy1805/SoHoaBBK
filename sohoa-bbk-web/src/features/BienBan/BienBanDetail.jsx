@@ -173,6 +173,7 @@ export default function BienBanDetail({ standalone = false }) {
     });
 
     const [currentUserBoPhanId, setCurrentUserBoPhanId] = useState(null);
+    const [currentUserManagedBoPhanIds, setCurrentUserManagedBoPhanIds] = useState([]);
     const [currentUserPermissions, setCurrentUserPermissions] = useState([]);
     const [currentUserRoles, setCurrentUserRoles] = useState([]);
 
@@ -245,6 +246,7 @@ export default function BienBanDetail({ standalone = false }) {
         const decoded = decodeToken();
         if (decoded) {
             setCurrentUserBoPhanId(decoded.boPhanId);
+            setCurrentUserManagedBoPhanIds(decoded.managedBoPhanIds || [decoded.boPhanId].filter(Boolean));
             setCurrentUserPermissions(decoded.permissions || []);
             setCurrentUserRoles(decoded.roles || []);
         }
@@ -776,7 +778,7 @@ export default function BienBanDetail({ standalone = false }) {
         setSpecialistOpinions(next);
         if (Object.prototype.hasOwnProperty.call(changes, "HasConfirmed")) {
             const canCreatorRole = currentUserRoles.some((role) => String(role || "").toUpperCase() === "ADMIN") ||
-                (Number(info?.BoPhanTaoId) === Number(currentUserBoPhanId) &&
+                (currentUserManagedBoPhanIds.map(Number).includes(Number(info?.BoPhanTaoId)) &&
                     currentUserRoles.some((role) => String(role || "").toUpperCase().startsWith("TP_")));
             setInfo((currentInfo) => ({
                 ...currentInfo,
@@ -791,7 +793,7 @@ export default function BienBanDetail({ standalone = false }) {
         const decoded = decodeToken() || {};
         const canEditAfterReturn = currentUserRoles.some((role) => String(role || "").toUpperCase() === "ADMIN") ||
             Number(info?.NguoiLapId) === Number(decoded.userId) ||
-            (Number(info?.BoPhanTaoId) === Number(currentUserBoPhanId) &&
+            (currentUserManagedBoPhanIds.map(Number).includes(Number(info?.BoPhanTaoId)) &&
                 currentUserRoles.some((role) => String(role || "").toUpperCase().startsWith("TP_")));
         setInfo((current) => ({
             ...current,
@@ -851,7 +853,7 @@ export default function BienBanDetail({ standalone = false }) {
                         ConfirmedByName: null,
                         ConfirmedAt: null,
                         TrangThai: "CHO_Y_KIEN",
-                        CanSaveOpinion: isAdminUser || Number(item.BoPhanId) === Number(currentUserBoPhanId),
+                        CanSaveOpinion: isAdminUser || currentUserManagedBoPhanIds.map(Number).includes(Number(item.BoPhanId)),
                         CanConfirmOpinion: false,
                         CanReturn: false
                     })));
@@ -959,12 +961,14 @@ export default function BienBanDetail({ standalone = false }) {
     const isV01 = info?.MauPhieuVersion === "V01";
     const canEditKphDefects = isV01 && Boolean(info?.CanManageKphFlow);
     const workflowDepartments = isV01 ? specialistOpinions : assigns;
-    const isAssigned = workflowDepartments.some(a => Number(a.BoPhanId) === Number(currentUserBoPhanId));
+    const currentUserDepartmentIds = new Set((currentUserManagedBoPhanIds.length
+        ? currentUserManagedBoPhanIds : [currentUserBoPhanId]).map(Number));
+    const isAssigned = workflowDepartments.some(a => currentUserDepartmentIds.has(Number(a.BoPhanId)));
     const canAddProposal = isV01
         ? Boolean(info?.CanContributeKphSections)
         : isAssigned;
-    const hasXuLy = xuLy.some(x => Number(x.BoPhanId) === Number(currentUserBoPhanId));
-    const isConfirmed = xacNhan.some(x => Number(x.BoPhanId) === Number(currentUserBoPhanId));
+    const hasXuLy = xuLy.some(x => currentUserDepartmentIds.has(Number(x.BoPhanId)));
+    const isConfirmed = xacNhan.some(x => currentUserDepartmentIds.has(Number(x.BoPhanId)));
     const allConfirmed = assigns.length > 0 && assigns.every(a =>
         xacNhan.some(x => Number(x.BoPhanId) === Number(a.BoPhanId))
     );
@@ -1779,7 +1783,7 @@ export default function BienBanDetail({ standalone = false }) {
                                                 ]}
                                             />
                                         )}
-                                        {!isV01 && isAdminUser && info.AssignConfirmed && <Stack direction="row" flexWrap="wrap" sx={{ mt: 2, gap: 1 }}>{assigns.filter((a) => !xacNhan.some((x) => Number(x.BoPhanId) === Number(a.BoPhanId))).map((a) => <Button key={a.BoPhanId} size="small" variant="outlined" onClick={() => handleConfirmUser(a.BoPhanId)}>Xác nhận thay {a.MaBoPhan}</Button>)}</Stack>}
+                                        {!isV01 && info.AssignConfirmed && <Stack direction="row" flexWrap="wrap" sx={{ mt: 2, gap: 1 }}>{assigns.filter((a) => (isAdminUser || currentUserDepartmentIds.has(Number(a.BoPhanId))) && !xacNhan.some((x) => Number(x.BoPhanId) === Number(a.BoPhanId))).map((a) => <Button key={a.BoPhanId} size="small" variant="outlined" onClick={() => handleConfirmUser(a.BoPhanId)}>Xác nhận {a.MaBoPhan}</Button>)}</Stack>}
 
                                         {!isV01 && !info.AssignConfirmed && assigns.length > 0 && isManagerOrQA && (
                                             <Box sx={{ mt: 2, textAlign: 'right' }}>
