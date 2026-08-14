@@ -6,6 +6,8 @@ const { poolPromise } = require("../db");
 const authenticateToken = require("../middlewares/auth.middleware");
 const requireExactPermission = require("../middlewares/exactPermission.middleware");
 const { getManagedDepartmentIds, canLeadDepartment } = require("../utils/managedDepartments");
+const { loadBienBanListSummaries, mergeBienBanListSummary } = require("../utils/bienBanListSummary");
+const { loadSignatureDataUrlMap } = require("../utils/signatureImage");
 const {
     getBienBanFiles,
     deleteBienBanData,
@@ -166,22 +168,7 @@ router.get("/", authenticateToken, async (req, res) => {
         const creatorDepartmentMap = new Map(
             (creatorDepartmentResult.recordset || []).map((item) => [Number(item.BienBanId), item])
         );
-        const summaryFieldResult = await pool.request().query(`
-            SELECT customField.BienBanId,
-                MAX(CASE WHEN customField.FieldName=N'MaSanPham' THEN customField.FieldValue END) AS MaSanPham,
-                MAX(CASE WHEN customField.FieldName=N'TenSanPham' THEN customField.FieldValue END) AS TenSanPham,
-                MAX(CASE WHEN customField.FieldName=N'DonHang' THEN customField.FieldValue END) AS DonHang,
-                MAX(CASE WHEN customField.FieldName=N'ItemSourceType' THEN customField.FieldValue END) AS ItemSourceType,
-                MAX(CASE WHEN customField.FieldName=N'PhatHienTu' THEN customField.FieldValue END) AS PhatHienTu,
-                MAX(CASE WHEN customField.FieldName=N'MucDo' THEN customField.FieldValue END) AS MucDo
-            FROM dbo.BienBan_CustomFields customField
-            WHERE customField.BienBanId IN (${ids.join(",")})
-              AND customField.FieldName IN (N'MaSanPham',N'TenSanPham',N'DonHang',N'ItemSourceType',N'PhatHienTu',N'MucDo')
-            GROUP BY customField.BienBanId;
-        `);
-        const summaryFieldMap = new Map(
-            (summaryFieldResult.recordset || []).map((item) => [Number(item.BienBanId), item])
-        );
+        const summaryFieldMap = await loadBienBanListSummaries(pool, ids);
         const progressResult = await pool.request().query(`
             SELECT yk.BienBanId,yk.BoPhanId,bp.MaBoPhan,bp.TenBoPhan,
                 yk.SuggestedUserId,suggestedUser.FullName AS SuggestedUserName,
@@ -225,21 +212,19 @@ router.get("/", authenticateToken, async (req, res) => {
         }
         res.json(rows.map((item) => {
             const creatorDepartment = creatorDepartmentMap.get(Number(item.BienBanId)) || {};
-            const summaryFields = summaryFieldMap.get(Number(item.BienBanId)) || {};
+            const summaryFields = summaryFieldMap.get(Number(item.BienBanId));
             const progress = progressMap.get(Number(item.BienBanId));
-            if (!progress) return {
+            if (!progress) return mergeBienBanListSummary({
                 ...item,
                 ...creatorDepartment,
-                ...summaryFields,
                 OpinionDepartments: []
-            };
+            }, summaryFields);
             const myPending = progress.pending.find((pending) =>
                 managedDepartmentIds.includes(pending.departmentId)
             );
-            return {
+            return mergeBienBanListSummary({
                 ...item,
                 ...creatorDepartment,
-                ...summaryFields,
                 SoBoPhan: progress.total,
                 DaCoYKien: progress.done,
                 BoPhanChuaXacNhanText: progress.pending.map((pending) =>
@@ -250,7 +235,7 @@ router.get("/", authenticateToken, async (req, res) => {
                     ? (myPending.hasOpinion ? "CHO_TBP_XAC_NHAN" : "CHO_Y_KIEN")
                     : null,
                 OpinionDepartments: progress.departments
-            };
+            }, summaryFields);
         }));
     } catch (err) {
         console.error("GetStandaloneBienBanList error:", err);
@@ -547,6 +532,24 @@ router.get("/:id", authenticateToken, async (req, res) => {
             LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id=COALESCE(xn.BoPhanId,u.BoPhanId)
             WHERE xn.BienBanId=@BienBanId
         `);
+        const confirmationRows = confirmationResult.recordset || [];
+        const specialistOpinionRows = v01Result.recordsets?.[1] || [];
+        const followUpEvaluation = v01Result.recordsets?.[2]?.[0] || null;
+        const signatureMap = await loadSignatureDataUrlMap(pool, [
+            ...confirmationRows.map((item) => item.NguoiXacNhanId),
+            ...specialistOpinionRows.map((item) => item.ConfirmedBy),
+            printMeta.CreatorConfirmedBy,
+            printMeta.NguoiLapId ?? info?.NguoiLapId,
+            followUpEvaluation?.NguoiTheoDoiId
+        ]);
+        if (info) {
+            info.NguoiLapSignatureDataUrl = signatureMap.get(
+                Number(printMeta.NguoiLapId ?? info.NguoiLapId)
+            ) || null;
+            info.CreatorSignatureDataUrl = signatureMap.get(
+                Number(printMeta.CreatorConfirmedBy)
+            ) || null;
+        }
 
         res.json({
             info,
@@ -554,11 +557,14 @@ router.get("/:id", authenticateToken, async (req, res) => {
             assigns: result.recordsets?.[2] || [],
             xuLy: proposalResult.recordset || [],
             chiPhi: result.recordsets?.[4] || [],
-            xacNhan: confirmationResult.recordset || [],
+            xacNhan: confirmationRows.map((item) => ({
+                ...item,
+                SignatureDataUrl: signatureMap.get(Number(item.NguoiXacNhanId)) || null
+            })),
             hanhDong: result.recordsets?.[6] || [],
             dynamicFields,
             templateVersion: printMeta.MauPhieuVersion,
-            specialistOpinions: (v01Result.recordsets?.[1] || []).map((opinion) => {
+            specialistOpinions: specialistOpinionRows.map((opinion) => {
                 const activeReview = Boolean(printMeta.OpinionDepartmentsConfirmed) &&
                     !printMeta.CreatorConfirmedAt &&
                     !["TRA_LAI_CHINH_SUA", "CHO_THEO_DOI", "HOAN_TAT"].includes(printMeta.TrangThai);
@@ -568,13 +574,17 @@ router.get("/:id", authenticateToken, async (req, res) => {
                     (isAdmin(req.user) || (ownsDepartment && hasStrictLeadRole(req.user)));
                 return {
                     ...opinion,
+                    SignatureDataUrl: signatureMap.get(Number(opinion.ConfirmedBy)) || null,
                     HasResponded: Boolean(opinion.HasConfirmed),
                     CanSaveOpinion: canSave,
                     CanConfirmOpinion: canLeadAct,
                     CanReturn: canLeadAct
                 };
             }),
-            followUpEvaluation: v01Result.recordsets?.[2]?.[0] || null,
+            followUpEvaluation: followUpEvaluation ? {
+                ...followUpEvaluation,
+                SignatureDataUrl: signatureMap.get(Number(followUpEvaluation.NguoiTheoDoiId)) || null
+            } : null,
             printMeta,
             canEditKphCustomFields: headerAccess.canEdit
         });

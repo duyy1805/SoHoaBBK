@@ -3345,7 +3345,7 @@ router.post(
 );
 
 /* =========================================================
-   POST /phieu-kiem/sxbt/confirm-sxbt (legacy/dự phòng, tạm ẩn khỏi UI)
+   POST /phieu-kiem/sxbt/confirm-sxbt (SXBT xác nhận sau Kho)
 ========================================================= */
 router.post(
     '/sxbt/confirm-sxbt',
@@ -3402,7 +3402,7 @@ router.post(
 
             res.json({
                 success: true,
-                message: result.recordset?.[0]?.Message || 'Kho đã xác nhận số lượng nhập. Phiếu SXBT đã hoàn thành.'
+                message: result.recordset?.[0]?.Message || 'Kho đã xác nhận số lượng nhập. Phiếu đang chờ SXBT xác nhận.'
             });
         } catch (err) {
             console.error('SXBT Confirm Kho error:', err);

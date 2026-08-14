@@ -24,6 +24,7 @@ import {
     saveSxbtData,
     completeSxbt,
     splitCompleteSxbt,
+    confirmSxbt,
     confirmKhoSxbt
 } from "../api/phieuKiem.api";
 import { getUser } from "../utils/auth";
@@ -77,6 +78,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
     const hasPermission = (p) => user?.permissions?.includes(p);
     const isKCS = hasPermission("THUC_HIEN_KIEM") || user?.Role === "KCS";
     const isKhoSXBT = hasPermission("XAC_NHAN_KHO_SXBT");
+    const isSxbtApprover = hasPermission("XAC_NHAN_SXBT");
 
     const isCompleted = phieu?.TrangThai === "CHO_SXBT_XAC_NHAN" ||
         phieu?.TrangThai === "CHO_KHO_XAC_NHAN" ||
@@ -96,6 +98,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
             case "CHUA_KIEM": return "#94a3b8";
             case "HOAN_THANH": return "#10b981";
             case "CHO_KHO_XAC_NHAN": return "#2563eb";
+            case "CHO_SXBT_XAC_NHAN": return "#d97706";
             case "CHO_XUONG_XAC_NHAN": return "#f59e0b";
             case "CHO_KIEM_NGHIEM": return "#3b82f6";
             default: return "#64748b";
@@ -108,6 +111,7 @@ export default function SxbtInspectionScreen({ route, navigation }) {
             case "HOAN_THANH": return "Hoàn thành";
             case "HOAN_TAT": return "Hoàn thành";
             case "CHO_KHO_XAC_NHAN": return "Chờ Kho xác nhận";
+            case "CHO_SXBT_XAC_NHAN": return "Chờ SXBT xác nhận";
             case "CHO_XUONG_XAC_NHAN": return "Chờ Kho xác nhận";
             case "CHO_KIEM_NGHIEM": return "Chờ TP_B8 xác nhận";
             default: return status;
@@ -600,13 +604,38 @@ export default function SxbtInspectionScreen({ route, navigation }) {
         try {
             setSaving(true);
             await confirmKhoSxbt(id, lotRows);
-            Alert.alert("Thành công", "Kho đã xác nhận số lượng nhập. Phiếu đã hoàn thành.");
+            Alert.alert("Thành công", "Kho đã xác nhận số lượng nhập. Phiếu đang chờ SXBT xác nhận.");
             navigation.goBack();
         } catch (error) {
             Alert.alert("Lỗi", error?.response?.data?.message || "Không thể xác nhận Kho");
         } finally {
             setSaving(false);
         }
+    };
+
+    const handleConfirmSxbt = () => {
+        Alert.alert(
+            "SXBT xác nhận",
+            "Xác nhận hoàn tất phiếu sau khi Kho đã xác nhận số lượng?",
+            [
+                { text: "Hủy", style: "cancel" },
+                {
+                    text: "Xác nhận",
+                    onPress: async () => {
+                        try {
+                            setSaving(true);
+                            await confirmSxbt(id);
+                            Alert.alert("Thành công", "SXBT đã xác nhận. Phiếu đã hoàn thành.");
+                            navigation.goBack();
+                        } catch (error) {
+                            Alert.alert("Lỗi", error?.response?.data?.message || "Không thể xác nhận SXBT");
+                        } finally {
+                            setSaving(false);
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     const handleSave = async (showSuccessAlert = true) => {
@@ -1178,6 +1207,19 @@ export default function SxbtInspectionScreen({ route, navigation }) {
                             disabled={saving}
                         >
                             {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Kho xác nhận số lượng</Text>}
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                {/* SXBT xác nhận sau khi Kho đã hoàn tất */}
+                {phieu?.TrangThai === "CHO_SXBT_XAC_NHAN" && isSxbtApprover && (
+                    <View style={styles.actionRow}>
+                        <TouchableOpacity
+                            style={[styles.saveBtn, { flex: 1, backgroundColor: "#15803d" }]}
+                            onPress={handleConfirmSxbt}
+                            disabled={saving}
+                        >
+                            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>SXBT xác nhận hoàn tất</Text>}
                         </TouchableOpacity>
                     </View>
                 )}

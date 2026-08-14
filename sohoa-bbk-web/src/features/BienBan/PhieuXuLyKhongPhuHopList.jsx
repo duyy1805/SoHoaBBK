@@ -39,6 +39,12 @@ import { createStandaloneBienBan, getStandaloneBienBanList } from "../../api/bie
 import { decodeToken } from "../../utils/auth";
 import { getBienBanStatusMeta } from "./components/bienBanWorkflow";
 import WorkFilterTabLabel from "./components/WorkFilterTabLabel";
+import {
+    CreatorSummary,
+    NonconformitySummary,
+    ProductSummary
+} from "./components/ListRecordSummary";
+import { MUC_DO_LABELS, PHAT_HIEN_TU_LABELS } from "./components/listRecordSummary.constants";
 
 const normalizeSearchText = (value) => String(value || "")
     .normalize("NFD")
@@ -48,20 +54,6 @@ const normalizeSearchText = (value) => String(value || "")
     .toLowerCase();
 
 const VALID_PAGE_SIZES = [5, 10, 25, 50];
-const PHAT_HIEN_TU_LABELS = {
-    KIEM_TRA_DAU_VAO: "Kiểm tra đầu vào",
-    TRONG_SAN_XUAT: "Trong sản xuất",
-    KIEM_DONG_CONT: "Kiểm cuối",
-    TAI_NCC: "Kiểm tra tại NCC",
-    KHACH_HANG: "Khách hàng",
-    TRONG_KHO: "Trong kho"
-};
-const MUC_DO_LABELS = {
-    LoiLanDau: "Lỗi lần đầu",
-    LoiLapLai: "Lỗi lặp lại",
-    LoiDonLe: "Lỗi đơn lẻ",
-    LoiHangLoat: "Lỗi hàng loạt"
-};
 const parsePageParam = (value) => {
     const parsed = Number.parseInt(value, 10);
     return Number.isInteger(parsed) && parsed > 0 ? parsed - 1 : 0;
@@ -127,7 +119,7 @@ export default function PhieuXuLyKhongPhuHopList() {
         return VALID_PAGE_SIZES.includes(value) ? value : 10;
     });
     const tableContainerRef = useRef(null);
-    const restoredScrollKeyRef = useRef("");
+    const hasRestoredScrollRef = useRef(false);
     const initialWorkFilterResolvedRef = useRef(searchParams.has("work"));
     const currentUser = useMemo(() => decodeToken() || {}, []);
     const managedDepartmentIds = useMemo(() => new Set(
@@ -181,25 +173,26 @@ export default function PhieuXuLyKhongPhuHopList() {
         try {
             setLoading(true);
             const res = await getStandaloneBienBanList();
-            const rows = res.data || [];
-            setData(rows);
-            if (!initialWorkFilterResolvedRef.current) {
-                initialWorkFilterResolvedRef.current = true;
-                if (rows.some((item) => getWorkBucket(item, currentUser, access) === "action")) {
-                    setWorkFilter("action");
-                    updateQuery({ work: "action", page: 1 });
-                }
-            }
+            setData(res.data || []);
         } catch (err) {
             console.error(err);
         } finally {
             setLoading(false);
         }
-    }, [access, currentUser, updateQuery]);
+    }, []);
 
     useEffect(() => {
         loadData();
     }, [loadData]);
+
+    useEffect(() => {
+        if (loading || initialWorkFilterResolvedRef.current) return;
+        initialWorkFilterResolvedRef.current = true;
+        if (data.some((item) => getWorkBucket(item, currentUser, access) === "action")) {
+            setWorkFilter("action");
+            updateQuery({ work: "action", page: 1 });
+        }
+    }, [access, currentUser, data, loading, updateQuery]);
 
     const counts = useMemo(() => data.reduce((result, item) => {
         const bucket = getWorkBucket(item, currentUser, access);
@@ -244,7 +237,7 @@ export default function PhieuXuLyKhongPhuHopList() {
         return data.filter((item) => {
             if (numberFilter && !normalizeSearchText(item.SoBienBan || `BB#${item.BienBanId}`)
                 .includes(normalizeSearchText(numberFilter))) return false;
-            if (itemFilter && !normalizeSearchText(`${item.MaSanPham || ""} ${item.TenSanPham || ""} ${item.DonHang || ""}`)
+            if (itemFilter && !normalizeSearchText(`${item.MaSanPham || ""} ${item.TenSanPham || ""} ${item.DonHang || ""} ${item.Lot || ""}`)
                 .includes(normalizeSearchText(itemFilter))) return false;
             if (kphFilter && !normalizeSearchText(`${PHAT_HIEN_TU_LABELS[item.PhatHienTu] || ""} ${MUC_DO_LABELS[item.MucDo] || ""}`)
                 .includes(normalizeSearchText(kphFilter))) return false;
@@ -278,8 +271,12 @@ export default function PhieuXuLyKhongPhuHopList() {
                 item.MaSanPham,
                 item.TenSanPham,
                 item.DonHang,
+                item.Lot,
                 PHAT_HIEN_TU_LABELS[item.PhatHienTu],
-                MUC_DO_LABELS[item.MucDo]
+                MUC_DO_LABELS[item.MucDo],
+                ...(Array.isArray(item.MainDefects)
+                    ? item.MainDefects.flatMap((defect) => [defect.MaLoi, defect.TenLoi])
+                    : [])
             ].filter(Boolean).join(" "));
             return searchableText.includes(normalizeSearchText(keyword));
         });
@@ -300,7 +297,7 @@ export default function PhieuXuLyKhongPhuHopList() {
     }, [filteredData.length, loading, page, rowsPerPage, updateQuery]);
 
     useEffect(() => {
-        if (loading || restoredScrollKeyRef.current === scrollStorageKey) return;
+        if (loading || hasRestoredScrollRef.current) return;
         const savedValue = sessionStorage.getItem(scrollStorageKey);
         let savedPosition = null;
         try {
@@ -315,7 +312,7 @@ export default function PhieuXuLyKhongPhuHopList() {
             if (Number.isFinite(savedPosition?.windowTop)) {
                 window.scrollTo({ top: savedPosition.windowTop });
             }
-            restoredScrollKeyRef.current = scrollStorageKey;
+            hasRestoredScrollRef.current = true;
         });
         return () => window.cancelAnimationFrame(frame);
     }, [loading, paginatedData.length, scrollStorageKey]);
@@ -555,6 +552,13 @@ export default function PhieuXuLyKhongPhuHopList() {
                         >
                             <TextField
                                 size="small"
+                                label="Nguồn / mức độ KPH"
+                                value={kphFilter}
+                                onChange={(e) => updateFilter(setKphFilter, "kph", e.target.value)}
+                                sx={{ minWidth: 220 }}
+                            />
+                            <TextField
+                                size="small"
                                 label="Từ ngày"
                                 type="date"
                                 value={dateFrom}
@@ -600,38 +604,34 @@ export default function PhieuXuLyKhongPhuHopList() {
                     </Tabs>
                 </Paper>
 
-                <Card sx={{ borderRadius: 3 }}>
+                <Card sx={{ borderRadius: 2.5, boxShadow: "0 4px 20px rgba(15,23,42,0.06)", overflow: "hidden" }}>
                     <CardContent sx={{ p: 0 }}>
-                        <TableContainer ref={tableContainerRef} component={Paper} elevation={0}>
-                            <Table size="small" sx={{ minWidth: 1180, "& .MuiTableCell-root": { px: 1.25, py: 1, fontSize: "0.8rem", verticalAlign: "top" } }}>
+                        <TableContainer
+                            ref={tableContainerRef}
+                            sx={{ display: { xs: "none", md: "block" }, maxHeight: "calc(100vh - 240px)" }}
+                        >
+                            <Table stickyHeader size="small" sx={{ tableLayout: "fixed", "& .MuiTableCell-root": { px: 1.25, py: 1.25, fontSize: "0.8rem", verticalAlign: "top" } }}>
                                 <TableHead sx={{ bgcolor: "#f8fafc" }}>
                                     <TableRow>
-                                        <TableCell sx={{ width: 150 }}>
-                                            {renderFilterHeader({ field: "number", label: "Số biên bản", value: numberFilter, onChange: (value) => updateFilter(setNumberFilter, "number", value), placeholder: "Nhập số biên bản" })}
+                                        <TableCell sx={{ width: "17%" }}>
+                                            {renderFilterHeader({ field: "number", label: "Phiếu KPH", value: numberFilter, onChange: (value) => updateFilter(setNumberFilter, "number", value), placeholder: "Nhập số phiếu" })}
                                         </TableCell>
-                                        <TableCell sx={{ width: 235 }}>
-                                            {renderFilterHeader({ field: "item", label: "VT/BTP/TP", value: itemFilter, onChange: (value) => updateFilter(setItemFilter, "item", value), placeholder: "Nhập mã, tên hoặc đơn hàng" })}
+                                        <TableCell sx={{ width: "22%" }}>
+                                            {renderFilterHeader({ field: "item", label: "VT/BTP/TP", value: itemFilter, onChange: (value) => updateFilter(setItemFilter, "item", value), placeholder: "Nhập mã, tên, Lot hoặc đơn hàng" })}
                                         </TableCell>
-                                        <TableCell sx={{ width: 170 }}>
-                                            {renderFilterHeader({ field: "kph", label: "Thông tin KPH", value: kphFilter, onChange: (value) => updateFilter(setKphFilter, "kph", value), placeholder: "Nhập nguồn hoặc mức độ" })}
+                                        <TableCell sx={{ width: "30%" }}>
+                                            {renderFilterHeader({ field: "description", label: "Sự không phù hợp", value: descriptionFilter, onChange: (value) => updateFilter(setDescriptionFilter, "description", value), placeholder: "Nhập mô tả" })}
                                         </TableCell>
-                                        <TableCell>
-                                            {renderFilterHeader({ field: "description", label: "Mô tả chung", value: descriptionFilter, onChange: (value) => updateFilter(setDescriptionFilter, "description", value), placeholder: "Nhập nội dung mô tả" })}
-                                        </TableCell>
-                                        <TableCell sx={{ width: 170 }}>
+                                        <TableCell sx={{ width: "15%" }}>
                                             {renderFilterHeader({ field: "creator", label: "Người lập", value: creatorFilter, onChange: (value) => updateFilter(setCreatorFilter, "creator", value), placeholder: "Nhập người lập hoặc bộ phận" })}
                                         </TableCell>
-                                        <TableCell sx={{ width: 155 }}>Tiến độ</TableCell>
-                                        <TableCell sx={{ width: 145 }}>
-                                            {renderFilterHeader({ field: "status", label: "Trạng thái", value: statusFilter, onChange: (value) => updateFilter(setStatusFilter, "status", value), options: [{ value: "", label: "Tất cả" }, ...statusOptions] })}
-                                        </TableCell>
-                                        <TableCell align="center" sx={{ width: 115 }}>Thao tác</TableCell>
+                                        <TableCell sx={{ width: "16%" }}>Tiến độ</TableCell>
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
                                     {filteredData.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={8} align="center" sx={{ py: 4, color: "text.secondary" }}>
+                                            <TableCell colSpan={5} align="center" sx={{ py: 4, color: "text.secondary" }}>
                                                 Chưa có phiếu xử lý không phù hợp
                                             </TableCell>
                                         </TableRow>
@@ -646,50 +646,28 @@ export default function PhieuXuLyKhongPhuHopList() {
                                                 <TableCell>
                                                     <Typography variant="body2" fontWeight={700} color="primary.main">{item.SoBienBan || `BB#${item.BienBanId}`}</Typography>
                                                     <Typography variant="caption" color="text.secondary">
-                                                        {item.CreatedAt ? new Date(item.CreatedAt).toLocaleString("vi-VN") : "---"}
+                                                        {item.CreatedAt ? new Date(item.CreatedAt).toLocaleString("vi-VN") : "Chưa có ngày tạo"}
                                                     </Typography>
+                                                    <Box sx={{ mt: 0.6 }}>{renderTrangThaiChip(item.TrangThai)}</Box>
                                                 </TableCell>
                                                 <TableCell>
-                                                    <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
-                                                        <Chip size="small" variant="outlined" color={item.ItemSourceType === "VAT_TU" ? "warning" : item.ItemSourceType === "SAN_PHAM" ? "primary" : "default"} label={item.ItemSourceType === "VAT_TU" ? "Vật tư" : item.ItemSourceType === "SAN_PHAM" ? "BTP/TP" : "VT/BTP/TP"} sx={{ height: 20, fontSize: "0.68rem" }} />
-                                                        <Typography variant="caption" fontWeight={700}>{item.MaSanPham || "Chưa có mã"}</Typography>
-                                                    </Stack>
-                                                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25, lineHeight: 1.35 }}>
-                                                        {item.TenSanPham || "Chưa có thông tin VT/BTP/TP"}
-                                                    </Typography>
-                                                    {item.DonHang && <Typography variant="caption" color="text.secondary">ĐH: {item.DonHang}</Typography>}
+                                                    <ProductSummary item={item} showSourceType />
                                                 </TableCell>
                                                 <TableCell>
-                                                    <Typography variant="caption" fontWeight={600} sx={{ display: "block" }}>
-                                                        {PHAT_HIEN_TU_LABELS[item.PhatHienTu] || "Chưa chọn nguồn phát hiện"}
-                                                    </Typography>
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        {MUC_DO_LABELS[item.MucDo] || "Chưa chọn mức độ"}
-                                                    </Typography>
+                                                    <NonconformitySummary item={item} />
                                                 </TableCell>
                                                 <TableCell>
-                                                    <Typography variant="caption" sx={{ display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 3, overflow: "hidden", lineHeight: 1.4 }}>
-                                                        {item.MoTaChung || "---"}
-                                                    </Typography>
-                                                </TableCell>
-                                                <TableCell>
-                                                    <Typography variant="caption" fontWeight={600}>{item.NguoiLap || "---"}</Typography>
-                                                    <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                                                        {[item.MaBoPhanTao, item.TenBoPhanTao].filter(Boolean).join(" - ") || "Chưa có bộ phận"}
-                                                    </Typography>
+                                                    <CreatorSummary item={item} />
                                                 </TableCell>
                                                 <TableCell>
                                                     <Typography variant="caption" fontWeight={600} sx={{ display: "block" }}>
                                                         {item.SoBoPhan > 0 ? `${item.DaCoYKien || 0}/${item.SoBoPhan} bộ phận` : "Chưa phân công"}
                                                     </Typography>
                                                     {item.BoPhanChuaXacNhanText && (
-                                                        <Typography variant="caption" color="text.secondary">
+                                                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", lineHeight: 1.3, mt: 0.4 }}>
                                                             Chờ: {item.BoPhanChuaXacNhanText}
                                                         </Typography>
                                                     )}
-                                                </TableCell>
-                                                <TableCell>{renderTrangThaiChip(item.TrangThai)}</TableCell>
-                                                <TableCell align="center">
                                                     <Button
                                                         size="small"
                                                         variant={getWorkBucket(item, currentUser, access) === "action" ? "contained" : "outlined"}
@@ -698,7 +676,7 @@ export default function PhieuXuLyKhongPhuHopList() {
                                                             event.stopPropagation();
                                                             openDetail(item.BienBanId);
                                                         }}
-                                                        sx={{ whiteSpace: "nowrap" }}
+                                                        sx={{ whiteSpace: "nowrap", mt: 0.8, minWidth: 0 }}
                                                     >
                                                         {getWorkBucket(item, currentUser, access) === "action"
                                                             ? "Xử lý ngay"
@@ -711,6 +689,50 @@ export default function PhieuXuLyKhongPhuHopList() {
                                 </TableBody>
                             </Table>
                         </TableContainer>
+                        <Stack spacing={1.25} sx={{ display: { xs: "flex", md: "none" }, p: 1.25, bgcolor: "grey.50" }}>
+                            {paginatedData.length === 0 ? (
+                                <Box sx={{ py: 5, textAlign: "center" }}>
+                                    <Typography color="text.secondary">Chưa có phiếu xử lý không phù hợp</Typography>
+                                </Box>
+                            ) : paginatedData.map((item) => {
+                                const bucket = getWorkBucket(item, currentUser, access);
+                                return (
+                                    <Paper key={item.BienBanId} variant="outlined" onClick={() => openDetail(item.BienBanId)} sx={{ p: 1.5, borderRadius: 2, cursor: "pointer" }}>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
+                                            <Box sx={{ minWidth: 0 }}>
+                                                <Typography variant="body2" fontWeight={800} color="primary.main">{item.SoBienBan || `BB#${item.BienBanId}`}</Typography>
+                                                <Typography variant="caption" color="text.secondary">
+                                                    {item.CreatedAt ? new Date(item.CreatedAt).toLocaleString("vi-VN") : "Chưa có ngày tạo"}
+                                                </Typography>
+                                            </Box>
+                                            {renderTrangThaiChip(item.TrangThai)}
+                                        </Stack>
+                                        <Box sx={{ mt: 1.25 }}><ProductSummary item={item} showSourceType /></Box>
+                                        <Box sx={{ mt: 1.25, pt: 1.25, borderTop: 1, borderColor: "divider" }}><NonconformitySummary item={item} /></Box>
+                                        <Box sx={{ mt: 1.25, pt: 1.25, borderTop: 1, borderColor: "divider" }}>
+                                            <Typography variant="caption" color="text.secondary">Người lập</Typography>
+                                            <CreatorSummary item={item} />
+                                        </Box>
+                                        <Box sx={{ mt: 1.25, pt: 1.25, borderTop: 1, borderColor: "divider" }}>
+                                            <Typography variant="caption" fontWeight={600} sx={{ display: "block" }}>
+                                                {item.SoBoPhan > 0 ? `${item.DaCoYKien || 0}/${item.SoBoPhan} bộ phận hoàn thành` : "Chưa phân công bộ phận"}
+                                            </Typography>
+                                            {item.BoPhanChuaXacNhanText && <Typography variant="caption" color="text.secondary">Chờ: {item.BoPhanChuaXacNhanText}</Typography>}
+                                        </Box>
+                                        <Button
+                                            fullWidth
+                                            size="small"
+                                            variant={bucket === "action" ? "contained" : "outlined"}
+                                            endIcon={<ArrowForwardIcon />}
+                                            onClick={(event) => { event.stopPropagation(); openDetail(item.BienBanId); }}
+                                            sx={{ mt: 1.25 }}
+                                        >
+                                            {bucket === "action" ? "Xử lý ngay" : bucket === "done" ? "Xem kết quả" : "Xem tiến độ"}
+                                        </Button>
+                                    </Paper>
+                                );
+                            })}
+                        </Stack>
                         <TablePagination
                             component="div"
                             count={filteredData.length}

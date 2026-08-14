@@ -206,33 +206,43 @@ async function replaceUserRoles(transaction, userId, roleIds) {
 
 async function replaceManagedDepartments(transaction, userId, departmentIds, actorUserId) {
     const ids = uniqueIds(departmentIds);
-    if (ids.length) {
-        const activeDepartments = await new sql.Request(transaction).query(`
-            SELECT Id FROM dbo.DM_BO_PHAN WHERE ISNULL(TrangThai,1)=1
-        `);
-        const validIds = new Set((activeDepartments.recordset || []).map((row) => Number(row.Id)));
-        if (ids.some((id) => !validIds.has(id))) throw httpError(400, "Có bộ phận quản lý không hợp lệ");
-    }
-
     await txRequest(transaction)
         .input("UserId", sql.Int, userId)
         .input("ActorUserId", sql.Int, actorUserId)
         .input("SelectedIds", sql.NVarChar(sql.MAX), ids.join(","))
         .query(`
+            DECLARE @SelectedDepartments TABLE (BoPhanId int NOT NULL PRIMARY KEY);
+
+            INSERT @SelectedDepartments (BoPhanId)
+            SELECT DISTINCT TRY_CONVERT(int,[value])
+            FROM STRING_SPLIT(@SelectedIds,',')
+            WHERE NULLIF(LTRIM(RTRIM([value])),N'') IS NOT NULL
+              AND TRY_CONVERT(int,[value]) IS NOT NULL
+              AND TRY_CONVERT(int,[value]) > 0;
+
+            IF EXISTS (
+                SELECT 1
+                FROM @SelectedDepartments selected
+                LEFT JOIN dbo.DM_BO_PHAN department ON department.Id=selected.BoPhanId
+                WHERE department.Id IS NULL OR ISNULL(department.TrangThai,1)<>1
+            )
+            BEGIN
+                THROW 50001,N'Bộ phận quản lý không tồn tại hoặc đã ngưng sử dụng. Vui lòng tải lại danh mục và chọn lại.',1;
+            END;
+
             UPDATE dbo.USER_BO_PHAN_QUAN_LY
             SET IsActive=0, RemovedBy=@ActorUserId, RemovedAt=SYSDATETIME()
             WHERE UserId=@UserId AND IsActive=1
-              AND BoPhanId NOT IN (
-                  SELECT TRY_CONVERT(int,[value]) FROM STRING_SPLIT(@SelectedIds,',')
+              AND NOT EXISTS (
+                  SELECT 1 FROM @SelectedDepartments selected
+                  WHERE selected.BoPhanId=dbo.USER_BO_PHAN_QUAN_LY.BoPhanId
               );
 
             INSERT dbo.USER_BO_PHAN_QUAN_LY (UserId,BoPhanId,IsActive,AddedBy,AddedAt)
             SELECT @UserId,selected.BoPhanId,1,@ActorUserId,SYSDATETIME()
-            FROM (
-                SELECT DISTINCT TRY_CONVERT(int,[value]) AS BoPhanId
-                FROM STRING_SPLIT(@SelectedIds,',')
-                WHERE TRY_CONVERT(int,[value]) IS NOT NULL
-            ) selected
+            FROM @SelectedDepartments selected
+            JOIN dbo.DM_BO_PHAN department
+              ON department.Id=selected.BoPhanId AND ISNULL(department.TrangThai,1)=1
             WHERE NOT EXISTS (
                 SELECT 1 FROM dbo.USER_BO_PHAN_QUAN_LY currentMapping
                 WHERE currentMapping.UserId=@UserId
@@ -313,6 +323,14 @@ function validateUserInput(body, creating = false) {
 function handleError(res, error, fallback) {
     if (error?.number === 2627 || error?.number === 2601) {
         return res.status(409).json({ message: "Mã hoặc tên đăng nhập đã tồn tại" });
+    }
+    if (error?.number === 50001) {
+        return res.status(400).json({ message: error.message });
+    }
+    if (error?.number === 547 && String(error?.message || "").includes("FK_USER_BO_PHAN_QUAN_LY_BoPhan")) {
+        return res.status(400).json({
+            message: "Bộ phận được quản lý không còn tồn tại. Vui lòng tải lại trang và chọn lại đơn vị."
+        });
     }
     console.error(fallback, error);
     return res.status(error.statusCode || 500).json({ message: error.message || fallback });
@@ -456,11 +474,14 @@ router.post("/users", async (req, res) => {
             `);
         const userId = inserted.recordset[0].Id;
         await replaceUserRoles(transaction, userId, roles.map((role) => role.Id));
-        await replaceManagedDepartments(
-            transaction, userId,
-            hasDepartmentLeadRole(roles) ? req.body.managedBoPhanIds : [],
-            req.user.userId
-        );
+        if (hasDepartmentLeadRole(roles)) {
+            await replaceManagedDepartments(
+                transaction,
+                userId,
+                req.body.managedBoPhanIds,
+                req.user.userId
+            );
+        }
         const after = await getUserSnapshot(transaction, userId);
         await writeAudit(transaction, req.user.userId, "CREATE_USER", "USER", userId, null, after);
         await transaction.commit();
@@ -501,11 +522,16 @@ router.put("/users/:id", async (req, res) => {
             `);
         if (!updated.recordset.length) throw httpError(409, "Tài khoản đã được người khác cập nhật, vui lòng tải lại");
         await replaceUserRoles(transaction, userId, roles.map((role) => role.Id));
-        await replaceManagedDepartments(
-            transaction, userId,
-            hasDepartmentLeadRole(roles) ? req.body.managedBoPhanIds : [],
-            req.user.userId
-        );
+        if (hasDepartmentLeadRole(roles)) {
+            await replaceManagedDepartments(
+                transaction,
+                userId,
+                req.body.managedBoPhanIds,
+                req.user.userId
+            );
+        } else if (before.roles?.some((role) => String(role.RoleCode || "").toUpperCase() === "TP_BP")) {
+            await replaceManagedDepartments(transaction, userId, [], req.user.userId);
+        }
         const actorId = Number(req.user.userId);
         const targetStillManager = await userHasManagementAccess(transaction, userId);
         if (userId === actorId && !targetStillManager) {

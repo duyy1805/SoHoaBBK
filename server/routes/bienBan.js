@@ -14,6 +14,7 @@ const authenticateToken = require("../middlewares/auth.middleware");
 const authorize = require("../middlewares/permission.middleware");
 const requireExactPermission = require("../middlewares/exactPermission.middleware");
 const { getManagedDepartmentIds, canLeadDepartment } = require("../utils/managedDepartments");
+const { loadBienBanListSummaries, mergeBienBanListSummary } = require("../utils/bienBanListSummary");
 
 const hasPermission = (user, permissionCode) =>
     Array.isArray(user?.permissions) && user.permissions.includes(permissionCode);
@@ -648,13 +649,14 @@ router.get(
             const listMetaByBienBanId = new Map(
                 (listMetaResult.recordset || []).map((item) => [Number(item.BienBanId), item])
             );
+            const listSummaryByBienBanId = await loadBienBanListSummaries(pool, bienBanIds);
 
             const normalizedRows = rows.map((item) => {
                 const listMeta = listMetaByBienBanId.get(Number(item.BienBanId)) || {};
-                const enrichedItem = {
+                const enrichedItem = mergeBienBanListSummary({
                     ...item,
                     ...listMeta
-                };
+                }, listSummaryByBienBanId.get(Number(item.BienBanId)));
                 const progress = progressByBienBanId.get(Number(item.BienBanId));
                 const normalProgress = normalProgressByBienBanId.get(Number(item.BienBanId));
                 if (!progress && !normalProgress) return enrichedItem;

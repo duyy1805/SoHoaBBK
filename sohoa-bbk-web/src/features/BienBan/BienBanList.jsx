@@ -41,6 +41,7 @@ import { getMyBienBan } from "../../api/bienBan.api"; // Giữ nguyên import c�
 import { decodeToken } from "../../utils/auth";
 import { getBienBanStatusMeta } from "./components/bienBanWorkflow";
 import WorkFilterTabLabel from "./components/WorkFilterTabLabel";
+import { CreatorSummary, NonconformitySummary, ProductSummary } from "./components/ListRecordSummary";
 
 const normalizeSearchText = (value) => String(value || "")
     .normalize("NFD")
@@ -274,15 +275,11 @@ export default function BienBanList() {
             .sort((a, b) => a.label.localeCompare(b.label, "vi"));
     }, [data]);
 
-    const statusOptions = useMemo(() => [...new Set(data.map((item) => item.TrangThai).filter(Boolean))]
-        .map((value) => ({ value, label: getBienBanStatusMeta(value).label }))
-        .sort((a, b) => a.label.localeCompare(b.label, "vi")), [data]);
-
     const filteredData = useMemo(() => {
         return data.filter((item) => {
             if (filterSoPhieu && !normalizeSearchText(item.SoPhieu).includes(normalizeSearchText(filterSoPhieu))) return false;
             if (filterLoaiKiem && getLoaiKiemValue(item) !== filterLoaiKiem) return false;
-            if (filterProduct && !normalizeSearchText(`${item.TenSanPham || ""} ${item.Lot || ""}`)
+            if (filterProduct && !normalizeSearchText(`${item.MaSanPham || ""} ${item.TenSanPham || ""} ${item.Lot || ""} ${item.DonHang || ""}`)
                 .includes(normalizeSearchText(filterProduct))) return false;
             if (filterCreator && !normalizeSearchText(`${item.NguoiLap || ""} ${item.MaBoPhanTao || ""} ${item.TenBoPhanTao || ""}`)
                 .includes(normalizeSearchText(filterCreator))) return false;
@@ -309,8 +306,16 @@ export default function BienBanList() {
                     item.SoPhieu,
                     item.TenLoaiKiem,
                     item.MaLoaiKiem,
+                    item.MaSanPham,
                     item.TenSanPham,
                     item.Lot,
+                    item.DonHang,
+                    item.MoTaChung,
+                    item.PhatHienTu,
+                    item.MucDo,
+                    ...(Array.isArray(item.MainDefects)
+                        ? item.MainDefects.flatMap((defect) => [defect.MaLoi, defect.TenLoi])
+                        : []),
                     item.NguoiLap,
                     item.MaBoPhanTao,
                     item.TenBoPhanTao,
@@ -645,6 +650,19 @@ export default function BienBanList() {
                             <TextField
                                 select
                                 size="small"
+                                label="Loại kiểm"
+                                value={filterLoaiKiem}
+                                onChange={(e) => updateFilter(setFilterLoaiKiem, "inspectionType", e.target.value)}
+                                sx={{ minWidth: 190 }}
+                            >
+                                <MenuItem value="">Tất cả loại kiểm</MenuItem>
+                                {loaiKiemOptions.map((option) => (
+                                    <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                                ))}
+                            </TextField>
+                            <TextField
+                                select
+                                size="small"
                                 label="Loại biên bản"
                                 value={typeFilter}
                                 onChange={(e) => updateFilter(setTypeFilter, "type", e.target.value)}
@@ -715,29 +733,23 @@ export default function BienBanList() {
                         >
                             <TableHead>
                                 <TableRow>
-                                    <TableCell sx={{ width: "13%", fontWeight: 700, bgcolor: 'background.paper' }}>
+                                    <TableCell sx={{ width: "17%", fontWeight: 700, bgcolor: 'background.paper' }}>
                                         {renderFilterHeader({ field: "number", label: "Biên bản", value: filterSoPhieu, onChange: (value) => updateFilter(setFilterSoPhieu, "number", value), placeholder: "Nhập số biên bản" })}
                                     </TableCell>
-                                    <TableCell sx={{ width: "13%", fontWeight: 700, bgcolor: 'background.paper' }}>
-                                        {renderFilterHeader({ field: "inspectionType", label: "Loại kiểm", value: filterLoaiKiem, onChange: (value) => updateFilter(setFilterLoaiKiem, "inspectionType", value), options: [{ value: "", label: "Tất cả" }, ...loaiKiemOptions] })}
+                                    <TableCell sx={{ width: "22%", fontWeight: 700, bgcolor: 'background.paper' }}>
+                                        {renderFilterHeader({ field: "product", label: "Đối tượng kiểm", value: filterProduct, onChange: (value) => updateFilter(setFilterProduct, "product", value), placeholder: "Nhập mã, tên, Lot hoặc đơn hàng" })}
                                     </TableCell>
-                                    <TableCell sx={{ width: "20%", fontWeight: 700, bgcolor: 'background.paper' }}>
-                                        {renderFilterHeader({ field: "product", label: "Sản phẩm / Lot", value: filterProduct, onChange: (value) => updateFilter(setFilterProduct, "product", value), placeholder: "Nhập sản phẩm hoặc Lot" })}
-                                    </TableCell>
-                                    <TableCell sx={{ width: "20%", fontWeight: 700, bgcolor: 'background.paper' }}>
-                                        {renderFilterHeader({ field: "creator", label: "Người lập / Bộ phận", value: filterCreator, onChange: (value) => updateFilter(setFilterCreator, "creator", value), placeholder: "Nhập người lập hoặc bộ phận" })}
+                                    <TableCell sx={{ width: "30%", fontWeight: 700, bgcolor: 'background.paper' }}>Nội dung không phù hợp</TableCell>
+                                    <TableCell sx={{ width: "15%", fontWeight: 700, bgcolor: 'background.paper' }}>
+                                        {renderFilterHeader({ field: "creator", label: "Người lập", value: filterCreator, onChange: (value) => updateFilter(setFilterCreator, "creator", value), placeholder: "Nhập người lập hoặc bộ phận" })}
                                     </TableCell>
                                     <TableCell sx={{ width: "16%", fontWeight: 700, bgcolor: 'background.paper' }}>Tiến độ</TableCell>
-                                    <TableCell sx={{ width: "13%", fontWeight: 700, bgcolor: 'background.paper' }}>
-                                        {renderFilterHeader({ field: "status", label: "Trạng thái", value: filterStatus, onChange: (value) => updateFilter(setFilterStatus, "status", value), options: [{ value: "", label: "Tất cả" }, ...statusOptions] })}
-                                    </TableCell>
-                                    <TableCell sx={{ width: "5%", fontWeight: 700, bgcolor: 'background.paper' }} align="center" aria-label="Thao tác" />
                                 </TableRow>
                             </TableHead>
                             <TableBody>
                                 {paginatedData.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
+                                        <TableCell colSpan={5} align="center" sx={{ py: 6 }}>
                                             <Typography color="text.secondary">Không tìm thấy biên bản nào phù hợp.</Typography>
                                         </TableCell>
                                     </TableRow>
@@ -763,37 +775,25 @@ export default function BienBanList() {
                                                     {item.SoPhieu}
                                                 </Typography>
                                                 <Typography variant="caption" color="text.secondary">
-                                                    {item.CreatedAt ? new Date(item.CreatedAt).toLocaleDateString('vi-VN') : "—"}
+                                                    {item.CreatedAt ? new Date(item.CreatedAt).toLocaleDateString('vi-VN') : "Chưa có ngày tạo"}
                                                 </Typography>
+                                                <Stack spacing={0.5} alignItems="flex-start" sx={{ mt: 0.65 }}>
+                                                    <Chip label={getLoaiKiemLabel(item)} size="small" variant="outlined" sx={{ height: 21, fontSize: "0.7rem" }} />
+                                                    {renderTrangThaiChip(item)}
+                                                </Stack>
                                             </TableCell>
                                             <TableCell>
-                                                <Chip
-                                                    label={getLoaiKiemLabel(item)}
-                                                    size="small"
-                                                    variant="outlined"
-                                                />
+                                                <ProductSummary item={item} />
                                             </TableCell>
                                             <TableCell>
-                                                <Typography variant="body2" fontWeight={600} title={item.TenSanPham || ""} sx={{ lineHeight: 1.35 }}>
-                                                    {item.TenSanPham || "—"}
-                                                </Typography>
-                                                <Typography variant="caption" color="text.secondary">Lot: {item.Lot || "—"}</Typography>
+                                                <NonconformitySummary item={item} />
                                             </TableCell>
                                             <TableCell>
-                                                <Typography variant="body2" fontWeight={600}>{item.NguoiLap || "—"}</Typography>
-                                                <Typography variant="caption" color="text.secondary" sx={{ display: "block", lineHeight: 1.35 }}>
-                                                    {[item.MaBoPhanTao, item.TenBoPhanTao].filter(Boolean).join(" - ") || "—"}
-                                                </Typography>
-                                                {isSxbtBienBan(item) && item.MaDonVi && (
-                                                    <Typography variant="caption" color="text.secondary">Đơn vị SXBT: {item.MaDonVi}</Typography>
-                                                )}
+                                                <CreatorSummary item={item} showProductionUnit={isSxbtBienBan(item)} />
                                             </TableCell>
                                             <TableCell onClick={(event) => event.stopPropagation()}>
-                                                {renderProgress(item)}
-                                            </TableCell>
-                                            <TableCell align="center">
-                                                <Stack alignItems="center" spacing={0.4} sx={{ minWidth: 0 }}>
-                                                    {renderTrangThaiChip(item)}
+                                                <Stack spacing={0.65} sx={{ minWidth: 0 }}>
+                                                    {renderProgress(item)}
                                                     {myOpinionMeta && (
                                                         <Chip
                                                             icon={<ForumOutlinedIcon />}
@@ -806,27 +806,22 @@ export default function BienBanList() {
                                                     )}
                                                     {pendingText && (
                                                         <Tooltip title={pendingText}>
-                                                            <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: "100%" }}>
+                                                            <Typography variant="caption" color="text.secondary" sx={{ maxWidth: "100%", lineHeight: 1.3 }}>
                                                                 {pendingText}
                                                             </Typography>
                                                         </Tooltip>
                                                     )}
+                                                    <Tooltip title={getActionLabel(item)}>
+                                                        <IconButton
+                                                            size="small"
+                                                            color="primary"
+                                                            onClick={() => openDetail(item)}
+                                                            sx={{ alignSelf: "flex-end", ...(bucket === "action" ? { bgcolor: "primary.main", color: "primary.contrastText", "&:hover": { bgcolor: "primary.dark" } } : {}) }}
+                                                        >
+                                                            {bucket === "action" ? <ArrowForwardIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
+                                                        </IconButton>
+                                                    </Tooltip>
                                                 </Stack>
-                                            </TableCell>
-                                            <TableCell align="center">
-                                                <Tooltip title={getActionLabel(item)}>
-                                                    <IconButton
-                                                        size="small"
-                                                        color="primary"
-                                                        onClick={(event) => {
-                                                            event.stopPropagation();
-                                                            openDetail(item);
-                                                        }}
-                                                        sx={bucket === "action" ? { bgcolor: "primary.main", color: "primary.contrastText", "&:hover": { bgcolor: "primary.dark" } } : undefined}
-                                                    >
-                                                        {bucket === "action" ? <ArrowForwardIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
-                                                    </IconButton>
-                                                </Tooltip>
                                             </TableCell>
                                         </TableRow>
                                     );
@@ -842,7 +837,6 @@ export default function BienBanList() {
                             </Box>
                         ) : paginatedData.map((item) => {
                             const pendingText = getPendingDepartmentsText(item);
-                            const department = [item.MaBoPhanTao, item.TenBoPhanTao].filter(Boolean).join(" - ") || "—";
                             const myOpinionMeta = getMyDepartmentOpinionMeta(item.MyDepartmentOpinionStatus);
                             return (
                                 <Paper
@@ -862,7 +856,7 @@ export default function BienBanList() {
                                         <Box sx={{ minWidth: 0 }}>
                                             <Typography variant="body2" fontWeight={800} color="primary.main">{item.SoPhieu}</Typography>
                                             <Typography variant="caption" color="text.secondary">
-                                                {item.CreatedAt ? new Date(item.CreatedAt).toLocaleDateString('vi-VN') : "—"}
+                                                {item.CreatedAt ? new Date(item.CreatedAt).toLocaleDateString('vi-VN') : "Chưa có ngày tạo"}
                                             </Typography>
                                         </Box>
                                         {renderTrangThaiChip(item)}
@@ -875,10 +869,10 @@ export default function BienBanList() {
                                         sx={{ mt: 1, alignSelf: "flex-start" }}
                                     />
 
-                                    <Typography variant="body2" fontWeight={700} sx={{ mt: 1, lineHeight: 1.35 }}>
-                                        {item.TenSanPham || "—"}
-                                    </Typography>
-                                    <Typography variant="caption" color="text.secondary">Lot: {item.Lot || "—"}</Typography>
+                                    <Box sx={{ mt: 1.25 }}><ProductSummary item={item} /></Box>
+                                    <Box sx={{ mt: 1.25, pt: 1.25, borderTop: 1, borderColor: "divider" }}>
+                                        <NonconformitySummary item={item} />
+                                    </Box>
 
                                     {myOpinionMeta && (
                                         <Chip
@@ -891,18 +885,9 @@ export default function BienBanList() {
                                         />
                                     )}
 
-                                    <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, my: 1.25 }}>
-                                        <Box>
-                                            <Typography variant="caption" color="text.secondary">Người lập</Typography>
-                                            <Typography variant="body2" fontWeight={600}>{item.NguoiLap || "—"}</Typography>
-                                        </Box>
-                                        <Box>
-                                            <Typography variant="caption" color="text.secondary">Bộ phận</Typography>
-                                            <Typography variant="body2" fontWeight={600}>{department}</Typography>
-                                            {isSxbtBienBan(item) && item.MaDonVi && (
-                                                <Typography variant="caption" color="text.secondary">Đơn vị: {item.MaDonVi}</Typography>
-                                            )}
-                                        </Box>
+                                    <Box sx={{ my: 1.25, pt: 1.25, borderTop: 1, borderColor: "divider" }}>
+                                        <Typography variant="caption" color="text.secondary">Người lập</Typography>
+                                        <CreatorSummary item={item} showProductionUnit={isSxbtBienBan(item)} />
                                     </Box>
 
                                     {renderProgress(item)}

@@ -14,5 +14,6 @@ build/
 !server/sql/migrations/20260812_delete_kcs_records_permission.sql
 !server/sql/migrations/20260813_sxbt_actual_quantity.sql
 !server/sql/migrations/20260813_user_managed_departments.sql
+!server/sql/migrations/20260814_sxbt_confirmation_after_warehouse.sql
 
 *.xlsx

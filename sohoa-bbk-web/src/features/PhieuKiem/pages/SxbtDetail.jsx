@@ -27,6 +27,7 @@ import { SxbtPrintTemplate } from "../components/SxbtPrintTemplate";
 import {
     completeSxbt,
     splitCompleteSxbt,
+    confirmSxbt,
     confirmKhoSxbt,
     getPhieuKiemDetail
 } from "../../../api/phieuKiem.api";
@@ -41,6 +42,7 @@ import DeletePhieuKiemButton from "../components/DeletePhieuKiemButton";
 const STATUS_MAP = {
     CHUA_KIEM: { label: "Chưa kiểm", color: "default" },
     CHO_KHO_XAC_NHAN: { label: "Chờ Kho xác nhận", color: "info" },
+    CHO_SXBT_XAC_NHAN: { label: "Chờ SXBT xác nhận", color: "warning" },
     CHO_KIEM_NGHIEM: { label: "Chờ kiểm nghiệm", color: "info" },
     CHO_XUONG_XAC_NHAN: { label: "Chờ Kho xác nhận", color: "warning" },
     HOAN_THANH: { label: "Hoàn thành", color: "success" },
@@ -262,6 +264,7 @@ export default function SxbtDetail() {
 
     const isKCS = hasPermission("THUC_HIEN_KIEM");
     const isKhoSXBT = hasPermission("XAC_NHAN_KHO_SXBT");
+    const isSxbtApprover = hasPermission("XAC_NHAN_SXBT");
     const isCompleted = ["CHO_SXBT_XAC_NHAN", "CHO_KHO_XAC_NHAN", "CHO_KIEM_NGHIEM", "CHO_XUONG_XAC_NHAN", "HOAN_THANH", "HOAN_TAT"].includes(phieu?.TrangThai);
     const canEditKhoQuantity = phieu?.TrangThai === "CHO_KHO_XAC_NHAN" && isKhoSXBT;
     const defectGroups = btpItems.flatMap((item) =>
@@ -399,11 +402,30 @@ export default function SxbtDetail() {
             setActionNotice(null);
             await confirmKhoSxbt(id, lotRows);
             await loadData({ background: true });
-            setActionNotice({ type: "success", message: "Kho đã xác nhận số lượng nhập. Phiếu đã hoàn thành." });
+            setActionNotice({ type: "success", message: "Kho đã xác nhận số lượng nhập. Phiếu đang chờ SXBT xác nhận." });
         } catch (err) {
             setActionNotice({
                 type: "error",
                 message: err?.response?.data?.message || "Không thể xác nhận Kho"
+            });
+        } finally {
+            setLoadingAction(false);
+        }
+    };
+
+    const handleConfirmSxbt = async () => {
+        if (!window.confirm("Xác nhận hoàn tất phiếu SXBT sau khi Kho đã xác nhận số lượng?")) return;
+
+        try {
+            setLoadingAction(true);
+            setActionNotice(null);
+            await confirmSxbt(id);
+            await loadData({ background: true });
+            setActionNotice({ type: "success", message: "SXBT đã xác nhận. Phiếu đã hoàn thành." });
+        } catch (err) {
+            setActionNotice({
+                type: "error",
+                message: err?.response?.data?.message || "Không thể xác nhận SXBT"
             });
         } finally {
             setLoadingAction(false);
@@ -901,6 +923,21 @@ export default function SxbtDetail() {
                                     disabled={loadingAction}
                                 >
                                     {loadingAction ? "Đang xử lý..." : "Kho xác nhận số lượng"}
+                                </Button>
+                            </Stack>
+                        </Paper>
+                    )}
+
+                    {phieu?.TrangThai === "CHO_SXBT_XAC_NHAN" && isSxbtApprover && (
+                        <Paper sx={{ position: "sticky", bottom: 0, zIndex: 9, mt: 2, mb: 3, p: 2, borderTop: "1px solid #e0e0e0" }}>
+                            <Stack direction="row" justifyContent="flex-end">
+                                <Button
+                                    variant="contained"
+                                    color="success"
+                                    onClick={handleConfirmSxbt}
+                                    disabled={loadingAction}
+                                >
+                                    {loadingAction ? "Đang xử lý..." : "SXBT xác nhận hoàn tất"}
                                 </Button>
                             </Stack>
                         </Paper>

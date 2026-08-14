@@ -76,6 +76,9 @@ export default function PhieuListScreen({ navigation }) {
             case "CHO_KHO_XAC_NHAN":
                 return { backgroundColor: "#dbeafe", color: "#1d4ed8", text: "Chờ Kho" };
 
+            case "CHO_SXBT_XAC_NHAN":
+                return { backgroundColor: "#fef3c7", color: "#b45309", text: "Chờ SXBT" };
+
             case "CHO_KIEM_NGHIEM":
                 return { backgroundColor: "#fef3c7", color: "#b45309", text: "Chờ Trưởng bộ phận" };
 

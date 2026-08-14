@@ -186,6 +186,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
             case "DANG_KIEM": return "Đang kiểm";
             case "CHO_XUONG_XAC_NHAN": return "Chờ Trưởng bộ phận";
             case "CHO_KHO_XAC_NHAN": return "Chờ Kho xác nhận";
+            case "CHO_SXBT_XAC_NHAN": return "Chờ SXBT xác nhận";
             case "CHO_KIEM_NGHIEM": return "Chờ Trưởng bộ phận";
             case "HOAN_TAT": return "Hoàn tất";
             default: return status;
