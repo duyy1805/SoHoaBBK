@@ -1017,6 +1017,7 @@ export default function BienBanDetail({ standalone = false }) {
         basicInfoConfirmed: moTaConfirmed,
         canConfirmProcessing,
         canSubmitCompletion,
+        canResubmit: Boolean(info?.CanResubmit),
         actions: {
             editInfo: () => scrollToSection("bien-ban-thong-tin", { focus: true }),
             manageAssignments: () => setOpenAssignModal(true),
@@ -1029,7 +1030,7 @@ export default function BienBanDetail({ standalone = false }) {
         }
     });
     const statusMeta = getBienBanStatusMeta(info?.TrangThai);
-    const missingItems = [
+    const missingItems = info?.TrangThai === "TRA_LAI_CHINH_SUA" ? [] : [
         !moTaConfirmed ? "Mô tả sự không phù hợp" : null,
         defects.length === 0 ? "Ít nhất một dòng lỗi" : null,
         moTaConfirmed && workflowDepartments.length === 0 ? (isV01 ? "Bộ phận cần lấy ý kiến" : "Bộ phận phối hợp xử lý") : null,
@@ -1049,7 +1050,9 @@ export default function BienBanDetail({ standalone = false }) {
     const primaryAction = workflow.guidance.actionLabel && workflow.guidance.onAction ? {
         label: workflow.guidance.actionLabel,
         onClick: workflow.guidance.onAction,
-        color: workflow.guidance.tone === "success" ? "success" : "primary"
+        color: workflow.guidance.tone === "success"
+            ? "success"
+            : workflow.guidance.tone === "error" ? "warning" : "primary"
     } : null;
     const isSavingAny = Object.values(actionSaving).some(Boolean) || confirmSaving;
     const hasUnsavedChanges = isEditingKphHeader || isEditingStandaloneHeader || isEditingStandaloneDefects;

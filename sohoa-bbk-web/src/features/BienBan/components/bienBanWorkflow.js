@@ -40,10 +40,12 @@ export function buildBienBanWorkflow({
     canConfirmProcessing,
     canConfirmBpsxSignature,
     canSubmitCompletion,
+    canResubmit,
     actions = {}
 }) {
     const status = String(info?.TrangThai || "BB_MOI");
     const isFinished = ["HOAN_TAT", "HOAN_THANH", "DA_XAC_NHAN"].includes(status) || Boolean(evaluation);
+    const isReturned = status === "TRA_LAI_CHINH_SUA";
     const isV01 = info?.MauPhieuVersion === "V01";
     const assignConfirmed = isV01
         ? Boolean(info?.OpinionDepartmentsConfirmed)
@@ -66,6 +68,7 @@ export function buildBienBanWorkflow({
     if (assignConfirmed && allProcessingDone && allOpinionsAnswered) activeStep = 4;
     if (allConfirmed || status === "CHO_THEO_DOI") activeStep = 5;
     if (isFinished) activeStep = 6;
+    if (isReturned) activeStep = 3;
 
     const waitingDepartments = assigns
         .filter((assign) => !xacNhan.some((item) => sameDepartment(item.BoPhanId, assign.BoPhanId)))
@@ -89,6 +92,22 @@ export function buildBienBanWorkflow({
             title: "Phiếu đã hoàn thành quy trình",
             description: "Các nội dung đã được khóa. Bạn có thể xem lại lịch sử hoặc in phiếu.",
             tone: "success"
+        };
+    } else if (isReturned) {
+        guidance = canResubmit ? {
+            eyebrow: "CẦN CHỈNH SỬA",
+            title: "Biên bản đã được trả lại",
+            description: "Chỉnh sửa nội dung theo lý do trả lại, sau đó gửi lại để bắt đầu vòng xác nhận mới.",
+            actionLabel: "Chỉnh sửa nội dung",
+            onAction: actions.editInfo,
+            tone: "error"
+        } : {
+            eyebrow: "TẠM DỪNG XÁC NHẬN",
+            title: "Biên bản đang chờ bộ phận lập chỉnh sửa",
+            description: "Bạn chưa thể nhập hoặc xác nhận ý kiến cho đến khi biên bản được gửi lại.",
+            actionLabel: null,
+            onAction: null,
+            tone: "error"
         };
     } else if (!basicReady) {
         guidance = {
@@ -116,15 +135,6 @@ export function buildBienBanWorkflow({
             title: "Chờ người phụ trách chốt phân công",
             description: "Bạn sẽ nhận được thao tác xử lý khi danh sách bộ phận được xác nhận.",
             tone: "info"
-        };
-    } else if (status === "TRA_LAI_CHINH_SUA") {
-        guidance = {
-            eyebrow: "CẦN CHỈNH SỬA",
-            title: "Biên bản đã được trả lại",
-            description: "Bộ phận lập chỉnh sửa nội dung và gửi lại để bắt đầu vòng xác nhận mới.",
-            actionLabel: "Xem nội dung cần sửa",
-            onAction: actions.editInfo,
-            tone: "warning"
         };
     } else if (ownPendingOpinion) {
         guidance = {
@@ -166,5 +176,10 @@ export function buildBienBanWorkflow({
         };
     }
 
-    return { activeStep, guidance, steps: WORKFLOW_STEPS };
+    return {
+        activeStep,
+        returnedStep: isReturned ? 3 : null,
+        guidance,
+        steps: WORKFLOW_STEPS
+    };
 }

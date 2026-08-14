@@ -10,6 +10,7 @@ import TaskAltIcon from "@mui/icons-material/TaskAlt";
 const taskPalette = {
     success: { border: "#86efac", bg: "#f0fdf4", color: "#15803d" },
     warning: { border: "#facc15", bg: "#fffbeb", color: "#a16207" },
+    error: { border: "#fca5a5", bg: "#fff5f5", color: "#b91c1c" },
     info: { border: "#93c5fd", bg: "#eff6ff", color: "#1d4ed8" }
 };
 
@@ -51,7 +52,14 @@ export default function BienBanDetailSidebar({
                     )}
 
                     {hasAction ? (
-                        <Button fullWidth size="small" variant="contained" onClick={guidance.onAction} sx={{ mt: 1.25 }}>
+                        <Button
+                            fullWidth
+                            size="small"
+                            variant="contained"
+                            color={guidance.tone === "error" ? "warning" : "primary"}
+                            onClick={guidance.onAction}
+                            sx={{ mt: 1.25 }}
+                        >
                             {guidance.actionLabel}
                         </Button>
                     ) : (

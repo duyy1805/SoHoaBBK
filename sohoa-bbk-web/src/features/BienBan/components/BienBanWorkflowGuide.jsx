@@ -5,6 +5,7 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import RadioButtonCheckedIcon from "@mui/icons-material/RadioButtonChecked";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 
 const STEP_HELP = [
     "Người lập hoàn thiện thông tin sự không phù hợp và danh sách lỗi.",
@@ -16,7 +17,7 @@ const STEP_HELP = [
 ];
 
 export default function BienBanWorkflowGuide({ workflow, sectionItems = [], onNavigate }) {
-    const { activeStep, steps } = workflow;
+    const { activeStep, returnedStep, steps } = workflow;
 
     return (
         <Stack spacing={0.75} sx={{ mb: 1.5 }}>
@@ -37,7 +38,8 @@ export default function BienBanWorkflowGuide({ workflow, sectionItems = [], onNa
             >
                 {steps.map((step, index) => {
                     const completed = index < activeStep;
-                    const current = index === activeStep && activeStep < steps.length;
+                    const returned = index === returnedStep;
+                    const current = !returned && index === activeStep && activeStep < steps.length;
                     const targetId = sectionItems[index]?.id;
                     return (
                         <Box
@@ -54,16 +56,21 @@ export default function BienBanWorkflowGuide({ workflow, sectionItems = [], onNa
                                 py: 0.375,
                                 borderRadius: 1.5,
                                 border: "1px solid",
-                                borderColor: completed ? "success.light" : current ? "primary.main" : "divider",
-                                bgcolor: completed ? "#f0fdf4" : current ? "#eff6ff" : "background.paper",
+                                borderColor: returned ? "error.main" : completed ? "success.light" : current ? "primary.main" : "divider",
+                                bgcolor: returned ? "#fff5f5" : completed ? "#f0fdf4" : current ? "#eff6ff" : "background.paper",
                                 color: "text.primary",
                                 textAlign: "left",
                                 font: "inherit",
                                 cursor: targetId ? "pointer" : "default",
-                                "&:hover": targetId ? { borderColor: current ? "primary.dark" : "primary.light", bgcolor: current ? "#e0edff" : "#f8fafc" } : undefined
+                                "&:hover": targetId ? {
+                                    borderColor: returned ? "error.dark" : current ? "primary.dark" : "primary.light",
+                                    bgcolor: returned ? "#fee2e2" : current ? "#e0edff" : "#f8fafc"
+                                } : undefined
                             }}
                         >
-                            {completed ? (
+                            {returned ? (
+                                <ErrorOutlineIcon color="error" fontSize="small" />
+                            ) : completed ? (
                                 <CheckCircleIcon color="success" fontSize="small" />
                             ) : current ? (
                                 <RadioButtonCheckedIcon color="primary" fontSize="small" />
@@ -71,12 +78,14 @@ export default function BienBanWorkflowGuide({ workflow, sectionItems = [], onNa
                                 <LockOutlinedIcon color="disabled" fontSize="small" />
                             )}
                             <Box sx={{ minWidth: 0, flex: 1 }}>
-                                <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1 }}>Bước {index + 1}</Typography>
-                                <Typography variant="body2" noWrap sx={{ fontWeight: current || completed ? 700 : 500, lineHeight: 1.15 }}>
+                                <Typography variant="caption" color={returned ? "error.main" : "text.secondary"} sx={{ lineHeight: 1 }}>
+                                    Bước {index + 1}{returned ? " · Đã trả lại" : ""}
+                                </Typography>
+                                <Typography variant="body2" noWrap sx={{ fontWeight: returned || current || completed ? 700 : 500, lineHeight: 1.15 }}>
                                     {step}
                                 </Typography>
                             </Box>
-                            <Tooltip title={STEP_HELP[index]} arrow>
+                            <Tooltip title={returned ? "Tạm dừng — chờ bộ phận lập chỉnh sửa và gửi lại." : STEP_HELP[index]} arrow>
                                 <IconButton
                                     component="span"
                                     size="small"
