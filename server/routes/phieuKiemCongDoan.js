@@ -4,6 +4,7 @@ const { poolPromise } = require('../db');
 const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
 const { attachSignatureDataUrls } = require('../utils/signatureImage');
+const { getManagedDepartmentIds } = require('../utils/managedDepartments');
 
 const router = express.Router();
 const OPEN_STATES = new Set(['TAO_MOI', 'DANG_KIEM', 'CHUA_KIEM']);
@@ -349,12 +350,27 @@ router.get(
                 ? totals.TongSoLuongHieuLuc - totals.TongSoLuongKeHoach
                 : null;
             const xacNhans = await attachSignatureDataUrls(pool, result.recordsets[3] || [], 'NguoiXacNhanId');
+            const capabilities = inspectionCapabilities(req, phieu);
+            if (String(phieu.TrangThai || '').toUpperCase() === 'CHO_TBP_DUYET') {
+                if (isAdmin(req.user)) {
+                    capabilities.canApprove = true;
+                } else if ((req.user?.permissions || []).includes('PHAN_CONG_NGUOI_XU_LY')) {
+                    const managedDepartmentIds = await getManagedDepartmentIds(
+                        pool,
+                        userIdOf(req),
+                        req.user?.boPhanId
+                    );
+                    capabilities.canApprove = managedDepartmentIds.includes(Number(phieu.BoPhanDuyetId));
+                } else {
+                    capabilities.canApprove = false;
+                }
+            }
             res.json(encodeRows({
                 phieu: { ...normalizePhieuDates(phieu), ...totals },
                 plans,
                 xacNhans,
                 readOnly: !OPEN_STATES.has(phieu.TrangThai),
-                capabilities: inspectionCapabilities(req, phieu)
+                capabilities
             }));
         } catch (error) {
             console.error('CongDoan detail error:', error);
@@ -882,10 +898,34 @@ router.post(
     async (req, res) => {
         try {
             const pool = await poolPromise;
+            const phieuKiemId = Number(req.params.id);
+            const approvalResult = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .query(`
+                    SELECT TOP 1 BoPhanDuyetId
+                    FROM dbo.PHIEU_KIEM_CONG_DOAN_HEADER
+                    WHERE PhieuKiemId=@PhieuKiemId
+                `);
+            const approveBoPhanId = Number(approvalResult.recordset?.[0]?.BoPhanDuyetId) || null;
+            if (!approveBoPhanId) {
+                return res.status(400).json({ message: 'Không xác định được bộ phận duyệt của phiếu' });
+            }
+
+            if (!isAdmin(req.user)) {
+                const managedDepartmentIds = await getManagedDepartmentIds(
+                    pool,
+                    userIdOf(req),
+                    req.user?.boPhanId
+                );
+                if (!managedDepartmentIds.includes(approveBoPhanId)) {
+                    return res.status(403).json({ message: 'Bạn không phải Trưởng bộ phận phụ trách bộ phận duyệt của phiếu' });
+                }
+            }
+
             await pool.request()
-                .input('PhieuKiemId', sql.Int, Number(req.params.id))
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
                 .input('UserId', sql.Int, userIdOf(req))
-                .input('BoPhanId', sql.Int, req.user?.boPhanId || null)
+                .input('BoPhanId', sql.Int, approveBoPhanId)
                 .input('IsAdmin', sql.Bit, isAdmin(req.user) ? 1 : 0)
                 .execute('sp_PhieuKiem_CongDoan_Approve');
             res.json({ success: true });

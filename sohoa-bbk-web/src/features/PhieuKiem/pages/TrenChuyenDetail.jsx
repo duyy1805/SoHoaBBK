@@ -268,12 +268,16 @@ export default function TrenChuyenDetail() {
 
     const status = statusMeta(phieu?.TrangThai, phieu?.KetLuan);
     const approveBoPhanId = Number(getFieldValue(dynamicFields, APPROVE_BOPHAN_FIELD) || 0) || null;
-    const canApprove = Boolean(
+    const managedDepartmentIds = new Set([
+        currentUser?.boPhanId,
+        ...(currentUser?.managedBoPhanIds || [])
+    ].map(Number).filter((value) => Number.isInteger(value) && value > 0));
+    const canApprove = capabilities.canApprove ?? Boolean(
         phieu?.TrangThai === "CHO_TBP_DUYET" && (
             currentUser?.permissions?.includes("QUAN_TRI_DM") || (
                 currentUser?.permissions?.includes("PHAN_CONG_NGUOI_XU_LY") &&
                 approveBoPhanId &&
-                Number(currentUser?.boPhanId) === approveBoPhanId
+                managedDepartmentIds.has(approveBoPhanId)
             )
         )
     );

@@ -41,6 +41,7 @@ const { poolPromise } = require('../db');
 const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
 const requireExactPermission = require('../middlewares/exactPermission.middleware');
+const { getManagedDepartmentIds } = require('../utils/managedDepartments');
 const { getClosingScheduleCustomer } = require('../utils/closingScheduleCustomer');
 const { attachSignatureDataUrls, loadSignatureDataUrlMap } = require('../utils/signatureImage');
 const {
@@ -613,6 +614,30 @@ const inspectionCapabilities = (req, phieu = {}) => {
             isAdmin || canInspect || permissions.includes('KET_LUAN')
         )
     };
+};
+
+const inspectionCapabilitiesForApprovalDepartment = async (pool, req, phieu, approveBoPhanId) => {
+    const capabilities = inspectionCapabilities(req, phieu);
+    if (String(phieu?.TrangThai || '').toUpperCase() !== 'CHO_TBP_DUYET') return capabilities;
+
+    const targetDepartmentId = Number(approveBoPhanId);
+    const permissions = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+    const roles = Array.isArray(req.user?.roles) ? req.user.roles : [];
+    const isAdmin = permissions.includes('QUAN_TRI_DM')
+        || roles.some((role) => String(role || '').toUpperCase().includes('ADMIN'));
+    if (isAdmin) return { ...capabilities, canApprove: true };
+    if (!permissions.includes('PHAN_CONG_NGUOI_XU_LY')
+        || !Number.isInteger(targetDepartmentId)
+        || targetDepartmentId <= 0) {
+        return { ...capabilities, canApprove: false };
+    }
+
+    const managedDepartmentIds = await getManagedDepartmentIds(
+        pool,
+        req.user?.userId || req.user?.id,
+        req.user?.boPhanId
+    );
+    return { ...capabilities, canApprove: managedDepartmentIds.includes(targetDepartmentId) };
 };
 
 const applyQuantityFields = (row, plannedField = 'SoLuong') => {
@@ -1613,13 +1638,21 @@ router.get(
                     : null;
 
                 ({ dynamicFields, xacNhans } = await enrichInspectionSignatures(pool, dynamicFields, xacNhans));
+                const approveBoPhanId = Number(dynamicFields.find((field) =>
+                    field.FieldName === CUOI_CHUYEN_APPROVE_BOPHAN_FIELD
+                )?.FieldValue) || null;
                 return res.json({
                     phieu,
                     plans,
                     summary: { ...(summary || {}), ...quantitySummary },
                     dynamicFields,
                     xacNhans,
-                    capabilities: inspectionCapabilities(req, phieu)
+                    capabilities: await inspectionCapabilitiesForApprovalDepartment(
+                        pool,
+                        req,
+                        phieu,
+                        approveBoPhanId
+                    )
                 });
             }
 
@@ -1732,13 +1765,21 @@ router.get(
                 }));
 
                 ({ dynamicFields, xacNhans } = await enrichInspectionSignatures(pool, dynamicFields, xacNhans));
+                const approveBoPhanId = Number(dynamicFields.find((field) =>
+                    field.FieldName === TREN_CHUYEN_APPROVE_BOPHAN_FIELD
+                )?.FieldValue) || null;
                 return res.json({
                     phieu,
                     slots,
                     summary,
                     dynamicFields,
                     xacNhans,
-                    capabilities: inspectionCapabilities(req, phieu)
+                    capabilities: await inspectionCapabilitiesForApprovalDepartment(
+                        pool,
+                        req,
+                        phieu,
+                        approveBoPhanId
+                    )
                 });
             }
 
@@ -2445,20 +2486,14 @@ router.post(
     async (req, res) => {
         const { phieuKiemId } = req.body;
         const userId = req.user?.id || req.user?.userId;
-        const boPhanId = req.user?.boPhanId;
         const isAdmin = isAdminUser(req.user);
 
         if (!phieuKiemId) {
             return res.status(400).json({ message: 'Missing phieuKiemId' });
         }
 
-        if (!boPhanId && !isAdmin) {
-            return res.status(400).json({ message: 'Không xác định được bộ phận của người duyệt' });
-        }
-
         try {
             const pool = await poolPromise;
-            let effectiveBoPhanId = boPhanId;
             const approvalFieldsResult = await pool.request()
                 .input('PhieuKiemId', sql.Int, phieuKiemId)
                 .input('ApproveFieldName', sql.NVarChar(100), CUOI_CHUYEN_APPROVE_BOPHAN_FIELD)
@@ -2474,23 +2509,31 @@ router.post(
                 (approvalFieldsResult.recordset || []).map((field) => [field.FieldName, field.FieldValue])
             );
             const completedByUserId = Number(approvalFields[CUOI_CHUYEN_COMPLETED_BY_FIELD] || 0) || null;
+            const approveBoPhanId = Number(approvalFields[CUOI_CHUYEN_APPROVE_BOPHAN_FIELD] || 0) || null;
 
             if (completedByUserId && Number(userId) === completedByUserId) {
                 return res.status(403).json({ message: 'Người hoàn tất phiếu không được tự duyệt phiếu' });
             }
 
-            if (isAdmin) {
-                effectiveBoPhanId = Number(approvalFields[CUOI_CHUYEN_APPROVE_BOPHAN_FIELD] || 0) || null;
+            if (!approveBoPhanId) {
+                return res.status(400).json({ message: 'Không xác định được bộ phận duyệt của phiếu' });
             }
 
-            if (!effectiveBoPhanId) {
-                return res.status(400).json({ message: 'Không xác định được bộ phận duyệt của phiếu' });
+            if (!isAdmin) {
+                const managedDepartmentIds = await getManagedDepartmentIds(
+                    pool,
+                    userId,
+                    req.user?.boPhanId
+                );
+                if (!managedDepartmentIds.includes(approveBoPhanId)) {
+                    return res.status(403).json({ message: 'Bạn không phải Trưởng bộ phận phụ trách bộ phận duyệt của phiếu' });
+                }
             }
 
             const result = await pool.request()
                 .input('PhieuKiemId', sql.Int, phieuKiemId)
                 .input('UserId', sql.Int, userId)
-                .input('BoPhanId', sql.Int, effectiveBoPhanId)
+                .input('BoPhanId', sql.Int, approveBoPhanId)
                 .input('IsAdmin', sql.Bit, isAdmin ? 1 : 0)
                 .execute('sp_PhieuKiem_CuoiChuyen_Approve');
 
@@ -2728,43 +2771,44 @@ router.post(
     async (req, res) => {
         const { phieuKiemId } = req.body;
         const userId = req.user?.id || req.user?.userId;
-        const boPhanId = req.user?.boPhanId;
         const isAdmin = isAdminUser(req.user);
 
         if (!phieuKiemId) {
             return res.status(400).json({ message: 'Missing phieuKiemId' });
         }
 
-        if (!boPhanId && !isAdmin) {
-            return res.status(400).json({ message: 'Không xác định được bộ phận của người duyệt' });
-        }
-
         try {
             const pool = await poolPromise;
-            let effectiveBoPhanId = boPhanId;
+            const fieldResult = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .input('FieldName', sql.NVarChar(100), TREN_CHUYEN_APPROVE_BOPHAN_FIELD)
+                .query(`
+                    SELECT TOP 1 TRY_CAST(FieldValue AS INT) AS ApproveBoPhanId
+                    FROM dbo.PhieuKiem_CustomFields
+                    WHERE PhieuKiemId = @PhieuKiemId
+                      AND FieldName = @FieldName
+                `);
+            const approveBoPhanId = Number(fieldResult.recordset?.[0]?.ApproveBoPhanId) || null;
 
-            if (isAdmin) {
-                const fieldResult = await pool.request()
-                    .input('PhieuKiemId', sql.Int, phieuKiemId)
-                    .input('FieldName', sql.NVarChar(100), TREN_CHUYEN_APPROVE_BOPHAN_FIELD)
-                    .query(`
-                        SELECT TOP 1 TRY_CAST(FieldValue AS INT) AS ApproveBoPhanId
-                        FROM dbo.PhieuKiem_CustomFields
-                        WHERE PhieuKiemId = @PhieuKiemId
-                          AND FieldName = @FieldName
-                    `);
-
-                effectiveBoPhanId = fieldResult.recordset?.[0]?.ApproveBoPhanId || null;
+            if (!approveBoPhanId) {
+                return res.status(400).json({ message: 'Không xác định được bộ phận duyệt của phiếu' });
             }
 
-            if (!effectiveBoPhanId) {
-                return res.status(400).json({ message: 'Không xác định được bộ phận duyệt của phiếu' });
+            if (!isAdmin) {
+                const managedDepartmentIds = await getManagedDepartmentIds(
+                    pool,
+                    userId,
+                    req.user?.boPhanId
+                );
+                if (!managedDepartmentIds.includes(approveBoPhanId)) {
+                    return res.status(403).json({ message: 'Bạn không phải Trưởng bộ phận phụ trách bộ phận duyệt của phiếu' });
+                }
             }
 
             const result = await pool.request()
                 .input('PhieuKiemId', sql.Int, phieuKiemId)
                 .input('UserId', sql.Int, userId)
-                .input('BoPhanId', sql.Int, effectiveBoPhanId)
+                .input('BoPhanId', sql.Int, approveBoPhanId)
                 .input('IsAdmin', sql.Bit, isAdmin ? 1 : 0)
                 .execute('sp_PhieuKiem_TrenChuyen_Approve');
 

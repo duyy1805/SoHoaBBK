@@ -170,6 +170,7 @@ export default function SxbtDetail() {
     });
 
     useEffect(() => {
+        setDraftConclusion("");
         loadData();
     }, [id]);
 
@@ -287,8 +288,7 @@ export default function SxbtDetail() {
         )
     );
 
-    const inferredKetLuan = phieu?.KetLuan ||
-        (dkThungSanXe === "KHONG_DAT" || dkNgoaiQuan === "KHONG_DAT" || defects.length > 0 ? "KHONG_DAT" : "DAT");
+    const selectedKetLuan = phieu?.KetLuan || draftConclusion || "DAT";
     const splitLotRows = btpItems.flatMap((item) =>
         getBtpLotRows(item).map((lotRow, lotIndex) => ({ item, lotRow, lotIndex }))
     );
@@ -364,7 +364,7 @@ export default function SxbtDetail() {
     };
 
     const handleComplete = async () => {
-        const completionConclusion = draftConclusion || inferredKetLuan;
+        const completionConclusion = selectedKetLuan;
         const label = completionConclusion === "DAT" ? "Đạt" : "Không đạt";
         if (!window.confirm(`Xác nhận hoàn tất phiếu SXBT với kết luận: ${label}?`)) return;
 
@@ -595,7 +595,7 @@ export default function SxbtDetail() {
                                 </Grid>
                                 <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                     <InfoItem label="Kết luận">
-                                        <KetLuanChip value={phieu?.KetLuan} />
+                                        <KetLuanChip value={selectedKetLuan} />
                                     </InfoItem>
                                 </Grid>
                             </Grid>
@@ -892,22 +892,24 @@ export default function SxbtDetail() {
                     {!isCompleted && isKCS && (
                         <Paper sx={{ position: "sticky", bottom: 0, zIndex: 9, mt: 2, mb: 3, p: 2, borderTop: "1px solid #e0e0e0" }}>
                             <Stack direction="row" justifyContent="flex-end" spacing={1.5}>
+                                {selectedKetLuan === "KHONG_DAT" && (
+                                    <Button
+                                        variant="contained"
+                                        color="secondary"
+                                        startIcon={<CallSplitIcon />}
+                                        onClick={handleOpenSplit}
+                                        disabled={loadingAction}
+                                    >
+                                        Tách & hoàn tất
+                                    </Button>
+                                )}
                                 <Button
                                     variant="contained"
-                                    color="secondary"
-                                    startIcon={<CallSplitIcon />}
-                                    onClick={handleOpenSplit}
-                                    disabled={loadingAction}
-                                >
-                                    Tách & hoàn tất
-                                </Button>
-                                <Button
-                                    variant="contained"
-                                    color={inferredKetLuan === "DAT" ? "success" : "error"}
+                                    color={selectedKetLuan === "DAT" ? "success" : "error"}
                                     onClick={handleComplete}
                                     disabled={loadingAction}
                                 >
-                                    {loadingAction ? "Đang xử lý..." : `Hoàn tất - ${inferredKetLuan === "DAT" ? "Đạt" : "Không đạt"}`}
+                                    {loadingAction ? "Đang xử lý..." : `Hoàn tất - ${selectedKetLuan === "DAT" ? "Đạt" : "Không đạt"}`}
                                 </Button>
                             </Stack>
                         </Paper>
@@ -951,7 +953,7 @@ export default function SxbtDetail() {
                     <DialogContent dividers sx={{ bgcolor: '#e5e7eb', p: 2 }}>
                         <SxbtPrintTemplate
                             ref={printRef}
-                            phieu={phieu}
+                            phieu={phieu ? { ...phieu, KetLuan: selectedKetLuan } : phieu}
                             btpItems={btpItems}
                             summary={summary}
                             defects={defects}
@@ -1059,6 +1061,7 @@ export default function SxbtDetail() {
                     sourceSummary={summary}
                     sourceDefects={defects}
                     dynamicFields={dynamicFields}
+                    sourceConclusion={draftConclusion}
                     onClose={() => setDraftOpen(false)}
                     onSaved={async ({ conclusion }) => {
                         setDraftConclusion(conclusion);

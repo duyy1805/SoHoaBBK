@@ -175,16 +175,19 @@ export default function CuoiChuyenDetail() {
     const approveBoPhanId = Number(getFieldValue(dynamicFields, APPROVE_BOPHAN_FIELD) || 0) || null;
     const completedByUserId = Number(getFieldValue(dynamicFields, COMPLETED_BY_FIELD) || 0) || null;
     const isCompletedByCurrentUser = completedByUserId && getUserId(currentUser) === completedByUserId;
-    const canApprove = Boolean(
-        !isCompletedByCurrentUser &&
+    const managedDepartmentIds = new Set([
+        currentUser?.boPhanId,
+        ...(currentUser?.managedBoPhanIds || [])
+    ].map(Number).filter((value) => Number.isInteger(value) && value > 0));
+    const canApprove = !isCompletedByCurrentUser && (capabilities.canApprove ?? Boolean(
         phieu?.TrangThai === "CHO_TBP_DUYET" && (
             currentUser?.permissions?.includes("QUAN_TRI_DM") || (
                 currentUser?.permissions?.includes("PHAN_CONG_NGUOI_XU_LY") &&
                 approveBoPhanId &&
-                Number(currentUser?.boPhanId) === approveBoPhanId
+                managedDepartmentIds.has(approveBoPhanId)
             )
         )
-    );
+    ));
 
     const handleApprove = async () => {
         if (!window.confirm("Duyệt phiếu kiểm cuối chuyền này?")) return;

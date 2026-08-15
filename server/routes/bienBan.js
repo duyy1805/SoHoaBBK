@@ -187,11 +187,23 @@ const snapshotSuggestedProductResponsibles = async (executor, bienBanId, opinion
         .input("OpinionIds", sql.NVarChar(sql.MAX), normalizedOpinionIds.join(","))
         .query(`
         DECLARE @SanPhamId int;
-        SELECT TOP (1) @SanPhamId=COALESCE(
-            TRY_CONVERT(int,localProductField.FieldValue),
-            inspection.SanPhamId,
-            productByCode.Id
-        )
+        DECLARE @IsCongDoan bit = CASE WHEN EXISTS (
+            SELECT 1
+            FROM dbo.BIEN_BAN_KIEM targetBienBan
+            INNER JOIN dbo.PHIEU_KIEM_CONG_DOAN_HEADER congDoanHeader
+                ON congDoanHeader.PhieuKiemId = targetBienBan.PhieuKiemId
+            WHERE targetBienBan.Id = @BienBanId
+        ) THEN 1 ELSE 0 END;
+
+        SELECT TOP (1) @SanPhamId=CASE
+            WHEN @IsCongDoan = 1
+                THEN TRY_CONVERT(int,localProductField.FieldValue)
+            ELSE COALESCE(
+                TRY_CONVERT(int,localProductField.FieldValue),
+                inspection.SanPhamId,
+                productByCode.Id
+            )
+        END
         FROM dbo.BIEN_BAN_KIEM bb
         LEFT JOIN dbo.PHIEU_KIEM inspection ON inspection.Id=bb.PhieuKiemId
         OUTER APPLY (
@@ -824,6 +836,16 @@ router.get(
                     if (field?.FieldName) mergedFieldMap.set(field.FieldName, field);
                 });
                 dynamicFields = Array.from(mergedFieldMap.values());
+
+                if (isCongDoan) {
+                    const productCode = mergedFieldMap.get("MaSanPham")?.FieldValue
+                        || mergedFieldMap.get("MaItem")?.FieldValue;
+                    const productName = mergedFieldMap.get("TenSanPham")?.FieldValue;
+                    const lot = mergedFieldMap.get("Lot")?.FieldValue;
+                    if (productCode) info.MaSanPham = productCode;
+                    if (productName) info.TenSanPham = productName;
+                    if (lot) info.Lot = lot;
+                }
 
                 delete info.DynamicFieldsJSON;
                 delete info.PhieuKiemDynamicFieldsJSON;

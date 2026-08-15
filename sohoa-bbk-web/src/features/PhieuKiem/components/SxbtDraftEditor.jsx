@@ -54,6 +54,7 @@ export default function SxbtDraftEditor({
     sourceSummary,
     sourceDefects = [],
     dynamicFields = [],
+    sourceConclusion = "",
     onClose,
     onSaved
 }) {
@@ -82,7 +83,7 @@ export default function SxbtDraftEditor({
         setSampleRate(sourceSummary?.TyLe == null ? "100" : String(sourceSummary.TyLe));
         setSampleQuantity(sourceSummary?.SoLuongMau == null ? String(phieu?.SoLuong || "") : String(sourceSummary.SoLuongMau));
         setActualQuantity(phieu?.SoLuongThucTe == null ? "" : String(phieu.SoLuongThucTe));
-        setConclusion(phieu?.KetLuan || "DAT");
+        setConclusion(phieu?.KetLuan || sourceConclusion || "DAT");
         setDefects(sourceDefects.filter((defect) => Number(defect.SoLuong) > 0).map((defect, index) => ({
             localId: defect.Id || `defect-${index}`,
             DefectId: Number(defect.DefectId),
@@ -100,7 +101,7 @@ export default function SxbtDraftEditor({
         setError("");
         getDefectList({ phanHe: "SXBT" }).then((response) => setCatalog(response.data || []))
             .catch(() => setError("Không tải được ngân hàng lỗi SXBT."));
-    }, [dynamicFields, open, phieu, sourceBtpItems, sourceDefects, sourceSummary]);
+    }, [dynamicFields, open, phieu, sourceBtpItems, sourceConclusion, sourceDefects, sourceSummary]);
 
     const lotTargets = useMemo(() => btpItems.flatMap((item) =>
         item.LotRows.filter((row) => row.Id).map((row, index) => ({

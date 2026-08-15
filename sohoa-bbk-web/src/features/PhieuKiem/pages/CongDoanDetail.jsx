@@ -311,9 +311,15 @@ export default function CongDoanDetail() {
             ].some((value) => String(value || "").toLocaleLowerCase("vi").includes(keyword));
         });
     }, [availablePlans, data.plans, planSearch, processFilter]);
-    const canApprove = data.phieu?.TrangThai === "CHO_TBP_DUYET"
+    const managedDepartmentIds = new Set([
+        user?.boPhanId,
+        ...(user?.managedBoPhanIds || [])
+    ].map(Number).filter((value) => Number.isInteger(value) && value > 0));
+    const canApprove = data.capabilities?.canApprove ?? (
+        data.phieu?.TrangThai === "CHO_TBP_DUYET"
         && user?.permissions?.includes("PHAN_CONG_NGUOI_XU_LY")
-        && (Number(user?.boPhanId) === Number(data.phieu?.BoPhanDuyetId) || user?.permissions?.includes("QUAN_TRI_DM"));
+        && (managedDepartmentIds.has(Number(data.phieu?.BoPhanDuyetId)) || user?.permissions?.includes("QUAN_TRI_DM"))
+    );
     const canEdit = data.capabilities?.canEdit ?? (
         ["TAO_MOI", "DANG_KIEM", "CHUA_KIEM"].includes(data.phieu?.TrangThai)
         && user?.permissions?.includes("THUC_HIEN_KIEM")

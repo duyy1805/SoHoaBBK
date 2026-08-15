@@ -297,10 +297,15 @@ export default function BienBanSxbtDetail() {
                 bienBanId: info?.BienBanId || bienBanId,
                 fields: fieldsData
             });
-
-            triggerPrint();
         } catch (err) {
-            showToast(err?.response?.data?.message || "Không lưu được thông tin in SXBT", "error");
+            // Quyền in độc lập với quyền chỉnh sửa biên bản. Người chỉ có quyền xem
+            // vẫn được in dữ liệu hiện tại dù không thể lưu các tùy chọn trên bản in.
+            const status = Number(err?.response?.status);
+            if (![403, 409].includes(status)) {
+                showToast(err?.response?.data?.message || "Không lưu được tùy chọn bản in SXBT", "warning");
+            }
+        } finally {
+            triggerPrint();
         }
     };
 
