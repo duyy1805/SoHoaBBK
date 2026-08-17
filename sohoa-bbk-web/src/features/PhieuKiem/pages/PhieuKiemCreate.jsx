@@ -114,6 +114,8 @@ export default function PhieuKiemCreate() {
     const [displayChungLoaiFilter, setDisplayChungLoaiFilter] = useState("");
 
     const [showChungLoaiFilter, setShowChungLoaiFilter] = useState(false);
+    const [showIncomingDateFilter, setShowIncomingDateFilter] = useState(false);
+    const [incomingDateFilter, setIncomingDateFilter] = useState("");
     const [planDateFilter, setPlanDateFilter] = useState("");
     const [planUnitFilter, setPlanUnitFilter] = useState("");
     const [planDepartmentFilter, setPlanDepartmentFilter] = useState("");
@@ -316,6 +318,12 @@ export default function PhieuKiemCreate() {
             );
         }
 
+        if (selectedLoai?.MaLoai === "DAU_VAO" && incomingDateFilter) {
+            result = result.filter((row) =>
+                getLocalDateKey(row.Ngay_Giao || row.Ngay_Invoice) === incomingDateFilter
+            );
+        }
+
         if (isKeHoachSanXuatLoai(selectedLoai)) {
             if (planDateFilter) {
                 result = result.filter((row) => getLocalDateKey(row.Ngay) === planDateFilter);
@@ -332,7 +340,7 @@ export default function PhieuKiemCreate() {
         }
 
         return result;
-    }, [lichList, searchTerm, chungLoaiFilter, selectedLoai, planDateFilter, planUnitFilter, planDepartmentFilter, planProcessFilter]);
+    }, [lichList, searchTerm, chungLoaiFilter, incomingDateFilter, selectedLoai, planDateFilter, planUnitFilter, planDepartmentFilter, planProcessFilter]);
 
     const planFilterOptions = useMemo(() => ({
         dates: [...new Set(lichList.map((row) => getLocalDateKey(row.Ngay)).filter(Boolean))]
@@ -391,6 +399,8 @@ export default function PhieuKiemCreate() {
             setChungLoaiFilter("");
             setDisplayChungLoaiFilter("");
             setShowChungLoaiFilter(false);
+            setIncomingDateFilter("");
+            setShowIncomingDateFilter(false);
             clearPlanFilters();
             setForm((prev) => ({ ...prev, loaiKiemId: "" }));
             return;
@@ -405,6 +415,8 @@ export default function PhieuKiemCreate() {
         setChungLoaiFilter("");
         setDisplayChungLoaiFilter("");
         setShowChungLoaiFilter(false);
+        setIncomingDateFilter("");
+        setShowIncomingDateFilter(false);
         clearPlanFilters();
         setForm((prev) => ({ ...prev, loaiKiemId: value }));
         fetchLichList(option);
@@ -1062,7 +1074,38 @@ export default function PhieuKiemCreate() {
                                             {!isKeHoachSanXuatLoai(selectedLoai) && (
                                                 <TableCell sx={{ minWidth: 80 }}>SL</TableCell>
                                             )}
-                                            <TableCell sx={{ minWidth: 120 }}>Ngày</TableCell>
+                                            <TableCell sx={{ minWidth: selectedLoai?.MaLoai === "DAU_VAO" ? 180 : 120 }}>
+                                                {selectedLoai?.MaLoai === "DAU_VAO" ? (
+                                                    <>
+                                                        <Stack direction="row" alignItems="center" spacing={1}>
+                                                            <Typography variant="subtitle2" fontWeight="bold">
+                                                                Ngày
+                                                            </Typography>
+                                                            <IconButton
+                                                                size="small"
+                                                                title="Lọc theo ngày"
+                                                                aria-label="Lọc danh sách đầu vào theo ngày"
+                                                                onClick={() => setShowIncomingDateFilter((current) => !current)}
+                                                                color={incomingDateFilter ? "primary" : "default"}
+                                                            >
+                                                                <FilterListIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Stack>
+                                                        {showIncomingDateFilter && (
+                                                            <TextField
+                                                                size="small"
+                                                                type="date"
+                                                                value={incomingDateFilter}
+                                                                onChange={(event) => setIncomingDateFilter(event.target.value)}
+                                                                variant="standard"
+                                                                fullWidth
+                                                                inputProps={{ "aria-label": "Ngày cần lọc" }}
+                                                                sx={{ mt: 1 }}
+                                                            />
+                                                        )}
+                                                    </>
+                                                ) : "Ngày"}
+                                            </TableCell>
                                         </TableRow>
                                     </TableHead>
 

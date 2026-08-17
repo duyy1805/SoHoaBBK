@@ -15,6 +15,7 @@ const authorize = require("../middlewares/permission.middleware");
 const requireExactPermission = require("../middlewares/exactPermission.middleware");
 const { getManagedDepartmentIds, canLeadDepartment } = require("../utils/managedDepartments");
 const { loadBienBanListSummaries, mergeBienBanListSummary } = require("../utils/bienBanListSummary");
+const { loadKphSectionRows } = require("../utils/kphSectionRows");
 
 const hasPermission = (user, permissionCode) =>
     Array.isArray(user?.permissions) && user.permissions.includes(permissionCode);
@@ -803,6 +804,7 @@ router.get(
                     WHERE x.BienBanId = @BienBanId
                     ORDER BY x.CreatedAt, x.Id
                 `);
+            const sectionRows = await loadKphSectionRows(pool, id);
 
             // Gộp custom fields của biên bản và phiếu kiểm.
             // Ưu tiên field trên biên bản nếu trùng tên.
@@ -968,10 +970,10 @@ router.get(
                 defects: detailDefects,
                 assigns: mergedAssigns,
                 xuLy: proposalResult.recordset || [],
-                chiPhi: rs[4] || [],
+                chiPhi: sectionRows.chiPhi,
                 xacNhan: bienBanXacNhanRows.map((item) => withSignature(item, "NguoiXacNhanId")),
                 phieuKiemXacNhan: phieuKiemXacNhan.map((item) => withSignature(item, "NguoiXacNhanId")),
-                hanhDong: rs[6] || [],
+                hanhDong: sectionRows.hanhDong,
                 dynamicFields: dynamicFields,
                 canEditKphCustomFields: customFieldAccess.canEdit,
                 templateVersion: v01Data.meta.MauPhieuVersion,
@@ -1455,10 +1457,15 @@ router.post(
                 .map((item) => ({
                     loaiChiPhi: String(item?.loaiChiPhi || "").trim(),
                     giaTri: Number(item?.giaTri) || 0,
-                    thoiHan: item?.thoiHan || null
+                    thoiHan: item?.thoiHan || null,
+                    trachNhiem: String(item?.trachNhiem || "").trim() || null,
+                    theoDoi: String(item?.theoDoi || "").trim() || null
                 }));
             if (items.length === 0 || items.some((item) => !item.loaiChiPhi)) {
                 return res.status(400).json({ message: "Vui lòng nhập tên chi phí" });
+            }
+            if (items.some((item) => item.trachNhiem?.length > 255 || item.theoDoi?.length > 255)) {
+                return res.status(400).json({ message: "Trách nhiệm và theo dõi không được vượt quá 255 ký tự" });
             }
             const pool = await poolPromise;
 
@@ -1499,6 +1506,8 @@ router.post(
                         .input("BoPhanId", sql.Int, targetBoPhanId)
                         .input("ThoiHan", sql.Date, item.thoiHan)
                         .input("CreatedBy", sql.Int, req.user.userId)
+                        .input("TrachNhiem", sql.NVarChar(255), item.trachNhiem)
+                        .input("TheoDoi", sql.NVarChar(255), item.theoDoi)
                         .execute("sp_BienBan_AddChiPhi");
                 }
                 await new sql.Request(transaction)
@@ -1543,12 +1552,16 @@ router.post(
                 .map((item) => ({
                     noiDung: String(item?.noiDung || "").trim(),
                     thoiHan: item?.thoiHan || null,
-                    theoDoi: String(item?.theoDoi || "").trim()
+                    trachNhiem: String(item?.trachNhiem || "").trim() || null,
+                    theoDoi: String(item?.theoDoi || "").trim() || null
                 }));
             if (items.length === 0 || items.some((item) =>
-                !item.noiDung || !item.thoiHan || !item.theoDoi
+                !item.noiDung || !item.thoiHan
             )) {
-                return res.status(400).json({ message: "Vui lòng nhập đầy đủ nội dung, thời hạn và theo dõi" });
+                return res.status(400).json({ message: "Vui lòng nhập đầy đủ nội dung và thời hạn" });
+            }
+            if (items.some((item) => item.trachNhiem?.length > 255 || item.theoDoi?.length > 255)) {
+                return res.status(400).json({ message: "Trách nhiệm và theo dõi không được vượt quá 255 ký tự" });
             }
 
             const userId = req.user.userId;
@@ -1592,6 +1605,7 @@ router.post(
                         .input("ThoiHan", sql.Date, item.thoiHan)
                         .input("TheoDoi", sql.NVarChar(255), item.theoDoi)
                         .input("CreatedBy", sql.Int, userId)
+                        .input("TrachNhiem", sql.NVarChar(255), item.trachNhiem)
                         .execute("sp_BienBan_HanhDong_Add");
                 }
                 await new sql.Request(transaction)

@@ -8,7 +8,7 @@ import {
     CircularProgress, Button, Fade, Paper, Container,
     Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
     Divider, Alert, LinearProgress,
-    Dialog, DialogTitle, DialogContent, DialogActions, TextField
+    Dialog, DialogTitle, DialogContent, DialogActions, TextField, Tabs, Tab
 } from "@mui/material";
 import PrintIcon from "@mui/icons-material/Print";
 import { useReactToPrint } from "react-to-print";
@@ -24,6 +24,7 @@ import CallSplitIcon from "@mui/icons-material/CallSplit";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 
 import { SxbtPrintTemplate } from "../components/SxbtPrintTemplate";
+import { SxbtOfficialPrintTemplate } from "../components/SxbtOfficialPrintTemplate";
 import {
     completeSxbt,
     splitCompleteSxbt,
@@ -144,7 +145,8 @@ export default function SxbtDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
     const returnToList = () => navigate(location.state?.returnTo || "/phieu-kiem");
-    const printRef = useRef();
+    const officialPrintRef = useRef();
+    const detailPrintRef = useRef();
 
     const [loading, setLoading] = useState(true);
     const [phieu, setPhieu] = useState(null);
@@ -159,15 +161,30 @@ export default function SxbtDetail() {
     const [actionNotice, setActionNotice] = useState(null);
     const [loadingAction, setLoadingAction] = useState(false);
     const [openPrint, setOpenPrint] = useState(false);
+    const [printTab, setPrintTab] = useState("official");
     const [splitInfo, setSplitInfo] = useState(null);
     const [openSplit, setOpenSplit] = useState(false);
     const [splitQuantities, setSplitQuantities] = useState({});
     const [draftOpen, setDraftOpen] = useState(false);
     const [draftConclusion, setDraftConclusion] = useState("");
-    const triggerPrint = useReactToPrint({
-        contentRef: printRef,
-        documentTitle: phieu ? `SXBT_${phieu.SoPhieu}` : 'PhieuKiemSXBT',
+    const triggerOfficialPrint = useReactToPrint({
+        contentRef: officialPrintRef,
+        documentTitle: phieu ? `SXBT_${phieu.SoPhieu}_BanKyChinhThuc` : "PhieuKiemSXBT_BanKyChinhThuc",
     });
+    const triggerDetailPrint = useReactToPrint({
+        contentRef: detailPrintRef,
+        documentTitle: phieu ? `SXBT_${phieu.SoPhieu}_ChiTiet` : "PhieuKiemSXBT_ChiTiet",
+    });
+
+    const openPrintPreview = () => {
+        setPrintTab("official");
+        setOpenPrint(true);
+    };
+
+    const triggerSelectedPrint = () => {
+        if (printTab === "official") triggerOfficialPrint();
+        else triggerDetailPrint();
+    };
 
     useEffect(() => {
         setDraftConclusion("");
@@ -502,7 +519,7 @@ export default function SxbtDetail() {
                                     variant="outlined"
                                     size="small"
                                     startIcon={<PrintIcon />}
-                                    onClick={() => setOpenPrint(true)}
+                                    onClick={openPrintPreview}
                                 >
                                     In phiếu
                                 </Button>
@@ -948,26 +965,45 @@ export default function SxbtDetail() {
                 </Container>
 
                 {/* ===== DIALOG IN PHIẾU ===== */}
-                <Dialog open={openPrint} onClose={() => setOpenPrint(false)} maxWidth="md" fullWidth>
-                    <DialogTitle>Xem trước phiếu kiểm SXBT</DialogTitle>
+                <Dialog open={openPrint} onClose={() => setOpenPrint(false)} maxWidth="lg" fullWidth>
+                    <DialogTitle sx={{ pb: 0 }}>Xem trước phiếu kiểm SXBT</DialogTitle>
+                    <Tabs
+                        value={printTab}
+                        onChange={(_, value) => setPrintTab(value)}
+                        sx={{ px: 3, borderBottom: 1, borderColor: "divider" }}
+                    >
+                        <Tab value="official" label="Bản ký chính thức" />
+                        <Tab value="detail" label="Bản in chi tiết" />
+                    </Tabs>
                     <DialogContent dividers sx={{ bgcolor: '#e5e7eb', p: 2 }}>
-                        <SxbtPrintTemplate
-                            ref={printRef}
-                            phieu={phieu ? { ...phieu, KetLuan: selectedKetLuan } : phieu}
-                            btpItems={btpItems}
-                            summary={summary}
-                            defects={defects}
-                            dynamicFields={dynamicFields}
-                            confirmSteps={confirmSteps}
-                            splitInfo={splitInfo}
-                        />
+                        {printTab === "official" ? (
+                            <SxbtOfficialPrintTemplate
+                                ref={officialPrintRef}
+                                phieu={phieu ? { ...phieu, KetLuan: selectedKetLuan } : phieu}
+                                btpItems={btpItems}
+                                summary={summary}
+                                defects={defects}
+                                dynamicFields={dynamicFields}
+                            />
+                        ) : (
+                            <SxbtPrintTemplate
+                                ref={detailPrintRef}
+                                phieu={phieu ? { ...phieu, KetLuan: selectedKetLuan } : phieu}
+                                btpItems={btpItems}
+                                summary={summary}
+                                defects={defects}
+                                dynamicFields={dynamicFields}
+                                confirmSteps={confirmSteps}
+                                splitInfo={splitInfo}
+                            />
+                        )}
                     </DialogContent>
                     <DialogActions>
                         <Button onClick={() => setOpenPrint(false)}>Đóng</Button>
                         <Button
                             variant="contained"
                             startIcon={<PrintIcon />}
-                            onClick={() => triggerPrint()}
+                            onClick={triggerSelectedPrint}
                         >
                             In / Lưu PDF
                         </Button>

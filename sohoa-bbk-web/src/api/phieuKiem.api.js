@@ -44,6 +44,10 @@ export const deletePhieuKiem = (id) => {
     return axiosClient.delete(`/phieu-kiem/${id}`);
 };
 
+export const createDongContRetest = (id) => {
+    return axiosClient.post(`/phieu-kiem/${id}/retest`);
+};
+
 const normalizeCreatePayload = (data = {}) => ({
     ...data,
     doiTuong: data.doiTuong == null ? "" : String(data.doiTuong),

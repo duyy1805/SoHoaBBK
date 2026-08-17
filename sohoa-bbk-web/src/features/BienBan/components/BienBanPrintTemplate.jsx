@@ -626,9 +626,9 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                                 <tr key={index}>
                                                     <td style={styles.td}>{c.TenChiPhi || c.LoaiChiPhi}</td>
                                                     <td style={{ ...styles.td, textAlign: 'right' }}>{c.GiaTri ? c.GiaTri.toLocaleString('vi-VN') : ''}</td>
-                                                    <td style={styles.td}>{c.TenBoPhan || ''}</td>
+                                                    <td style={styles.td}>{c.TrachNhiemHienThi || ''}</td>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{c.ThoiHan ? new Date(c.ThoiHan).toLocaleDateString('vi-VN') : ''}</td>
-                                                    <td style={styles.td}>{c.NguoiTheoDoi || c.NguoiXuLy || ''}</td>
+                                                    <td style={styles.td}>{c.TheoDoiHienThi || ''}</td>
                                                 </tr>
                                             ))}
                                             {isV01 && printCosts.length > 0 && (
@@ -667,9 +667,9 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                                 <tr key={index}>
                                                     {isV01 && <td style={{ ...styles.td, textAlign: 'center' }}>{index + 1}</td>}
                                                     <td style={styles.td}>{h?.NoiDung || '\u00a0'}</td>
-                                                    <td style={styles.td}>{h?.TenBoPhan || h?.FullName || ''}</td>
+                                                    <td style={styles.td}>{h?.TrachNhiemHienThi || ''}</td>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{h?.ThoiHan ? new Date(h.ThoiHan).toLocaleDateString('vi-VN') : ''}</td>
-                                                    <td style={styles.td}>{h?.NguoiTheoDoi || h?.NguoiXuLy || h?.TheoDoi || ''}</td>
+                                                    <td style={styles.td}>{h?.TheoDoiHienThi || ''}</td>
                                                 </tr>
                                             ))}
                                         </tbody>

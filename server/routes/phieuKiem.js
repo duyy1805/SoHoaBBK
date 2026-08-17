@@ -404,6 +404,8 @@ const getSxbtSourceInfo = async (pool, phieuKiemId) => {
                     contractor.Ma_NhaThau AS MaDonVi,
                     contractor.Ma_NhaThau,
                     orderRow.Ma_DonHang,
+                    customer.MaSo_KhachHang,
+                    customer.Ten_KhachHang,
                     productionLot.So_LoSanXuat,
                     productRow.ItemCode,
                     productRow.Ten_SanPham,
@@ -416,6 +418,8 @@ const getSxbtSourceInfo = async (pool, phieuKiemId) => {
                     ON productionOrder.ID_LenhSanXuat = productionPlan.ID_LenhSanXuat
                 LEFT JOIN TAG_QTKD.dbo.DonHang orderRow
                     ON orderRow.ID_DonHang = productionOrder.ID_DonHang
+                LEFT JOIN TAG_QTKD.dbo.DM_KhachHang customer
+                    ON customer.ID_KhachHang = orderRow.ID_KhachHang
                 LEFT JOIN TAG_QTKD.dbo.DonHang_SanPham orderProduct
                     ON orderProduct.ID_DonHang_SanPham = NULLIF(sourceRow.ID_DonHang_SanPham, 0)
                 LEFT JOIN TAG_QTKD.dbo.DM_SanPham productRow
@@ -469,6 +473,8 @@ const getSxbtSourceInfo = async (pool, phieuKiemId) => {
                 departmentRow.Ten_BoPhan,
                 contractor.Ma_NhaThau AS MaDonVi,
                 contractor.Ma_NhaThau,
+                customer.MaSo_KhachHang,
+                customer.Ten_KhachHang,
                 warehouse.Ten_Kho AS Ten_KhoNhap
             FROM TAG_QTKD.dbo.PhieuNhapBTP receipt
             LEFT JOIN TAG_QTKD.dbo.DM_Kho warehouse
@@ -481,6 +487,8 @@ const getSxbtSourceInfo = async (pool, phieuKiemId) => {
                 ON departmentRow.ID_BoPhan = receipt.ID_BoPhan
             LEFT JOIN TAG_QTKD.dbo.DM_NhaThau contractor
                 ON contractor.ID_BoPhan = receipt.ID_BoPhan
+            LEFT JOIN TAG_QTKD.dbo.DM_KhachHang customer
+                ON customer.ID_KhachHang = receipt.ID_KhachHang
             WHERE receipt.ID_PhieuNhapBTP = @PhieuNhapBtpId
         `);
 
@@ -516,6 +524,8 @@ const getSxbtSourcesInfo = async (pool, phieuKiemId) => {
                 contractor.Ma_NhaThau AS MaDonVi,
                 contractor.Ma_NhaThau,
                 orderRow.Ma_DonHang,
+                customer.MaSo_KhachHang,
+                customer.Ten_KhachHang,
                 productionLot.So_LoSanXuat,
                 productRow.ItemCode,
                 productRow.Ten_SanPham,
@@ -530,6 +540,8 @@ const getSxbtSourcesInfo = async (pool, phieuKiemId) => {
                 ON productionOrder.ID_LenhSanXuat = productionPlan.ID_LenhSanXuat
             LEFT JOIN TAG_QTKD.dbo.DonHang orderRow
                 ON orderRow.ID_DonHang = productionOrder.ID_DonHang
+            LEFT JOIN TAG_QTKD.dbo.DM_KhachHang customer
+                ON customer.ID_KhachHang = orderRow.ID_KhachHang
             LEFT JOIN TAG_QTKD.dbo.DonHang_SanPham orderProduct
                 ON orderProduct.ID_DonHang_SanPham = NULLIF(sourceRow.ID_DonHang_SanPham, 0)
             LEFT JOIN TAG_QTKD.dbo.DM_SanPham productRow
@@ -577,6 +589,8 @@ const attachSxbtSourceInfo = async (pool, phieu = null) => {
         Ma_NhaThau: source.Ma_NhaThau || phieu.Ma_NhaThau || null,
         Ma_DonHang: source.Ma_DonHang || phieu.Ma_DonHang || null,
         MaDonHang: source.Ma_DonHang || phieu.MaDonHang || phieu.Ma_DonHang || null,
+        MaSo_KhachHang: source.MaSo_KhachHang || phieu.MaSo_KhachHang || null,
+        Ten_KhachHang: source.Ten_KhachHang || phieu.Ten_KhachHang || null,
         Ten_QuyTrinhSanXuat: source.Ten_QuyTrinhSanXuat || phieu.Ten_QuyTrinhSanXuat || null,
         So_LoSanXuat: source.So_LoSanXuat || phieu.So_LoSanXuat || null
     };
@@ -614,6 +628,38 @@ const inspectionCapabilities = (req, phieu = {}) => {
             isAdmin || canInspect || permissions.includes('KET_LUAN')
         )
     };
+};
+
+const getDongContRetestInfo = async (pool, phieuKiemId, req) => {
+    const result = await pool.request()
+        .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+        .query(`
+            SELECT
+                currentRow.PhieuKiemGocId,
+                currentRow.PhieuKiemTruocId,
+                ISNULL(currentRow.LanKiemLai, 0) AS LanKiemLai,
+                previousRow.SoPhieu AS PhieuKiemTruocSoPhieu,
+                rootRow.SoPhieu AS PhieuKiemGocSoPhieu,
+                nextRow.Id AS PhieuKiemTiepTheoId,
+                nextRow.SoPhieu AS PhieuKiemTiepTheoSoPhieu,
+                nextRow.LanKiemLai AS PhieuKiemTiepTheoLanKiemLai
+            FROM dbo.PHIEU_KIEM currentRow
+            LEFT JOIN dbo.PHIEU_KIEM previousRow ON previousRow.Id = currentRow.PhieuKiemTruocId
+            LEFT JOIN dbo.PHIEU_KIEM rootRow ON rootRow.Id = currentRow.PhieuKiemGocId
+            LEFT JOIN dbo.PHIEU_KIEM nextRow ON nextRow.PhieuKiemTruocId = currentRow.Id
+            WHERE currentRow.Id = @PhieuKiemId;
+        `);
+
+    const info = result.recordset?.[0] || null;
+    if (!info) return null;
+
+    const permissions = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+    const roles = Array.isArray(req.user?.roles) ? req.user.roles : [];
+    const isAdmin = permissions.includes('QUAN_TRI_DM')
+        || roles.some((role) => String(role || '').toUpperCase().includes('ADMIN'));
+    info.CanRetest = (isAdmin || permissions.includes('PHAN_BO_KIEM'))
+        && !info.PhieuKiemTiepTheoId;
+    return info;
 };
 
 const inspectionCapabilitiesForApprovalDepartment = async (pool, req, phieu, approveBoPhanId) => {
@@ -1408,6 +1454,56 @@ router.patch(
 );
 
 /* =========================================================
+   POST /phieu-kiem/:id/retest
+   Permission : PHAN_BO_KIEM
+========================================================= */
+router.post(
+    '/:id/retest',
+    authenticateToken,
+    authorize('PHAN_BO_KIEM'),
+    async (req, res) => {
+        const phieuKiemId = Number(req.params.id);
+        if (!Number.isInteger(phieuKiemId) || phieuKiemId <= 0) {
+            return res.status(400).json({ message: 'ID phiếu kiểm không hợp lệ' });
+        }
+
+        try {
+            const pool = await poolPromise;
+            const result = await pool.request()
+                .input('PhieuKiemTruocId', sql.Int, phieuKiemId)
+                .input('NguoiLapId', sql.Int, Number(req.user?.userId || req.user?.id))
+                .execute('sp_PhieuKiem_DongCont_CreateRetest');
+            const created = result.recordset?.[0];
+
+            return res.status(201).json({
+                success: true,
+                phieuKiemId: created.Id,
+                soPhieu: created.SoPhieu,
+                phieuKiemGocId: created.PhieuKiemGocId,
+                phieuKiemTruocId: created.PhieuKiemTruocId,
+                lanKiemLai: created.LanKiemLai,
+                message: 'Đã tạo phiếu kiểm lại'
+            });
+        } catch (err) {
+            const errorNumber = Number(err?.number || err?.originalError?.info?.number);
+            const statusCode = errorNumber === 51302
+                ? 404
+                : [51304, 51306].includes(errorNumber)
+                    ? 409
+                    : [51303, 51305].includes(errorNumber)
+                        ? 400
+                        : 500;
+            console.error('Create dong cont retest error:', err);
+            return res.status(statusCode).json({
+                message: statusCode === 500
+                    ? 'Không thể tạo phiếu kiểm lại'
+                    : err.message
+            });
+        }
+    }
+);
+
+/* =========================================================
    GET /phieu-kiem/:id
    Permission : XEM_PHIEU_KIEM
 ========================================================= */
@@ -1472,7 +1568,11 @@ router.get(
                             ...item,
                             SxbtPlanLinkId: sxbtPlanLinkId,
                             KeHoachNhapId: source.KeHoachNhapId,
-                            SourceID_KeHoachSanXuat: source.ID_KeHoachSanXuat || item.SourceID_KeHoachSanXuat
+                            SourceID_KeHoachSanXuat: source.ID_KeHoachSanXuat || item.SourceID_KeHoachSanXuat,
+                            MaSo_KhachHang: source.MaSo_KhachHang || null,
+                            Ten_KhachHang: source.Ten_KhachHang || null,
+                            MaDonHang: item.MaDonHang || source.Ma_DonHang || null,
+                            NgayNhap: item.NgayNhap || source.Ngay_NhapBTP || null
                         } : item;
                     });
                 const splitResult = await pool.request()
@@ -1844,6 +1944,15 @@ router.get(
                     ORDER BY xn.ThoiGian, xn.Id
                 `);
             const xacNhans = await attachSignatureDataUrls(pool, confirmationResult.recordset || [], 'NguoiXacNhanId');
+            const retestInfo = Number(phieu?.LoaiKiemId) === 5
+                ? await getDongContRetestInfo(pool, Number(id), req)
+                : null;
+            const capabilities = inspectionCapabilities(req, phieu);
+            if (retestInfo) {
+                capabilities.canRetest = Boolean(retestInfo.CanRetest)
+                    && String(phieu?.TrangThai || '').toUpperCase() === 'HOAN_TAT'
+                    && String(phieu?.KetLuan || '').toUpperCase() === 'KHONG_DAT';
+            }
             res.json({
                 phieu,
                 sections,
@@ -1851,7 +1960,8 @@ router.get(
                 defects,
                 dynamicFields,
                 xacNhans,
-                capabilities: inspectionCapabilities(req, phieu)
+                retestInfo,
+                capabilities
             });
 
         } catch (err) {

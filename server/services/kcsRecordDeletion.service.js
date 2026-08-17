@@ -180,6 +180,8 @@ const deletePhieuKiemData = async (transaction, phieuKiemId, deletedBy) => {
             DELETE FROM dbo.PHIEU_KIEM_XAC_NHAN WHERE PhieuKiemId=@PhieuKiemId;
             DELETE FROM dbo.PhieuKiem_CustomFields WHERE PhieuKiemId=@PhieuKiemId;
             DELETE FROM dbo.NOTIFICATIONS WHERE Type=N'NEW_PHIEU' AND ReferenceId=@PhieuKiemId;
+            UPDATE dbo.PHIEU_KIEM SET PhieuKiemTruocId=NULL WHERE PhieuKiemTruocId=@PhieuKiemId;
+            UPDATE dbo.PHIEU_KIEM SET PhieuKiemGocId=NULL WHERE PhieuKiemGocId=@PhieuKiemId;
             DELETE FROM dbo.PHIEU_KIEM WHERE Id=@PhieuKiemId;
         `);
     return result;

@@ -8,6 +8,7 @@ const requireExactPermission = require("../middlewares/exactPermission.middlewar
 const { getManagedDepartmentIds, canLeadDepartment } = require("../utils/managedDepartments");
 const { loadBienBanListSummaries, mergeBienBanListSummary } = require("../utils/bienBanListSummary");
 const { loadSignatureDataUrlMap } = require("../utils/signatureImage");
+const { loadKphSectionRows } = require("../utils/kphSectionRows");
 const {
     getBienBanFiles,
     deleteBienBanData,
@@ -483,6 +484,7 @@ router.get("/:id", authenticateToken, async (req, res) => {
                 WHERE x.BienBanId = @BienBanId
                 ORDER BY x.CreatedAt, x.Id
             `);
+        const sectionRows = await loadKphSectionRows(pool, bienBanId);
 
         if (info) Object.assign(info, printMeta);
         if (info) {
@@ -556,12 +558,12 @@ router.get("/:id", authenticateToken, async (req, res) => {
             defects: await enrichDefectCodes(pool, defectResult.recordset || []),
             assigns: result.recordsets?.[2] || [],
             xuLy: proposalResult.recordset || [],
-            chiPhi: result.recordsets?.[4] || [],
+            chiPhi: sectionRows.chiPhi,
             xacNhan: confirmationRows.map((item) => ({
                 ...item,
                 SignatureDataUrl: signatureMap.get(Number(item.NguoiXacNhanId)) || null
             })),
-            hanhDong: result.recordsets?.[6] || [],
+            hanhDong: sectionRows.hanhDong,
             dynamicFields,
             templateVersion: printMeta.MauPhieuVersion,
             specialistOpinions: specialistOpinionRows.map((opinion) => {

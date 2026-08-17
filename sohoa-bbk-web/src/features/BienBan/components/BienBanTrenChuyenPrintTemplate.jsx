@@ -524,9 +524,9 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                                 <tr key={index}>
                                                     <td style={styles.td}>{c.TenChiPhi || c.LoaiChiPhi}</td>
                                                     <td style={{ ...styles.td, textAlign: 'right' }}>{c.GiaTri ? c.GiaTri.toLocaleString('vi-VN') : ''}</td>
-                                                    <td style={styles.td}>{c.TenBoPhan || ''}</td>
+                                                    <td style={styles.td}>{c.TrachNhiemHienThi || ''}</td>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{c.ThoiHan ? new Date(c.ThoiHan).toLocaleDateString('vi-VN') : ''}</td>
-                                                    <td style={styles.td}>{c.NguoiXuLy}</td>
+                                                    <td style={styles.td}>{c.TheoDoiHienThi || ''}</td>
                                                 </tr>
                                             )) : (
                                                 <tr><td style={styles.td}>&nbsp;</td><td style={styles.td}></td><td style={styles.td}></td><td style={styles.td}></td><td style={styles.td}></td></tr>
@@ -558,9 +558,9 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                             {hanhDong.length > 0 ? hanhDong.map((h, index) => (
                                                 <tr key={index}>
                                                     <td style={styles.td}>{h.NoiDung}</td>
-                                                    <td style={styles.td}>{h.TenBoPhan || h.FullName}</td>
+                                                    <td style={styles.td}>{h.TrachNhiemHienThi || ''}</td>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{h.ThoiHan ? new Date(h.ThoiHan).toLocaleDateString('vi-VN') : ''}</td>
-                                                    <td style={styles.td}>{h.NguoiXuLy}</td>
+                                                    <td style={styles.td}>{h.TheoDoiHienThi || ''}</td>
                                                 </tr>
                                             )) : (
                                                 <tr><td style={styles.td}>&nbsp;</td><td style={styles.td}></td><td style={styles.td}></td><td style={styles.td}></td></tr>

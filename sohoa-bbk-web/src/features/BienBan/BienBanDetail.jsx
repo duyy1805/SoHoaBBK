@@ -1855,8 +1855,10 @@ export default function BienBanDetail({ standalone = false }) {
                                                 emptyText="Không ghi nhận chi phí."
                                                 columns={[
                                                     { key: "loai", label: "Loại chi phí", render: (row) => row.LoaiChiPhi || "—" },
-                                                    { key: "boPhan", label: "Bộ phận", render: (row) => row.TenBoPhan || "—" },
-                                                    { key: "giaTri", label: "Giá trị", align: "right", cellSx: { color: "success.main", fontWeight: 700, whiteSpace: "nowrap" }, render: (row) => `${Number(row.GiaTri || 0).toLocaleString("vi-VN")} đ` }
+                                                    { key: "giaTri", label: "Giá trị", align: "right", cellSx: { color: "success.main", fontWeight: 700, whiteSpace: "nowrap" }, render: (row) => `${Number(row.GiaTri || 0).toLocaleString("vi-VN")} đ` },
+                                                    { key: "trachNhiem", label: "Trách nhiệm", render: (row) => row.TrachNhiemHienThi || "—" },
+                                                    { key: "thoiHan", label: "Thời hạn", cellSx: { whiteSpace: "nowrap" }, render: (row) => row.ThoiHan ? new Date(row.ThoiHan).toLocaleDateString("vi-VN") : "—" },
+                                                    { key: "theoDoi", label: "Theo dõi", render: (row) => row.TheoDoiHienThi || "—" }
                                                 ]}
                                             />
                                         </CardContent>
@@ -1888,9 +1890,9 @@ export default function BienBanDetail({ standalone = false }) {
                                                 emptyText="Chưa có hành động cụ thể."
                                                 columns={[
                                                     { key: "noiDung", label: "Nội dung", cellSx: { whiteSpace: "pre-wrap" }, render: (row) => row.NoiDung || "—" },
-                                                    { key: "boPhan", label: "Bộ phận", render: (row) => row.TenBoPhan || "—" },
+                                                    { key: "trachNhiem", label: "Trách nhiệm", render: (row) => row.TrachNhiemHienThi || "—" },
                                                     { key: "thoiHan", label: "Thời hạn", cellSx: { color: "error.main", whiteSpace: "nowrap" }, render: (row) => row.ThoiHan ? new Date(row.ThoiHan).toLocaleDateString("vi-VN") : "—" },
-                                                    { key: "theoDoi", label: "Người theo dõi", render: (row) => row.NguoiTheoDoi || row.NguoiXuLy || row.TheoDoi || "—" }
+                                                    { key: "theoDoi", label: "Theo dõi", render: (row) => row.TheoDoiHienThi || "—" }
                                                 ]}
                                             />
                                         </CardContent>
@@ -2148,8 +2150,8 @@ function AssignDepartmentDialog({ open, onClose, bienBanId, reload, assignedIds,
 }
 
 const emptyXuLyRow = () => ({ NoiDung: '', DeNghiXuLyId: '', ThoiHan: '', TrachNhiem: '', TheoDoi: '' });
-const emptyChiPhiRow = () => ({ LoaiChiPhi: '', GiaTri: '', ThoiHan: '' });
-const emptyHanhDongRow = () => ({ NoiDung: '', ThoiHan: '', TheoDoi: '' });
+const emptyChiPhiRow = () => ({ LoaiChiPhi: '', GiaTri: '', TrachNhiem: '', ThoiHan: '', TheoDoi: '' });
+const emptyHanhDongRow = () => ({ NoiDung: '', TrachNhiem: '', ThoiHan: '', TheoDoi: '' });
 
 function XuLyDialog({ open, onClose, bienBanId, reload }) {
     const [rows, setRows] = useState([emptyXuLyRow()]);
@@ -2279,7 +2281,9 @@ function ChiPhiDialog({ open, onClose, bienBanId, reload }) {
                 items: rows.map(row => ({
                     loaiChiPhi: row.LoaiChiPhi.trim(),
                     giaTri: Number(row.GiaTri) || 0,
-                    thoiHan: row.ThoiHan || null
+                    trachNhiem: row.TrachNhiem.trim(),
+                    thoiHan: row.ThoiHan || null,
+                    theoDoi: row.TheoDoi.trim()
                 }))
             });
             handleClose();
@@ -2292,16 +2296,18 @@ function ChiPhiDialog({ open, onClose, bienBanId, reload }) {
     };
 
     return (
-        <Dialog open={open} onClose={handleClose} fullWidth maxWidth="md">
+        <Dialog open={open} onClose={handleClose} fullWidth maxWidth="xl">
             <DialogTitle fontWeight="bold">Ghi nhận chi phí phát sinh</DialogTitle>
             <DialogContent dividers>
                 <TableContainer>
-                    <Table size="small" sx={{ minWidth: 720 }}>
+                    <Table size="small" sx={{ minWidth: 1100 }}>
                         <TableHead>
                             <TableRow>
                                 <TableCell sx={{ minWidth: 300 }}>Tên/Loại chi phí</TableCell>
                                 <TableCell sx={{ minWidth: 180 }}>Giá trị (VND)</TableCell>
+                                <TableCell sx={{ minWidth: 200 }}>Trách nhiệm</TableCell>
                                 <TableCell sx={{ minWidth: 170 }}>Thời hạn dự kiến</TableCell>
+                                <TableCell sx={{ minWidth: 200 }}>Theo dõi</TableCell>
                                 <TableCell width={52} />
                             </TableRow>
                         </TableHead>
@@ -2310,7 +2316,9 @@ function ChiPhiDialog({ open, onClose, bienBanId, reload }) {
                                 <TableRow key={index}>
                                     <TableCell><TextField size="small" fullWidth value={row.LoaiChiPhi} onChange={e => updateRow(index, "LoaiChiPhi", e.target.value)} placeholder="Ví dụ: Chi phí vật tư" /></TableCell>
                                     <TableCell><TextField size="small" type="number" fullWidth value={row.GiaTri} onChange={e => updateRow(index, "GiaTri", e.target.value)} /></TableCell>
+                                    <TableCell><TextField size="small" fullWidth value={row.TrachNhiem} onChange={e => updateRow(index, "TrachNhiem", e.target.value)} placeholder="Để trống sẽ dùng bộ phận người nhập" inputProps={{ maxLength: 255 }} /></TableCell>
                                     <TableCell><TextField size="small" type="date" fullWidth value={row.ThoiHan} onChange={e => updateRow(index, "ThoiHan", e.target.value)} /></TableCell>
+                                    <TableCell><TextField size="small" fullWidth value={row.TheoDoi} onChange={e => updateRow(index, "TheoDoi", e.target.value)} placeholder="Để trống sẽ dùng bộ phận người nhập" inputProps={{ maxLength: 255 }} /></TableCell>
                                     <TableCell>
                                         <Button color="error" onClick={() => removeRow(index)} aria-label={`Xóa dòng ${index + 1}`}><DeleteOutlineIcon /></Button>
                                     </TableCell>
@@ -2350,8 +2358,8 @@ function HanhDongDialog({ open, onClose, bienBanId, reload }) {
 
     const handleSubmit = async () => {
         if (saving) return;
-        if (rows.some(row => !row.NoiDung.trim() || !row.ThoiHan || !row.TheoDoi.trim())) {
-            alert("Vui lòng nhập đầy đủ nội dung, thời hạn và theo dõi cho tất cả các dòng");
+        if (rows.some(row => !row.NoiDung.trim() || !row.ThoiHan)) {
+            alert("Vui lòng nhập đầy đủ nội dung và thời hạn cho tất cả các dòng");
             return;
         }
         try {
@@ -2360,6 +2368,7 @@ function HanhDongDialog({ open, onClose, bienBanId, reload }) {
                 bienBanId,
                 items: rows.map(row => ({
                     noiDung: row.NoiDung.trim(),
+                    trachNhiem: row.TrachNhiem.trim(),
                     thoiHan: row.ThoiHan,
                     theoDoi: row.TheoDoi.trim()
                 }))
@@ -2374,14 +2383,15 @@ function HanhDongDialog({ open, onClose, bienBanId, reload }) {
     };
 
     return (
-        <Dialog open={open} onClose={handleClose} fullWidth maxWidth="lg">
+        <Dialog open={open} onClose={handleClose} fullWidth maxWidth="xl">
             <DialogTitle fontWeight="bold">Thêm hành động khắc phục</DialogTitle>
             <DialogContent dividers>
                 <TableContainer>
-                    <Table size="small" sx={{ minWidth: 800 }}>
+                    <Table size="small" sx={{ minWidth: 1000 }}>
                         <TableHead>
                             <TableRow>
-                                <TableCell sx={{ minWidth: 390 }}>Nội dung hành động</TableCell>
+                                <TableCell sx={{ minWidth: 320 }}>Nội dung hành động</TableCell>
+                                <TableCell sx={{ minWidth: 200 }}>Trách nhiệm</TableCell>
                                 <TableCell sx={{ minWidth: 180 }}>Thời hạn hoàn thành</TableCell>
                                 <TableCell sx={{ minWidth: 200 }}>Theo dõi</TableCell>
                                 <TableCell width={52} />
@@ -2391,8 +2401,9 @@ function HanhDongDialog({ open, onClose, bienBanId, reload }) {
                             {rows.map((row, index) => (
                                 <TableRow key={index}>
                                     <TableCell><TextField size="small" fullWidth multiline minRows={2} value={row.NoiDung} onChange={e => updateRow(index, "NoiDung", e.target.value)} /></TableCell>
+                                    <TableCell><TextField size="small" fullWidth value={row.TrachNhiem} onChange={e => updateRow(index, "TrachNhiem", e.target.value)} placeholder="Để trống sẽ dùng bộ phận người nhập" inputProps={{ maxLength: 255 }} /></TableCell>
                                     <TableCell><TextField size="small" type="date" fullWidth value={row.ThoiHan} onChange={e => updateRow(index, "ThoiHan", e.target.value)} /></TableCell>
-                                    <TableCell><TextField size="small" fullWidth value={row.TheoDoi} onChange={e => updateRow(index, "TheoDoi", e.target.value)} /></TableCell>
+                                    <TableCell><TextField size="small" fullWidth value={row.TheoDoi} onChange={e => updateRow(index, "TheoDoi", e.target.value)} placeholder="Để trống sẽ dùng bộ phận người nhập" inputProps={{ maxLength: 255 }} /></TableCell>
                                     <TableCell>
                                         <Button color="error" onClick={() => removeRow(index)} aria-label={`Xóa dòng ${index + 1}`}><DeleteOutlineIcon /></Button>
                                     </TableCell>

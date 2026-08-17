@@ -37,6 +37,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import AssignmentIcon from "@mui/icons-material/Assignment";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import ScienceOutlinedIcon from "@mui/icons-material/ScienceOutlined";
+import ReplayIcon from "@mui/icons-material/Replay";
 
 import {
     getPhieuKiemDetail,
@@ -46,6 +47,7 @@ import {
     completePhieuKiem,
     confirmPX,
     deletePhieuKiem,
+    createDongContRetest,
     updatePhieuKiemActualQuantity
 } from "../../../api/phieuKiem.api";
 
@@ -72,6 +74,7 @@ export default function PhieuKiemDetail() {
     const [nhomConfigs, setNhomConfigs] = useState([]);
     const [levels, setLevels] = useState([]);
     const [capabilities, setCapabilities] = useState({});
+    const [retestInfo, setRetestInfo] = useState(null);
 
     // Thêm state cho thông số KQ đặc biệt
     const [thongSoList, setThongSoList] = useState([]);
@@ -148,6 +151,7 @@ export default function PhieuKiemDetail() {
             setDynamicFields(data.dynamicFields);
             setXacNhans(data.xacNhans || []);
             setCapabilities(data.capabilities || {});
+            setRetestInfo(data.retestInfo || null);
 
             // Lấy thêm thông số kết quả kiểm tra cấp độ đặc biệt
             try {
@@ -387,6 +391,29 @@ export default function PhieuKiemDetail() {
         }
     };
 
+    const handleCreateRetest = async () => {
+        const confirmed = window.confirm(
+            "Phiếu kiểm lại sẽ giữ nguyên lịch đóng cont và KCS phụ trách, nhưng không sao chép AQL, checklist, kết quả, lỗi, ảnh, chữ ký hoặc biên bản. Phiếu cũ vẫn được giữ nguyên. Bạn muốn tiếp tục?"
+        );
+        if (!confirmed) return;
+
+        try {
+            setLoadingAction(true);
+            setActionNotice(null);
+            const response = await createDongContRetest(id);
+            const newId = response.data?.phieuKiemId;
+            if (!newId) throw new Error("RETEST_ID_MISSING");
+            navigate(`/phieu-kiem/${newId}`, { state: { returnTo } });
+        } catch (err) {
+            setActionNotice({
+                type: "error",
+                message: err?.response?.data?.message || "Không thể tạo phiếu kiểm lại"
+            });
+        } finally {
+            setLoadingAction(false);
+        }
+    };
+
     return (
         <Fade in timeout={300}>
             <Box>
@@ -413,6 +440,25 @@ export default function PhieuKiemDetail() {
                                 Danh sách phiếu kiểm
                             </Button>
                             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap justifyContent={{ xs: "center", sm: "flex-end" }}>
+                                {capabilities.canRetest && (
+                                    <Button
+                                        variant="contained"
+                                        startIcon={<ReplayIcon />}
+                                        onClick={handleCreateRetest}
+                                        disabled={loadingAction}
+                                    >
+                                        {loadingAction ? "Đang tạo..." : "Tạo phiếu kiểm lại"}
+                                    </Button>
+                                )}
+                                {retestInfo?.PhieuKiemTiepTheoId && (
+                                    <Button
+                                        variant="outlined"
+                                        startIcon={<ReplayIcon />}
+                                        onClick={() => navigate(`/phieu-kiem/${retestInfo.PhieuKiemTiepTheoId}`, { state: { returnTo } })}
+                                    >
+                                        {`Phiếu kiểm lại: ${retestInfo.PhieuKiemTiepTheoSoPhieu}`}
+                                    </Button>
+                                )}
                                 {canDeletePhieu && (
                                     <Button
                                         variant="outlined"
@@ -449,6 +495,24 @@ export default function PhieuKiemDetail() {
                         </Stack>
                     </Container>
                 </Paper>
+                {Number(retestInfo?.LanKiemLai || 0) > 0 && (
+                    <Alert
+                        severity="info"
+                        icon={<ReplayIcon />}
+                        sx={{ mb: 2.5 }}
+                        action={retestInfo?.PhieuKiemTruocId ? (
+                            <Button
+                                color="inherit"
+                                size="small"
+                                onClick={() => navigate(`/phieu-kiem/${retestInfo.PhieuKiemTruocId}`, { state: { returnTo } })}
+                            >
+                                Xem phiếu trước
+                            </Button>
+                        ) : null}
+                    >
+                        {`Kiểm lại lần ${retestInfo.LanKiemLai} từ ${retestInfo.PhieuKiemTruocSoPhieu || "phiếu trước"}`}
+                    </Alert>
+                )}
                 {/* THÔNG TIN PHIẾU */}
 
                 <Card sx={{ mb: 2.5, borderRadius: 2 }}>
