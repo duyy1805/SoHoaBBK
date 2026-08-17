@@ -146,7 +146,7 @@ export const SxbtOfficialPrintTemplate = React.forwardRef(({
                 ItemCode: phieu.MaSanPham,
                 TenSanPham: phieu.TenSanPham,
                 MaDonHang: phieu.MaDonHang,
-                MaSo_KhachHang: phieu.MaSo_KhachHang,
+                MaDonVi: phieu.MaDonVi || phieu.Ma_NhaThau,
                 NgayNhap: phieu.NgayNhap,
                 SoLuongNhap: phieu.SoLuong
             }]
@@ -227,9 +227,9 @@ export const SxbtOfficialPrintTemplate = React.forwardRef(({
                     const value = row.lot.SoLuongNhap ?? row.item.SoLuongNhap ?? row.item.SoLuong;
                     return sum + (Number(value) || 0);
                 }, 0);
-                const customerCodes = uniqueText([
-                    ...group.items.map((item) => item.MaSo_KhachHang),
-                    phieu.MaSo_KhachHang
+                const productionUnitCodes = uniqueText([
+                    ...group.items.map((item) => item.MaDonVi || item.Ma_NhaThau),
+                    phieu.MaDonVi || phieu.Ma_NhaThau
                 ]);
                 const orderCodes = uniqueText(group.items.map((item) => item.MaDonHang || phieu.MaDonHang));
                 const entryDates = uniqueText(group.items.map((item) => formatDate(item.NgayNhap || phieu.NgayNhap)));
@@ -278,7 +278,7 @@ export const SxbtOfficialPrintTemplate = React.forwardRef(({
                         </table>
 
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "2px 12px", marginBottom: 3 }}>
-                            <div>Mã KH: <span style={styles.dotted}>{customerCodes}</span></div>
+                            <div>Mã KH: <span style={styles.dotted}>{productionUnitCodes}</span></div>
                             <div>Ngày nhập: <span style={styles.dotted}>{entryDates}</span></div>
                             <div>Số phiếu: <span style={styles.dotted}>{phieu.SoPhieu || ""}</span></div>
                             <div style={{ gridColumn: "span 2" }}>Số lượng nhập (KH): <span style={{ ...styles.dotted, minWidth: 150 }}>{formatQuantity(totalPlanQuantity)}</span></div>
@@ -432,4 +432,3 @@ export const SxbtOfficialPrintTemplate = React.forwardRef(({
 });
 
 SxbtOfficialPrintTemplate.displayName = "SxbtOfficialPrintTemplate";
-

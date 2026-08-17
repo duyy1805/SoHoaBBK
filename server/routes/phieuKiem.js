@@ -1571,6 +1571,8 @@ router.get(
                             SourceID_KeHoachSanXuat: source.ID_KeHoachSanXuat || item.SourceID_KeHoachSanXuat,
                             MaSo_KhachHang: source.MaSo_KhachHang || null,
                             Ten_KhachHang: source.Ten_KhachHang || null,
+                            MaDonVi: source.MaDonVi || source.Ma_NhaThau || null,
+                            Ma_NhaThau: source.Ma_NhaThau || null,
                             MaDonHang: item.MaDonHang || source.Ma_DonHang || null,
                             NgayNhap: item.NgayNhap || source.Ngay_NhapBTP || null
                         } : item;
