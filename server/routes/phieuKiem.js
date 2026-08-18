@@ -1225,7 +1225,11 @@ router.get(
         try {
             const pool = await poolPromise;
 
+            const requestedPlanLoaiKiemId = isCuoiChuyenLoaiKiem(req.query.loaiKiemId)
+                ? CUOI_CHUYEN_LOAI_KIEM_ID
+                : TREN_CHUYEN_LOAI_KIEM_ID;
             const result = await pool.request()
+                .input('LoaiKiemId', sql.Int, requestedPlanLoaiKiemId)
                 .execute('sp_KeHoachSanXuat_GetList_ChuaKiem_TrenChuyen');
 
             const rows = result.recordset || [];

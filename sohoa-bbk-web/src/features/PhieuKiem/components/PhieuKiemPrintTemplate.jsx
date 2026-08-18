@@ -18,7 +18,8 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
     xacNhans = [],
     thongSoList = [],
     thongSoKqList = [],
-    onRequestProductImageUpload = null
+    onRequestProductImageUpload = null,
+    printVariant = "detail"
 }, ref) => {
     const findSigner = (roles) => [...xacNhans].reverse().find((item) =>
         roles.includes(String(item?.VaiTro || '').toUpperCase())
@@ -46,6 +47,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
     if (!closingScheduleCustomer && invoiceNo.toUpperCase().includes("DC")) closingScheduleCustomer = "DEK";
     const isIkea = Number(phieu.LoaiKiemId) === 5 && closingScheduleCustomer === "IKEA";
     const isDek = Number(phieu.LoaiKiemId) === 5 && closingScheduleCustomer === "DEK";
+    const isDekOfficial = isDek && printVariant === "dek-official";
 
     const rawPackage = customData.DongCont_Package ?? phieu.DongContPackage;
     const parsedPackage = rawPackage === "" || rawPackage === null || rawPackage === undefined
@@ -191,7 +193,9 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                         lineHeight: 1
                     }}
                 >
-                    {isDek ? `Level ${level}` : `MĐ ${level}`}
+                    {isDekOfficial
+                        ? `Cấp độ ${level === "I" ? "1" : "2"}`
+                        : isDek ? `Level ${level}` : `MĐ ${level}`}
                     {renderCheckbox(selectedLevel === level)}
                 </span>
             ))}
@@ -215,6 +219,104 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                 </span>
             ))}
         </div>
+    );
+
+    const renderDekOfficialInspectionTypes = () => (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minHeight: '44px', justifyContent: 'center' }}>
+            {[
+                { value: 'KT LAN DAU', label: 'Kiểm tra lần đầu' },
+                { value: 'KT THUONG XUYEN', label: 'Kiểm tra thường xuyên' },
+                { value: 'KT LAI', label: 'Kiểm tra lại' }
+            ].map((option) => (
+                <span key={option.value} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '5px', fontSize: '8.5pt' }}>
+                    {option.label}
+                    {renderCheckbox(selectedInspectionType === option.value)}
+                </span>
+            ))}
+        </div>
+    );
+
+    const renderDekOfficialInfoTable = () => (
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '15px' }}>
+            <colgroup>
+                <col style={{ width: '16%' }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '22%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '4%' }} />
+            </colgroup>
+            <tbody>
+                <tr>
+                    <td style={styles.infoTableLabel}>Nhà cung cấp</td>
+                    <td style={{ ...styles.infoTableCell, height: '24px' }}>
+                        <input name="NhaCungCap" className="custom-field" type="text" defaultValue={customData.NhaCungCap || phieu.NhaCungCap || 'Công ty TNHH MTV 76'} style={styles.inputField} />
+                    </td>
+                    <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>Khách hàng</td>
+                    <td style={styles.infoTableCell}>DEK</td>
+                    <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>Số đơn hàng</td>
+                    <td style={styles.infoTableCell}>
+                        <input name="SoDonHang" className="custom-field" type="text" defaultValue={closingScheduleOrderNumber || customData.SoDonHang || phieu.SoDonHang || ''} style={styles.inputField} />
+                    </td>
+                    <td style={styles.infoTableUnitCell}></td>
+                </tr>
+                <tr>
+                    <td style={styles.infoTableLabel}>NV Kiểm hàng</td>
+                    <td style={{ ...styles.infoTableCell, height: '24px' }}>
+                        <input name="NVienKiemHang" className="custom-field" type="text" defaultValue={customData.NVienKiemHang || phieu.TenNguoiKiem || ''} style={styles.inputField} />
+                    </td>
+                    <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>Tên sản phẩm</td>
+                    <td style={{ ...styles.infoTableCell, verticalAlign: 'middle' }}>
+                        <textarea
+                            name="TenSanPham"
+                            className="custom-field"
+                            defaultValue={customData.TenSanPham || phieu.TenSanPham || ''}
+                            style={{ ...styles.inputField, resize: 'none', overflow: 'hidden', minHeight: '36px', display: 'block' }}
+                            onInput={(event) => {
+                                event.target.style.height = 'auto';
+                                event.target.style.height = `${event.target.scrollHeight}px`;
+                            }}
+                            rows={2}
+                        />
+                    </td>
+                    <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>Số lượng</td>
+                    <td style={styles.infoTableCell}>{effectiveQuantity}</td>
+                    <td style={styles.infoTableUnitCell}>cái</td>
+                </tr>
+                <tr>
+                    <td style={styles.infoTableLabel}>Mức độ kiểm tra</td>
+                    <td style={styles.infoTableCell}>{renderDekOfficialInspectionTypes()}</td>
+                    <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>Ngày kiểm tra</td>
+                    <td style={styles.infoTableCell}>{formattedInspectionDate}</td>
+                    <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>Hộp</td>
+                    <td style={styles.infoTableCell}>{dekPackage ?? ''}</td>
+                    <td style={styles.infoTableUnitCell}>cái</td>
+                </tr>
+                <tr>
+                    <td style={styles.infoTableLabel}>Kế hoạch kiểm hàng<br />AQL</td>
+                    <td style={styles.infoTableCell}>{renderInspectionPlanCheckboxes(selectedInspectionPlanLevel)}</td>
+                    <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>Nơi đến</td>
+                    <td style={styles.infoTableCell}>
+                        <input name="NoiDen" className="custom-field" type="text" defaultValue={customData.NoiDen || phieu.NoiDen || phieu.DoiTuong || ''} style={styles.inputField} />
+                    </td>
+                    <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}></td>
+                    <td style={styles.infoTableCell}></td>
+                    <td style={styles.infoTableUnitCell}></td>
+                </tr>
+                <tr>
+                    <td style={styles.infoTableLabel}>Mã SP</td>
+                    <td style={{ ...styles.infoTableCell, height: '36px', fontWeight: 700 }}>{customData.ItemCode || phieu.MaSanPham || ''}</td>
+                    <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>Truy xuất</td>
+                    <td style={styles.infoTableCell}>
+                        <input name="Lot" className="custom-field" type="text" defaultValue={phieu.Lot || customData.Lot || ''} style={styles.inputField} />
+                    </td>
+                    <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>Tổng SL</td>
+                    <td style={styles.infoTableCell}>{effectiveQuantity}</td>
+                    <td style={styles.infoTableUnitCell}></td>
+                </tr>
+            </tbody>
+        </table>
     );
 
     const getSectionDecision = (section) => {
@@ -359,17 +461,19 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                 {/* ================= NỘI DUNG CHÍNH ================= */}
                 <Box mb={1} className="avoid-break">
 
-                    {/* Số phiếu & Ngày tháng */}
-                    <Box style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '6px' }}>
-                        <Box style={{ display: 'flex', justifyContent: 'space-between', width: '500px' }}>
-                            <div style={{ ...styles.text, fontStyle: 'italic' }}>
-                                Số: {phieu.SoPhieu || '..........'}/KN.
-                            </div>
-                            <div style={{ ...styles.text, fontStyle: 'italic' }}>
-                                Ngày {formattedLongInspectionDate}
-                            </div>
+                    {/* Bản ký DEK không có dòng Số phiếu & Ngày tháng phía trên khối thông tin. */}
+                    {!isDekOfficial && (
+                        <Box style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '6px' }}>
+                            <Box style={{ display: 'flex', justifyContent: 'space-between', width: '500px' }}>
+                                <div style={{ ...styles.text, fontStyle: 'italic' }}>
+                                    Số: {phieu.SoPhieu || '..........'}/KN.
+                                </div>
+                                <div style={{ ...styles.text, fontStyle: 'italic' }}>
+                                    Ngày {formattedLongInspectionDate}
+                                </div>
+                            </Box>
                         </Box>
-                    </Box>
+                    )}
 
                     {/* Khung 2 ô Thông tin & Hình ảnh */}
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
@@ -379,9 +483,11 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 <div style={{ ...styles.text, fontSize: '10pt' }}>
                                     Sản phẩm: <b>{phieu.TenSanPham || '...........................................................................'}</b>
                                 </div>
-                                <div style={{ ...styles.text, fontSize: '10pt' }}>
-                                    Item code: <b>{customData.ItemCode || phieu.MaSanPham || '...........................................................................'}</b>
-                                </div>
+                                {!isDekOfficial && (
+                                    <div style={{ ...styles.text, fontSize: '10pt' }}>
+                                        Item code: <b>{customData.ItemCode || phieu.MaSanPham || '...........................................................................'}</b>
+                                    </div>
+                                )}
                                 <div style={{ ...styles.text, fontSize: '10pt' }}>
                                     <span>Phiên bản: </span>
                                     <input
@@ -480,6 +586,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                     </Box>
 
                     {/* Bảng Thông tin Lô hàng có class "custom-field" để lấy giá trị động */}
+                    {isDekOfficial ? renderDekOfficialInfoTable() : (
                     <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '15px' }}>
                         <colgroup>
                             <col style={{ width: '16%' }} />
@@ -608,6 +715,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                             </tr>}
                         </tbody>
                     </table>
+                    )}
                 </Box>
 
                 {/* ================= BẢNG KIỂM TRA ================= */}

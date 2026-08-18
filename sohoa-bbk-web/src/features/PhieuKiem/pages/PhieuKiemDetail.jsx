@@ -22,9 +22,12 @@ import {
     Container,
     Alert,
     IconButton,
-    Tooltip
+    Tooltip,
+    Tabs,
+    Tab
 } from "@mui/material";
 import { PhieuKiemPrintTemplate } from "../components/PhieuKiemPrintTemplate";
+import { DekOfficialPrintTemplate } from "../components/DekOfficialPrintTemplate";
 import { PhieuGiamDinhPrintTemplate } from "../components/PhieuGiamDinhPrintTemplate"
 import PrintIcon from "@mui/icons-material/Print";
 import { useReactToPrint } from "react-to-print";
@@ -87,8 +90,10 @@ export default function PhieuKiemDetail() {
     const [actualQuantity, setActualQuantity] = useState("");
     const [savingActualQuantity, setSavingActualQuantity] = useState(false);
     const componentRef = useRef();
+    const dekOfficialPrintRef = useRef();
     const productImageInputRef = useRef(null);
     const [openPrintModal, setOpenPrintModal] = useState(false);
+    const [printTab, setPrintTab] = useState("official");
     const [editingItem, setEditingItem] = useState(null);
     const [measurementOpen, setMeasurementOpen] = useState(false);
 
@@ -97,11 +102,29 @@ export default function PhieuKiemDetail() {
         contentRef: componentRef,
         documentTitle: phieu ? `PhieuKiem_${phieu.SoPhieu}` : 'PhieuKiem',
     });
+    const triggerDekOfficialPrint = useReactToPrint({
+        contentRef: dekOfficialPrintRef,
+        documentTitle: phieu ? `PhieuKiem_${phieu.SoPhieu}_BanKyDEK` : 'PhieuKiem_BanKyDEK',
+    });
+
+    const dynamicCustomer = String(
+        dynamicFields.find((field) => ['DongCont_KhachHang', 'KhachHang'].includes(field?.FieldName))?.FieldValue || ''
+    ).trim().toUpperCase();
+    const isDekPrint = Number(phieu?.LoaiKiemId) === 5
+        && String(phieu?.KhachHang || dynamicCustomer).trim().toUpperCase() === 'DEK';
+
+    const openPrintPreview = () => {
+        if (isDekPrint) setPrintTab("official");
+        setOpenPrintModal(true);
+    };
 
     const handlePrint = async () => {
         try {
             // 1. Gom dữ liệu từ các thẻ input có className="custom-field"
-            const inputs = document.querySelectorAll('.custom-field');
+            const activePrintRef = isDekPrint && printTab === "official"
+                ? dekOfficialPrintRef
+                : componentRef;
+            const inputs = activePrintRef.current?.querySelectorAll('.custom-field') || [];
             const fieldsData = {};
 
             inputs.forEach(input => {
@@ -117,7 +140,8 @@ export default function PhieuKiemDetail() {
             });
 
             // 3. API chạy thành công thì mới mở popup In của trình duyệt
-            triggerPrint();
+            if (isDekPrint && printTab === "official") triggerDekOfficialPrint();
+            else triggerPrint();
 
         } catch (error) {
             console.error("Lỗi khi lưu dữ liệu in:", error);
@@ -479,7 +503,7 @@ export default function PhieuKiemDetail() {
                                         Xem biên bản KPH
                                     </Button>
                                 )}
-                                <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => setOpenPrintModal(true)}>
+                                <Button variant="outlined" startIcon={<PrintIcon />} onClick={openPrintPreview}>
                                     In phiếu kiểm
                                 </Button>
                                 {thongSoList.length > 0 && (
@@ -886,6 +910,16 @@ export default function PhieuKiemDetail() {
                 {/* Print Preview Modal */}
                 <Dialog open={openPrintModal} onClose={() => setOpenPrintModal(false)} maxWidth="lg" fullWidth>
                     <DialogTitle>Xem trước bản in</DialogTitle>
+                    {isDekPrint && (
+                        <Tabs
+                            value={printTab}
+                            onChange={(_, value) => setPrintTab(value)}
+                            sx={{ px: 3, borderBottom: 1, borderColor: "divider" }}
+                        >
+                            <Tab value="official" label="Bản ký chính thức" />
+                            <Tab value="detail" label="Bản in chi tiết" />
+                        </Tabs>
+                    )}
                     <DialogContent dividers sx={{ bgcolor: '#f0f0f0', p: 3 }}>
                         <input
                             ref={productImageInputRef}
@@ -894,6 +928,38 @@ export default function PhieuKiemDetail() {
                             style={{ display: "none" }}
                             onChange={handleProductImageSelected}
                         />
+                        {isDekPrint ? (
+                            <>
+                                <Box sx={{ display: printTab === "official" ? 'flex' : 'none', justifyContent: 'center' }}>
+                                    <DekOfficialPrintTemplate
+                                        ref={dekOfficialPrintRef}
+                                        phieu={phieu}
+                                        sections={sections}
+                                        checkItems={checkItems}
+                                        defects={defects}
+                                        dynamicFields={dynamicFields}
+                                        xacNhans={xacNhans}
+                                        thongSoList={thongSoList}
+                                        thongSoKqList={thongSoKqList}
+                                        onRequestProductImageUpload={handleTriggerProductImageUpload}
+                                    />
+                                </Box>
+                                <Box sx={{ display: printTab === "detail" ? 'flex' : 'none', justifyContent: 'center' }}>
+                                    <PhieuKiemPrintTemplate
+                                        ref={componentRef}
+                                        phieu={phieu}
+                                        sections={sections}
+                                        checkItems={checkItems}
+                                        defects={defects}
+                                        dynamicFields={dynamicFields}
+                                        xacNhans={xacNhans}
+                                        thongSoList={thongSoList}
+                                        thongSoKqList={thongSoKqList}
+                                        onRequestProductImageUpload={handleTriggerProductImageUpload}
+                                    />
+                                </Box>
+                            </>
+                        ) : (
                         <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                             {phieu.LoaiKiemId === 1 ? (
                                 <PhieuGiamDinhPrintTemplate
@@ -920,6 +986,7 @@ export default function PhieuKiemDetail() {
                                 />
                             )}
                         </Box>
+                        )}
                     </DialogContent>
                     <DialogActions>
                         <Button onClick={() => setOpenPrintModal(false)}>Hủy</Button>
