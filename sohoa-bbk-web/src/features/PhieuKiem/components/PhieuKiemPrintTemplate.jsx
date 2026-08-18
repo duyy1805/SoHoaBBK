@@ -392,6 +392,161 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
         );
     };
 
+    const getCheckItemDefects = (item) => {
+        const directDefects = (defects || []).filter((defect) =>
+            Number(defect.CheckItemId) === Number(item.Id)
+        );
+        const nestedDefects = Array.isArray(item.Defects) ? item.Defects : [];
+
+        // API chi tiết hiện trả cùng dữ liệu lỗi ở cả result set chung và trong
+        // từng check item. Không gộp hai mảng vì sẽ làm nhân đôi số lượng lỗi.
+        return directDefects.length > 0 ? directDefects : nestedDefects;
+    };
+
+    const renderDekOfficialDefectDescription = (item, itemDefects) => {
+        const defectLines = itemDefects.map((defect) => {
+            const name = [defect.MaLoi, defect.TenLoi].filter(Boolean).join(' - ');
+            const detail = defect.GhiChu || defect.MoTa || '';
+            const quantity = Number(defect.SoLuong || 0) > 0 ? `SL: ${defect.SoLuong}` : '';
+            return [name, detail, quantity].filter(Boolean).join(' · ');
+        }).filter(Boolean);
+        const measurement = String(item.GiaTriDo || '').trim();
+
+        if (!measurement && defectLines.length === 0) {
+            return <div style={{ minHeight: '22px' }} />;
+        }
+
+        return (
+            <div style={{ lineHeight: 1.25 }}>
+                {measurement && <div><b>Kết quả:</b> {measurement}</div>}
+                {defectLines.map((line, index) => <div key={`${item.Id}-defect-${index}`}>{line}</div>)}
+            </div>
+        );
+    };
+
+    const renderDekOfficialInspectionTable = () => (
+        <table style={styles.table} className="dek-official-inspection-table">
+            <thead>
+                <tr>
+                    <th rowSpan={2} style={{ ...styles.th, width: '4%' }}>TT</th>
+                    <th rowSpan={2} style={{ ...styles.th, width: '17%' }}>Điểm kiểm</th>
+                    <th rowSpan={2} style={{ ...styles.th, width: '23%' }}>Yêu cầu</th>
+                    <th rowSpan={2} style={{ ...styles.th, width: '9%' }}>Tần suất/<br />SL kiểm</th>
+                    <th rowSpan={2} style={{ ...styles.th, width: '26%' }}>Mô tả lỗi</th>
+                    <th colSpan={2} style={{ ...styles.th, width: '10%' }}>Kết luận</th>
+                    <th colSpan={3} style={{ ...styles.th, width: '11%' }}>Mức độ lỗi</th>
+                </tr>
+                <tr>
+                    <th style={styles.th}>Đạt</th>
+                    <th style={styles.th}>Không đạt</th>
+                    <th style={styles.th}>Nhẹ</th>
+                    <th style={styles.th}>Nặng</th>
+                    <th style={styles.th}>Nghiêm trọng</th>
+                </tr>
+            </thead>
+            <tbody>
+                {sections.map((section, sectionIndex) => {
+                    const sectionItems = checkItems.filter((item) =>
+                        Number(item.SectionId) === Number(section.Id)
+                        && normalizeText(item.KetQua) !== 'NA'
+                    );
+                    if (sectionItems.length === 0) return null;
+
+                    const isPackagingSection = normalizeText(section.TenNhom).includes('BAO GOI');
+                    const displayedSectionTotal = isPackagingSection && dekPackage !== null
+                        ? dekPackage
+                        : section.TongSo;
+                    const displayedSectionSample = isPackagingSection && dekPackage !== null
+                        ? Math.ceil(Math.sqrt(dekPackage))
+                        : section.SoLuongKiem;
+                    const sectionDecision = getSectionDecision(section);
+
+                    return (
+                        <React.Fragment key={section.Id}>
+                            <tr className="avoid-break" style={{ backgroundColor: '#f0f0f0' }}>
+                                <td style={{ ...styles.tdCenter, fontWeight: 'bold' }}>{toRoman(sectionIndex + 1)}</td>
+                                <td style={{ ...styles.td, fontWeight: 'bold' }}>{section.TenNhom}</td>
+                                <td style={{ ...styles.td, fontWeight: 'bold' }}>
+                                    Tổng số lượng: {displayedSectionTotal ?? ''}
+                                </td>
+                                <td colSpan={2} style={{ ...styles.td, fontWeight: 'bold' }}>
+                                    Số lượng mẫu kiểm: {displayedSectionSample ?? ''}
+                                </td>
+                                <td colSpan={5} style={styles.td}></td>
+                            </tr>
+
+                            {sectionItems.map((item, itemIndex) => {
+                                const itemDefects = getCheckItemDefects(item);
+                                const sumDefects = (type) => itemDefects
+                                    .filter((defect) => normalizeText(defect.DefectType) === type)
+                                    .reduce((sum, defect) => sum + Number(defect.SoLuong || 0), 0);
+                                const requirement = item.TieuChuan || item.PhuongPhapKiem || '';
+                                const secondaryRequirement = item.TieuChuan && item.PhuongPhapKiem
+                                    && normalizeText(item.TieuChuan) !== normalizeText(item.PhuongPhapKiem)
+                                    ? item.PhuongPhapKiem
+                                    : '';
+                                const itemResult = normalizeText(item.KetQua);
+
+                                return (
+                                    <tr key={item.Id} className="avoid-break">
+                                        <td style={styles.tdCenter}>{itemIndex + 1}</td>
+                                        <td style={{ ...styles.td, fontWeight: item.DiemTrongYeu ? 700 : 400 }}>
+                                            {item.DiemTrongYeu && <span style={{ marginRight: '5px' }}>⚠</span>}
+                                            {item.TenMucKiem}
+                                        </td>
+                                        <td style={styles.td}>
+                                            <div>{requirement}</div>
+                                            {secondaryRequirement && (
+                                                <div style={{ marginTop: '2px', fontSize: '7.8pt', fontStyle: 'italic' }}>
+                                                    {secondaryRequirement}
+                                                </div>
+                                            )}
+                                        </td>
+                                        <td style={{ ...styles.tdCenter, fontWeight: 600 }}>
+                                            {section.InspectionLevel || ''}
+                                        </td>
+                                        <td style={styles.td}>
+                                            {renderDekOfficialDefectDescription(item, itemDefects)}
+                                        </td>
+                                        <td style={styles.tdCenter}>{renderCheckbox(['DAT', 'PASS', 'ACCEPT'].includes(itemResult))}</td>
+                                        <td style={styles.tdCenter}>{renderCheckbox(['KHONG DAT', 'KHONG_DAT', 'FAIL', 'REJECT'].includes(itemResult))}</td>
+                                        <td style={styles.tdCenter}>{sumDefects('MINOR') || ''}</td>
+                                        <td style={styles.tdCenter}>{sumDefects('MAJOR') || ''}</td>
+                                        <td style={styles.tdCenter}>{sumDefects('CRITICAL') || ''}</td>
+                                    </tr>
+                                );
+                            })}
+
+                            <tr className="avoid-break">
+                                <td colSpan={7} style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>
+                                    Tổng lỗi thực tế:
+                                </td>
+                                <td style={{ ...styles.tdCenter, fontWeight: 'bold' }}>{section.TotalMinor}</td>
+                                <td style={{ ...styles.tdCenter, fontWeight: 'bold' }}>{section.TotalMajor}</td>
+                                <td style={{ ...styles.tdCenter, fontWeight: 'bold' }}>{section.TotalCritical}</td>
+                            </tr>
+                            <tr className="avoid-break">
+                                <td colSpan={7} style={{ ...styles.td, textAlign: 'right' }}>
+                                    Lỗi tối đa có thể chấp nhận:
+                                </td>
+                                <td style={styles.tdCenter}>{section.Ac_Minor}</td>
+                                <td style={styles.tdCenter}>{section.Ac_Major}</td>
+                                <td style={styles.tdCenter}>{section.Ac_Critical}</td>
+                            </tr>
+                            <tr className="avoid-break">
+                                <td colSpan={10} style={{ ...styles.td, textAlign: 'right' }}>
+                                    <span style={{ marginRight: '24px', fontWeight: 'bold' }}>Kết luận:</span>
+                                    <span style={{ marginRight: '24px' }}>{renderCheckbox(sectionDecision === 'PASS')} ĐẠT</span>
+                                    <span>{renderCheckbox(sectionDecision === 'FAIL')} KHÔNG ĐẠT</span>
+                                </td>
+                            </tr>
+                        </React.Fragment>
+                    );
+                })}
+            </tbody>
+        </table>
+    );
+
     return (
         <div ref={ref} style={styles.previewBackground} className="preview-background">
             <style>
@@ -719,6 +874,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                 </Box>
 
                 {/* ================= BẢNG KIỂM TRA ================= */}
+                {isDekOfficial ? renderDekOfficialInspectionTable() : (
                 <table style={styles.table}>
                     <thead>
                         <tr>
@@ -825,6 +981,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                         })}
                     </tbody>
                 </table>
+                )}
 
                 {isIkea && (
                     <Box className="avoid-break" sx={{ width: '68%', mt: 2.5, mb: 2.5 }}>
