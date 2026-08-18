@@ -44,6 +44,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
     ).trim().toUpperCase();
     if (!closingScheduleCustomer && invoiceNo.toUpperCase().includes("ECIS")) closingScheduleCustomer = "IKEA";
     if (!closingScheduleCustomer && invoiceNo.toUpperCase().includes("DC")) closingScheduleCustomer = "DEK";
+    const isIkea = Number(phieu.LoaiKiemId) === 5 && closingScheduleCustomer === "IKEA";
     const isDek = Number(phieu.LoaiKiemId) === 5 && closingScheduleCustomer === "DEK";
 
     const rawPackage = customData.DongCont_Package ?? phieu.DongContPackage;
@@ -197,6 +198,68 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
         </div>
     );
 
+    const selectedInspectionType = normalizeText(phieu.MucDoKiemTra || customData.MucDoKiemTra || "");
+    const renderInspectionTypeCheckboxes = () => (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px', minHeight: '22px', whiteSpace: 'nowrap' }}>
+            {[
+                { value: 'KT LAN DAU', label: 'KT lần đầu' },
+                { value: 'KT THUONG XUYEN', label: 'KT thường xuyên' },
+                { value: 'KT LAI', label: 'KT lại' }
+            ].map((option) => (
+                <span
+                    key={option.value}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '8pt', lineHeight: 1 }}
+                >
+                    {option.label}
+                    {renderCheckbox(selectedInspectionType === option.value)}
+                </span>
+            ))}
+        </div>
+    );
+
+    const getSectionDecision = (section) => {
+        const sectionResult = normalizeText(section?.KetLuan || "");
+        if (["REJECT", "KHONG DAT", "KHONG_DAT", "FAIL"].includes(sectionResult)) return "FAIL";
+        if (["ACCEPT", "DAT", "PASS"].includes(sectionResult)) return "PASS";
+
+        const sectionItems = checkItems.filter((item) =>
+            Number(item.SectionId) === Number(section?.Id) && normalizeText(item.KetQua) !== "NA"
+        );
+        if (!sectionItems.length) return null;
+        if (sectionItems.some((item) => ["KHONG DAT", "KHONG_DAT", "FAIL", "REJECT"].includes(normalizeText(item.KetQua)))) {
+            return "FAIL";
+        }
+        if (sectionItems.every((item) => ["DAT", "PASS", "ACCEPT"].includes(normalizeText(item.KetQua)))) {
+            return "PASS";
+        }
+        return null;
+    };
+
+    const ikeaSummaryRows = (() => {
+        const activeSections = sections.filter((section) =>
+            checkItems.some((item) => Number(item.SectionId) === Number(section.Id) && normalizeText(item.KetQua) !== "NA")
+        );
+        const palletSections = activeSections.filter((section) => normalizeText(section.TenNhom).includes("PALLET"));
+        const cartonSections = activeSections.filter((section) => {
+            const name = normalizeText(section.TenNhom);
+            return name.includes("KHAY") || name.includes("CARTON") || name.includes("BAO GOI");
+        });
+        const groupedIds = new Set([...palletSections, ...cartonSections].map((section) => Number(section.Id)));
+        const productSections = activeSections.filter((section) => !groupedIds.has(Number(section.Id)));
+        const groupDecision = (groupSections) => {
+            const decisions = groupSections.map(getSectionDecision);
+            if (!decisions.length) return null;
+            if (decisions.includes("FAIL")) return "FAIL";
+            return decisions.every((decision) => decision === "PASS") ? "PASS" : null;
+        };
+
+        return [
+            { label: "I. Pallet", decision: groupDecision(palletSections) },
+            { label: "II. Khay / Carton", decision: groupDecision(cartonSections) },
+            { label: "III – IV. Sản phẩm - Đánh giá theo con mắt khách hàng", decision: groupDecision(productSections) }
+        ];
+    })();
+
     const renderMeasurementGrid = (val) => {
         if (!val) return <div style={{ height: '20px' }}></div>;
 
@@ -279,9 +342,8 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 <div style={{ fontSize: '14pt' }}>CÔNG TY TNHH MTV 76</div>
                             </td>
                             <td rowSpan={2} style={{ ...styles.headerTd, width: '25%', textAlign: 'left', paddingLeft: '10px' }}>
-                                <div style={{ fontWeight: 'bold', fontSize: '11pt' }}>Mã số: </div>
-                                <span>{isDek ? 'BM.01.02-HD.02.QT.04-B8' : 'BM.01.01-QT.04-B8'}</span>
-                                <div style={{ fontSize: '11pt' }}>Ngày hiệu lực: {isDek ? '26/06/2026' : '15/6/2026'}</div>
+                                <div style={{ fontSize: '11pt' }}><b>Mã số:</b> {isDek ? 'BM.01.02-HD.02.QT.04-B8' : 'BM.01.01-QT.04-B8'}</div>
+                                <div style={{ fontSize: '11pt' }}>Ngày hiệu lực: {isIkea ? '20/6/2026' : isDek ? '26/06/2026' : '15/6/2026'}</div>
                                 <div style={{ fontSize: '11pt' }}>Phiên bản: 00</div>
                             </td>
                         </tr>
@@ -475,7 +537,9 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                             <tr>
                                 <td style={styles.infoTableLabel}>Mức độ kiểm tra</td>
                                 <td style={{ ...styles.infoTableCell, height: '24px' }}>
-                                    <input name="MucDoKiemTra" className="custom-field" type="text" defaultValue={customData.MucDoKiemTra || phieu.MucDoKiemTra || ''} style={styles.inputField} />
+                                    {isIkea
+                                        ? renderInspectionTypeCheckboxes()
+                                        : <input name="MucDoKiemTra" className="custom-field" type="text" defaultValue={customData.MucDoKiemTra || phieu.MucDoKiemTra || ''} style={styles.inputField} />}
                                 </td>
                                 <td style={{ ...styles.infoTableLabel, paddingLeft: '8px' }}>Kích thước SP</td>
                                 <td style={styles.infoTableCell}>
@@ -489,7 +553,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                 {/* <td style={styles.infoTableUnitCell}>hộp</td> */}
                             </tr>
                             <tr>
-                                <td style={styles.infoTableLabel}>Kế hoạch kiểm hàng</td>
+                                <td style={styles.infoTableLabel}>{isIkea ? 'Mức độ lấy mẫu' : 'Kế hoạch kiểm hàng'}</td>
                                 <td style={{ ...styles.infoTableCell, height: '24px' }}>
                                     {renderInspectionPlanCheckboxes(selectedInspectionPlanLevel)}
                                 </td>
@@ -654,6 +718,95 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                     </tbody>
                 </table>
 
+                {isIkea && (
+                    <Box className="avoid-break" sx={{ width: '68%', mt: 2.5, mb: 2.5 }}>
+                        <div style={{ ...styles.boldText, fontSize: '12pt', textDecoration: 'underline', marginBottom: '8px' }}>
+                            TỔNG HỢP KẾT QUẢ KIỂM TRA <span style={{ fontWeight: 'normal' }}>(Inspection Result Summary)</span>
+                        </div>
+                        <table style={{ ...styles.table, marginBottom: 0 }}>
+                            <thead>
+                                <tr>
+                                    <th style={{ ...styles.th, fontSize: '10pt' }}>Hạng mục kiểm</th>
+                                    <th style={{ ...styles.th, width: '20%', fontSize: '10pt' }}>Đạt (PASS)</th>
+                                    <th style={{ ...styles.th, width: '24%', fontSize: '10pt' }}>Không đạt (FAIL)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {ikeaSummaryRows.map((row) => (
+                                    <tr key={row.label}>
+                                        <td style={{ ...styles.td, fontWeight: 600, fontSize: '9.5pt' }}>{row.label}</td>
+                                        <td style={styles.tdCenter}>{renderCheckbox(row.decision === 'PASS')}</td>
+                                        <td style={styles.tdCenter}>{renderCheckbox(row.decision === 'FAIL')}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </Box>
+                )}
+
+                {/* ================= KẾT LUẬN & CHỮ KÝ ================= */}
+                <Box className="avoid-break" mt={3} pl={1} pb={2}>
+                    {isIkea ? (
+                        <Box mb={2}>
+                            <div style={{ ...styles.boldText, fontSize: '12pt', textDecoration: 'underline', marginBottom: '6px' }}>
+                                KẾT LUẬN <span style={{ fontWeight: 'normal' }}>(Final Conclusion)</span>
+                            </div>
+                            {[0, 1, 2].map((line) => (
+                                <div key={line} style={{ borderBottom: '1px dotted #000', height: '20px' }} />
+                            ))}
+                            <Box mt={1.5} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '70px' }}>
+                                <Box style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '10pt' }}>
+                                    <span>Cho xuất hàng/&nbsp; Shipment approved:</span>
+                                    {renderCheckbox(phieu.KetLuan === 'DAT')}
+                                </Box>
+                                <Box style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '10pt' }}>
+                                    <span>Giữ lại hàng/&nbsp; Shipment on hold:</span>
+                                    {renderCheckbox(phieu.KetLuan === 'KHONG_DAT')}
+                                </Box>
+                            </Box>
+                        </Box>
+                    ) : (
+                        <>
+                            <Box mb={2} style={{ display: 'flex', alignItems: 'center' }}>
+                                <div style={{ ...styles.boldText, marginRight: '15px' }}>* Kết quả:</div>
+                                <div style={{ ...styles.boldText, textTransform: 'uppercase' }}>
+                                    {phieu.KetLuan === 'DAT' ? 'ĐẠT YÊU CẦU' : phieu.KetLuan === 'KHONG_DAT' ? 'KHÔNG ĐẠT YÊU CẦU' : '.........................................................'}
+                                </div>
+                            </Box>
+
+                            <Box mb={2} style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                                <div style={styles.boldText}>* Kết luận:</div>
+                                <Box style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    {renderCheckbox(phieu.KetLuan === 'DAT')} <span>Cho xuất hàng</span>
+                                </Box>
+                                <Box style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    {renderCheckbox(phieu.KetLuan === 'KHONG_DAT')} <span>Giữ lại hàng (Lập biên bản KPH)</span>
+                                </Box>
+                            </Box>
+                        </>
+                    )}
+
+                    <Box style={{ ...styles.signatureBlock, marginTop: '10px' }}>
+                        <Box style={styles.signatureCol}>
+                            <div style={{ ...styles.text, minHeight: '30px' }}><b>Trưởng bộ phận</b></div>
+                            <PrintSignatureImage src={departmentSigner?.SignatureDataUrl} height={60} />
+                            <div style={styles.text}>{departmentSigner?.TenNguoiXacNhan || phieu.BoPhan}</div>
+                        </Box>
+                        <Box style={styles.signatureCol}>
+                            <div style={{ ...styles.text, minHeight: '30px' }}><b>Người kiểm hàng</b></div>
+                            <PrintSignatureImage src={inspectorSigner?.SignatureDataUrl} height={60} />
+                            <div style={styles.text}>{phieu.TenNguoiKiem}</div>
+                        </Box>
+                    </Box>
+
+                    <Box mt={1} className="avoid-break">
+                        <div style={{ fontSize: '8pt', fontStyle: isIkea ? 'italic' : 'normal' }}>
+                            <b style={{ textDecoration: isIkea ? 'underline' : 'none' }}>* Ghi chú:</b> Các lỗi dễ bị phản ánh hoặc đã có khiếu nại của khách hàng được cập nhật trong báo cáo kiểm hàng bằng những dòng chữ in đậm-nghiêng để chú ý và kiểm soát chặt chẽ hơn trong quá trình kiểm tra.
+                        </div>
+                    </Box>
+
+                </Box>
+
                 {/* ================= BẢNG KIỂM TRA CẤP ĐỘ ĐẶC BIỆT ================= */}
                 {thongSoList && thongSoList.length > 0 && (() => {
                     const maxSample = thongSoKqList.length > 0
@@ -683,7 +836,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                     return (
                         <Box className="avoid-break" mt={3}>
                             <Box mb={1} style={{ textAlign: 'center' }}>
-                                <div style={{ ...styles.boldText, fontSize: '12pt' }}>Kết quả kiểm theo cấp độ đặc biệt</div>
+                                <div style={{ ...styles.boldText, fontSize: '12pt', textTransform: 'uppercase' }}>Kết quả kiểm theo cấp độ đặc biệt</div>
                             </Box>
                             <div style={{ fontSize: '11pt', marginBottom: '4px' }}><b>Số mẫu cần lấy:</b></div>
                             <table style={{ ...styles.table, width: '100%' }}>
@@ -756,47 +909,6 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                         </Box>
                     );
                 })()}
-
-                {/* ================= KẾT LUẬN & CHỮ KÝ ================= */}
-                <Box className="avoid-break" mt={3} pl={1} pb={2}>
-
-                    <Box mb={2} style={{ display: 'flex', alignItems: 'center' }}>
-                        <div style={{ ...styles.boldText, marginRight: '15px' }}>* Kết quả:</div>
-                        <div style={{ ...styles.boldText, textTransform: 'uppercase' }}>
-                            {phieu.KetLuan === 'DAT' ? 'ĐẠT YÊU CẦU' : phieu.KetLuan === 'KHONG_DAT' ? 'KHÔNG ĐẠT YÊU CẦU' : '.........................................................'}
-                        </div>
-                    </Box>
-
-                    <Box mb={2} style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                        <div style={styles.boldText}>* Kết luận:</div>
-                        <Box style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            {renderCheckbox(phieu.KetLuan === 'DAT')} <span>Cho xuất hàng</span>
-                        </Box>
-                        <Box style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            {renderCheckbox(phieu.KetLuan === 'KHONG_DAT')} <span>Giữ lại hàng (Lập biên bản KPH)</span>
-                        </Box>
-                    </Box>
-
-                    <Box style={{ ...styles.signatureBlock, marginTop: '10px' }}>
-                        <Box style={styles.signatureCol}>
-                            <div style={{ ...styles.text, minHeight: '30px' }}><b>Trưởng bộ phận</b></div>
-                            <PrintSignatureImage src={departmentSigner?.SignatureDataUrl} height={60} />
-                            <div style={styles.text}>{departmentSigner?.TenNguoiXacNhan || phieu.BoPhan}</div>
-                        </Box>
-                        <Box style={styles.signatureCol}>
-                            <div style={{ ...styles.text, minHeight: '30px' }}><b>Người kiểm hàng</b></div>
-                            <PrintSignatureImage src={inspectorSigner?.SignatureDataUrl} height={60} />
-                            <div style={styles.text}>{phieu.TenNguoiKiem}</div>
-                        </Box>
-                    </Box>
-
-                    <Box mt={1}>
-                        <div style={{ fontSize: '8pt' }}>
-                            <b>* Ghi chú:</b> Các lỗi dễ bị phản ánh hoặc đã có khiếu nại của khách hàng được cập nhật trong báo cáo kiểm hàng bằng những dòng chữ in đậm-nghiêng để chú ý và kiểm soát chặt chẽ hơn trong quá trình kiểm tra.
-                        </div>
-                    </Box>
-
-                </Box>
 
                 {/* ================= HÌNH ẢNH LỖI ================= */}
                 {(() => {
