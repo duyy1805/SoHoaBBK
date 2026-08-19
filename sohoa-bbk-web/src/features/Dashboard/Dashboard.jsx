@@ -2,15 +2,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     Alert,
     alpha,
+    Autocomplete,
     Box,
     Button,
     Card,
     CardContent,
     Chip,
     CircularProgress,
-    Divider,
+    FormControl,
     Grid,
+    InputLabel,
+    LinearProgress,
+    MenuItem,
     Paper,
+    Select,
     Stack,
     Table,
     TableBody,
@@ -18,669 +23,362 @@ import {
     TableContainer,
     TableHead,
     TableRow,
+    TextField,
+    ToggleButton,
+    ToggleButtonGroup,
+    Tooltip,
     Typography,
     useTheme
 } from "@mui/material";
 import {
-    Add as AddIcon,
-    ArrowForward as ArrowForwardIcon,
-    Assignment as AssignmentIcon,
-    CheckCircle as CheckCircleIcon,
-    Error as ErrorIcon,
-    ListAlt as ListAltIcon,
-    PendingActions as PendingIcon,
+    AssignmentTurnedInOutlined as CompletedIcon,
+    ErrorOutline as ErrorIcon,
+    FactCheckOutlined as TotalIcon,
+    FilterAltOutlined as FilterIcon,
+    PendingActionsOutlined as PendingIcon,
     Refresh as RefreshIcon,
-    Remove as RemoveIcon,
-    Settings as SettingsIcon,
-    TrendingDown as TrendingDownIcon,
-    TrendingUp as TrendingUpIcon
+    ReportProblemOutlined as KphIcon,
+    TaskAltOutlined as PassIcon,
+    TrendingDown,
+    TrendingFlat,
+    TrendingUp,
+    WarningAmberOutlined as WarningIcon
 } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 
-import PageHeader from "../../components/common/PageHeader";
 import { getDashboardOverview } from "../../api/dashboard.api";
-import { getCurrentUser, hasPermission } from "../../utils/auth";
+import { hasPermission } from "../../utils/auth";
+
+const toDateKey = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+};
+
+const getPresetDates = (preset) => {
+    const today = new Date();
+    const from = new Date(today);
+    if (preset === "7_DAYS") from.setDate(today.getDate() - 6);
+    if (preset === "30_DAYS") from.setDate(today.getDate() - 29);
+    if (preset === "THIS_MONTH") from.setDate(1);
+    return { fromDate: toDateKey(from), toDate: toDateKey(today) };
+};
+
+const initialDates = getPresetDates("TODAY");
+const initialFilters = {
+    preset: "TODAY",
+    ...initialDates,
+    loaiKiemId: "",
+    boPhanId: "",
+    sanPhamId: "",
+    result: ""
+};
 
 const emptyOverview = {
     stats: {
         totalInspections: { value: 0, trend: 0 },
+        completedInspections: { value: 0, trend: 0 },
         pendingInspections: { value: 0, trend: 0 },
         passRate: { value: 0, trend: 0 },
-        defectReports: { value: 0, trend: 0 }
+        failedInspections: { value: 0, trend: 0 },
+        openKph: { value: 0, trend: 0 }
     },
-    recentInspections: [],
-    weeklyCompleted: [],
-    defectStats: {
-        summary: {
-            totalQuantity: 0,
-            totalOccurrences: 0,
-            affectedInspections: 0
-        },
-        byType: [],
-        byInspectionType: [],
-        topDefects: []
-    }
+    qualityTrend: [],
+    actionRequired: {},
+    defectStats: { summary: {}, byType: [], topDefects: [], byInspectionType: [] },
+    hotspots: { products: [], departments: [], processes: [] },
+    attentionItems: [],
+    filterOptions: { inspectionTypes: [], departments: [], products: [] }
 };
 
 const formatNumber = (value) => Number(value || 0).toLocaleString("vi-VN");
+const formatDateTime = (value) => value
+    ? new Date(value).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" })
+    : "--";
 
-const formatDate = (value) => {
-    if (!value) return "--";
-    return new Date(value).toLocaleDateString("vi-VN");
+const getStatus = (status) => {
+    const statuses = {
+        TAO_MOI: ["Chưa kiểm", "default"],
+        CHUA_KIEM: ["Chưa kiểm", "default"],
+        DA_TAO_SECTION: ["Chưa kiểm", "default"],
+        DANG_KIEM: ["Đang kiểm", "warning"],
+        CHO_TBP_DUYET: ["Chờ BP xác nhận", "info"],
+        CHO_XUONG_XAC_NHAN: ["Chờ BP xác nhận", "info"],
+        CHO_KIEM_NGHIEM: ["Chờ BP xác nhận", "info"],
+        CHO_SXBT_XAC_NHAN: ["Chờ SXBT xác nhận", "info"],
+        CHO_KHO_XAC_NHAN: ["Chờ Kho xác nhận", "secondary"],
+        HOAN_TAT: ["Hoàn tất", "success"],
+        HOAN_THANH: ["Hoàn tất", "success"]
+    };
+    const [label, color] = statuses[status] || [status || "Chưa xác định", "default"];
+    return { label, color };
 };
 
-const formatDayLabel = (dateKey) => {
-    const date = new Date(`${dateKey}T00:00:00`);
-    if (Number.isNaN(date.getTime())) return dateKey;
-    const day = date.getDay();
-    return day === 0 ? "CN" : `T${day + 1}`;
-};
-
-const getInspectionPath = (inspection) =>
-    Number(inspection.LoaiKiemId) === 4
-        ? `/phieu-kiem/sxbt/${inspection.Id}`
-        : `/phieu-kiem/${inspection.Id}`;
-
-const getStatusProps = (status) => {
-    switch (status) {
-        case "TAO_MOI":
-        case "DA_TAO_SECTION":
-            return { label: "Chưa kiểm", color: "default" };
-        case "DANG_KIEM":
-            return { label: "Đang kiểm", color: "warning" };
-        case "CHO_XUONG_XAC_NHAN":
-            return { label: "Chờ Trưởng bộ phận", color: "info" };
-        case "CHO_KIEM_NGHIEM":
-            return { label: "Chờ Trưởng bộ phận", color: "info" };
-        case "HOAN_TAT":
-            return { label: "Hoàn tất", color: "success" };
-        default:
-            return { label: status || "Chưa xác định", color: "default" };
+const getInspectionPath = (row) => {
+    if (Number(row.LoaiKiemId) === 3) return `/phieu-kiem/cuoi-chuyen/${row.Id}`;
+    if (Number(row.LoaiKiemId) === 4) return `/phieu-kiem/sxbt/${row.Id}`;
+    if (Number(row.LoaiKiemId) === 6) {
+        return String(row.SoPhieu || "").startsWith("CD-")
+            ? `/phieu-kiem/cong-doan/${row.Id}`
+            : `/phieu-kiem/tren-chuyen/${row.Id}`;
     }
+    return `/phieu-kiem/${row.Id}`;
 };
 
-const getResultProps = (result) => {
-    if (result === "DAT") return { label: "Đạt", color: "success" };
-    if (result === "KHONG_DAT") return { label: "Không đạt", color: "error" };
-    return null;
-};
+const getTypeLabel = (type) => ({
+    CRITICAL: "Nghiêm trọng",
+    MAJOR: "Nặng",
+    MINOR: "Nhẹ",
+    UNKNOWN: "Khác"
+}[type] || type || "Khác");
+const SEVERITY_COLORS = { CRITICAL: "#dc2626", MAJOR: "#f59e0b", MINOR: "#22c55e", UNKNOWN: "#94a3b8" };
 
-const getDefectTypeProps = (type) => {
-    switch (type) {
-        case "CRITICAL":
-            return { label: "Critical", color: "error" };
-        case "MAJOR":
-            return { label: "Major", color: "warning" };
-        case "MINOR":
-            return { label: "Minor", color: "info" };
-        default:
-            return { label: type || "Khác", color: "default" };
-    }
-};
-
-const StatCard = ({ title, value, icon, color, trend, trendUnit = "%", lowerIsBetter = false }) => {
+function KpiCard({ label, value, trend, color, icon, suffix = "", inverse = false }) {
     const numericTrend = Number(trend || 0);
-    const TrendIcon = numericTrend > 0
-        ? TrendingUpIcon
-        : numericTrend < 0
-            ? TrendingDownIcon
-            : RemoveIcon;
-    const improved = lowerIsBetter ? numericTrend <= 0 : numericTrend >= 0;
-    const trendColor = numericTrend === 0
-        ? "text.secondary"
-        : improved
-            ? "success.main"
-            : "error.main";
-    const trendLabel = `${numericTrend > 0 ? "+" : ""}${numericTrend}${trendUnit}`;
-
+    const improved = inverse ? numericTrend <= 0 : numericTrend >= 0;
+    const TrendIcon = numericTrend > 0 ? TrendingUp : numericTrend < 0 ? TrendingDown : TrendingFlat;
     return (
-        <Card sx={{ height: "100%" }}>
-            <CardContent>
+        <Card variant="outlined" sx={{ height: "100%", borderColor: "divider" }}>
+            <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                     <Box>
-                        <Typography color="text.secondary" variant="subtitle2" gutterBottom>
-                            {title}
-                        </Typography>
-                        <Typography variant="h4" fontWeight={700}>
-                            {value}
-                        </Typography>
-                        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 1 }}>
-                            <TrendIcon sx={{ color: trendColor, fontSize: 16 }} />
-                            <Typography variant="caption" color={trendColor} fontWeight={600}>
-                                {trendLabel}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                                vs tháng trước
-                            </Typography>
-                        </Stack>
+                        <Typography variant="caption" color="text.secondary" fontWeight={700}>{label}</Typography>
+                        <Typography variant="h5" fontWeight={800} sx={{ mt: 0.5 }}>{value}{suffix}</Typography>
                     </Box>
-                    <Box
-                        sx={{
-                            backgroundColor: alpha(color, 0.1),
-                            color,
-                            p: 1.5,
-                            borderRadius: 2,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center"
-                        }}
-                    >
-                        <Box component={icon} />
+                    <Box sx={{ p: 1, borderRadius: 2, bgcolor: alpha(color, 0.1), color, display: "flex" }}>
+                        <Box component={icon} sx={{ fontSize: 20 }} />
                     </Box>
+                </Stack>
+                <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 1 }}>
+                    <TrendIcon sx={{ fontSize: 15, color: numericTrend === 0 ? "text.disabled" : improved ? "success.main" : "error.main" }} />
+                    <Typography variant="caption" color="text.secondary">
+                        {numericTrend > 0 ? "+" : ""}{numericTrend}% so với kỳ trước
+                    </Typography>
                 </Stack>
             </CardContent>
         </Card>
     );
-};
+}
+
+function Panel({ title, subtitle, action, children, sx }) {
+    return (
+        <Paper variant="outlined" sx={{ p: 2.25, height: "100%", ...sx }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2} sx={{ mb: 2 }}>
+                <Box>
+                    <Typography variant="subtitle1" fontWeight={800}>{title}</Typography>
+                    {subtitle && <Typography variant="caption" color="text.secondary">{subtitle}</Typography>}
+                </Box>
+                {action}
+            </Stack>
+            {children}
+        </Paper>
+    );
+}
+
+function TrendChart({ data }) {
+    const width = 720;
+    const height = 210;
+    const pad = 26;
+    const points = data.map((row, index) => {
+        const x = data.length <= 1 ? width / 2 : pad + (index * (width - pad * 2)) / (data.length - 1);
+        const y = height - pad - (Math.max(0, Math.min(100, Number(row.PassRate || 0))) * (height - pad * 2)) / 100;
+        return { ...row, x, y };
+    });
+    const line = points.map((point) => `${point.x},${point.y}`).join(" ");
+
+    if (!data.length) return <EmptyState text="Không có dữ liệu xu hướng trong khoảng đã chọn" />;
+    return (
+        <Box sx={{ width: "100%", overflow: "hidden" }}>
+            <Box component="svg" viewBox={`0 0 ${width} ${height}`} sx={{ display: "block", width: "100%", height: 230 }}>
+                {[0, 25, 50, 75, 100].map((value) => {
+                    const y = height - pad - (value * (height - pad * 2)) / 100;
+                    return <line key={value} x1={pad} y1={y} x2={width - pad} y2={y} stroke="#e7eaf0" strokeWidth="1" />;
+                })}
+                {points.length > 1 && <polyline points={line} fill="none" stroke="#2563eb" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />}
+                {points.map((point) => (
+                    <g key={point.DateKey}>
+                        <Tooltip title={`${new Date(`${point.DateKey}T00:00:00`).toLocaleDateString("vi-VN")}: ${point.PassRate}% đạt`}>
+                            <circle cx={point.x} cy={point.y} r="5" fill="#fff" stroke="#2563eb" strokeWidth="3" />
+                        </Tooltip>
+                    </g>
+                ))}
+            </Box>
+            <Stack direction="row" justifyContent="space-between">
+                <Typography variant="caption" color="text.secondary">{new Date(`${data[0].DateKey}T00:00:00`).toLocaleDateString("vi-VN")}</Typography>
+                <Typography variant="caption" color="text.secondary">Tỷ lệ đạt (%)</Typography>
+                <Typography variant="caption" color="text.secondary">{new Date(`${data[data.length - 1].DateKey}T00:00:00`).toLocaleDateString("vi-VN")}</Typography>
+            </Stack>
+        </Box>
+    );
+}
+
+function EmptyState({ text }) {
+    return <Box sx={{ py: 6, textAlign: "center", color: "text.secondary" }}><Typography variant="body2">{text}</Typography></Box>;
+}
 
 export default function Dashboard() {
     const theme = useTheme();
     const navigate = useNavigate();
-    const [user] = useState(() => getCurrentUser());
+    const canViewInspections = hasPermission("XEM_PHIEU_KIEM");
+    const [filters, setFilters] = useState(initialFilters);
+    const [appliedFilters, setAppliedFilters] = useState(initialFilters);
     const [overview, setOverview] = useState(emptyOverview);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState("");
-    const canViewInspections = hasPermission("XEM_PHIEU_KIEM");
+    const [hotspotMode, setHotspotMode] = useState("products");
 
-    const loadData = useCallback(async () => {
+    const loadData = useCallback(async (nextFilters, initial = false) => {
         try {
-            setLoading(true);
-            const res = await getDashboardOverview();
-            setOverview({
+            if (initial) setLoading(true); else setRefreshing(true);
+            const { preset: _preset, ...params } = nextFilters;
+            void _preset;
+            const response = await getDashboardOverview(params);
+            setOverview((current) => ({
                 ...emptyOverview,
-                ...(res.data || {}),
-                stats: {
-                    ...emptyOverview.stats,
-                    ...(res.data?.stats || {})
-                },
-                defectStats: {
-                    ...emptyOverview.defectStats,
-                    ...(res.data?.defectStats || {}),
-                    summary: {
-                        ...emptyOverview.defectStats.summary,
-                        ...(res.data?.defectStats?.summary || {})
-                    }
-                }
-            });
+                ...response.data,
+                stats: { ...emptyOverview.stats, ...(response.data?.stats || {}) },
+                filterOptions: response.data?.filterOptions || current.filterOptions || emptyOverview.filterOptions
+            }));
             setError("");
-        } catch (err) {
-            setError(err.response?.data?.message || "Không thể tải dữ liệu Dashboard");
+        } catch (requestError) {
+            setError(requestError.response?.data?.message || "Không thể tải dữ liệu Dashboard");
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
     }, []);
 
     useEffect(() => {
-        loadData();
+        loadData(initialFilters, true);
     }, [loadData]);
 
-    const stats = [
-        {
-            title: "Tổng phiếu kiểm",
-            value: formatNumber(overview.stats.totalInspections.value),
-            icon: AssignmentIcon,
-            color: theme.palette.primary.main,
-            trend: overview.stats.totalInspections.trend
-        },
-        {
-            title: "Đang chờ xử lý",
-            value: formatNumber(overview.stats.pendingInspections.value),
-            icon: PendingIcon,
-            color: theme.palette.warning.main,
-            trend: overview.stats.pendingInspections.trend,
-            lowerIsBetter: true
-        },
-        {
-            title: "Tỉ lệ đạt",
-            value: `${formatNumber(overview.stats.passRate.value)}%`,
-            icon: CheckCircleIcon,
-            color: theme.palette.success.main,
-            trend: overview.stats.passRate.trend,
-            trendUnit: " điểm %"
-        },
-        {
-            title: "Biên bản lỗi",
-            value: formatNumber(overview.stats.defectReports.value),
-            icon: ErrorIcon,
-            color: theme.palette.error.main,
-            trend: overview.stats.defectReports.trend,
-            lowerIsBetter: true
-        }
+    const setFilter = (name, value) => setFilters((current) => ({ ...current, [name]: value }));
+    const changePreset = (preset) => {
+        const dates = getPresetDates(preset);
+        setFilters((current) => ({ ...current, preset, ...dates }));
+    };
+    const applyFilters = () => {
+        setAppliedFilters(filters);
+        loadData(filters);
+    };
+    const resetFilters = () => {
+        setFilters(initialFilters);
+        setAppliedFilters(initialFilters);
+        loadData(initialFilters);
+    };
+
+    const kpis = [
+        ["Tổng phiếu kiểm", overview.stats.totalInspections, TotalIcon, theme.palette.primary.main, false, ""],
+        ["Hoàn thành", overview.stats.completedInspections, CompletedIcon, theme.palette.success.main, false, ""],
+        ["Chờ xử lý", overview.stats.pendingInspections, PendingIcon, theme.palette.warning.main, true, ""],
+        ["Tỷ lệ đạt", overview.stats.passRate, PassIcon, theme.palette.success.dark, false, "%"],
+        ["Không đạt", overview.stats.failedInspections, ErrorIcon, theme.palette.error.main, true, ""],
+        ["KPH mở", overview.stats.openKph, KphIcon, theme.palette.error.dark, true, ""]
     ];
 
-    const quickActions = [
-        {
-            label: "Tạo phiếu kiểm",
-            icon: AddIcon,
-            path: "/phieu-kiem/create",
-            color: "primary",
-            visible: hasPermission("PHAN_BO_KIEM")
-        },
-        {
-            label: "Xem danh sách",
-            icon: ListAltIcon,
-            path: "/phieu-kiem",
-            color: "secondary",
-            visible: hasPermission("XEM_PHIEU_KIEM")
-        },
-        {
-            label: "Báo cáo lỗi",
-            icon: ErrorIcon,
-            path: "/bien-ban",
-            color: "error",
-            visible: true
-        },
-        {
-            label: "Cấu hình",
-            icon: SettingsIcon,
-            path: "/danh-muc",
-            color: "warning",
-            visible: hasPermission("QUAN_TRI_DM")
-        }
-    ].filter((action) => action.visible);
+    const actionItems = [
+        ["Phiếu không đạt", overview.actionRequired.FailedCount, "error.main", "FAILED"],
+        ["Chờ bộ phận xác nhận", overview.actionRequired.AwaitingDepartmentCount, "warning.main", "PENDING"],
+        ["Chờ Kho/SXBT xác nhận", overview.actionRequired.AwaitingWarehouseCount, "info.main", "PENDING"],
+        ["KPH quá hạn", overview.actionRequired.OverdueKphCount, "error.dark", ""]
+    ];
 
-    const weeklyMax = useMemo(
-        () => Math.max(...overview.weeklyCompleted.map((item) => Number(item.CompletedCount) || 0), 1),
-        [overview.weeklyCompleted]
-    );
+    const defectTotal = overview.defectStats.byType.reduce((sum, row) => sum + Number(row.Quantity || 0), 0);
+    const donut = useMemo(() => {
+        let position = 0;
+        const segments = overview.defectStats.byType.map((row) => {
+            const percent = defectTotal ? (Number(row.Quantity || 0) / defectTotal) * 100 : 0;
+            const segment = `${SEVERITY_COLORS[row.DefectType] || SEVERITY_COLORS.UNKNOWN} ${position}% ${position + percent}%`;
+            position += percent;
+            return segment;
+        });
+        return segments.length ? `conic-gradient(${segments.join(",")})` : "#e5e7eb";
+    }, [defectTotal, overview.defectStats.byType]);
 
-    const defectTypeTotal = useMemo(
-        () => Math.max(...overview.defectStats.byType.map((item) => Number(item.Quantity) || 0), 1),
-        [overview.defectStats.byType]
-    );
+    const hotspotRows = overview.hotspots[hotspotMode] || [];
+    const maxHotspotDefects = Math.max(...hotspotRows.map((row) => Number(row.DefectQuantity || 0)), 1);
+    const maxDefects = Math.max(...overview.defectStats.topDefects.map((row) => Number(row.Quantity || 0)), 1);
+    const activeFilterCount = [appliedFilters.loaiKiemId, appliedFilters.boPhanId, appliedFilters.sanPhamId, appliedFilters.result].filter(Boolean).length;
 
     if (loading) {
-        return (
-            <Box sx={{ minHeight: "55vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <CircularProgress />
-            </Box>
-        );
+        return <Box sx={{ minHeight: "60vh", display: "grid", placeItems: "center" }}><CircularProgress /></Box>;
     }
 
     return (
-        <Box>
-            <PageHeader
-                title={user ? `Chào ${user.fullName || user.username}` : "Bảng điều khiển"}
-                subtitle={user
-                    ? `Bạn thuộc bộ phận ${user.tenBoPhan || "Chưa xác định"}. Dữ liệu tổng hợp theo tháng hiện tại.`
-                    : "Tổng quan hệ thống Quản lý Chất lượng (KCS)"}
-            />
+        <Box sx={{ pb: 4 }}>
+            <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", md: "center" }} spacing={2} sx={{ mb: 2.5 }}>
+                <Box>
+                    <Typography variant="h5" fontWeight={850}>Dashboard chất lượng</Typography>
+                    <Typography variant="body2" color="text.secondary">Tổng quan hoạt động kiểm tra chất lượng và các điểm cần xử lý</Typography>
+                </Box>
+                <Stack direction="row" spacing={1} alignItems="center">
+                    {activeFilterCount > 0 && <Chip size="small" color="primary" label={`${activeFilterCount} bộ lọc`} />}
+                    <Button variant="outlined" startIcon={<RefreshIcon />} onClick={() => loadData(appliedFilters)} disabled={refreshing}>Làm mới</Button>
+                </Stack>
+            </Stack>
 
-            {error && (
-                <Alert
-                    severity="error"
-                    action={
-                        <Button color="inherit" size="small" startIcon={<RefreshIcon />} onClick={loadData}>
-                            Tải lại
-                        </Button>
-                    }
-                    sx={{ mb: 3 }}
-                >
-                    {error}
-                </Alert>
-            )}
+            {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-            <Grid container spacing={2}>
-                {stats.map((stat) => (
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }} key={stat.title}>
-                        <StatCard {...stat} />
+            <Paper variant="outlined" sx={{ p: 2, mb: 2.5 }}>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+                    <FilterIcon color="primary" fontSize="small" />
+                    <Typography variant="subtitle2" fontWeight={800}>Bộ lọc dữ liệu</Typography>
+                </Stack>
+                <Grid container spacing={1.5} alignItems="center">
+                    <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+                        <FormControl fullWidth size="small"><InputLabel>Thời gian</InputLabel><Select value={filters.preset} label="Thời gian" onChange={(event) => changePreset(event.target.value)}>
+                            <MenuItem value="TODAY">Hôm nay</MenuItem><MenuItem value="7_DAYS">7 ngày gần nhất</MenuItem><MenuItem value="30_DAYS">30 ngày gần nhất</MenuItem><MenuItem value="THIS_MONTH">Tháng này</MenuItem><MenuItem value="CUSTOM">Tùy chọn</MenuItem>
+                        </Select></FormControl>
                     </Grid>
-                ))}
-
-                <Grid size={{ xs: 12, md: 8 }}>
-                    <Paper sx={{ overflow: "hidden" }}>
-                        <Box sx={{ p: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <Typography variant="h6">Kiểm tra gần đây</Typography>
-                            {canViewInspections && (
-                                <Button size="small" endIcon={<ArrowForwardIcon />} onClick={() => navigate("/phieu-kiem")}>
-                                    Xem tất cả
-                                </Button>
-                            )}
-                        </Box>
-                        <Divider />
-                        <TableContainer>
-                            <Table>
-                                <TableHead>
-                                    <TableRow>
-                                        <TableCell>Mã phiếu</TableCell>
-                                        <TableCell>Sản phẩm</TableCell>
-                                        <TableCell>Ngày tạo</TableCell>
-                                        <TableCell>Trạng thái</TableCell>
-                                        <TableCell align="right">Kết quả</TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {overview.recentInspections.length === 0 ? (
-                                        <TableRow>
-                                            <TableCell colSpan={5} align="center" sx={{ py: 5 }}>
-                                                <Typography color="text.secondary">Chưa có phiếu kiểm.</Typography>
-                                            </TableCell>
-                                        </TableRow>
-                                    ) : overview.recentInspections.map((row) => {
-                                        const status = getStatusProps(row.TrangThai);
-                                        const result = getResultProps(row.KetLuan);
-
-                                        return (
-                                            <TableRow
-                                                key={row.Id}
-                                                hover
-                                                sx={{ cursor: canViewInspections ? "pointer" : "default" }}
-                                                onClick={() => {
-                                                    if (canViewInspections) navigate(getInspectionPath(row));
-                                                }}
-                                            >
-                                                <TableCell sx={{ fontWeight: 600, color: "primary.main" }}>
-                                                    {row.SoPhieu || "--"}
-                                                </TableCell>
-                                                <TableCell>{row.TenSanPham || "--"}</TableCell>
-                                                <TableCell>{formatDate(row.CreatedAt)}</TableCell>
-                                                <TableCell>
-                                                    <Chip label={status.label} size="small" color={status.color} variant="outlined" />
-                                                </TableCell>
-                                                <TableCell align="right">
-                                                    {result ? (
-                                                        <Chip label={result.label} size="small" color={result.color} />
-                                                    ) : (
-                                                        <Typography variant="body2" color="text.secondary">--</Typography>
-                                                    )}
-                                                </TableCell>
-                                            </TableRow>
-                                        );
-                                    })}
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
-                    </Paper>
-
-                    <Paper sx={{ mt: 2, p: 2 }}>
-                        <Typography variant="h6">Phiếu hoàn tất trong 7 ngày gần nhất</Typography>
-                        <Box
-                            sx={{
-                                height: 220,
-                                display: "flex",
-                                alignItems: "flex-end",
-                                justifyContent: "space-around",
-                                gap: 1.5,
-                                pt: 3
-                            }}
-                        >
-                            {overview.weeklyCompleted.map((item) => {
-                                const count = Number(item.CompletedCount) || 0;
-                                const height = count > 0 ? Math.max((count / weeklyMax) * 100, 8) : 2;
-
-                                return (
-                                    <Box key={item.DateKey} sx={{ textAlign: "center", width: "12%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
-                                        <Typography variant="caption" fontWeight={700} sx={{ mb: 0.75 }}>
-                                            {count}
-                                        </Typography>
-                                        <Box
-                                            title={`${item.DateKey}: ${count} phiếu hoàn tất`}
-                                            sx={{
-                                                height: `${height}%`,
-                                                bgcolor: count > 0 ? alpha(theme.palette.primary.main, 0.78) : "divider",
-                                                borderRadius: "4px 4px 0 0",
-                                                transition: "height 0.3s ease",
-                                                "&:hover": { bgcolor: theme.palette.primary.main }
-                                            }}
-                                        />
-                                        <Typography variant="caption" sx={{ mt: 1 }}>
-                                            {formatDayLabel(item.DateKey)}
-                                        </Typography>
-                                        <Typography variant="caption" color="text.secondary">
-                                            {item.DateKey?.slice(5)}
-                                        </Typography>
-                                    </Box>
-                                );
-                            })}
-                        </Box>
-                    </Paper>
-
-                    <Paper sx={{ mt: 3, overflow: "hidden" }}>
-                        <Box sx={{ p: 2 }}>
-                            <Stack
-                                direction={{ xs: "column", sm: "row" }}
-                                justifyContent="space-between"
-                                alignItems={{ xs: "flex-start", sm: "center" }}
-                                spacing={1}
-                            >
-                                <Box>
-                                    <Typography variant="h6">Lỗi xuất hiện toàn thời gian</Typography>
-                                    <Typography variant="body2" color="text.secondary">
-                                        Tổng hợp toàn bộ lỗi đã ghi nhận từ các phiếu kiểm.
-                                    </Typography>
-                                </Box>
-                                <Chip
-                                    icon={<ErrorIcon />}
-                                    label={`${formatNumber(overview.defectStats.summary.totalQuantity)} lỗi`}
-                                    color="error"
-                                    variant="outlined"
-                                    sx={{ fontWeight: 700 }}
-                                />
-                            </Stack>
-
-                            <Grid container spacing={1.5} sx={{ mt: 2 }}>
-                                <Grid size={{ xs: 12, sm: 4 }}>
-                                    <Card variant="outlined" sx={{ bgcolor: alpha(theme.palette.error.main, 0.04) }}>
-                                        <CardContent sx={{ py: 1.75, "&:last-child": { pb: 1.75 } }}>
-                                            <Typography variant="caption" color="text.secondary">Tổng số lượng lỗi</Typography>
-                                            <Typography variant="h5" fontWeight={800}>
-                                                {formatNumber(overview.defectStats.summary.totalQuantity)}
-                                            </Typography>
-                                        </CardContent>
-                                    </Card>
-                                </Grid>
-                                <Grid size={{ xs: 12, sm: 4 }}>
-                                    <Card variant="outlined">
-                                        <CardContent sx={{ py: 1.75, "&:last-child": { pb: 1.75 } }}>
-                                            <Typography variant="caption" color="text.secondary">Lượt ghi nhận</Typography>
-                                            <Typography variant="h5" fontWeight={800}>
-                                                {formatNumber(overview.defectStats.summary.totalOccurrences)}
-                                            </Typography>
-                                        </CardContent>
-                                    </Card>
-                                </Grid>
-                                <Grid size={{ xs: 12, sm: 4 }}>
-                                    <Card variant="outlined">
-                                        <CardContent sx={{ py: 1.75, "&:last-child": { pb: 1.75 } }}>
-                                            <Typography variant="caption" color="text.secondary">Phiếu có lỗi</Typography>
-                                            <Typography variant="h5" fontWeight={800}>
-                                                {formatNumber(overview.defectStats.summary.affectedInspections)}
-                                            </Typography>
-                                        </CardContent>
-                                    </Card>
-                                </Grid>
-                            </Grid>
-
-                            <Stack spacing={1.25} sx={{ mt: 2 }}>
-                                {overview.defectStats.byType.length === 0 ? (
-                                    <Typography variant="body2" color="text.secondary">
-                                        Chưa có lỗi được ghi nhận trong tháng.
-                                    </Typography>
-                                ) : overview.defectStats.byType.map((item) => {
-                                    const quantity = Number(item.Quantity) || 0;
-                                    const pct = Math.max((quantity / defectTypeTotal) * 100, quantity > 0 ? 8 : 0);
-                                    const typeProps = getDefectTypeProps(item.DefectType);
-
-                                    return (
-                                        <Box key={item.DefectType || "UNKNOWN"}>
-                                            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
-                                                <Chip label={typeProps.label} size="small" color={typeProps.color} variant="outlined" />
-                                                <Typography variant="body2" fontWeight={700}>
-                                                    {formatNumber(quantity)} lỗi / {formatNumber(item.Occurrences)} lượt
-                                                </Typography>
-                                            </Stack>
-                                            <Box sx={{ height: 8, borderRadius: 999, bgcolor: "divider", overflow: "hidden" }}>
-                                                <Box
-                                                    sx={{
-                                                        width: `${pct}%`,
-                                                        height: "100%",
-                                                        bgcolor: `${typeProps.color}.main`
-                                                    }}
-                                                />
-                                            </Box>
-                                        </Box>
-                                    );
-                                })}
-                            </Stack>
-
-                            <Box sx={{ mt: 3 }}>
-                                <Typography variant="subtitle2" fontWeight={800} sx={{ mb: 1 }}>
-                                    Theo loại kiểm
-                                </Typography>
-                                <TableContainer component={Paper} variant="outlined" sx={{ boxShadow: "none" }}>
-                                    <Table size="small">
-                                        <TableHead>
-                                            <TableRow>
-                                                <TableCell>Loại kiểm</TableCell>
-                                                <TableCell align="right">Số lượng</TableCell>
-                                                <TableCell align="right">Lượt</TableCell>
-                                                <TableCell align="right">Phiếu</TableCell>
-                                                <TableCell align="right">C/M/m</TableCell>
-                                            </TableRow>
-                                        </TableHead>
-                                        <TableBody>
-                                            {overview.defectStats.byInspectionType.length === 0 ? (
-                                                <TableRow>
-                                                    <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
-                                                        <Typography variant="body2" color="text.secondary">
-                                                            Chưa có lỗi theo loại kiểm.
-                                                        </Typography>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ) : overview.defectStats.byInspectionType.map((item) => (
-                                                <TableRow key={item.LoaiKiemId || item.TenLoai} hover>
-                                                    <TableCell>
-                                                        <Typography variant="body2" fontWeight={700}>
-                                                            {item.TenLoai || "Chưa xác định"}
-                                                        </Typography>
-                                                        {item.MaLoai && (
-                                                            <Typography variant="caption" color="text.secondary">
-                                                                {item.MaLoai}
-                                                            </Typography>
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell align="right" sx={{ fontWeight: 700 }}>
-                                                        {formatNumber(item.Quantity)}
-                                                    </TableCell>
-                                                    <TableCell align="right">{formatNumber(item.Occurrences)}</TableCell>
-                                                    <TableCell align="right">{formatNumber(item.AffectedInspections)}</TableCell>
-                                                    <TableCell align="right">
-                                                        <Stack direction="row" spacing={0.5} justifyContent="flex-end" flexWrap="wrap">
-                                                            <Chip size="small" color="error" variant="outlined" label={formatNumber(item.CriticalQuantity)} />
-                                                            <Chip size="small" color="warning" variant="outlined" label={formatNumber(item.MajorQuantity)} />
-                                                            <Chip size="small" color="info" variant="outlined" label={formatNumber(item.MinorQuantity)} />
-                                                        </Stack>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                </TableContainer>
-                            </Box>
-                        </Box>
-
-                        <Divider />
-                        <TableContainer>
-                            <Table size="small">
-                                <TableHead>
-                                    <TableRow>
-                                        <TableCell>Top lỗi</TableCell>
-                                        <TableCell>Loại</TableCell>
-                                        <TableCell align="right">Số lượng</TableCell>
-                                        <TableCell align="right">Lượt</TableCell>
-                                        <TableCell align="right">Phiếu</TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {overview.defectStats.topDefects.length === 0 ? (
-                                        <TableRow>
-                                            <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
-                                                <Typography color="text.secondary">Chưa có dữ liệu lỗi.</Typography>
-                                            </TableCell>
-                                        </TableRow>
-                                    ) : overview.defectStats.topDefects.map((item, index) => {
-                                        const typeProps = getDefectTypeProps(item.DefectType);
-                                        return (
-                                            <TableRow key={`${item.DefectId || "unknown"}-${index}`} hover>
-                                                <TableCell>
-                                                    <Typography variant="body2" fontWeight={700}>
-                                                        {item.MaLoi || "--"}
-                                                    </Typography>
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        {item.TenLoi || "Chưa xác định"}
-                                                    </Typography>
-                                                    {item.MoTa && item.MoTa !== item.TenLoi && (
-                                                        <Typography
-                                                            variant="caption"
-                                                            color="text.disabled"
-                                                            sx={{
-                                                                display: "block",
-                                                                mt: 0.25,
-                                                                maxWidth: 360,
-                                                                overflow: "hidden",
-                                                                textOverflow: "ellipsis",
-                                                                whiteSpace: "nowrap"
-                                                            }}
-                                                            title={item.MoTa}
-                                                        >
-                                                            {item.MoTa}
-                                                        </Typography>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell>
-                                                    <Chip label={typeProps.label} size="small" color={typeProps.color} variant="outlined" />
-                                                </TableCell>
-                                                <TableCell align="right" sx={{ fontWeight: 700 }}>
-                                                    {formatNumber(item.Quantity)}
-                                                </TableCell>
-                                                <TableCell align="right">{formatNumber(item.Occurrences)}</TableCell>
-                                                <TableCell align="right">{formatNumber(item.AffectedInspections)}</TableCell>
-                                            </TableRow>
-                                        );
-                                    })}
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
-                    </Paper>
+                    <Grid size={{ xs: 6, sm: 3, md: 1.7 }}><TextField fullWidth size="small" type="date" label="Từ ngày" value={filters.fromDate} onChange={(event) => setFilters((current) => ({ ...current, preset: "CUSTOM", fromDate: event.target.value }))} slotProps={{ inputLabel: { shrink: true } }} /></Grid>
+                    <Grid size={{ xs: 6, sm: 3, md: 1.7 }}><TextField fullWidth size="small" type="date" label="Đến ngày" value={filters.toDate} onChange={(event) => setFilters((current) => ({ ...current, preset: "CUSTOM", toDate: event.target.value }))} slotProps={{ inputLabel: { shrink: true } }} /></Grid>
+                    <Grid size={{ xs: 12, sm: 6, md: 2.1 }}><FormControl fullWidth size="small"><InputLabel>Loại kiểm</InputLabel><Select value={filters.loaiKiemId} label="Loại kiểm" onChange={(event) => setFilter("loaiKiemId", event.target.value)}><MenuItem value="">Tất cả loại kiểm</MenuItem>{overview.filterOptions.inspectionTypes.map((item) => <MenuItem key={item.Id} value={item.Id}>{item.TenLoai}</MenuItem>)}</Select></FormControl></Grid>
+                    <Grid size={{ xs: 12, sm: 6, md: 2.1 }}><FormControl fullWidth size="small"><InputLabel>Bộ phận</InputLabel><Select value={filters.boPhanId} label="Bộ phận" onChange={(event) => setFilter("boPhanId", event.target.value)}><MenuItem value="">Tất cả bộ phận</MenuItem>{overview.filterOptions.departments.map((item) => <MenuItem key={item.Id} value={item.Id}>{item.TenBoPhan}</MenuItem>)}</Select></FormControl></Grid>
+                    <Grid size={{ xs: 12, sm: 6, md: 2.1 }}><Autocomplete size="small" options={overview.filterOptions.products} value={overview.filterOptions.products.find((item) => Number(item.Id) === Number(filters.sanPhamId)) || null} onChange={(_, value) => setFilter("sanPhamId", value?.Id || "")} getOptionLabel={(item) => `${item.MaSanPham || "--"} - ${item.TenSanPham || ""}`} isOptionEqualToValue={(option, value) => Number(option.Id) === Number(value.Id)} renderInput={(params) => <TextField {...params} label="Sản phẩm" placeholder="Tất cả sản phẩm" />} /></Grid>
+                    <Grid size={{ xs: 12, sm: 6, md: 2 }}><FormControl fullWidth size="small"><InputLabel>Kết quả</InputLabel><Select value={filters.result} label="Kết quả" onChange={(event) => setFilter("result", event.target.value)}><MenuItem value="">Tất cả trạng thái</MenuItem><MenuItem value="PENDING">Chờ xử lý</MenuItem><MenuItem value="COMPLETED">Hoàn thành</MenuItem><MenuItem value="PASSED">Đạt</MenuItem><MenuItem value="FAILED">Không đạt</MenuItem></Select></FormControl></Grid>
+                    <Grid size={{ xs: 12, md: 10 }}><Stack direction="row" spacing={1}><Button variant="contained" startIcon={refreshing ? <CircularProgress size={16} color="inherit" /> : <FilterIcon />} onClick={applyFilters} disabled={refreshing || !filters.fromDate || !filters.toDate}>Áp dụng</Button><Button color="inherit" onClick={resetFilters}>Đặt lại</Button></Stack></Grid>
                 </Grid>
+            </Paper>
 
-                <Grid size={{ xs: 12, md: 4 }}>
-                    <Paper sx={{ p: 2 }}>
-                        <Typography variant="h6" sx={{ mb: 2 }}>Thao tác nhanh</Typography>
-                        {quickActions.length === 0 ? (
-                            <Typography variant="body2" color="text.secondary">
-                                Không có thao tác phù hợp với quyền hiện tại.
-                            </Typography>
-                        ) : (
-                            <Grid container spacing={2}>
-                                {quickActions.map((action) => (
-                                    <Grid size={{ xs: 12, sm: 6 }} key={action.path}>
-                                        <Button
-                                            variant="outlined"
-                                            fullWidth
-                                            color={action.color}
-                                            onClick={() => navigate(action.path)}
-                                            sx={{
-                                                height: 100,
-                                                display: "flex",
-                                                flexDirection: "column",
-                                                gap: 1,
-                                                borderStyle: "dashed",
-                                                "&:hover": { borderStyle: "solid" }
-                                            }}
-                                        >
-                                            <Box component={action.icon} />
-                                            <Typography variant="caption" fontWeight={600}>
-                                                {action.label}
-                                            </Typography>
-                                        </Button>
-                                    </Grid>
-                                ))}
-                            </Grid>
-                        )}
-                    </Paper>
-                </Grid>
+            <Grid container spacing={1.5} sx={{ mb: 2.5 }}>
+                {kpis.map(([label, metric, Icon, color, inverse, suffix]) => <Grid key={label} size={{ xs: 6, sm: 4, lg: 2 }}><KpiCard label={label} value={formatNumber(metric.value)} trend={metric.trend} color={color} icon={Icon} inverse={inverse} suffix={suffix} /></Grid>)}
             </Grid>
+
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+                <Grid size={{ xs: 12, lg: 8 }}><Panel title="Xu hướng chất lượng" subtitle="Tỷ lệ phiếu đạt theo ngày"><TrendChart data={overview.qualityTrend} /></Panel></Grid>
+                <Grid size={{ xs: 12, lg: 4 }}><Panel title="Cần xử lý" subtitle="Các đầu việc cần được ưu tiên" action={<WarningIcon color="warning" />}>
+                    <Stack spacing={0.75}>{actionItems.map(([label, count, color, result]) => <Box key={label} onClick={() => result && navigate(`/phieu-kiem?result=${result}`)} sx={{ px: 1.5, py: 1.25, borderRadius: 1.5, bgcolor: "action.hover", cursor: result ? "pointer" : "default", display: "flex", justifyContent: "space-between", alignItems: "center" }}><Stack direction="row" alignItems="center" spacing={1}><Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: color }} /><Typography variant="body2">{label}</Typography></Stack><Typography fontWeight={800}>{formatNumber(count)}</Typography></Box>)}</Stack>
+                </Panel></Grid>
+            </Grid>
+
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+                <Grid size={{ xs: 12, lg: 7 }}><Panel title="Pareto top lỗi" subtitle="Các lỗi có số lượng ghi nhận cao nhất">
+                    {overview.defectStats.topDefects.length ? <Stack spacing={1.4}>{overview.defectStats.topDefects.map((row, index) => <Box key={`${row.DefectId}-${row.DefectType}`}><Stack direction="row" justifyContent="space-between" spacing={2}><Typography variant="body2" noWrap>{index + 1}. {row.TenLoi}</Typography><Typography variant="body2" fontWeight={800}>{formatNumber(row.Quantity)}</Typography></Stack><LinearProgress variant="determinate" value={(Number(row.Quantity || 0) / maxDefects) * 100} sx={{ mt: 0.6, height: 7, borderRadius: 8, bgcolor: alpha(theme.palette.primary.main, 0.08) }} /></Box>)}</Stack> : <EmptyState text="Chưa ghi nhận lỗi" />}
+                </Panel></Grid>
+                <Grid size={{ xs: 12, lg: 5 }}><Panel title="Phân loại lỗi" subtitle={`Tổng ${formatNumber(defectTotal)} lỗi`}>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={3} alignItems="center" justifyContent="center">
+                        <Box sx={{ width: 160, height: 160, borderRadius: "50%", background: donut, position: "relative", flexShrink: 0, "&::after": { content: '""', position: "absolute", inset: 34, borderRadius: "50%", bgcolor: "background.paper" } }}><Box sx={{ position: "absolute", inset: 0, zIndex: 1, display: "grid", placeItems: "center", textAlign: "center" }}><Box><Typography variant="h6" fontWeight={850}>{formatNumber(defectTotal)}</Typography><Typography variant="caption" color="text.secondary">tổng lỗi</Typography></Box></Box></Box>
+                        <Stack spacing={1.2} sx={{ minWidth: 180 }}>{overview.defectStats.byType.map((row) => { const percent = defectTotal ? Math.round((Number(row.Quantity || 0) / defectTotal) * 1000) / 10 : 0; return <Stack key={row.DefectType} direction="row" justifyContent="space-between" spacing={3}><Stack direction="row" spacing={1} alignItems="center"><Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: SEVERITY_COLORS[row.DefectType] || SEVERITY_COLORS.UNKNOWN }} /><Typography variant="body2">{getTypeLabel(row.DefectType)}</Typography></Stack><Typography variant="body2" fontWeight={800}>{percent}%</Typography></Stack>; })}</Stack>
+                    </Stack>
+                </Panel></Grid>
+            </Grid>
+
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+                <Grid size={{ xs: 12, lg: 7 }}><Panel title="Điểm nóng chất lượng" action={<ToggleButtonGroup size="small" exclusive value={hotspotMode} onChange={(_, value) => value && setHotspotMode(value)}><ToggleButton value="products">Sản phẩm</ToggleButton><ToggleButton value="departments">Bộ phận</ToggleButton><ToggleButton value="processes">Công đoạn</ToggleButton></ToggleButtonGroup>}>
+                    {hotspotRows.length ? <Stack spacing={1.25}>{hotspotRows.map((row, index) => { const completed = Number(row.CompletedCount || 0); const rate = completed ? Math.round((Number(row.PassedCount || 0) / completed) * 1000) / 10 : null; return <Box key={`${row.ItemId || "x"}-${row.ItemName}-${index}`}><Stack direction="row" justifyContent="space-between" spacing={2}><Typography variant="body2" noWrap>{row.ItemName}</Typography><Stack direction="row" spacing={1}><Typography variant="caption" color="error.main" fontWeight={700}>{formatNumber(row.DefectQuantity)} lỗi</Typography>{rate !== null && <Typography variant="caption" color="text.secondary">• {rate}% đạt</Typography>}</Stack></Stack><LinearProgress color={Number(row.DefectQuantity || 0) > 0 ? "error" : "success"} variant="determinate" value={(Number(row.DefectQuantity || 0) / maxHotspotDefects) * 100} sx={{ mt: 0.55, height: 6, borderRadius: 4 }} /></Box>; })}</Stack> : <EmptyState text="Chưa có điểm nóng trong khoảng đã chọn" />}
+                </Panel></Grid>
+                <Grid size={{ xs: 12, lg: 5 }}><Panel title="Theo loại kiểm" subtitle="Tỷ lệ đạt trên các phiếu đã hoàn thành">
+                    {overview.defectStats.byInspectionType.length ? <Stack spacing={1.6}>{overview.defectStats.byInspectionType.map((row) => <Box key={row.LoaiKiemId}><Stack direction="row" justifyContent="space-between"><Typography variant="body2">{row.TenLoai}</Typography><Typography variant="body2" fontWeight={800}>{row.PassRate}%</Typography></Stack><LinearProgress color={Number(row.PassRate) >= 95 ? "success" : Number(row.PassRate) >= 80 ? "warning" : "error"} variant="determinate" value={Number(row.PassRate || 0)} sx={{ mt: 0.7, height: 7, borderRadius: 6 }} /></Box>)}</Stack> : <EmptyState text="Chưa có phiếu hoàn thành" />}
+                </Panel></Grid>
+            </Grid>
+
+            <Panel title="Phiếu / sự cố cần chú ý" subtitle="Ưu tiên phiếu không đạt, có lỗi hoặc đang chờ xử lý">
+                <TableContainer><Table size="small"><TableHead><TableRow><TableCell>Mã phiếu</TableCell><TableCell>Sản phẩm</TableCell><TableCell>Loại kiểm</TableCell><TableCell>Trạng thái</TableCell><TableCell align="right">Lỗi</TableCell><TableCell>Người phụ trách</TableCell><TableCell>Thời gian</TableCell></TableRow></TableHead><TableBody>
+                    {overview.attentionItems.length ? overview.attentionItems.map((row) => { const status = getStatus(row.TrangThai); return <TableRow key={row.Id} hover onClick={() => canViewInspections && navigate(getInspectionPath(row))} sx={{ cursor: canViewInspections ? "pointer" : "default" }}><TableCell><Typography variant="body2" color="primary.main" fontWeight={800}>{row.SoPhieu}</Typography></TableCell><TableCell>{row.TenSanPham}</TableCell><TableCell>{row.TenLoai}</TableCell><TableCell><Chip size="small" variant="outlined" label={status.label} color={status.color} /></TableCell><TableCell align="right"><Chip size="small" label={formatNumber(row.DefectQuantity)} color={Number(row.DefectQuantity) > 0 ? "error" : "default"} variant={Number(row.DefectQuantity) > 0 ? "filled" : "outlined"} /></TableCell><TableCell>{row.NguoiPhuTrach}</TableCell><TableCell>{formatDateTime(row.NgayDuLieu)}</TableCell></TableRow>; }) : <TableRow><TableCell colSpan={7}><EmptyState text="Không có phiếu cần chú ý" /></TableCell></TableRow>}
+                </TableBody></Table></TableContainer>
+            </Panel>
         </Box>
     );
 }

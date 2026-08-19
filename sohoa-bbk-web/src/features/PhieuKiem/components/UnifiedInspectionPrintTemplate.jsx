@@ -302,6 +302,216 @@ const Signature = ({ title, signer }) => (
     />
 );
 
+const CUOI_CHUYEN_META = {
+    companyName: "CÔNG TY TNHH MTV 76",
+    formCode: "BM.03.17-QT.03-B8",
+    effectiveDate: "01/07/2026",
+    version: "00",
+    title: "THEO DÕI KIỂM TRA CHẤT LƯỢNG MAY CUỐI CHUYỀN"
+};
+const CUOI_CHUYEN_ROWS_PER_PAGE = 15;
+const CUOI_CHUYEN_DEFECTS_PER_PAGE = 15;
+
+const defectSeverity = (defect) => {
+    const type = text(defect?.DefectType).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+    if (type.includes("MINOR") || type.includes("NHE")) return "minor";
+    if (type.includes("CRITICAL") || type.includes("NGHIEM")) return "critical";
+    return "major";
+};
+
+const buildCuoiChuyenOfficialPages = ({ phieu = {}, plans = [], dynamicFields = [], xacNhans = [] }) => {
+    const signerData = buildPrintData({ kind: "cuoi-chuyen", phieu, plans, dynamicFields, xacNhans });
+    const isTimeMode = text(getFieldValue(dynamicFields, "CuoiChuyenTimeDataVersion")) === "1";
+    const groups = [];
+    const groupMap = new Map();
+    plans.forEach((plan, planIndex) => {
+        const productKey = text(plan.MaSanPham || plan.TenSanPham) || `plan-${plan.Id || planIndex}`;
+        if (!groupMap.has(productKey)) {
+            const group = { key: productKey, plans: [] };
+            groupMap.set(productKey, group);
+            groups.push(group);
+        }
+        groupMap.get(productKey).plans.push(plan);
+    });
+    if (!groups.length) groups.push({ key: "empty", plans: [] });
+
+    return groups.flatMap((group) => {
+        const defects = group.plans.flatMap((plan) => {
+            const slots = Array.isArray(plan.TimeSlots) ? plan.TimeSlots : [];
+            return slots.length ? slots.flatMap((slot) => slot.Defects || []) : (plan.Defects || []);
+        });
+        const columns = [];
+        const seen = new Set();
+        defects.forEach((defect) => {
+            const id = getDefectKey(defect);
+            if (!id || seen.has(id)) return;
+            seen.add(id);
+            columns.push({ id, code: text(defect.MaLoi), name: text(defect.TenLoi), placeholder: false });
+        });
+        if (!columns.length) columns.push({ id: "placeholder-0", code: "", name: "", placeholder: true });
+        const columnChunks = [];
+        for (let index = 0; index < columns.length; index += CUOI_CHUYEN_DEFECTS_PER_PAGE) {
+            const chunk = columns.slice(index, index + CUOI_CHUYEN_DEFECTS_PER_PAGE);
+            while (chunk.length < CUOI_CHUYEN_DEFECTS_PER_PAGE) {
+                chunk.push({ id: `placeholder-${index}-${chunk.length}`, code: "", name: "", placeholder: true });
+            }
+            columnChunks.push(chunk);
+        }
+
+        const rows = group.plans.flatMap((plan, planIndex) => {
+            const slots = Array.isArray(plan.TimeSlots) ? plan.TimeSlots : [];
+            const sources = slots.length ? slots : (isTimeMode ? [] : [{ legacy: true, Defects: plan.Defects || [] }]);
+            return sources.map((slot, slotIndex) => {
+                const rowDefects = slot.Defects || [];
+                const severity = { minor: 0, major: 0, critical: 0 };
+                rowDefects.forEach((defect) => { severity[defectSeverity(defect)] += number(defect.SoLuong); });
+                const repairs = repairTotals(rowDefects);
+                const checkedQty = slot.legacy
+                    ? number(plan.SoLuongHieuLuc ?? plan.SoLuongThucTe ?? plan.DaSanXuat ?? plan.SoLuongKeHoach)
+                    : number(slot.SoLuongKiem);
+                return {
+                    key: `${plan.Id || planIndex}-${slot.Id || slotIndex}`,
+                    date: formatDate(plan.NgayKeHoach || phieu.NgayKiem),
+                    materialOrder: text(plan.LenhXuatVatTu),
+                    time: slot.legacy || slot.IsLegacy || !slot.GioKiem
+                        ? "" : `${text(slot.GioKiem) < "12:00" ? "S" : "C"} ${text(slot.GioKiem)}`,
+                    checkedQty,
+                    defectQty: defectTotal(rowDefects) + number(slot.legacy ? plan.SoLoiBuiBan : slot.SoLoiBuiBan)
+                        + number(slot.legacy ? plan.SoLoiConTrung : slot.SoLoiConTrung),
+                    severity,
+                    defects: rowDefects,
+                    repairedPass: repairs.passed,
+                    repairedFail: repairs.failed
+                };
+            });
+        }).sort((a, b) => a.date.localeCompare(b.date) || a.materialOrder.localeCompare(b.materialOrder)
+            || a.time.localeCompare(b.time));
+        const rowChunks = [];
+        const sourceRows = rows.length ? rows : [];
+        const rowPageCount = Math.max(1, Math.ceil(sourceRows.length / CUOI_CHUYEN_ROWS_PER_PAGE));
+        for (let pageIndex = 0; pageIndex < rowPageCount; pageIndex += 1) {
+            const chunk = sourceRows.slice(pageIndex * CUOI_CHUYEN_ROWS_PER_PAGE, (pageIndex + 1) * CUOI_CHUYEN_ROWS_PER_PAGE);
+            while (chunk.length < CUOI_CHUYEN_ROWS_PER_PAGE) chunk.push({ key: `blank-${pageIndex}-${chunk.length}`, blank: true, defects: [] });
+            rowChunks.push(chunk);
+        }
+        const firstPlan = group.plans[0] || {};
+        return rowChunks.flatMap((pageRows, rowPageIndex) => columnChunks.map((pageColumns, columnPageIndex) => ({
+            key: `${group.key}-${rowPageIndex}-${columnPageIndex}`,
+            rows: pageRows,
+            columns: pageColumns,
+            workshop: uniqueText(group.plans.map((plan) => plan.TenDonVi)).join(", ") || text(phieu.PhanXuong || phieu.DoiTuong),
+            team: uniqueText(group.plans.map((plan) => plan.TenBoPhan)).join(", ") || text(phieu.ToMay),
+            week: weekNumber(firstPlan.NgayKeHoach || phieu.NgayKiem),
+            product: [text(firstPlan.MaSanPham), text(firstPlan.TenSanPham)].filter(Boolean).join(" - "),
+            qcSigner: ["CHO_TBP_DUYET", "HOAN_TAT"].includes(text(phieu.TrangThai)) ? signerData.qcSigner : null,
+            ttsxSigner: text(phieu.TrangThai) === "HOAN_TAT" ? signerData.ttsxSigner : null
+        })));
+    });
+};
+
+const CuoiChuyenOfficialPrint = ({ printRef, phieu, plans, dynamicFields, xacNhans }) => {
+    const pages = useMemo(
+        () => buildCuoiChuyenOfficialPages({ phieu, plans, dynamicFields, xacNhans }),
+        [phieu, plans, dynamicFields, xacNhans]
+    );
+    return (
+        <div ref={printRef} className="cc-official-root">
+            <style>{`
+                @page { size: A4 landscape; margin: 0; }
+                .cc-official-root { background:#fff; color:#000; font-family:"Times New Roman",serif; }
+                .cc-official-page { width:297mm; min-height:210mm; padding:6mm 7mm; box-sizing:border-box; background:#fff; }
+                .cc-official-table { width:100%; border-collapse:collapse; table-layout:fixed; }
+                .cc-official-table th,.cc-official-table td { border:1px solid #000; padding:1px; text-align:center; vertical-align:middle; line-height:1.05; }
+                .cc-official-row { height:8.2mm; }
+                .cc-official-vertical { writing-mode:vertical-rl; transform:rotate(180deg); white-space:nowrap; }
+                .cc-official-info { display:grid; grid-template-columns:1fr 1fr .45fr; gap:12px; font-size:9px; min-height:7mm; align-items:center; }
+                .cc-official-product { text-align:center; font-weight:700; font-size:11px; min-height:6mm; }
+                .cc-official-note { margin:2mm 10mm 0; font-size:7px; line-height:1.25; font-weight:700; font-style:italic; }
+                @media print {
+                    html,body { margin:0!important; padding:0!important; background:#fff!important; }
+                    .cc-official-page { break-after:page; page-break-after:always; }
+                    .cc-official-page:last-child { break-after:auto; page-break-after:auto; }
+                }
+            `}</style>
+            {pages.map((page) => (
+                <section className="cc-official-page" key={page.key}>
+                    <table className="cc-official-table" style={{ fontSize: 7 }}>
+                        <tbody>
+                            <tr>
+                                <td rowSpan={3} style={{ width: "14%" }}><img src="/logo.png" alt="Công ty 76" style={{ width: "82%", maxHeight: 58, objectFit: "contain" }} /></td>
+                                <td style={{ fontSize: 11 }}>{CUOI_CHUYEN_META.companyName}</td>
+                                <td style={{ width: "24%", textAlign: "left", paddingLeft: 5 }}>Mã số: {CUOI_CHUYEN_META.formCode}</td>
+                            </tr>
+                            <tr>
+                                <td rowSpan={2} style={{ fontWeight: 700, fontSize: 15 }}>{CUOI_CHUYEN_META.title}</td>
+                                <td style={{ textAlign: "left", paddingLeft: 5 }}>Ngày hiệu lực: {CUOI_CHUYEN_META.effectiveDate}</td>
+                            </tr>
+                            <tr><td style={{ textAlign: "left", paddingLeft: 5 }}>Phiên bản: {CUOI_CHUYEN_META.version}</td></tr>
+                        </tbody>
+                    </table>
+                    <div className="cc-official-info">
+                        <div><strong>Phân xưởng:</strong> {page.workshop}</div>
+                        <div><strong>Tổ:</strong> {page.team}</div>
+                        <div><strong>Tuần:</strong> {page.week}</div>
+                    </div>
+                    <div className="cc-official-product">Sản phẩm: {page.product}</div>
+                    <table className="cc-official-table" style={{ fontSize: 6.3 }}>
+                        <colgroup>
+                            <col style={{ width: "5%" }} /><col style={{ width: "7%" }} /><col style={{ width: "5%" }} />
+                            <col style={{ width: "4%" }} /><col style={{ width: "3%" }} /><col style={{ width: "3%" }} />
+                            {[0, 1, 2].map((value) => <col key={`severity-${value}`} style={{ width: "2%" }} />)}
+                            {page.columns.map((column) => <col key={`column-${column.id}`} style={{ width: "3%" }} />)}
+                            <col style={{ width: "4%" }} /><col style={{ width: "4%" }} />
+                            <col style={{ width: "7%" }} /><col style={{ width: "7%" }} />
+                        </colgroup>
+                        <thead>
+                            <tr style={{ height: 12 }}>
+                                <th rowSpan={2}>Ngày</th><th rowSpan={2}>Lệnh<br/>xuất VT</th><th rowSpan={2}>Thời gian<br/>S/C</th>
+                                <th rowSpan={2}>Tổng<br/>SL kiểm</th><th rowSpan={2}>SL lỗi</th><th rowSpan={2}>% lỗi</th>
+                                <th colSpan={3}>Mức độ lỗi</th><th colSpan={15}>Dạng lỗi (Số lỗi)</th>
+                                <th colSpan={2}>Báo cáo sửa lỗi</th><th colSpan={2}>Ký xác nhận</th>
+                            </tr>
+                            <tr style={{ height: 36 }}>
+                                <th><span className="cc-official-vertical">Nhẹ</span></th>
+                                <th><span className="cc-official-vertical">Nặng</span></th>
+                                <th><span className="cc-official-vertical">Nghiêm trọng</span></th>
+                                {page.columns.map((column) => <th key={column.id} title={column.name}>{column.code || column.name}</th>)}
+                                <th>SL<br/>đạt</th><th>SL<br/>không đạt</th><th>QC</th><th>TTSX</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {page.rows.map((row, rowIndex) => {
+                                const defectMap = makeDefectMap(page.columns, row.defects || []);
+                                return <tr className="cc-official-row" key={row.key}>
+                                    <td>{row.date || ""}</td><td>{row.materialOrder || ""}</td><td>{row.time || ""}</td>
+                                    <td>{displayNumber(row.checkedQty)}</td><td>{displayNumber(row.defectQty)}</td>
+                                    <td>{number(row.checkedQty) ? `${(number(row.defectQty) * 100 / number(row.checkedQty)).toFixed(2)}%` : ""}</td>
+                                    <td>{displayNumber(row.severity?.minor)}</td><td>{displayNumber(row.severity?.major)}</td><td>{displayNumber(row.severity?.critical)}</td>
+                                    {page.columns.map((column) => <td key={`${row.key}-${column.id}`}>{displayNumber(defectMap[column.id])}</td>)}
+                                    <td>{displayNumber(row.repairedPass)}</td><td>{displayNumber(row.repairedFail)}</td>
+                                    {rowIndex === 0 && <>
+                                        <td rowSpan={CUOI_CHUYEN_ROWS_PER_PAGE}>
+                                            <PrintSignature name={page.qcSigner?.name || ""} signatureDataUrl={page.qcSigner?.signatureDataUrl || null} imageHeight={34} style={{ fontSize: 6.5 }} />
+                                        </td>
+                                        <td rowSpan={CUOI_CHUYEN_ROWS_PER_PAGE}>
+                                            <PrintSignature name={page.ttsxSigner?.name || ""} signatureDataUrl={page.ttsxSigner?.signatureDataUrl || null} imageHeight={34} style={{ fontSize: 6.5 }} />
+                                        </td>
+                                    </>}
+                                </tr>;
+                            })}
+                        </tbody>
+                    </table>
+                    <div className="cc-official-note">
+                        <div>* Ghi chú: Báo cáo không được sửa chữa tẩy xóa, QC gạch chéo vào thông tin sai và ghi lại thông tin đúng và ký tên bên cạnh.</div>
+                        <div>Trường hợp phát sinh dạng lỗi không có sẵn trong báo cáo: QC ghi thêm dạng lỗi vào chỗ trống các ô và gạch bỏ dạng lỗi không xảy ra tại thời điểm đó.</div>
+                        <div>Hình thông tin truy xuất lỗi với A-C có danh sách phụ lục kèm theo.</div>
+                    </div>
+                </section>
+            ))}
+        </div>
+    );
+};
+
 const UnifiedInspectionPrintTemplate = forwardRef(function UnifiedInspectionPrintTemplate({
     kind,
     phieu,
@@ -314,6 +524,9 @@ const UnifiedInspectionPrintTemplate = forwardRef(function UnifiedInspectionPrin
         () => buildPrintData({ kind, phieu, plans, slots, dynamicFields, xacNhans }),
         [kind, phieu, plans, slots, dynamicFields, xacNhans]
     );
+    if (kind === "cuoi-chuyen") {
+        return <CuoiChuyenOfficialPrint printRef={ref} phieu={phieu} plans={plans} dynamicFields={dynamicFields} xacNhans={xacNhans} />;
+    }
     const totalColumns = 16 + data.columns.length;
     const fontSize = totalColumns > 24 ? 5.5 : totalColumns > 20 ? 6.3 : 7.2;
 

@@ -187,6 +187,10 @@ export const saveCuoiChuyenData = (data) => {
     return axiosClient.post("/phieu-kiem/cuoi-chuyen/save", data);
 };
 
+export const saveCuoiChuyenTimeSlots = (data) => {
+    return axiosClient.post("/phieu-kiem/cuoi-chuyen/time-slots/save", data);
+};
+
 export const completeCuoiChuyen = (phieuKiemId, ketLuan) => {
     return axiosClient.post("/phieu-kiem/cuoi-chuyen/complete", { phieuKiemId, ketLuan });
 };

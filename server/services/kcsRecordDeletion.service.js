@@ -71,6 +71,11 @@ const getPhieuKiemFiles = async (executor,phieuKiemId) => {
         JOIN dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN planRow ON planRow.Id=defect.PlanId
         WHERE planRow.PhieuKiemId=@PhieuKiemId
         UNION ALL
+        SELECT defect.ImageUrls FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_DEFECT defect
+        JOIN dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_SLOT slotRow ON slotRow.Id=defect.TimeSlotId
+        JOIN dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN planRow ON planRow.Id=slotRow.PlanId
+        WHERE planRow.PhieuKiemId=@PhieuKiemId
+        UNION ALL
         SELECT defect.ImageUrls FROM dbo.PHIEU_KIEM_CONG_DOAN_DEFECT defect
         LEFT JOIN dbo.PHIEU_KIEM_CONG_DOAN_PLAN_LOT lotRow ON lotRow.Id=defect.PlanLotId
         JOIN dbo.PHIEU_KIEM_CONG_DOAN_PLAN planRow ON planRow.Id=COALESCE(defect.PlanId,lotRow.PlanId)
@@ -149,6 +154,8 @@ const deletePhieuKiemData = async (transaction, phieuKiemId, deletedBy) => {
             SELECT Id INTO #TargetSlot FROM dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT WHERE PhieuKiemId=@PhieuKiemId;
             SELECT Id INTO #TargetEntry FROM dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY WHERE SlotId IN (SELECT Id FROM #TargetSlot);
             SELECT Id INTO #TargetCuoiChuyenPlan FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN WHERE PhieuKiemId=@PhieuKiemId;
+            SELECT Id INTO #TargetCuoiChuyenTimeSlot FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_SLOT
+            WHERE PlanId IN (SELECT Id FROM #TargetCuoiChuyenPlan);
             SELECT Id INTO #TargetCongDoanPlan FROM dbo.PHIEU_KIEM_CONG_DOAN_PLAN WHERE PhieuKiemId=@PhieuKiemId;
             SELECT Id INTO #TargetCongDoanLot FROM dbo.PHIEU_KIEM_CONG_DOAN_PLAN_LOT WHERE PlanId IN (SELECT Id FROM #TargetCongDoanPlan);
             SELECT Id INTO #TargetSplit FROM dbo.PHIEU_KIEM_SXBT_SPLIT
@@ -163,6 +170,10 @@ const deletePhieuKiemData = async (transaction, phieuKiemId, deletedBy) => {
             DELETE FROM dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY_DEFECT WHERE EntryId IN (SELECT Id FROM #TargetEntry);
             DELETE FROM dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY WHERE Id IN (SELECT Id FROM #TargetEntry);
             DELETE FROM dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT WHERE Id IN (SELECT Id FROM #TargetSlot);
+            DELETE FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_DEFECT
+            WHERE TimeSlotId IN (SELECT Id FROM #TargetCuoiChuyenTimeSlot);
+            DELETE FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_SLOT
+            WHERE Id IN (SELECT Id FROM #TargetCuoiChuyenTimeSlot);
             DELETE FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_DEFECT WHERE PlanId IN (SELECT Id FROM #TargetCuoiChuyenPlan);
             DELETE FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN WHERE Id IN (SELECT Id FROM #TargetCuoiChuyenPlan);
             DELETE FROM dbo.PHIEU_KIEM_CONG_DOAN_DEFECT

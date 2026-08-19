@@ -353,6 +353,9 @@ export default function CuoiChuyenDetail() {
                     </Paper>
                 ) : plans.map((plan, index) => {
                     const defects = Array.isArray(plan.Defects) ? plan.Defects : [];
+                    const timeSlots = Array.isArray(plan.TimeSlots) ? plan.TimeSlots : [];
+                    const recordedTimeSlots = timeSlots.filter((slot) => !slot.IsLegacy);
+                    const checkedByTime = timeSlots.reduce((sum, slot) => sum + Number(slot.SoLuongKiem || 0), 0);
                     const defectQty = defects.reduce((sum, defect) => sum + (Number(defect.SoLuong) || 0), 0)
                         + Number(plan.SoLoiBuiBan || 0) + Number(plan.SoLoiConTrung || 0);
                     return (
@@ -383,6 +386,8 @@ export default function CuoiChuyenDetail() {
                                         <Chip label={`Chênh: ${plan.ChenhLechSoLuong ?? "—"}`} size="small" variant="outlined" />
                                         <Chip label={`NSDK: ${plan.NangSuatDuKien ?? "---"}`} size="small" />
                                         <Chip label={`Đã SX: ${plan.DaSanXuat ?? "---"}`} size="small" />
+                                        {timeSlots.length > 0 && <Chip label={`Mốc giờ: ${recordedTimeSlots.length}`} size="small" color="info" variant="outlined" />}
+                                        {timeSlots.length > 0 && <Chip label={`Đã kiểm: ${checkedByTime}`} size="small" color="primary" variant="outlined" />}
                                         <Chip label={`Lỗi: ${defectQty}`} size="small" color={defectQty > 0 ? "error" : "default"} />
                                         <Chip label={`Bụi bẩn: ${plan.SoLoiBuiBan || 0}`} size="small" variant="outlined" />
                                         <Chip label={`Côn trùng: ${plan.SoLoiConTrung || 0}`} size="small" variant="outlined" />
@@ -400,6 +405,21 @@ export default function CuoiChuyenDetail() {
                                 </Stack>
 
                                 <Divider sx={{ my: 2 }} />
+
+                                {timeSlots.length > 0 && (
+                                    <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 2 }}>
+                                        {timeSlots.map((slot) => {
+                                            const slotDefects = (slot.Defects || []).reduce((sum, defect) => sum + Number(defect.SoLuong || 0), 0)
+                                                + Number(slot.SoLoiBuiBan || 0) + Number(slot.SoLoiConTrung || 0);
+                                            const slotLabel = slot.IsLegacy || !slot.GioKiem
+                                                ? "Dữ liệu cũ — không có giờ"
+                                                : `${slot.GioKiem < "12:00" ? "S" : "C"} ${slot.GioKiem}`;
+                                            return <Chip key={slot.Id || slot.GioKiem}
+                                                label={`${slotLabel}: kiểm ${slot.SoLuongKiem || 0}, lỗi ${slotDefects}`}
+                                                size="small" variant="outlined" />;
+                                        })}
+                                    </Stack>
+                                )}
 
                                 {defects.length === 0 ? (
                                     <Typography color="text.secondary">Chưa ghi nhận lỗi cho kế hoạch này.</Typography>

@@ -65,6 +65,13 @@ const CUOI_CHUYEN_APPROVE_BOPHAN_FIELD = 'CuoiChuyen_ApproveBoPhanId';
 const CUOI_CHUYEN_COMPLETED_BY_FIELD = 'CuoiChuyen_CompletedByUserId';
 const CUOI_CHUYEN_COMPLETED_BY_NAME_FIELD = 'CuoiChuyen_CompletedByName';
 const CUOI_CHUYEN_APPROVED_BY_NAME_FIELD = 'CuoiChuyen_ApprovedByName';
+const CUOI_CHUYEN_TIME_DATA_VERSION_FIELD = 'CuoiChuyenTimeDataVersion';
+const CUOI_CHUYEN_TIME_DATA_VERSION = '1';
+const CUOI_CHUYEN_TIME_OPTIONS = [
+    '07:30', '08:30', '09:30', '10:30', '11:30',
+    '12:30', '13:30', '14:30', '15:30', '16:30'
+];
+const CUOI_CHUYEN_TIME_OPTION_SET = new Set(CUOI_CHUYEN_TIME_OPTIONS);
 const TREN_CHUYEN_APPROVE_BOPHAN_FIELD = 'TrenChuyen_ApproveBoPhanId';
 const TREN_CHUYEN_COMPLETED_BY_FIELD = 'TrenChuyen_CompletedByUserId';
 const TREN_CHUYEN_COMPLETED_BY_NAME_FIELD = 'TrenChuyen_CompletedByName';
@@ -944,6 +951,29 @@ const normalizeCuoiChuyenPlans = (plans = []) => plans.map((plan, planIndex) => 
         })).filter((defect) => defect.defectId > 0 && defect.soLuong > 0)
         : []
 }));
+
+const normalizeCuoiChuyenTimeSlots = (slots = []) => slots.map((slot, slotIndex) => ({
+    gioKiem: String(slot?.gioKiem || slot?.GioKiem || '').trim(),
+    soLuongKiem: optionalNonNegativeInteger(slot?.soLuongKiem ?? slot?.SoLuongKiem),
+    soLoiBuiBan: Number(slot?.soLoiBuiBan ?? slot?.SoLoiBuiBan ?? 0),
+    soLoiConTrung: Number(slot?.soLoiConTrung ?? slot?.SoLoiConTrung ?? 0),
+    ghiChu: String(slot?.ghiChu || slot?.GhiChu || '').trim(),
+    sortOrder: Number(slot?.sortOrder || slotIndex + 1),
+    defects: Array.isArray(slot?.defects) ? slot.defects.map((defect, defectIndex) => ({
+        defectId: Number(defect?.defectId || defect?.DefectId || 0),
+        soLuong: Number(defect?.soLuong || defect?.SoLuong || 0),
+        soLuongDatSauSua: defect?.soLuongDatSauSua === '' || defect?.soLuongDatSauSua == null
+            ? null : Number(defect.soLuongDatSauSua),
+        soLuongKhongDatSauSua: defect?.soLuongKhongDatSauSua === '' || defect?.soLuongKhongDatSauSua == null
+            ? null : Number(defect.soLuongKhongDatSauSua),
+        tenCongNhan: String(defect?.tenCongNhan || defect?.TenCongNhan || '').trim(),
+        ghiChu: String(defect?.ghiChu || defect?.GhiChu || '').trim(),
+        imageUrls: Array.isArray(defect?.imageUrls)
+            ? defect.imageUrls.filter((url) => typeof url === 'string' && url.trim() !== '')
+            : [],
+        sortOrder: Number(defect?.sortOrder || defectIndex + 1)
+    })).filter((defect) => defect.defectId > 0 && defect.soLuong > 0) : []
+}));
 // Cấu hình Multer để lưu file
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -1680,6 +1710,64 @@ router.get(
                 const workerByDefectId = new Map(
                     defectExtraResult.recordset.map((row) => [Number(row.Id), row.TenCongNhan || ''])
                 );
+                const timeSlotResult = await pool.request()
+                    .input('PhieuKiemId', sql.Int, Number(id))
+                    .query(`
+                        SELECT slotRow.Id, slotRow.PlanId, slotRow.GioKiem, slotRow.IsLegacy, slotRow.SoLuongKiem,
+                            slotRow.SoLoiBuiBan, slotRow.SoLoiConTrung, slotRow.NguoiGhiNhanId,
+                            slotRow.GhiChu, slotRow.SortOrder, slotRow.CreatedAt, slotRow.UpdatedAt,
+                            userRow.FullName AS TenNguoiGhiNhan
+                        FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_SLOT slotRow
+                        INNER JOIN dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN planRow ON planRow.Id = slotRow.PlanId
+                        LEFT JOIN dbo.Users userRow ON userRow.Id = slotRow.NguoiGhiNhanId
+                        WHERE planRow.PhieuKiemId = @PhieuKiemId
+                        ORDER BY planRow.SortOrder, slotRow.SortOrder, slotRow.Id;
+
+                        SELECT defect.Id, defect.TimeSlotId, defect.DefectId, defect.SoLuong,
+                            defect.SoLuongDatSauSua, defect.SoLuongKhongDatSauSua,
+                            defect.TenCongNhan, defect.GhiChu, defect.ImageUrls, defect.SortOrder,
+                            catalog.MaLoi, catalog.TenLoi, catalog.MoTa, catalog.DefectType,
+                            catalog.PhuongAnXuLy, catalog.ImageUrl
+                        FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_DEFECT defect
+                        INNER JOIN dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_SLOT slotRow ON slotRow.Id = defect.TimeSlotId
+                        INNER JOIN dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN planRow ON planRow.Id = slotRow.PlanId
+                        LEFT JOIN dbo.DM_DEFECT catalog ON catalog.Id = defect.DefectId
+                        WHERE planRow.PhieuKiemId = @PhieuKiemId
+                        ORDER BY slotRow.SortOrder, defect.SortOrder, defect.Id;
+                    `);
+                const timeDefectsBySlotId = {};
+                (timeSlotResult.recordsets?.[1] || []).forEach((record) => {
+                    let imageUrls = [];
+                    try { imageUrls = JSON.parse(record.ImageUrls || '[]'); } catch { imageUrls = []; }
+                    if (!Array.isArray(imageUrls)) imageUrls = [];
+                    if (!timeDefectsBySlotId[record.TimeSlotId]) timeDefectsBySlotId[record.TimeSlotId] = [];
+                    timeDefectsBySlotId[record.TimeSlotId].push({
+                        Id: record.Id,
+                        TimeSlotId: record.TimeSlotId,
+                        DefectId: record.DefectId,
+                        SoLuong: record.SoLuong,
+                        SoLuongDatSauSua: record.SoLuongDatSauSua,
+                        SoLuongKhongDatSauSua: record.SoLuongKhongDatSauSua,
+                        TenCongNhan: record.TenCongNhan || '',
+                        GhiChu: record.GhiChu || '',
+                        ImageUrls: imageUrls,
+                        SortOrder: record.SortOrder || 0,
+                        MaLoi: record.MaLoi,
+                        TenLoi: record.TenLoi,
+                        MoTa: record.MoTa,
+                        DefectType: record.DefectType,
+                        PhuongAnXuLy: record.PhuongAnXuLy,
+                        ImageUrl: record.ImageUrl || null
+                    });
+                });
+                const timeSlotsByPlanId = {};
+                (timeSlotResult.recordsets?.[0] || []).forEach((slot) => {
+                    if (!timeSlotsByPlanId[slot.PlanId]) timeSlotsByPlanId[slot.PlanId] = [];
+                    timeSlotsByPlanId[slot.PlanId].push({
+                        ...slot,
+                        Defects: timeDefectsBySlotId[slot.Id] || []
+                    });
+                });
 
                 const defectsByPlanId = {};
                 defectRecords.forEach((record) => {
@@ -1719,15 +1807,20 @@ router.get(
                     });
                 });
 
-                const plans = planRecords.map((plan) => ({
+                const plans = planRecords.map((plan) => {
+                    const timeSlots = timeSlotsByPlanId[plan.Id] || [];
+                    return {
                     ...applyQuantityFields({
                         ...plan,
                         ...(extraByPlan.get(Number(plan.Id)) || {}),
                         SoLuongThucTe: extraByPlan.get(Number(plan.Id))?.SoLuongThucTe ?? null
                     }, 'SoLuongKeHoach'),
                     Defects: [...(defectsByPlanId[plan.Id] || [])]
-                        .sort((a, b) => (a.SortOrder || 0) - (b.SortOrder || 0))
-                }));
+                        .sort((a, b) => (a.SortOrder || 0) - (b.SortOrder || 0)),
+                    TimeSlots: timeSlots,
+                    HasTimeSlotData: timeSlots.length > 0
+                };
+                });
                 const quantitySummary = plans.reduce((totals, plan) => ({
                     TongSoLuongKeHoach: totals.TongSoLuongKeHoach + Number(plan.SoLuongKeHoach || 0),
                     TongSoLuongThucTe: totals.TongSoLuongThucTe + Number(plan.SoLuongThucTe || 0),
@@ -2187,6 +2280,12 @@ router.post(
             }
 
             if (isCuoiChuyenLoaiKiem(loaiKiemId)) {
+                await upsertPhieuKiemCustomFields(pool, newPhieuId, {
+                    [CUOI_CHUYEN_TIME_DATA_VERSION_FIELD]: CUOI_CHUYEN_TIME_DATA_VERSION
+                });
+            }
+
+            if (isCuoiChuyenLoaiKiem(loaiKiemId)) {
                 await pool.request()
                     .input('PhieuKiemId', sql.Int, newPhieuId)
                     .input('PlansJson', sql.NVarChar(sql.MAX), JSON.stringify(normalizedCuoiChuyenPlans))
@@ -2426,6 +2525,243 @@ router.post(
 );
 
 router.post(
+    '/cuoi-chuyen/time-slots/save',
+    authenticateToken,
+    authorize('THUC_HIEN_KIEM'),
+    async (req, res) => {
+        const { phieuKiemId, planId, slots, plan: planPatch = {} } = req.body;
+        const userId = req.user?.id || req.user?.userId;
+        if (!phieuKiemId || !planId || !Array.isArray(slots)) {
+            return res.status(400).json({ message: 'Thiếu dữ liệu kế hoạch hoặc mốc giờ cuối chuyền' });
+        }
+
+        const normalizedSlots = normalizeCuoiChuyenTimeSlots(slots);
+        const normalizedActualQuantity = optionalNonNegativeInteger(planPatch.soLuongThucTe);
+        if (Number.isNaN(normalizedActualQuantity)) {
+            return res.status(400).json({ message: 'Số lượng thực tế phải là số nguyên không âm hoặc để trống' });
+        }
+        const seenHours = new Set();
+        for (const slot of normalizedSlots) {
+            if (!CUOI_CHUYEN_TIME_OPTION_SET.has(slot.gioKiem)) {
+                return res.status(400).json({ message: `Mốc giờ ${slot.gioKiem || '(trống)'} không hợp lệ` });
+            }
+            if (seenHours.has(slot.gioKiem)) {
+                return res.status(400).json({ message: `Mốc giờ ${slot.gioKiem} bị trùng` });
+            }
+            seenHours.add(slot.gioKiem);
+            if (!Number.isInteger(slot.soLuongKiem) || slot.soLuongKiem < 0
+                || !Number.isInteger(slot.soLoiBuiBan) || slot.soLoiBuiBan < 0
+                || !Number.isInteger(slot.soLoiConTrung) || slot.soLoiConTrung < 0) {
+                return res.status(400).json({ message: `Mốc giờ ${slot.gioKiem} có số lượng không hợp lệ` });
+            }
+            const duplicateDefects = new Set();
+            let totalDefects = slot.soLoiBuiBan + slot.soLoiConTrung;
+            for (const defect of slot.defects) {
+                if (duplicateDefects.has(defect.defectId)) {
+                    return res.status(400).json({ message: `Mốc giờ ${slot.gioKiem} có dạng lỗi bị trùng` });
+                }
+                duplicateDefects.add(defect.defectId);
+                if (!Number.isInteger(defect.soLuong) || defect.soLuong <= 0
+                    || (defect.soLuongDatSauSua != null && (!Number.isInteger(defect.soLuongDatSauSua) || defect.soLuongDatSauSua < 0))
+                    || (defect.soLuongKhongDatSauSua != null && (!Number.isInteger(defect.soLuongKhongDatSauSua) || defect.soLuongKhongDatSauSua < 0))) {
+                    return res.status(400).json({ message: `Mốc giờ ${slot.gioKiem} có dữ liệu lỗi không hợp lệ` });
+                }
+                if (Number(defect.soLuongDatSauSua || 0) + Number(defect.soLuongKhongDatSauSua || 0) > defect.soLuong) {
+                    return res.status(400).json({ message: `Kết quả sửa lỗi tại ${slot.gioKiem} vượt số lỗi ghi nhận` });
+                }
+                totalDefects += defect.soLuong;
+            }
+            if (totalDefects > slot.soLuongKiem) {
+                return res.status(400).json({ message: `Tổng lỗi tại ${slot.gioKiem} vượt số lượng kiểm` });
+            }
+        }
+
+        try {
+            const pool = await poolPromise;
+            const transaction = new sql.Transaction(pool);
+            await transaction.begin();
+            try {
+                const planResult = await new sql.Request(transaction)
+                    .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+                    .input('PlanId', sql.Int, Number(planId))
+                    .query(`
+                        SELECT planRow.Id, inspection.TrangThai,
+                            CASE WHEN EXISTS (
+                                SELECT 1 FROM dbo.PhieuKiem_CustomFields versionField
+                                WHERE versionField.PhieuKiemId=inspection.Id
+                                  AND versionField.FieldName=N'${CUOI_CHUYEN_TIME_DATA_VERSION_FIELD}'
+                                  AND versionField.FieldValue=N'${CUOI_CHUYEN_TIME_DATA_VERSION}'
+                            ) THEN 1 ELSE 0 END AS HasTimeVersion
+                        FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN planRow WITH (UPDLOCK, HOLDLOCK)
+                        INNER JOIN dbo.PHIEU_KIEM inspection ON inspection.Id = planRow.PhieuKiemId
+                        WHERE planRow.Id = @PlanId AND planRow.PhieuKiemId = @PhieuKiemId
+                    `);
+                const target = planResult.recordset?.[0];
+                if (!target) throw new Error('Không tìm thấy kế hoạch cuối chuyền');
+                if (['HOAN_TAT', 'CHO_TBP_DUYET', 'CHO_KIEM_NGHIEM', 'CHO_XUONG_XAC_NHAN'].includes(target.TrangThai)) {
+                    const lockedError = new Error('Phiếu đã khóa, không thể sửa dữ liệu theo giờ');
+                    lockedError.statusCode = 409;
+                    throw lockedError;
+                }
+
+                if (!target.HasTimeVersion) {
+                    const legacyPlans = await new sql.Request(transaction)
+                        .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+                        .query(`
+                            SELECT planRow.Id,
+                                COALESCE(planRow.SoLuongThucTe,planRow.SoLuongKeHoach,0) AS SoLuongKiem,
+                                planRow.SoLoiBuiBan,planRow.SoLoiConTrung,planRow.SortOrder
+                            FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN planRow
+                            WHERE planRow.PhieuKiemId=@PhieuKiemId
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_SLOT slotRow
+                                  WHERE slotRow.PlanId=planRow.Id
+                              )
+                        `);
+                    for (const legacyPlan of legacyPlans.recordset) {
+                        const insertedLegacySlot = await new sql.Request(transaction)
+                            .input('PlanId', sql.Int, Number(legacyPlan.Id))
+                            .input('SoLuongKiem', sql.Int, Number(legacyPlan.SoLuongKiem || 0))
+                            .input('SoLoiBuiBan', sql.Int, Number(legacyPlan.SoLoiBuiBan || 0))
+                            .input('SoLoiConTrung', sql.Int, Number(legacyPlan.SoLoiConTrung || 0))
+                            .input('NguoiGhiNhanId', sql.Int, userId)
+                            .input('SortOrder', sql.Int, Number(legacyPlan.SortOrder || 0))
+                            .query(`
+                                INSERT dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_SLOT
+                                    (PlanId,GioKiem,IsLegacy,SoLuongKiem,SoLoiBuiBan,SoLoiConTrung,NguoiGhiNhanId,GhiChu,SortOrder)
+                                OUTPUT INSERTED.Id
+                                VALUES (@PlanId,NULL,1,@SoLuongKiem,@SoLoiBuiBan,@SoLoiConTrung,@NguoiGhiNhanId,
+                                    N'Dữ liệu tổng hợp trước khi áp dụng mốc giờ',@SortOrder)
+                            `);
+                        const legacySlotId = Number(insertedLegacySlot.recordset[0].Id);
+                        await new sql.Request(transaction)
+                            .input('PlanId', sql.Int, Number(legacyPlan.Id))
+                            .input('TimeSlotId', sql.Int, legacySlotId)
+                            .query(`
+                                INSERT dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_DEFECT
+                                    (TimeSlotId,DefectId,SoLuong,SoLuongDatSauSua,SoLuongKhongDatSauSua,TenCongNhan,GhiChu,ImageUrls,SortOrder)
+                                SELECT @TimeSlotId,DefectId,SoLuong,SoLuongDatSauSua,SoLuongKhongDatSauSua,
+                                    TenCongNhan,GhiChu,ImageUrls,SortOrder
+                                FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_DEFECT WHERE PlanId=@PlanId
+                            `);
+                    }
+                }
+
+                const oldSlotResult = await new sql.Request(transaction)
+                    .input('PlanId', sql.Int, Number(planId))
+                    .query('SELECT Id FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_SLOT WHERE PlanId=@PlanId AND IsLegacy=0');
+                const oldSlotIds = oldSlotResult.recordset.map((row) => Number(row.Id));
+                if (oldSlotIds.length) {
+                    await new sql.Request(transaction)
+                        .input('SlotIds', sql.NVarChar(sql.MAX), oldSlotIds.join(','))
+                        .query(`DELETE FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_DEFECT
+                            WHERE TimeSlotId IN (SELECT TRY_CONVERT(INT, value) FROM STRING_SPLIT(@SlotIds, ','))`);
+                }
+                await new sql.Request(transaction)
+                    .input('PlanId', sql.Int, Number(planId))
+                    .query('DELETE FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_SLOT WHERE PlanId=@PlanId AND IsLegacy=0');
+
+                for (const slot of normalizedSlots) {
+                    const insertedSlot = await new sql.Request(transaction)
+                        .input('PlanId', sql.Int, Number(planId))
+                        .input('GioKiem', sql.Char(5), slot.gioKiem)
+                        .input('SoLuongKiem', sql.Int, slot.soLuongKiem)
+                        .input('SoLoiBuiBan', sql.Int, slot.soLoiBuiBan)
+                        .input('SoLoiConTrung', sql.Int, slot.soLoiConTrung)
+                        .input('NguoiGhiNhanId', sql.Int, userId)
+                        .input('GhiChu', sql.NVarChar(1000), slot.ghiChu || null)
+                        .input('SortOrder', sql.Int, CUOI_CHUYEN_TIME_OPTIONS.indexOf(slot.gioKiem) + 1)
+                        .query(`
+                            INSERT dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_SLOT
+                                (PlanId,GioKiem,IsLegacy,SoLuongKiem,SoLoiBuiBan,SoLoiConTrung,NguoiGhiNhanId,GhiChu,SortOrder)
+                            OUTPUT INSERTED.Id
+                            VALUES (@PlanId,@GioKiem,0,@SoLuongKiem,@SoLoiBuiBan,@SoLoiConTrung,@NguoiGhiNhanId,@GhiChu,@SortOrder)
+                        `);
+                    const timeSlotId = Number(insertedSlot.recordset[0].Id);
+                    for (const defect of slot.defects) {
+                        await new sql.Request(transaction)
+                            .input('TimeSlotId', sql.Int, timeSlotId)
+                            .input('DefectId', sql.Int, defect.defectId)
+                            .input('SoLuong', sql.Int, defect.soLuong)
+                            .input('SoLuongDatSauSua', sql.Int, defect.soLuongDatSauSua)
+                            .input('SoLuongKhongDatSauSua', sql.Int, defect.soLuongKhongDatSauSua)
+                            .input('TenCongNhan', sql.NVarChar(255), defect.tenCongNhan || null)
+                            .input('GhiChu', sql.NVarChar(1000), defect.ghiChu || null)
+                            .input('ImageUrls', sql.NVarChar(sql.MAX), JSON.stringify(defect.imageUrls || []))
+                            .input('SortOrder', sql.Int, defect.sortOrder)
+                            .query(`
+                                INSERT dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_DEFECT
+                                    (TimeSlotId,DefectId,SoLuong,SoLuongDatSauSua,SoLuongKhongDatSauSua,TenCongNhan,GhiChu,ImageUrls,SortOrder)
+                                VALUES (@TimeSlotId,@DefectId,@SoLuong,@SoLuongDatSauSua,@SoLuongKhongDatSauSua,@TenCongNhan,@GhiChu,@ImageUrls,@SortOrder)
+                            `);
+                    }
+                }
+
+                await new sql.Request(transaction)
+                    .input('PlanId', sql.Int, Number(planId))
+                    .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+                    .input('SoLuongThucTe', sql.Int, normalizedActualQuantity)
+                    .input('MaDonHang', sql.NVarChar(200), String(planPatch.maDonHang || '').trim() || null)
+                    .input('TenQuyTrinhSanXuat', sql.NVarChar(255), String(planPatch.tenQuyTrinhSanXuat || '').trim() || null)
+                    .input('Lot', sql.NVarChar(200), String(planPatch.lot || '').trim() || null)
+                    .input('LenhXuatVatTu', sql.NVarChar(200), String(planPatch.lenhXuatVatTu || '').trim() || null)
+                    .query(`
+                        UPDATE planRow SET
+                            SoLuongThucTe=@SoLuongThucTe,
+                            MaDonHang=CASE WHEN NULLIF(LTRIM(RTRIM(MaDonHang)), '') IS NULL THEN @MaDonHang ELSE MaDonHang END,
+                            TenQuyTrinhSanXuat=CASE WHEN NULLIF(LTRIM(RTRIM(TenQuyTrinhSanXuat)), '') IS NULL THEN @TenQuyTrinhSanXuat ELSE TenQuyTrinhSanXuat END,
+                            Lot=@Lot,
+                            LenhXuatVatTu=@LenhXuatVatTu,
+                            SoLoiBuiBan=ISNULL(summaryRow.SoLoiBuiBan,0),
+                            SoLoiConTrung=ISNULL(summaryRow.SoLoiConTrung,0)
+                        FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN planRow
+                        OUTER APPLY (
+                            SELECT SUM(SoLoiBuiBan) SoLoiBuiBan, SUM(SoLoiConTrung) SoLoiConTrung
+                            FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_SLOT WHERE PlanId=planRow.Id
+                        ) summaryRow
+                        WHERE planRow.Id=@PlanId AND planRow.PhieuKiemId=@PhieuKiemId;
+
+                        DELETE FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_DEFECT WHERE PlanId=@PlanId;
+                        INSERT dbo.PHIEU_KIEM_CUOI_CHUYEN_DEFECT
+                            (PlanId,DefectId,SoLuong,SoLuongDatSauSua,SoLuongKhongDatSauSua,GhiChu,ImageUrls,SortOrder,TenCongNhan)
+                        SELECT @PlanId, defect.DefectId, SUM(defect.SoLuong),
+                            CASE WHEN COUNT(defect.SoLuongDatSauSua)=0 THEN NULL ELSE SUM(ISNULL(defect.SoLuongDatSauSua,0)) END,
+                            CASE WHEN COUNT(defect.SoLuongKhongDatSauSua)=0 THEN NULL ELSE SUM(ISNULL(defect.SoLuongKhongDatSauSua,0)) END,
+                            MAX(NULLIF(defect.GhiChu,N'')), N'[]', MIN(defect.SortOrder), MAX(NULLIF(defect.TenCongNhan,N''))
+                        FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_DEFECT defect
+                        INNER JOIN dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_SLOT slotRow ON slotRow.Id=defect.TimeSlotId
+                        WHERE slotRow.PlanId=@PlanId
+                        GROUP BY defect.DefectId;
+
+                        MERGE dbo.PhieuKiem_CustomFields AS target
+                        USING (SELECT @PhieuKiemId PhieuKiemId,
+                            N'${CUOI_CHUYEN_TIME_DATA_VERSION_FIELD}' FieldName,
+                            N'${CUOI_CHUYEN_TIME_DATA_VERSION}' FieldValue) source
+                        ON target.PhieuKiemId=source.PhieuKiemId AND target.FieldName=source.FieldName
+                        WHEN MATCHED THEN UPDATE SET FieldValue=source.FieldValue
+                        WHEN NOT MATCHED THEN INSERT (PhieuKiemId,FieldName,FieldValue)
+                            VALUES (source.PhieuKiemId,source.FieldName,source.FieldValue);
+
+                        UPDATE dbo.PHIEU_KIEM
+                        SET TrangThai=CASE WHEN TrangThai='TAO_MOI' THEN 'DANG_KIEM' ELSE TrangThai END
+                        WHERE Id=@PhieuKiemId;
+                    `);
+                await transaction.commit();
+                return res.json({ success: true });
+            } catch (error) {
+                await transaction.rollback();
+                throw error;
+            }
+        } catch (err) {
+            console.error('CuoiChuyen time slots save error:', err);
+            return res.status(err.statusCode || 500).json({
+                message: err?.originalError?.info?.message || err.message || 'Lưu dữ liệu theo giờ thất bại'
+            });
+        }
+    }
+);
+
+router.post(
     '/cuoi-chuyen/save',
     authenticateToken,
     authorize('THUC_HIEN_KIEM'),
@@ -2438,6 +2774,15 @@ router.post(
         }
 
         try {
+            const pool = await poolPromise;
+            const timeVersionResult = await pool.request()
+                .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+                .input('FieldName', sql.NVarChar(100), CUOI_CHUYEN_TIME_DATA_VERSION_FIELD)
+                .query(`SELECT TOP 1 FieldValue FROM dbo.PhieuKiem_CustomFields
+                    WHERE PhieuKiemId=@PhieuKiemId AND FieldName=@FieldName`);
+            if (String(timeVersionResult.recordset?.[0]?.FieldValue || '') === CUOI_CHUYEN_TIME_DATA_VERSION) {
+                return res.status(409).json({ message: 'Phiếu đã ghi nhận theo mốc giờ. Vui lòng chỉnh sửa trên web.' });
+            }
             const normalizedPlans = normalizeCuoiChuyenPlans(plans);
             if (normalizedPlans.some((plan) =>
                 Number.isNaN(plan.soLuongThucTe)
@@ -2447,7 +2792,6 @@ router.post(
                 return res.status(400).json({ message: 'Số lượng thực tế và lỗi đặc biệt phải là số nguyên không âm hoặc để trống' });
             }
 
-            const pool = await poolPromise;
             const transaction = new sql.Transaction(pool);
             await transaction.begin();
             try {
@@ -2543,6 +2887,36 @@ router.post(
                     WHERE PhieuKiemId = @PhieuKiemId AND FieldName = @FieldName
                 `);
             const isUnifiedPrintData = String(versionResult.recordset?.[0]?.FieldValue || '') === UNIFIED_PRINT_DATA_VERSION;
+            const timeVersionResult = await pool.request()
+                .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+                .input('FieldName', sql.NVarChar(100), CUOI_CHUYEN_TIME_DATA_VERSION_FIELD)
+                .query(`SELECT TOP 1 FieldValue FROM dbo.PhieuKiem_CustomFields
+                    WHERE PhieuKiemId=@PhieuKiemId AND FieldName=@FieldName`);
+            const isTimeSlotData = String(timeVersionResult.recordset?.[0]?.FieldValue || '') === CUOI_CHUYEN_TIME_DATA_VERSION;
+            if (isTimeSlotData) {
+                const timeValidation = await pool.request()
+                    .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+                    .query(`
+                        SELECT planRow.Id,
+                            COUNT(DISTINCT slotRow.Id) SoMocGio,
+                            SUM(CASE WHEN defect.Id IS NOT NULL AND NULLIF(LTRIM(RTRIM(defect.TenCongNhan)), '') IS NULL THEN 1 ELSE 0 END) SoLoiThieuCongNhan
+                        FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN planRow
+                        LEFT JOIN dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_SLOT slotRow ON slotRow.PlanId=planRow.Id
+                        LEFT JOIN dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_DEFECT defect ON defect.TimeSlotId=slotRow.Id
+                        WHERE planRow.PhieuKiemId=@PhieuKiemId
+                        GROUP BY planRow.Id
+                    `);
+                const invalidTimePlan = timeValidation.recordset.find((plan) =>
+                    Number(plan.SoMocGio || 0) === 0 || Number(plan.SoLoiThieuCongNhan || 0) > 0
+                );
+                if (invalidTimePlan) {
+                    return res.status(409).json({
+                        message: Number(invalidTimePlan.SoMocGio || 0) === 0
+                            ? `Kế hoạch #${invalidTimePlan.Id} chưa có mốc giờ ghi nhận`
+                            : `Kế hoạch #${invalidTimePlan.Id} còn lỗi chưa nhập công nhân`
+                    });
+                }
+            }
             const quantityValidation = await pool.request()
                 .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
                 .query(`
