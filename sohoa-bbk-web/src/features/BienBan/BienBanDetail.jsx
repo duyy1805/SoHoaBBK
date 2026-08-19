@@ -51,6 +51,7 @@ import VerifiedIcon from '@mui/icons-material/Verified';
 import AddIcon from '@mui/icons-material/Add';
 import SaveIcon from '@mui/icons-material/Save';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import CheckIcon from '@mui/icons-material/Check';
 
@@ -80,7 +81,9 @@ import {
     searchStandaloneOrders,
     confirmOpinionDepartments,
     confirmKphByCreatorDepartment,
-    resubmitKphReview
+    resubmitKphReview,
+    updateOwnedSectionRow,
+    deleteOwnedSectionRow
 } from "../../api/bienBan.api";
 import { getDefectList } from "../../api/lookup.api";
 import { decodeToken } from "../../utils/auth";
@@ -173,6 +176,7 @@ export default function BienBanDetail({ standalone = false }) {
     });
 
     const [currentUserBoPhanId, setCurrentUserBoPhanId] = useState(null);
+    const [currentUserId, setCurrentUserId] = useState(null);
     const [currentUserManagedBoPhanIds, setCurrentUserManagedBoPhanIds] = useState([]);
     const [currentUserPermissions, setCurrentUserPermissions] = useState([]);
     const [currentUserRoles, setCurrentUserRoles] = useState([]);
@@ -184,6 +188,9 @@ export default function BienBanDetail({ standalone = false }) {
     const [openXuLyModal, setOpenXuLyModal] = useState(false);
     const [openChiPhiModal, setOpenChiPhiModal] = useState(false);
     const [openHanhDongModal, setOpenHanhDongModal] = useState(false);
+    const [editingXuLyRow, setEditingXuLyRow] = useState(null);
+    const [editingChiPhiRow, setEditingChiPhiRow] = useState(null);
+    const [editingHanhDongRow, setEditingHanhDongRow] = useState(null);
     const [openPrintModal, setOpenPrintModal] = useState(false);
     const [imagePreview, setImagePreview] = useState({ images: [], index: 0 });
 
@@ -245,6 +252,7 @@ export default function BienBanDetail({ standalone = false }) {
         serverDraftSnapshotRef.current = null;
         const decoded = decodeToken();
         if (decoded) {
+            setCurrentUserId(decoded.userId);
             setCurrentUserBoPhanId(decoded.boPhanId);
             setCurrentUserManagedBoPhanIds(decoded.managedBoPhanIds || [decoded.boPhanId].filter(Boolean));
             setCurrentUserPermissions(decoded.permissions || []);
@@ -371,14 +379,20 @@ export default function BienBanDetail({ standalone = false }) {
                 TenSanPham: fieldsMap.TenSanPham || res.data.info?.TenSanPham || "",
                 MaSanPham: fieldsMap.MaSanPham || fieldsMap.MaItem || res.data.info?.MaSanPham || "",
                 MaTruyNguyen: fieldsMap.MaTruyNguyen || "",
-                DonHang: fieldsMap.DonHang || "",
+                DonHang: fieldsMap.DonHang || fieldsMap.SoDonHang
+                    || res.data.info?.MaDonHang
+                    || (Number(res.data.info?.LoaiKiemId) === 1 ? res.data.info?.DoiTuong : "")
+                    || "",
                 Lot: fieldsMap.Lot || res.data.info?.Lot || "",
                 SoLuongKPH: fieldsMap.SoLuongKPH !== "" && fieldsMap.SoLuongKPH != null
                     ? fieldsMap.SoLuongKPH
                     : (res.data.info?.SoLuongThucTe ?? res.data.info?.SoLuongKeHoach ?? ""),
                 DauTuan: fieldsMap.DauTuan || "",
-                PhatHienTu: fieldsMap.PhatHienTu || "",
-                MucDo: fieldsMap.MucDo || "",
+                PhatHienTu: fieldsMap.PhatHienTu
+                    || (Number(res.data.info?.LoaiKiemId) === 1 ? "KIEM_TRA_DAU_VAO" : "")
+                    || res.data.info?.PhatHienTu
+                    || "",
+                MucDo: fieldsMap.MucDo || res.data.info?.MucDoKhongPhuHop || "",
                 ItemSourceType: fieldsMap.ItemSourceType || "",
                 ItemSourceId: fieldsMap.ItemSourceId || "",
                 LocalProductId: fieldsMap.LocalProductId || "",
@@ -986,6 +1000,39 @@ export default function BienBanDetail({ standalone = false }) {
             !["CHO_THEO_DOI", "HOAN_TAT"].includes(info?.TrangThai);
     const canConfirmProcessing = !isV01 && Boolean(info?.AssignConfirmed) &&
         isAssigned && !isConfirmed && hasXuLy;
+    const canEditOwnedRow = (row) => (isAdminUser || Number(row?.CreatedBy) === Number(currentUserId))
+        && Boolean(isV01 ? info?.CanContributeKphSections : isAssigned)
+        && !["CHO_THEO_DOI", "HOAN_TAT"].includes(info?.TrangThai);
+    const renderOwnedRowActions = (section, row, onEdit) => canEditOwnedRow(row) ? (
+        <Stack direction="row" spacing={0.25} justifyContent="flex-end">
+            <IconButton size="small" color="primary" title="Sửa nội dung" onClick={() => onEdit(row)}>
+                <EditOutlinedIcon fontSize="small" />
+            </IconButton>
+            <IconButton size="small" color="error" title="Xóa nội dung" onClick={() => {
+                setConfirmDialog({
+                    open: true,
+                    title: "Xóa nội dung đã nhập",
+                    message: "Nội dung này sẽ bị xóa và không thể khôi phục. Bạn muốn tiếp tục?",
+                    type: "warning",
+                    onConfirm: async () => {
+                        try {
+                            setConfirmSaving(true);
+                            await deleteOwnedSectionRow(section, row.Id);
+                            await refreshData();
+                            showToast("Đã xóa nội dung", "success");
+                        } catch (error) {
+                            showToast(error?.response?.data?.message || "Không thể xóa nội dung", "error");
+                        } finally {
+                            setConfirmSaving(false);
+                            setConfirmDialog((current) => ({ ...current, open: false }));
+                        }
+                    }
+                });
+            }}>
+                <DeleteOutlineIcon fontSize="small" />
+            </IconButton>
+        </Stack>
+    ) : null;
     const defectCount = defects.length;
     const totalDefectQty = defects.reduce((sum, item) => sum + (Number(item.SoLuong) || 0), 0);
     const scrollToSection = (sectionId, { focus = false } = {}) => {
@@ -1807,7 +1854,7 @@ export default function BienBanDetail({ standalone = false }) {
                                             <LightbulbCircleIcon color="warning" /> Ý kiến / Đề xuất xử lý
                                         </Typography>
                                         {canAddProposal && !["CHO_THEO_DOI", "HOAN_TAT"].includes(info.TrangThai) && (
-                                            <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => setOpenXuLyModal(true)}>
+                                            <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => { setEditingXuLyRow(null); setOpenXuLyModal(true); }}>
                                                 Thêm đề xuất
                                             </Button>
                                         )}
@@ -1821,7 +1868,8 @@ export default function BienBanDetail({ standalone = false }) {
                                                 { key: "deNghi", label: "Đề nghị xử lý", render: (row) => row.DeNghiXuLy || "—" },
                                                 { key: "trachNhiem", label: "Trách nhiệm", render: (row) => row.TrachNhiem || "—" },
                                                 { key: "theoDoi", label: "Theo dõi", cellSx: { fontWeight: 600 }, render: (row) => row.TheoDoi || "—" },
-                                                { key: "thoiHan", label: "Thời hạn", cellSx: { whiteSpace: "nowrap", color: "error.main" }, render: (row) => row.ThoiHan ? new Date(row.ThoiHan).toLocaleDateString("vi-VN") : "—" }
+                                                { key: "thoiHan", label: "Thời hạn", cellSx: { whiteSpace: "nowrap", color: "error.main" }, render: (row) => row.ThoiHan ? new Date(row.ThoiHan).toLocaleDateString("vi-VN") : "—" },
+                                                { key: "actions", label: "", align: "right", render: (row) => renderOwnedRowActions("xu-ly", row, (selected) => { setEditingXuLyRow(selected); setOpenXuLyModal(true); }) }
                                             ]}
                                         />
                                     </Box>
@@ -1843,7 +1891,7 @@ export default function BienBanDetail({ standalone = false }) {
                                                         label={isV01 ? (chiPhi.length > 0 ? "Có ghi nhận" : "Tùy chọn") : (info.YeuCauChiPhi ? "Yêu cầu" : "Không yêu cầu")}
                                                     />
                                                     {info.CanContributeKphSections && !["CHO_THEO_DOI", "HOAN_TAT"].includes(info.TrangThai) && (
-                                                        <Button size="small" color="success" startIcon={<AddIcon />} onClick={() => setOpenChiPhiModal(true)}>
+                                                        <Button size="small" color="success" startIcon={<AddIcon />} onClick={() => { setEditingChiPhiRow(null); setOpenChiPhiModal(true); }}>
                                                             Thêm chi phí
                                                         </Button>
                                                     )}
@@ -1858,7 +1906,8 @@ export default function BienBanDetail({ standalone = false }) {
                                                     { key: "giaTri", label: "Giá trị", align: "right", cellSx: { color: "success.main", fontWeight: 700, whiteSpace: "nowrap" }, render: (row) => `${Number(row.GiaTri || 0).toLocaleString("vi-VN")} đ` },
                                                     { key: "trachNhiem", label: "Trách nhiệm", render: (row) => row.TrachNhiemHienThi || "—" },
                                                     { key: "thoiHan", label: "Thời hạn", cellSx: { whiteSpace: "nowrap" }, render: (row) => row.ThoiHan ? new Date(row.ThoiHan).toLocaleDateString("vi-VN") : "—" },
-                                                    { key: "theoDoi", label: "Theo dõi", render: (row) => row.TheoDoiHienThi || "—" }
+                                                    { key: "theoDoi", label: "Theo dõi", render: (row) => row.TheoDoiHienThi || "—" },
+                                                    { key: "actions", label: "", align: "right", render: (row) => renderOwnedRowActions("chi-phi", row, (selected) => { setEditingChiPhiRow(selected); setOpenChiPhiModal(true); }) }
                                                 ]}
                                             />
                                         </CardContent>
@@ -1878,7 +1927,7 @@ export default function BienBanDetail({ standalone = false }) {
                                                         label={isV01 ? (hanhDong.length > 0 ? "Có ghi nhận" : "Tùy chọn") : (info.YeuCauHanhDong ? "Yêu cầu" : "Không yêu cầu")}
                                                     />
                                                     {info.CanContributeKphSections && !["CHO_THEO_DOI", "HOAN_TAT"].includes(info.TrangThai) && (
-                                                        <Button size="small" color="info" startIcon={<AddIcon />} onClick={() => setOpenHanhDongModal(true)}>
+                                                        <Button size="small" color="info" startIcon={<AddIcon />} onClick={() => { setEditingHanhDongRow(null); setOpenHanhDongModal(true); }}>
                                                             Thêm hành động
                                                         </Button>
                                                     )}
@@ -1892,7 +1941,8 @@ export default function BienBanDetail({ standalone = false }) {
                                                     { key: "noiDung", label: "Nội dung", cellSx: { whiteSpace: "pre-wrap" }, render: (row) => row.NoiDung || "—" },
                                                     { key: "trachNhiem", label: "Trách nhiệm", render: (row) => row.TrachNhiemHienThi || "—" },
                                                     { key: "thoiHan", label: "Thời hạn", cellSx: { color: "error.main", whiteSpace: "nowrap" }, render: (row) => row.ThoiHan ? new Date(row.ThoiHan).toLocaleDateString("vi-VN") : "—" },
-                                                    { key: "theoDoi", label: "Theo dõi", render: (row) => row.TheoDoiHienThi || "—" }
+                                                    { key: "theoDoi", label: "Theo dõi", render: (row) => row.TheoDoiHienThi || "—" },
+                                                    { key: "actions", label: "", align: "right", render: (row) => renderOwnedRowActions("hanh-dong", row, (selected) => { setEditingHanhDongRow(selected); setOpenHanhDongModal(true); }) }
                                                 ]}
                                             />
                                         </CardContent>
@@ -2037,9 +2087,9 @@ export default function BienBanDetail({ standalone = false }) {
                 assignedIds={workflowDepartments.map(a => a.BoPhanId)}
                 isOpinionFlow={isV01}
             />
-            <XuLyDialog open={openXuLyModal} onClose={() => setOpenXuLyModal(false)} bienBanId={bienBanId} reload={refreshData} />
-            <ChiPhiDialog open={openChiPhiModal} onClose={() => setOpenChiPhiModal(false)} bienBanId={bienBanId} reload={refreshData} />
-            <HanhDongDialog open={openHanhDongModal} onClose={() => setOpenHanhDongModal(false)} bienBanId={bienBanId} reload={refreshData} />
+            <XuLyDialog open={openXuLyModal} editingRow={editingXuLyRow} onClose={() => { setOpenXuLyModal(false); setEditingXuLyRow(null); }} bienBanId={bienBanId} reload={refreshData} />
+            <ChiPhiDialog open={openChiPhiModal} editingRow={editingChiPhiRow} onClose={() => { setOpenChiPhiModal(false); setEditingChiPhiRow(null); }} bienBanId={bienBanId} reload={refreshData} />
+            <HanhDongDialog open={openHanhDongModal} editingRow={editingHanhDongRow} onClose={() => { setOpenHanhDongModal(false); setEditingHanhDongRow(null); }} bienBanId={bienBanId} reload={refreshData} />
 
             <AssignUserDialog
                 open={openAssignUserModal}
@@ -2153,7 +2203,7 @@ const emptyXuLyRow = () => ({ NoiDung: '', DeNghiXuLyId: '', ThoiHan: '', TrachN
 const emptyChiPhiRow = () => ({ LoaiChiPhi: '', GiaTri: '', TrachNhiem: '', ThoiHan: '', TheoDoi: '' });
 const emptyHanhDongRow = () => ({ NoiDung: '', TrachNhiem: '', ThoiHan: '', TheoDoi: '' });
 
-function XuLyDialog({ open, onClose, bienBanId, reload }) {
+function XuLyDialog({ open, onClose, bienBanId, reload, editingRow = null }) {
     const [rows, setRows] = useState([emptyXuLyRow()]);
     const [deNghis, setDeNghis] = useState([]);
     const [saving, setSaving] = useState(false);
@@ -2161,8 +2211,15 @@ function XuLyDialog({ open, onClose, bienBanId, reload }) {
     useEffect(() => {
         if (open) {
             getDeNghiXuLy().then(res => setDeNghis(res.data));
+            setRows(editingRow ? [{
+                NoiDung: editingRow.NoiDung || "",
+                DeNghiXuLyId: editingRow.DeNghiXuLyId || "",
+                ThoiHan: String(editingRow.ThoiHan || "").slice(0, 10),
+                TrachNhiem: editingRow.TrachNhiem || "",
+                TheoDoi: editingRow.TheoDoi || ""
+            }] : [emptyXuLyRow()]);
         }
-    }, [open]);
+    }, [open, editingRow]);
 
     const handleClose = () => {
         setRows([emptyXuLyRow()]);
@@ -2183,20 +2240,19 @@ function XuLyDialog({ open, onClose, bienBanId, reload }) {
         }
         try {
             setSaving(true);
-            await addXuLy({
-                bienBanId,
-                items: rows.map(row => ({
+            const payloadRows = rows.map(row => ({
                     noiDung: row.NoiDung.trim(),
                     deNghiXuLyId: row.DeNghiXuLyId || null,
                     thoiHan: row.ThoiHan,
                     trachNhiem: row.TrachNhiem.trim(),
                     theoDoi: row.TheoDoi.trim()
-                }))
-            });
+                }));
+            if (editingRow) await updateOwnedSectionRow("xu-ly", editingRow.Id, payloadRows[0]);
+            else await addXuLy({ bienBanId, items: payloadRows });
             handleClose();
             await reload();
         } catch (err) {
-            alert(err?.response?.data?.message || "Lỗi thêm xử lý");
+            alert(err?.response?.data?.message || (editingRow ? "Lỗi cập nhật đề xuất" : "Lỗi thêm xử lý"));
         } finally {
             setSaving(false);
         }
@@ -2204,7 +2260,7 @@ function XuLyDialog({ open, onClose, bienBanId, reload }) {
 
     return (
         <Dialog open={open} onClose={handleClose} fullWidth maxWidth="xl">
-            <DialogTitle fontWeight="bold">Nhập đề xuất xử lý</DialogTitle>
+            <DialogTitle fontWeight="bold">{editingRow ? "Chỉnh sửa đề xuất xử lý" : "Nhập đề xuất xử lý"}</DialogTitle>
             <DialogContent dividers>
                 <TableContainer>
                     <Table size="small" sx={{ minWidth: 1050 }}>
@@ -2232,30 +2288,43 @@ function XuLyDialog({ open, onClose, bienBanId, reload }) {
                                     <TableCell><TextField size="small" type="date" fullWidth value={row.ThoiHan} onChange={e => updateRow(index, "ThoiHan", e.target.value)} /></TableCell>
                                     <TableCell><TextField size="small" fullWidth value={row.TheoDoi} onChange={e => updateRow(index, "TheoDoi", e.target.value)} /></TableCell>
                                     <TableCell>
+                                        {!editingRow && (
                                         <Button color="error" onClick={() => removeRow(index)} aria-label={`Xóa dòng ${index + 1}`}><DeleteOutlineIcon /></Button>
+                                        )}
                                     </TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
                     </Table>
                 </TableContainer>
-                <Button startIcon={<AddIcon />} sx={{ mt: 2 }} onClick={() => setRows(current => [...current, emptyXuLyRow()])}>
+                {!editingRow && <Button startIcon={<AddIcon />} sx={{ mt: 2 }} onClick={() => setRows(current => [...current, emptyXuLyRow()])}>
                     Thêm dòng đề xuất
-                </Button>
+                </Button>}
             </DialogContent>
             <DialogActions sx={{ p: 2 }}>
                 <Button onClick={handleClose} color="inherit" disabled={saving}>Hủy</Button>
                 <Button onClick={handleSubmit} variant="contained" color="primary" disabled={saving}>
-                    {saving ? "Đang lưu..." : `Lưu ${rows.length} dòng`}
+                    {saving ? "Đang lưu..." : editingRow ? "Lưu thay đổi" : `Lưu ${rows.length} dòng`}
                 </Button>
             </DialogActions>
         </Dialog>
     );
 }
 
-function ChiPhiDialog({ open, onClose, bienBanId, reload }) {
+function ChiPhiDialog({ open, onClose, bienBanId, reload, editingRow = null }) {
     const [rows, setRows] = useState([emptyChiPhiRow()]);
     const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        if (!open) return;
+        setRows(editingRow ? [{
+            LoaiChiPhi: editingRow.LoaiChiPhi || "",
+            GiaTri: editingRow.GiaTri ?? "",
+            TrachNhiem: editingRow.TrachNhiem || "",
+            ThoiHan: String(editingRow.ThoiHan || "").slice(0, 10),
+            TheoDoi: editingRow.TheoDoi || ""
+        }] : [emptyChiPhiRow()]);
+    }, [open, editingRow]);
 
     const handleClose = () => {
         setRows([emptyChiPhiRow()]);
@@ -2276,20 +2345,19 @@ function ChiPhiDialog({ open, onClose, bienBanId, reload }) {
         }
         try {
             setSaving(true);
-            await addChiPhi({
-                bienBanId,
-                items: rows.map(row => ({
+            const payloadRows = rows.map(row => ({
                     loaiChiPhi: row.LoaiChiPhi.trim(),
                     giaTri: Number(row.GiaTri) || 0,
                     trachNhiem: row.TrachNhiem.trim(),
                     thoiHan: row.ThoiHan || null,
                     theoDoi: row.TheoDoi.trim()
-                }))
-            });
+                }));
+            if (editingRow) await updateOwnedSectionRow("chi-phi", editingRow.Id, payloadRows[0]);
+            else await addChiPhi({ bienBanId, items: payloadRows });
             handleClose();
             await reload();
         } catch (err) {
-            alert(err?.response?.data?.message || "Lỗi thêm chi phí");
+            alert(err?.response?.data?.message || (editingRow ? "Lỗi cập nhật chi phí" : "Lỗi thêm chi phí"));
         } finally {
             setSaving(false);
         }
@@ -2297,7 +2365,7 @@ function ChiPhiDialog({ open, onClose, bienBanId, reload }) {
 
     return (
         <Dialog open={open} onClose={handleClose} fullWidth maxWidth="xl">
-            <DialogTitle fontWeight="bold">Ghi nhận chi phí phát sinh</DialogTitle>
+            <DialogTitle fontWeight="bold">{editingRow ? "Chỉnh sửa chi phí phát sinh" : "Ghi nhận chi phí phát sinh"}</DialogTitle>
             <DialogContent dividers>
                 <TableContainer>
                     <Table size="small" sx={{ minWidth: 1100 }}>
@@ -2320,30 +2388,42 @@ function ChiPhiDialog({ open, onClose, bienBanId, reload }) {
                                     <TableCell><TextField size="small" type="date" fullWidth value={row.ThoiHan} onChange={e => updateRow(index, "ThoiHan", e.target.value)} /></TableCell>
                                     <TableCell><TextField size="small" fullWidth value={row.TheoDoi} onChange={e => updateRow(index, "TheoDoi", e.target.value)} placeholder="Để trống sẽ dùng bộ phận người nhập" inputProps={{ maxLength: 255 }} /></TableCell>
                                     <TableCell>
+                                        {!editingRow && (
                                         <Button color="error" onClick={() => removeRow(index)} aria-label={`Xóa dòng ${index + 1}`}><DeleteOutlineIcon /></Button>
+                                        )}
                                     </TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
                     </Table>
                 </TableContainer>
-                <Button startIcon={<AddIcon />} sx={{ mt: 2 }} onClick={() => setRows(current => [...current, emptyChiPhiRow()])}>
+                {!editingRow && <Button startIcon={<AddIcon />} sx={{ mt: 2 }} onClick={() => setRows(current => [...current, emptyChiPhiRow()])}>
                     Thêm dòng chi phí
-                </Button>
+                </Button>}
             </DialogContent>
             <DialogActions sx={{ p: 2 }}>
                 <Button onClick={handleClose} color="inherit" disabled={saving}>Hủy</Button>
                 <Button onClick={handleSubmit} variant="contained" color="primary" disabled={saving}>
-                    {saving ? "Đang lưu..." : `Lưu ${rows.length} dòng`}
+                    {saving ? "Đang lưu..." : editingRow ? "Lưu thay đổi" : `Lưu ${rows.length} dòng`}
                 </Button>
             </DialogActions>
         </Dialog>
     );
 }
 
-function HanhDongDialog({ open, onClose, bienBanId, reload }) {
+function HanhDongDialog({ open, onClose, bienBanId, reload, editingRow = null }) {
     const [rows, setRows] = useState([emptyHanhDongRow()]);
     const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        if (!open) return;
+        setRows(editingRow ? [{
+            NoiDung: editingRow.NoiDung || "",
+            TrachNhiem: editingRow.TrachNhiem || "",
+            ThoiHan: String(editingRow.ThoiHan || "").slice(0, 10),
+            TheoDoi: editingRow.TheoDoi || ""
+        }] : [emptyHanhDongRow()]);
+    }, [open, editingRow]);
 
     const handleClose = () => {
         setRows([emptyHanhDongRow()]);
@@ -2364,19 +2444,18 @@ function HanhDongDialog({ open, onClose, bienBanId, reload }) {
         }
         try {
             setSaving(true);
-            await addHanhDong({
-                bienBanId,
-                items: rows.map(row => ({
+            const payloadRows = rows.map(row => ({
                     noiDung: row.NoiDung.trim(),
                     trachNhiem: row.TrachNhiem.trim(),
                     thoiHan: row.ThoiHan,
                     theoDoi: row.TheoDoi.trim()
-                }))
-            });
+                }));
+            if (editingRow) await updateOwnedSectionRow("hanh-dong", editingRow.Id, payloadRows[0]);
+            else await addHanhDong({ bienBanId, items: payloadRows });
             handleClose();
             await reload();
         } catch (err) {
-            alert(err?.response?.data?.message || "Lỗi thêm hành động");
+            alert(err?.response?.data?.message || (editingRow ? "Lỗi cập nhật hành động" : "Lỗi thêm hành động"));
         } finally {
             setSaving(false);
         }
@@ -2384,7 +2463,7 @@ function HanhDongDialog({ open, onClose, bienBanId, reload }) {
 
     return (
         <Dialog open={open} onClose={handleClose} fullWidth maxWidth="xl">
-            <DialogTitle fontWeight="bold">Thêm hành động khắc phục</DialogTitle>
+            <DialogTitle fontWeight="bold">{editingRow ? "Chỉnh sửa hành động khắc phục" : "Thêm hành động khắc phục"}</DialogTitle>
             <DialogContent dividers>
                 <TableContainer>
                     <Table size="small" sx={{ minWidth: 1000 }}>
@@ -2405,21 +2484,23 @@ function HanhDongDialog({ open, onClose, bienBanId, reload }) {
                                     <TableCell><TextField size="small" type="date" fullWidth value={row.ThoiHan} onChange={e => updateRow(index, "ThoiHan", e.target.value)} /></TableCell>
                                     <TableCell><TextField size="small" fullWidth value={row.TheoDoi} onChange={e => updateRow(index, "TheoDoi", e.target.value)} placeholder="Để trống sẽ dùng bộ phận người nhập" inputProps={{ maxLength: 255 }} /></TableCell>
                                     <TableCell>
+                                        {!editingRow && (
                                         <Button color="error" onClick={() => removeRow(index)} aria-label={`Xóa dòng ${index + 1}`}><DeleteOutlineIcon /></Button>
+                                        )}
                                     </TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
                     </Table>
                 </TableContainer>
-                <Button startIcon={<AddIcon />} sx={{ mt: 2 }} onClick={() => setRows(current => [...current, emptyHanhDongRow()])}>
+                {!editingRow && <Button startIcon={<AddIcon />} sx={{ mt: 2 }} onClick={() => setRows(current => [...current, emptyHanhDongRow()])}>
                     Thêm dòng hành động
-                </Button>
+                </Button>}
             </DialogContent>
             <DialogActions sx={{ p: 2 }}>
                 <Button onClick={handleClose} color="inherit" disabled={saving}>Hủy</Button>
                 <Button onClick={handleSubmit} variant="contained" color="primary" disabled={saving}>
-                    {saving ? "Đang lưu..." : `Lưu ${rows.length} dòng`}
+                    {saving ? "Đang lưu..." : editingRow ? "Lưu thay đổi" : `Lưu ${rows.length} dòng`}
                 </Button>
             </DialogActions>
         </Dialog>

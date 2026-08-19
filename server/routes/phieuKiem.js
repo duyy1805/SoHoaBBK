@@ -43,6 +43,7 @@ const authorize = require('../middlewares/permission.middleware');
 const requireExactPermission = require('../middlewares/exactPermission.middleware');
 const { getManagedDepartmentIds } = require('../utils/managedDepartments');
 const { getClosingScheduleCustomer } = require('../utils/closingScheduleCustomer');
+const { attachInputInspectionSource } = require('../utils/inputInspectionSource');
 const { attachSignatureDataUrls, loadSignatureDataUrlMap } = require('../utils/signatureImage');
 const {
     getBienBanFiles,
@@ -1990,6 +1991,7 @@ router.get(
             const phieu = result.recordsets[0][0] || null;
             await attachProductImageToPhieu(pool, phieu);
             await attachPhieuQuantity(pool, phieu);
+            await attachInputInspectionSource(pool, phieu);
             let dynamicFields = [];
             if (phieu && phieu.DynamicFieldsJSON) {
                 try {

@@ -16,6 +16,7 @@ const requireExactPermission = require("../middlewares/exactPermission.middlewar
 const { getManagedDepartmentIds, canLeadDepartment } = require("../utils/managedDepartments");
 const { loadBienBanListSummaries, mergeBienBanListSummary } = require("../utils/bienBanListSummary");
 const { loadKphSectionRows } = require("../utils/kphSectionRows");
+const { loadInputInspectionSource } = require("../utils/inputInspectionSource");
 
 const hasPermission = (user, permissionCode) =>
     Array.isArray(user?.permissions) && user.permissions.includes(permissionCode);
@@ -754,6 +755,21 @@ router.get(
                 : null;
             const inspectionQuantity = subtypeResult?.recordset?.[0] || {};
             const isCongDoan = Boolean(inspectionQuantity.IsCongDoan);
+            const inputSource = baseInfo?.PhieuKiemId
+                ? await loadInputInspectionSource(pool, Number(baseInfo.PhieuKiemId))
+                : null;
+            if (baseInfo && inputSource) {
+                Object.assign(baseInfo, {
+                    ID_ChungTuNhap_ChiTiet: inputSource.ID_ChungTuNhap_ChiTiet,
+                    ID_ChungTuNhap: inputSource.ID_ChungTuNhap,
+                    So_Invoice: inputSource.So_Invoice,
+                    NgayChungTuNhap: inputSource.NgayChungTu,
+                    ID_DonHang: inputSource.ID_DonHang,
+                    MaDonHang: inputSource.Ma_DonHang || baseInfo.DoiTuong || null,
+                    SoDonHang: inputSource.Ma_DonHang || baseInfo.DoiTuong || null,
+                    NhaCungCap: inputSource.Ten_NhaCungCap || baseInfo.Ten_NhaCungCap || null
+                });
+            }
             const defectResult = await pool.request()
                 .input("BienBanId", sql.Int, id)
                 .execute(isCongDoan
@@ -794,8 +810,8 @@ router.get(
                 .input("BienBanId", sql.Int, id)
                 .query(`
                     SELECT x.Id, x.BoPhan, x.NoiDung, x.TrachNhiem, x.TheoDoi,
-                        dx.Ten AS DeNghiXuLy, x.ThoiHan, x.NguoiXuLyId,
-                        x.BoPhanId, creator.FullName AS NguoiNhap, x.CreatedAt,
+                        x.DeNghiXuLyId, dx.Ten AS DeNghiXuLy, x.ThoiHan, x.NguoiXuLyId,
+                        x.BoPhanId, x.CreatedBy, creator.FullName AS NguoiNhap, x.CreatedAt,
                         bp.MaBoPhan, bp.TenBoPhan
                     FROM dbo.BIEN_BAN_XU_LY x
                     LEFT JOIN dbo.DM_DE_NGHI_XU_LY dx ON dx.Id = x.DeNghiXuLyId
@@ -837,7 +853,38 @@ router.get(
                 bienBanDynamicFields.forEach((field) => {
                     if (field?.FieldName) mergedFieldMap.set(field.FieldName, field);
                 });
+
+                const defaultFields = {
+                    DonHang: info.MaDonHang || (Number(info.LoaiKiemId) === 1 ? info.DoiTuong : null),
+                    TenSanPham: info.TenSanPham,
+                    MaSanPham: info.MaSanPham,
+                    Lot: info.Lot,
+                    MaTruyNguyen: info.Lot,
+                    SoLuongKPH: inspectionQuantity.SoLuongThucTe
+                        ?? inspectionQuantity.SoLuongKeHoach
+                        ?? null,
+                    PhatHienTu: Number(info.LoaiKiemId) === 1
+                        ? "KIEM_TRA_DAU_VAO"
+                        : Number(info.LoaiKiemId) === 5
+                            ? "KIEM_DONG_CONT"
+                            : Number(info.LoaiKiemId) === 6
+                                ? "TRONG_SAN_XUAT"
+                                : null,
+                    MucDo: info.MucDoKhongPhuHop
+                };
+                Object.entries(defaultFields).forEach(([fieldName, fieldValue]) => {
+                    if (!mergedFieldMap.has(fieldName)
+                        && fieldValue !== null
+                        && fieldValue !== undefined
+                        && String(fieldValue).trim() !== "") {
+                        mergedFieldMap.set(fieldName, { FieldName: fieldName, FieldValue: String(fieldValue) });
+                    }
+                });
                 dynamicFields = Array.from(mergedFieldMap.values());
+
+                if (Number(info.LoaiKiemId) === 1) info.PhatHienTu = "KIEM_TRA_DAU_VAO";
+                if (Number(info.LoaiKiemId) === 5) info.PhatHienTu = "KIEM_DONG_CONT";
+                if (Number(info.LoaiKiemId) === 6) info.PhatHienTu = "TRONG_SAN_XUAT";
 
                 if (isCongDoan) {
                     const productCode = mergedFieldMap.get("MaSanPham")?.FieldValue
@@ -1639,6 +1686,174 @@ router.post(
 
     }
 );
+
+const kphOwnedSectionConfigs = {
+    "xu-ly": {
+        tableName: "dbo.BIEN_BAN_XU_LY",
+        validate: (body) => {
+            const value = {
+                noiDung: String(body?.noiDung || "").trim(),
+                deNghiXuLyId: Number(body?.deNghiXuLyId) || null,
+                thoiHan: body?.thoiHan || null,
+                trachNhiem: String(body?.trachNhiem || "").trim(),
+                theoDoi: String(body?.theoDoi || "").trim()
+            };
+            return {
+                value,
+                error: !value.noiDung || !value.thoiHan || !value.trachNhiem || !value.theoDoi
+                    ? "Vui lòng nhập đầy đủ nội dung, thời hạn, trách nhiệm và theo dõi"
+                    : null
+            };
+        },
+        update: (request, value) => request
+            .input("NoiDung", sql.NVarChar(sql.MAX), value.noiDung)
+            .input("DeNghiXuLyId", sql.Int, value.deNghiXuLyId)
+            .input("ThoiHan", sql.Date, value.thoiHan)
+            .input("TrachNhiem", sql.NVarChar(255), value.trachNhiem)
+            .input("TheoDoi", sql.NVarChar(255), value.theoDoi)
+            .query(`UPDATE dbo.BIEN_BAN_XU_LY SET NoiDung=@NoiDung,DeNghiXuLyId=@DeNghiXuLyId,
+                ThoiHan=@ThoiHan,TrachNhiem=@TrachNhiem,TheoDoi=@TheoDoi WHERE Id=@RowId`)
+    },
+    "chi-phi": {
+        tableName: "dbo.BIEN_BAN_CHI_PHI",
+        validate: (body) => {
+            const value = {
+                loaiChiPhi: String(body?.loaiChiPhi || "").trim(),
+                giaTri: Number(body?.giaTri),
+                thoiHan: body?.thoiHan || null,
+                trachNhiem: String(body?.trachNhiem || "").trim() || null,
+                theoDoi: String(body?.theoDoi || "").trim() || null
+            };
+            return {
+                value,
+                error: !value.loaiChiPhi || !Number.isFinite(value.giaTri) || value.giaTri < 0
+                    ? "Tên chi phí và giá trị không âm là bắt buộc"
+                    : null
+            };
+        },
+        update: (request, value) => request
+            .input("LoaiChiPhi", sql.NVarChar(255), value.loaiChiPhi)
+            .input("GiaTri", sql.Money, value.giaTri)
+            .input("ThoiHan", sql.Date, value.thoiHan)
+            .input("TrachNhiem", sql.NVarChar(255), value.trachNhiem)
+            .input("TheoDoi", sql.NVarChar(255), value.theoDoi)
+            .query(`UPDATE dbo.BIEN_BAN_CHI_PHI SET LoaiChiPhi=@LoaiChiPhi,GiaTri=@GiaTri,
+                ThoiHan=@ThoiHan,TrachNhiem=@TrachNhiem,TheoDoi=@TheoDoi WHERE Id=@RowId`)
+    },
+    "hanh-dong": {
+        tableName: "dbo.BIEN_BAN_HANH_DONG",
+        validate: (body) => {
+            const value = {
+                noiDung: String(body?.noiDung || "").trim(),
+                thoiHan: body?.thoiHan || null,
+                trachNhiem: String(body?.trachNhiem || "").trim() || null,
+                theoDoi: String(body?.theoDoi || "").trim() || null
+            };
+            return {
+                value,
+                error: !value.noiDung || !value.thoiHan
+                    ? "Nội dung và thời hạn là bắt buộc"
+                    : null
+            };
+        },
+        update: (request, value) => request
+            .input("NoiDung", sql.NVarChar(sql.MAX), value.noiDung)
+            .input("ThoiHan", sql.Date, value.thoiHan)
+            .input("TrachNhiem", sql.NVarChar(255), value.trachNhiem)
+            .input("TheoDoi", sql.NVarChar(255), value.theoDoi)
+            .query(`UPDATE dbo.BIEN_BAN_HANH_DONG SET NoiDung=@NoiDung,ThoiHan=@ThoiHan,
+                TrachNhiem=@TrachNhiem,TheoDoi=@TheoDoi WHERE Id=@RowId`)
+    }
+};
+
+const getOwnedSectionRow = async (executor, config, rowId) => {
+    const result = await new sql.Request(executor)
+        .input("RowId", sql.Int, rowId)
+        .query(`SELECT sectionRow.Id,sectionRow.BienBanId,sectionRow.CreatedBy,
+            bienBan.TrangThai,bienBan.CreatorConfirmedAt
+            FROM ${config.tableName} sectionRow
+            JOIN dbo.BIEN_BAN_KIEM bienBan ON bienBan.Id=sectionRow.BienBanId
+            WHERE sectionRow.Id=@RowId`);
+    return result.recordset?.[0] || null;
+};
+
+const assertOwnedSectionAccess = async (pool, config, rowId, user) => {
+    const row = await getOwnedSectionRow(pool, config, rowId);
+    if (!row) throw Object.assign(new Error("Không tìm thấy nội dung"), { statusCode: 404 });
+    if (Number(row.CreatedBy) !== Number(user?.userId) && !isAdmin(user)) {
+        throw Object.assign(new Error("Bạn chỉ được sửa hoặc xóa nội dung do mình nhập"), { statusCode: 403 });
+    }
+    const access = await getKphSectionContributionAccess(pool, Number(row.BienBanId), user);
+    if (row.CreatorConfirmedAt || ["CHO_THEO_DOI", "HOAN_TAT"].includes(row.TrangThai) ||
+        (row.TrangThai === "TRA_LAI_CHINH_SUA" && !access.canManage)) {
+        throw Object.assign(new Error("Biên bản đã khóa, không thể thay đổi nội dung"), { statusCode: 409 });
+    }
+    if (access.isKphV01 && !access.canContribute) {
+        throw Object.assign(new Error("Bạn không còn quyền cập nhật mục này"), { statusCode: 403 });
+    }
+    return { row, access };
+};
+
+router.patch("/section-rows/:section/:rowId", authenticateToken, async (req, res) => {
+    const config = kphOwnedSectionConfigs[req.params.section];
+    const rowId = Number(req.params.rowId);
+    if (!config || !Number.isInteger(rowId) || rowId <= 0) {
+        return res.status(400).json({ message: "Nội dung cần sửa không hợp lệ" });
+    }
+    const normalized = config.validate(req.body);
+    if (normalized.error) return res.status(400).json({ message: normalized.error });
+    if (String(normalized.value.trachNhiem || "").length > 255 || String(normalized.value.theoDoi || "").length > 255) {
+        return res.status(400).json({ message: "Trách nhiệm và theo dõi không được vượt quá 255 ký tự" });
+    }
+    try {
+        const pool = await poolPromise;
+        const { row, access } = await assertOwnedSectionAccess(pool, config, rowId, req.user);
+        const transaction = new sql.Transaction(pool);
+        await transaction.begin();
+        try {
+            if (access.isKphV01) {
+                await assertKphSectionContributionOpen(transaction, Number(row.BienBanId), access.canManage);
+            }
+            const request = new sql.Request(transaction).input("RowId", sql.Int, rowId);
+            await config.update(request, normalized.value);
+            await transaction.commit();
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
+        res.json({ success: true, message: "Đã cập nhật nội dung" });
+    } catch (error) {
+        res.status(error.statusCode || 500).json({ message: error.message || "Không thể cập nhật nội dung" });
+    }
+});
+
+router.delete("/section-rows/:section/:rowId", authenticateToken, async (req, res) => {
+    const config = kphOwnedSectionConfigs[req.params.section];
+    const rowId = Number(req.params.rowId);
+    if (!config || !Number.isInteger(rowId) || rowId <= 0) {
+        return res.status(400).json({ message: "Nội dung cần xóa không hợp lệ" });
+    }
+    try {
+        const pool = await poolPromise;
+        const { row, access } = await assertOwnedSectionAccess(pool, config, rowId, req.user);
+        const transaction = new sql.Transaction(pool);
+        await transaction.begin();
+        try {
+            if (access.isKphV01) {
+                await assertKphSectionContributionOpen(transaction, Number(row.BienBanId), access.canManage);
+            }
+            await new sql.Request(transaction).input("RowId", sql.Int, rowId)
+                .query(`DELETE FROM ${config.tableName} WHERE Id=@RowId`);
+            await transaction.commit();
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
+        res.json({ success: true, message: "Đã xóa nội dung" });
+    } catch (error) {
+        res.status(error.statusCode || 500).json({ message: error.message || "Không thể xóa nội dung" });
+    }
+});
 
 router.post(
     "/xac-nhan",

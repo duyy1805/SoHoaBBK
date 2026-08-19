@@ -47,6 +47,11 @@ export const BienBanPrintTemplate = React.forwardRef(({
         info.SoLuongKeHoach,
         info.SoLuong
     ].find((value) => value !== null && value !== undefined && value !== '') ?? '';
+    const bienBanDonHang = customData.DonHang
+        || customData.SoDonHang
+        || info.MaDonHang
+        || (Number(info.LoaiKiemId) === 1 ? info.DoiTuong : '')
+        || '';
 
     const normalizeText = (value) =>
         String(value || '')
@@ -73,11 +78,15 @@ export const BienBanPrintTemplate = React.forwardRef(({
             const explicitText = normalizeText(explicitValue);
 
             if (
+                explicitText === 'DAU_VAO' ||
+                explicitText.includes('KIEM TRA DAU VAO') ||
                 explicitText.includes('KIEM_TREN_CHUYEN') ||
                 explicitText.includes('KIEM TREN CHUYEN') ||
                 explicitText.includes('TREN CHUYEN')
             ) {
-                return 'TRONG_SAN_XUAT';
+                return explicitText === 'DAU_VAO' || explicitText.includes('KIEM TRA DAU VAO')
+                    ? 'KIEM_TRA_DAU_VAO'
+                    : 'TRONG_SAN_XUAT';
             }
 
             return explicitValue;
@@ -124,6 +133,9 @@ export const BienBanPrintTemplate = React.forwardRef(({
     // 3. State quản lý Mục 3 (chuyển sang string để chỉ chọn 1)
     const [mucDo, setMucDo] = useState(() => {
         if (customData.MucDo) return customData.MucDo;
+        if (['LoiLanDau', 'LoiLapLai', 'LoiDonLe', 'LoiHangLoat'].includes(info.MucDoKhongPhuHop)) {
+            return info.MucDoKhongPhuHop;
+        }
         // Hỗ trợ tương thích đọc data cũ (boolean)
         const isTrue = (val) => val === true || val === 'true';
         if (isTrue(customData.LoiLanDau) || info.LoiLanDau) return 'LoiLanDau';
@@ -432,7 +444,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                             ])}
                                             {renderInfoLine([
                                                 { label: 'Số lượng', name: 'SoLuongKPH', value: bienBanSoLuongKhongPhuHop },
-                                                { label: 'Đơn hàng', name: 'DonHang', value: customData.DonHang }
+                                                { label: 'Đơn hàng', name: 'DonHang', value: bienBanDonHang }
                                             ])}
                                             {renderInfoLine([
                                                 { label: 'Lô/Lot sản xuất', name: 'Lot', value: customData.Lot || info.Lot },
@@ -451,7 +463,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                             ])}
                                             {renderInfoLine([
                                                 { label: 'Mã truy nguyên', name: 'MaTruyNguyen', value: customData.MaTruyNguyen },
-                                                { label: 'Đơn hàng', name: 'DonHang', value: customData.DonHang, grow: 0.5 },
+                                                { label: 'Đơn hàng', name: 'DonHang', value: bienBanDonHang, grow: 0.5 },
                                                 { label: 'Lô SX', name: 'Lot', value: customData.Lot || info.Lot, grow: 0.3 }
                                             ])}
                                             {renderInfoLine([

@@ -360,7 +360,11 @@ export default function PhieuKiemDetail() {
     const finalResult = (hasReject || hasSpecialReject) ? "KHONG_DAT" : "DAT";
     const getDynamicFieldValue = (fieldName) =>
         (dynamicFields || []).find((field) => field?.FieldName === fieldName)?.FieldValue || "";
-    const soDonHang = getDynamicFieldValue("SoDonHang");
+    const soDonHang = getDynamicFieldValue("SoDonHang")
+        || getDynamicFieldValue("KeHoachDonHang")
+        || phieu?.SoDonHang
+        || phieu?.MaDonHang
+        || (Number(phieu?.LoaiKiemId) === 1 ? phieu?.DoiTuong : "");
 
     const handleComplete = async () => {
         try {

@@ -474,8 +474,8 @@ router.get("/:id", authenticateToken, async (req, res) => {
             .input("BienBanId", sql.Int, bienBanId)
             .query(`
                 SELECT x.Id, x.BoPhan, x.NoiDung, x.TrachNhiem, x.TheoDoi,
-                    dx.Ten AS DeNghiXuLy, x.ThoiHan, x.NguoiXuLyId,
-                    x.BoPhanId, creator.FullName AS NguoiNhap, x.CreatedAt,
+                    x.DeNghiXuLyId, dx.Ten AS DeNghiXuLy, x.ThoiHan, x.NguoiXuLyId,
+                    x.BoPhanId, x.CreatedBy, creator.FullName AS NguoiNhap, x.CreatedAt,
                     bp.MaBoPhan, bp.TenBoPhan
                 FROM dbo.BIEN_BAN_XU_LY x
                 LEFT JOIN dbo.DM_DE_NGHI_XU_LY dx ON dx.Id = x.DeNghiXuLyId

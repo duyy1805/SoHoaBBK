@@ -117,6 +117,12 @@ export const confirmKphByCreatorDepartment = (bienBanId) =>
 
 export const addHanhDong = (data) =>
     axiosClient.post("/bien-ban/hanh-dong", data);
+
+export const updateOwnedSectionRow = (section, rowId, data) =>
+    axiosClient.patch(`/bien-ban/section-rows/${section}/${rowId}`, data);
+
+export const deleteOwnedSectionRow = (section, rowId) =>
+    axiosClient.delete(`/bien-ban/section-rows/${section}/${rowId}`);
 /* ================================
    Hoàn thành biên bản
 ================================ */
