@@ -37,48 +37,101 @@ const getStandaloneReadAccess = async (pool, bienBanId, user) => {
         .query(`
             SELECT TOP 1
                 CAST(1 AS bit) AS ExistsFlag,
-                CAST(CASE WHEN @CanViewAll = 1
+
+                CAST(CASE WHEN
+                    -- 1. Quyền xem toàn bộ
+                    @CanViewAll = 1
+
+                    -- 2. Chính người lập biên bản
                     OR bb.NguoiLapId = @UserId
-                    OR (@IsDepartmentLead = 1
-                        AND (COALESCE(bb.BoPhanTaoId, creator.BoPhanId) = @BoPhanId
-                            OR EXISTS (
-                                SELECT 1 FROM dbo.USER_BO_PHAN_QUAN_LY managed
-                                WHERE managed.UserId=@UserId AND managed.IsActive=1
-                                  AND managed.BoPhanId=COALESCE(bb.BoPhanTaoId, creator.BoPhanId)
-                            )))
-                    OR EXISTS (
-                        SELECT 1 FROM dbo.BIEN_BAN_ASSIGN assignment
-                        WHERE assignment.BienBanId = bb.Id
-                          AND (assignment.BoPhanId = @BoPhanId OR assignment.NguoiXuLyId = @UserId
-                            OR (@IsDepartmentLead=1 AND EXISTS (
-                                SELECT 1 FROM dbo.USER_BO_PHAN_QUAN_LY managed
-                                WHERE managed.UserId=@UserId AND managed.IsActive=1
-                                  AND managed.BoPhanId=assignment.BoPhanId
-                            )))
+
+                    -- 3. Người cùng bộ phận tạo biên bản
+                    OR COALESCE(bb.BoPhanTaoId, creator.BoPhanId) = @BoPhanId
+
+                    -- 4. Trưởng bộ phận quản lý bộ phận tạo
+                    OR (
+                        @IsDepartmentLead = 1
+                        AND EXISTS (
+                            SELECT 1
+                            FROM dbo.USER_BO_PHAN_QUAN_LY managed
+                            WHERE managed.UserId = @UserId
+                              AND managed.IsActive = 1
+                              AND managed.BoPhanId =
+                                  COALESCE(bb.BoPhanTaoId, creator.BoPhanId)
+                        )
                     )
+
+                    -- 5. Bộ phận / người được phân công xử lý
                     OR EXISTS (
-                        SELECT 1 FROM dbo.XIN_Y_KIEN opinion
+                        SELECT 1
+                        FROM dbo.BIEN_BAN_ASSIGN assignment
+                        WHERE assignment.BienBanId = bb.Id
+                          AND (
+                              assignment.BoPhanId = @BoPhanId
+                              OR assignment.NguoiXuLyId = @UserId
+
+                              OR (
+                                  @IsDepartmentLead = 1
+                                  AND EXISTS (
+                                      SELECT 1
+                                      FROM dbo.USER_BO_PHAN_QUAN_LY managed
+                                      WHERE managed.UserId = @UserId
+                                        AND managed.IsActive = 1
+                                        AND managed.BoPhanId = assignment.BoPhanId
+                                  )
+                              )
+                          )
+                    )
+
+                    -- 6. Bộ phận được xin ý kiến
+                    OR EXISTS (
+                        SELECT 1
+                        FROM dbo.XIN_Y_KIEN opinion
                         WHERE opinion.BienBanId = bb.Id
-                          AND (opinion.BoPhanId = @BoPhanId OR (@IsDepartmentLead=1 AND EXISTS (
-                              SELECT 1 FROM dbo.USER_BO_PHAN_QUAN_LY managed
-                              WHERE managed.UserId=@UserId AND managed.IsActive=1
-                                AND managed.BoPhanId=opinion.BoPhanId
-                          )))
+                          AND (
+                              opinion.BoPhanId = @BoPhanId
+
+                              OR (
+                                  @IsDepartmentLead = 1
+                                  AND EXISTS (
+                                      SELECT 1
+                                      FROM dbo.USER_BO_PHAN_QUAN_LY managed
+                                      WHERE managed.UserId = @UserId
+                                        AND managed.IsActive = 1
+                                        AND managed.BoPhanId = opinion.BoPhanId
+                                  )
+                              )
+                          )
                           AND ISNULL(opinion.IsActive, 1) = 1
                     )
+
+                    -- 7. Bộ phận ký BPSX
                     OR EXISTS (
-                        SELECT 1 FROM dbo.BienBan_CustomFields customField
+                        SELECT 1
+                        FROM dbo.BienBan_CustomFields customField
                         WHERE customField.BienBanId = bb.Id
                           AND customField.FieldName = N'BpsxSignatureBoPhanId'
                           AND TRY_CAST(customField.FieldValue AS int) = @BoPhanId
                     )
-                    THEN 1 ELSE 0 END AS bit) AS CanRead
+
+                    THEN 1
+                    ELSE 0
+                END AS bit) AS CanRead
+
             FROM dbo.BIEN_BAN_KIEM bb
-            LEFT JOIN dbo.USERS creator ON creator.Id = bb.NguoiLapId
-            WHERE bb.Id = @BienBanId AND bb.LoaiBienBan = N'STANDALONE'
+            LEFT JOIN dbo.USERS creator
+                ON creator.Id = bb.NguoiLapId
+
+            WHERE bb.Id = @BienBanId
+              AND bb.LoaiBienBan = N'STANDALONE'
         `);
+
     const record = result.recordset?.[0];
-    return { exists: Boolean(record?.ExistsFlag), canRead: Boolean(record?.CanRead) };
+
+    return {
+        exists: Boolean(record?.ExistsFlag),
+        canRead: Boolean(record?.CanRead)
+    };
 };
 const getHeaderAccess = async (pool, bienBanId, user) => {
     const result = await pool.request().input("BienBanId", sql.Int, bienBanId).query(`
@@ -95,10 +148,10 @@ const getHeaderAccess = async (pool, bienBanId, user) => {
     const canEdit = record.MauPhieuVersion === "V01" && !record.CreatorConfirmedAt &&
         !["CHO_THEO_DOI", "HOAN_TAT"].includes(record.TrangThai) &&
         (!record.OpinionDepartmentsConfirmedAt || record.TrangThai === "TRA_LAI_CHINH_SUA") && (
-        Number(record.NguoiLapId) === Number(user?.userId) ||
-        await canLeadDepartment(pool, user, record.CreatorBoPhanId) ||
-        isAdmin(user)
-    );
+            Number(record.NguoiLapId) === Number(user?.userId) ||
+            await canLeadDepartment(pool, user, record.CreatorBoPhanId) ||
+            isAdmin(user)
+        );
     return { exists: true, canEdit, record };
 };
 const KPH_V01_CUSTOM_FIELDS = new Set([

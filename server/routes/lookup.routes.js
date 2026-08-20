@@ -848,6 +848,7 @@ async function approveDefectRequest(pool, requestId, reviewerId, expectedRowVers
       .input("ImageUrls", sql.NVarChar(sql.MAX), stringifyImageUrls(payload.ImageUrls))
       .input("ThuTu", sql.Int, payload.ThuTu)
       .input("CreatedBy", sql.Int, requestRow.CreatedBy)
+      .input("CreatedAt", sql.DateTime2, requestRow.CreatedAt)
       .input("ReviewerId", sql.Int, reviewerId);
 
     let defectId = requestRow.DefectId;
@@ -862,7 +863,7 @@ async function approveDefectRequest(pool, requestId, reviewerId, expectedRowVers
         VALUES (
           @MaLoi, @TenLoi, @DefectType, 1, @MoTa, @GhiChu, @PhuongAnXuLy,
           @PhanHe, @MaNhomLoi, @LoaiLoiSXBT, @TenSanPham, @ChungLoai, @PhamViApDung,
-          @ThiTruong, @ImageUrl, @ImageUrls, @ThuTu, @CreatedBy, SYSDATETIME(), @ReviewerId, SYSDATETIME()
+          @ThiTruong, @ImageUrl, @ImageUrls, @ThuTu, @CreatedBy, @CreatedAt, @ReviewerId, @CreatedAt
         )
       `);
       defectId = created.recordset[0].Id;

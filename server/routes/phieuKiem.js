@@ -1126,10 +1126,10 @@ router.delete(
             }
 
             const bienBanIds = String(info.BienBanIds || '').split(',').map(Number).filter(Number.isInteger);
-            const files = await getBienBanFiles(transaction,bienBanIds);
-            files.push(...await getPhieuKiemFiles(transaction,phieuKiemId));
-            await deleteBienBanData(transaction,bienBanIds,req.user.userId);
-            await deletePhieuKiemData(transaction,phieuKiemId,req.user.userId);
+            const files = await getBienBanFiles(transaction, bienBanIds);
+            files.push(...await getPhieuKiemFiles(transaction, phieuKiemId));
+            await deleteBienBanData(transaction, bienBanIds, req.user.userId);
+            await deletePhieuKiemData(transaction, phieuKiemId, req.user.userId);
 
             await transaction.commit();
             await removeBienBanFiles(files);
@@ -1811,16 +1811,16 @@ router.get(
                 const plans = planRecords.map((plan) => {
                     const timeSlots = timeSlotsByPlanId[plan.Id] || [];
                     return {
-                    ...applyQuantityFields({
-                        ...plan,
-                        ...(extraByPlan.get(Number(plan.Id)) || {}),
-                        SoLuongThucTe: extraByPlan.get(Number(plan.Id))?.SoLuongThucTe ?? null
-                    }, 'SoLuongKeHoach'),
-                    Defects: [...(defectsByPlanId[plan.Id] || [])]
-                        .sort((a, b) => (a.SortOrder || 0) - (b.SortOrder || 0)),
-                    TimeSlots: timeSlots,
-                    HasTimeSlotData: timeSlots.length > 0
-                };
+                        ...applyQuantityFields({
+                            ...plan,
+                            ...(extraByPlan.get(Number(plan.Id)) || {}),
+                            SoLuongThucTe: extraByPlan.get(Number(plan.Id))?.SoLuongThucTe ?? null
+                        }, 'SoLuongKeHoach'),
+                        Defects: [...(defectsByPlanId[plan.Id] || [])]
+                            .sort((a, b) => (a.SortOrder || 0) - (b.SortOrder || 0)),
+                        TimeSlots: timeSlots,
+                        HasTimeSlotData: timeSlots.length > 0
+                    };
                 });
                 const quantitySummary = plans.reduce((totals, plan) => ({
                     TongSoLuongKeHoach: totals.TongSoLuongKeHoach + Number(plan.SoLuongKeHoach || 0),
@@ -2798,10 +2798,10 @@ router.post(
             await transaction.begin();
             try {
                 await new sql.Request(transaction)
-                .input('PhieuKiemId', sql.Int, phieuKiemId)
-                .input('UserId', sql.Int, userId)
-                .input('PlansJson', sql.NVarChar(sql.MAX), JSON.stringify(normalizedPlans))
-                .execute('sp_PhieuKiem_CuoiChuyen_SaveDefects');
+                    .input('PhieuKiemId', sql.Int, phieuKiemId)
+                    .input('UserId', sql.Int, userId)
+                    .input('PlansJson', sql.NVarChar(sql.MAX), JSON.stringify(normalizedPlans))
+                    .execute('sp_PhieuKiem_CuoiChuyen_SaveDefects');
 
                 for (const plan of normalizedPlans.filter((item) => item.planId)) {
                     await new sql.Request(transaction)
@@ -2839,8 +2839,8 @@ router.post(
                 }
 
                 await new sql.Request(transaction)
-                .input('PhieuKiemId', sql.Int, phieuKiemId)
-                .query(`
+                    .input('PhieuKiemId', sql.Int, phieuKiemId)
+                    .query(`
                     UPDATE dbo.PHIEU_KIEM
                     SET TrangThai = CASE WHEN TrangThai = 'TAO_MOI' THEN 'DANG_KIEM' ELSE TrangThai END
                     WHERE Id = @PhieuKiemId;
