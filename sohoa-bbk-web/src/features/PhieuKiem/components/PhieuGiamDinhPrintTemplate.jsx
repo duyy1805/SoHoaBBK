@@ -27,6 +27,18 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
         if (field?.FieldName) acc[field.FieldName] = field.FieldValue;
         return acc;
     }, {});
+    const firstPrintValue = (...values) => values.find((value) =>
+        value !== null && value !== undefined && String(value).trim() !== ''
+    ) ?? '';
+    const ngayKiemTra = firstPrintValue(
+        customData.NgayKiemTra,
+        phieu.NgayKiem ? new Date(phieu.NgayKiem).toLocaleDateString('vi-VN') : ''
+    );
+    const nhaCungCap = firstPrintValue(customData.NhaCungCap, phieu.NhaCungCap);
+    const matHang = firstPrintValue(customData.MatHang, phieu.TenSanPham);
+    const keHoachDonHang = firstPrintValue(customData.KeHoachDonHang, phieu.DoiTuong);
+    const maSoTruyNguyen = firstPrintValue(customData.MaSoTruyNguyen, phieu.Lot);
+    const soLuong = firstPrintValue(customData.SoLuong, phieu.SoLuong);
     const [loaiKiemTra, setLoaiKiemTra] = useState(customData.LoaiKiemTra || phieu.LoaiKiemTra || '');
     if (!phieu) return null;
 
@@ -108,6 +120,22 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
         flexBetween: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
         dottedLine: { flexGrow: 1, borderBottom: '2px dotted #000', marginLeft: '4px', position: 'relative', top: '-4px' },
         inputField: { width: '100%', border: 'none', outline: 'none', backgroundColor: 'transparent', fontSize: 'inherit', fontFamily: 'inherit', padding: 0, margin: 0, color: 'inherit' }
+    };
+    const valueLineStyle = (value) => {
+        const hasValue = Boolean(String(value ?? '').trim());
+        return {
+            ...styles.dottedLine,
+            borderBottom: hasValue ? 'none' : styles.dottedLine.borderBottom,
+            top: hasValue ? 0 : styles.dottedLine.top
+        };
+    };
+    const syncValueLine = (event) => {
+        const line = event.currentTarget.parentElement;
+        if (line) {
+            const hasValue = Boolean(event.currentTarget.value.trim());
+            line.style.borderBottom = hasValue ? 'none' : styles.dottedLine.borderBottom;
+            line.style.top = hasValue ? '0px' : styles.dottedLine.top;
+        }
     };
 
 
@@ -234,9 +262,9 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                                 <div style={{ fontWeight: 'bold', fontSize: '15pt' }}>PHIẾU GIÁM ĐỊNH CHẤT LƯỢNG VẬT TƯ ĐẦU VÀO</div>
                                             </td>
                                             <td style={{ ...styles.headerTd, width: '25%', textAlign: 'left', paddingLeft: '15px' }}>
-                                                <div style={{ fontSize: '10pt' }}>Mã số: BM.02-QT.01-KN</div>
-                                                <div style={{ fontSize: '10pt' }}>Ngày hiệu lực: 01/9/2024</div>
-                                                <div style={{ fontSize: '10pt' }}>Phiên bản: 06</div>
+                                                <div style={{ fontSize: '10pt' }}>Mã số: BM.02-QT.01-B8</div>
+                                                <div style={{ fontSize: '10pt' }}>Ngày hiệu lực: 01/02/2026</div>
+                                                <div style={{ fontSize: '10pt' }}>Phiên bản: 00</div>
                                             </td>
                                         </tr>
                                     </tbody>
@@ -266,23 +294,24 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                         <Grid size={{ xs: 6 }}>
                                             <Box display="flex" alignItems="flex-end" mb={0.75} style={styles.text}>
                                                 <span style={{ whiteSpace: 'nowrap' }}>Ngày kiểm tra:</span>
-                                                <span style={{ ...styles.dottedLine, flex: 1, marginLeft: '8px' }}>
-                                                    <div name="NgayKiemTra"> {customData.NgayKiemTra || (phieu.NgayKiem ? new Date(phieu.NgayKiem).toLocaleDateString('vi-VN') : new Date().toLocaleDateString('vi-VN'))}</div>
+                                                <span style={{ ...valueLineStyle(ngayKiemTra), flex: 1, marginLeft: '8px' }}>
+                                                    <div name="NgayKiemTra">{ngayKiemTra}</div>
                                                 </span>
                                             </Box>
                                             <Box display="flex" alignItems="flex-end" mb={0.75} style={styles.text}>
                                                 <span style={{ whiteSpace: 'nowrap' }}>Nhà cung cấp:</span>
-                                                <span style={{ ...styles.dottedLine, flex: 1, marginLeft: '8px' }}>
-                                                    <input name="NhaCungCap" className="custom-field" type="text" defaultValue={customData.NhaCungCap || phieu.NhaCungCap || ''} style={styles.inputField} />
+                                                <span style={{ ...valueLineStyle(nhaCungCap), flex: 1, marginLeft: '8px' }}>
+                                                    <input name="NhaCungCap" className="custom-field" type="text" defaultValue={nhaCungCap} onInput={syncValueLine} style={styles.inputField} />
                                                 </span>
                                             </Box>
                                             <Box display="flex" alignItems="flex-start" mb={0.75} style={styles.text}>
                                                 <span style={{ whiteSpace: 'nowrap', paddingTop: '2px' }}>Mặt hàng:</span>
-                                                <span style={{ ...styles.dottedLine, flex: 1, marginLeft: '8px' }}>
+                                                <span style={{ ...valueLineStyle(matHang), flex: 1, marginLeft: '8px' }}>
                                                     <TextareaAutosize
                                                         name="MatHang"
                                                         className="custom-field"
-                                                        defaultValue={customData.MatHang || phieu.TenSanPham || ''}
+                                                        defaultValue={matHang}
+                                                        onInput={syncValueLine}
                                                         minRows={1} // Hiển thị ít nhất 1 dòng
                                                         // maxRows={2} // (Tùy chọn) Bỏ comment dòng này nếu bạn muốn nó giãn tối đa 2 dòng rồi mới hiện thanh cuộn
                                                         style={{
@@ -314,20 +343,20 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                         <Grid size={{ xs: 6 }}>
                                             <Box display="flex" alignItems="flex-end" mb={0.75} style={styles.text}>
                                                 <span style={{ whiteSpace: 'nowrap' }}>Kế hoạch/Đơn hàng Z76:</span>
-                                                <span style={{ ...styles.dottedLine, flex: 1, marginLeft: '8px' }}>
-                                                    <input name="KeHoachDonHang" className="custom-field" type="text" defaultValue={customData.KeHoachDonHang || phieu.DoiTuong || ''} style={styles.inputField} />
+                                                <span style={{ ...valueLineStyle(keHoachDonHang), flex: 1, marginLeft: '8px' }}>
+                                                    <input name="KeHoachDonHang" className="custom-field" type="text" defaultValue={keHoachDonHang} onInput={syncValueLine} style={styles.inputField} />
                                                 </span>
                                             </Box>
                                             <Box display="flex" alignItems="flex-end" mb={0.75} style={styles.text}>
                                                 <span style={{ whiteSpace: 'nowrap' }}>Mã số truy nguyên/PO vật tư:</span>
-                                                <span style={{ ...styles.dottedLine, flex: 1, marginLeft: '8px' }}>
-                                                    <input name="MaSoTruyNguyen" className="custom-field" type="text" defaultValue={customData.MaSoTruyNguyen || phieu.Lot || ''} style={styles.inputField} />
+                                                <span style={{ ...valueLineStyle(maSoTruyNguyen), flex: 1, marginLeft: '8px' }}>
+                                                    <input name="MaSoTruyNguyen" className="custom-field" type="text" defaultValue={maSoTruyNguyen} onInput={syncValueLine} style={styles.inputField} />
                                                 </span>
                                             </Box>
                                             <Box display="flex" alignItems="flex-end" mb={0.75} style={styles.text}>
                                                 <span style={{ whiteSpace: 'nowrap' }}>Số lượng:</span>
-                                                <span style={{ ...styles.dottedLine, flex: 1, marginLeft: '8px' }}>
-                                                    <input name="SoLuong" className="custom-field" type="text" defaultValue={customData.SoLuong || phieu.SoLuong || ''} style={styles.inputField} />
+                                                <span style={{ ...valueLineStyle(soLuong), flex: 1, marginLeft: '8px' }}>
+                                                    <input name="SoLuong" className="custom-field" type="text" defaultValue={soLuong} onInput={syncValueLine} style={styles.inputField} />
                                                 </span>
                                             </Box>
 
@@ -378,8 +407,8 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
                                                                     {toRoman(sIndex + 1)}. {section.TenNhom.toUpperCase()}
                                                                 </div>
                                                                 <Box style={{ display: 'flex', gap: '40px', paddingRight: '20px' }}>
-                                                                    <span>Tổng số: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: '1px dotted #000', textAlign: 'center' }}><b>{section.TongSo}</b></span> Pcs</span>
-                                                                    <span>Số lượng kiểm: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: '1px dotted #000', textAlign: 'center' }}><b>{section.SoLuongKiem}</b></span> Pcs</span>
+                                                                    <span>Tổng số: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: String(section.TongSo ?? '').trim() ? 'none' : '1px dotted #000', textAlign: 'center' }}><b>{section.TongSo}</b></span> Pcs</span>
+                                                                    <span>Số lượng kiểm: <span style={{ display: 'inline-block', minWidth: '40px', borderBottom: String(section.SoLuongKiem ?? '').trim() ? 'none' : '1px dotted #000', textAlign: 'center' }}><b>{section.SoLuongKiem}</b></span> Pcs</span>
                                                                 </Box>
                                                             </Box>
                                                         </td>

@@ -404,7 +404,7 @@ export default function DefectManager() {
                         <Typography fontWeight={800} sx={{ mt: 0.75 }}>{data.TenLoi || "Chưa có tên lỗi"}</Typography>
                         <Typography variant="body2" color="text.secondary">{data.MoTa || "Không có mô tả"}</Typography>
                         <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-                            Người thêm: {item.CreatedByName || "Dữ liệu hệ thống"} · {formatDate(item.CreatedAt)}
+                            Người thêm: {item.CreatedByName || "Dữ liệu hệ thống"} · {formatDate(item.SubmittedAt || item.CreatedAt)}
                         </Typography>
                         {(item.B7PreparedByName || item.TbpB7ApprovedByName) && (
                             <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" sx={{ mt: 0.75 }}>
@@ -581,7 +581,7 @@ export default function DefectManager() {
                         </Box>
                         <Divider />
                         <Typography variant="body2" color="text.secondary">
-                            Người thêm: {detailTarget?.CreatedByName || "Dữ liệu hệ thống"} · {formatDate(detailTarget?.CreatedAt)}
+                            Người thêm: {detailTarget?.CreatedByName || "Dữ liệu hệ thống"} · {formatDate(detailTarget?.SubmittedAt || detailTarget?.CreatedAt)}
                         </Typography>
                         {detailTarget?.B7PreparedByName && <Typography variant="body2" color="text.secondary">Nhân viên B7: {detailTarget.B7PreparedByName} · {formatDate(detailTarget.B7PreparedAt)}</Typography>}
                         {detailTarget?.TbpB7ApprovedByName && <Typography variant="body2" color="text.secondary">TBP B7 duyệt: {detailTarget.TbpB7ApprovedByName} · {formatDate(detailTarget.TbpB7ApprovedAt)}</Typography>}

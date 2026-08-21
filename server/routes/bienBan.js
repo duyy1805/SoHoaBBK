@@ -15,6 +15,7 @@ const authorize = require("../middlewares/permission.middleware");
 const requireExactPermission = require("../middlewares/exactPermission.middleware");
 const { getManagedDepartmentIds, canLeadDepartment } = require("../utils/managedDepartments");
 const { loadBienBanListSummaries, mergeBienBanListSummary } = require("../utils/bienBanListSummary");
+const { sortKphListRows } = require("../utils/kphListSorting");
 const { loadKphSectionRows } = require("../utils/kphSectionRows");
 const { loadInputInspectionSource } = require("../utils/inputInspectionSource");
 
@@ -590,6 +591,12 @@ router.get(
                 .query(`
                     SELECT
                         bb.Id AS BienBanId,
+                        bb.CreatorConfirmedAt AS FollowUpReadyAt,
+                        CASE
+                            WHEN bb.TrangThai = N'HOAN_TAT' THEN followUp.ThoiGian
+                            WHEN bb.TrangThai = N'BB_SXBT_HOAN_TAT' THEN sxbtCompletion.ConfirmedAt
+                            ELSE NULL
+                        END AS CompletedAt,
                         COALESCE(bb.BoPhanTaoId, creator.BoPhanId) AS BoPhanTaoId,
                         creatorDepartment.MaBoPhan AS MaBoPhanTao,
                         creatorDepartment.TenBoPhan AS TenBoPhanTao,
@@ -655,6 +662,17 @@ router.get(
                         ON productionPlan.ID_KeHoachSanXuat = importPlan.ID_KeHoachSanXuat
                     LEFT JOIN TAG_QTKD.dbo.DM_NhaThau planContractor
                         ON planContractor.ID_BoPhan = productionPlan.ID_BoPhan
+                    OUTER APPLY (
+                        SELECT TOP 1 evaluation.ThoiGian
+                        FROM dbo.BIEN_BAN_THEO_DOI_DANH_GIA evaluation
+                        WHERE evaluation.BienBanId = bb.Id
+                        ORDER BY evaluation.ThoiGian DESC, evaluation.Id DESC
+                    ) followUp
+                    OUTER APPLY (
+                        SELECT MAX(step.ConfirmedAt) AS ConfirmedAt
+                        FROM dbo.BIEN_BAN_SXBT_CONFIRM_STEP step
+                        WHERE step.BienBanId = bb.Id
+                    ) sxbtCompletion
                     WHERE bb.Id IN (
                         SELECT TRY_CONVERT(int, [value])
                         FROM STRING_SPLIT(@BienBanIds, ',')
@@ -704,7 +722,7 @@ router.get(
                 };
             });
 
-            res.json(normalizedRows);
+            res.json(sortKphListRows(normalizedRows));
 
         } catch (err) {
 

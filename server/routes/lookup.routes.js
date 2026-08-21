@@ -863,7 +863,7 @@ async function approveDefectRequest(pool, requestId, reviewerId, expectedRowVers
         VALUES (
           @MaLoi, @TenLoi, @DefectType, 1, @MoTa, @GhiChu, @PhuongAnXuLy,
           @PhanHe, @MaNhomLoi, @LoaiLoiSXBT, @TenSanPham, @ChungLoai, @PhamViApDung,
-          @ThiTruong, @ImageUrl, @ImageUrls, @ThuTu, @CreatedBy, @CreatedAt, @ReviewerId, @CreatedAt
+          @ThiTruong, @ImageUrl, @ImageUrls, @ThuTu, @CreatedBy, @CreatedAt, @ReviewerId, SYSDATETIME()
         )
       `);
       defectId = created.recordset[0].Id;
@@ -1021,10 +1021,11 @@ router.get("/defect-management", authenticateToken, async (req, res) => {
                updater.FullName AS UpdatedByName,
                approvedRequest.Id AS ApprovedRequestId,
                approvedRequest.RowVersion AS ApprovedRequestRowVersion,
+               COALESCE(approvedRequest.CreatedAt, d.CreatedAt) AS SubmittedAt,
                b7Preparer.FullName AS B7PreparedByName,
                COALESCE(approvedRequest.UpdatedAt, approvedRequest.CreatedAt) AS B7PreparedAt,
                approver.FullName AS TbpB7ApprovedByName,
-               d.ApprovedAt AS TbpB7ApprovedAt
+               COALESCE(approvedRequest.ReviewedAt, d.ApprovedAt) AS TbpB7ApprovedAt
         FROM dbo.DM_DEFECT d
         LEFT JOIN dbo.USERS creator ON creator.Id=d.CreatedBy
         LEFT JOIN dbo.USERS approver ON approver.Id=d.ApprovedBy
@@ -1033,6 +1034,7 @@ router.get("/defect-management", authenticateToken, async (req, res) => {
           SELECT TOP (1) requestRow.Id, requestRow.RequestType,
                  requestRow.CreatedBy, requestRow.CreatedAt,
                  requestRow.UpdatedBy, requestRow.UpdatedAt,
+                 requestRow.ReviewedAt,
                  requestRow.RowVersion
           FROM dbo.DM_DEFECT_REQUEST requestRow
           WHERE requestRow.DefectId=d.Id AND requestRow.Status='APPROVED'

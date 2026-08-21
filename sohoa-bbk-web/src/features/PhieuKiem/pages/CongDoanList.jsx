@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
     Alert, Box, Button, Chip, CircularProgress, Dialog, DialogActions,
-    DialogContent, DialogTitle, MenuItem, Paper, Stack, Table, TableBody,
-    TableCell, TableContainer, TableHead, TableRow, TextField, Typography
+    DialogContent, DialogTitle, IconButton, MenuItem, Paper, Popover, Stack,
+    Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField,
+    Tooltip, Typography
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import FilterListIcon from "@mui/icons-material/FilterList";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import VisibilityIcon from "@mui/icons-material/Visibility";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { createCongDoanPhieu, getCongDoanPhieuList } from "../../../api/phieuKiem.api";
 import { getBoPhan } from "../../../api/bienBan.api";
 import { getCurrentUser } from "../../../utils/auth";
@@ -21,47 +24,196 @@ const statusMeta = {
     DANG_KIEM: ["Đang kiểm", "warning"], CHO_TBP_DUYET: ["Chờ TBP duyệt", "secondary"],
     HOAN_TAT: ["Hoàn tất", "success"]
 };
+const LIST_DATA_CACHE_KEY = "phieu-kiem-cong-doan:list-data";
+const readCachedRows = () => {
+    try {
+        const value = sessionStorage.getItem(LIST_DATA_CACHE_KEY);
+        const parsed = value ? JSON.parse(value) : null;
+        return Array.isArray(parsed) ? parsed : null;
+    } catch {
+        sessionStorage.removeItem(LIST_DATA_CACHE_KEY);
+        return null;
+    }
+};
 
 export default function CongDoanList() {
     const navigate = useNavigate();
-    const [rows, setRows] = useState([]);
+    const location = useLocation();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [cachedRows] = useState(readCachedRows);
+    const [rows, setRows] = useState(() => cachedRows || []);
     const [departments, setDepartments] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(() => !cachedRows);
     const [creating, setCreating] = useState(false);
     const [open, setOpen] = useState(false);
-    const [search, setSearch] = useState("");
+    const [search, setSearch] = useState(() => searchParams.get("q") || "");
+    const [dateFrom, setDateFrom] = useState(() => searchParams.get("from") || "");
+    const [dateTo, setDateTo] = useState(() => searchParams.get("to") || "");
+    const [workshopFilter, setWorkshopFilter] = useState(() => searchParams.get("workshop") || "");
+    const [teamFilter, setTeamFilter] = useState(() => searchParams.get("team") || "");
+    const [creatorFilter, setCreatorFilter] = useState(() => searchParams.get("creator") || "");
+    const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") || "");
+    const [filterPopover, setFilterPopover] = useState({ field: "", anchorEl: null });
     const [form, setForm] = useState({ ngayKiem: today(), toMay: "", phanXuongId: "" });
+    const tableContainerRef = useRef(null);
+    const hasRestoredScrollRef = useRef(false);
     const user = getCurrentUser();
     const canCreate = user?.permissions?.includes("THUC_HIEN_KIEM");
+    const listUrl = `${location.pathname}${location.search}`;
+    const scrollStorageKey = `phieu-kiem-cong-doan:list-scroll:${listUrl}`;
 
-    const load = async () => {
+    useEffect(() => {
+        setSearch(searchParams.get("q") || "");
+        setDateFrom(searchParams.get("from") || "");
+        setDateTo(searchParams.get("to") || "");
+        setWorkshopFilter(searchParams.get("workshop") || "");
+        setTeamFilter(searchParams.get("team") || "");
+        setCreatorFilter(searchParams.get("creator") || "");
+        setStatusFilter(searchParams.get("status") || "");
+    }, [searchParams]);
+
+    const load = async ({ background = false } = {}) => {
         try {
-            setLoading(true);
+            if (!background) setLoading(true);
             const response = await getCongDoanPhieuList();
-            setRows(response.data || []);
+            const nextRows = response.data || [];
+            setRows(nextRows);
+            sessionStorage.setItem(LIST_DATA_CACHE_KEY, JSON.stringify(nextRows));
         } catch (error) {
             window.alert(error.response?.data?.message || "Không tải được danh sách phiếu công đoạn.");
         } finally {
-            setLoading(false);
+            if (!background) setLoading(false);
         }
     };
     useEffect(() => {
-        load();
+        load({ background: Boolean(cachedRows) });
         getBoPhan().then((response) => setDepartments(
             (response.data || []).filter((item) =>
                 String(item.TenBoPhan || item.Ten_BoPhan || "").toLocaleLowerCase("vi").includes("phân xưởng")
             )
         )).catch(() => setDepartments([]));
-    }, []);
+    }, [cachedRows]);
 
+    useEffect(() => {
+        if (loading || hasRestoredScrollRef.current) return;
+        let savedPosition = null;
+        try {
+            const savedValue = sessionStorage.getItem(scrollStorageKey);
+            savedPosition = savedValue ? JSON.parse(savedValue) : null;
+        } catch {
+            sessionStorage.removeItem(scrollStorageKey);
+        }
+        const frame = window.requestAnimationFrame(() => {
+            if (tableContainerRef.current && Number.isFinite(savedPosition?.tableTop)) {
+                tableContainerRef.current.scrollTop = savedPosition.tableTop;
+            }
+            if (Number.isFinite(savedPosition?.windowTop)) {
+                window.scrollTo({ top: savedPosition.windowTop });
+            }
+            hasRestoredScrollRef.current = true;
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [loading, scrollStorageKey]);
+
+    const updateQueryFilter = (setter, key, value) => {
+        setter(value);
+        setSearchParams((current) => {
+            const next = new URLSearchParams(current);
+            if (value) next.set(key, value);
+            else next.delete(key);
+            return next;
+        }, { replace: true });
+    };
+
+    const resetFilters = () => {
+        setSearch("");
+        setDateFrom("");
+        setDateTo("");
+        setWorkshopFilter("");
+        setTeamFilter("");
+        setCreatorFilter("");
+        setStatusFilter("");
+        setSearchParams({}, { replace: true });
+    };
+
+    const rememberScrollPosition = () => {
+        sessionStorage.setItem(scrollStorageKey, JSON.stringify({
+            tableTop: tableContainerRef.current?.scrollTop || 0,
+            windowTop: window.scrollY || 0
+        }));
+    };
+
+    const openDetail = (phieuKiemId) => {
+        rememberScrollPosition();
+        navigate(`/phieu-kiem/cong-doan/${phieuKiemId}`, { state: { returnTo: listUrl } });
+    };
+
+    const workshopOptions = useMemo(() => [...new Set(rows.map((item) => item.PhanXuong).filter(Boolean))]
+        .sort((left, right) => left.localeCompare(right, "vi")), [rows]);
     const filteredRows = useMemo(() => {
         const keyword = search.trim().toLowerCase();
-        if (!keyword) return rows;
-        return rows.filter((item) =>
-            `${item.SoPhieu || ""} ${item.PhanXuong || ""} ${item.ToMay || ""} ${item.TenNguoiTao || ""}`
-                .toLowerCase().includes(keyword)
+        return rows.filter((item) => {
+            const inspectionDate = String(item.NgayKiem || "").slice(0, 10);
+            if (keyword && !`${item.SoPhieu || ""} ${item.PhanXuong || ""} ${item.ToMay || ""} ${item.TenNguoiTao || ""}`
+                .toLowerCase().includes(keyword)) return false;
+            if (dateFrom && (!inspectionDate || inspectionDate < dateFrom)) return false;
+            if (dateTo && (!inspectionDate || inspectionDate > dateTo)) return false;
+            if (workshopFilter && item.PhanXuong !== workshopFilter) return false;
+            if (teamFilter && !String(item.ToMay || "").toLocaleLowerCase("vi")
+                .includes(teamFilter.trim().toLocaleLowerCase("vi"))) return false;
+            if (creatorFilter && !String(item.TenNguoiTao || "").toLocaleLowerCase("vi")
+                .includes(creatorFilter.trim().toLocaleLowerCase("vi"))) return false;
+            if (statusFilter && item.TrangThai !== statusFilter) return false;
+            return true;
+        });
+    }, [rows, search, dateFrom, dateTo, workshopFilter, teamFilter, creatorFilter, statusFilter]);
+
+    const hasFilters = Boolean(search || dateFrom || dateTo || workshopFilter || teamFilter || creatorFilter || statusFilter);
+
+    const renderColumnFilter = ({ field, label, value, setter, queryKey, placeholder }) => {
+        const isOpen = filterPopover.field === field;
+        return (
+            <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="space-between">
+                <span>{label}</span>
+                <Tooltip title={`Lọc ${label.toLocaleLowerCase("vi")}`}>
+                    <IconButton
+                        size="small"
+                        color={value ? "primary" : "default"}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            setFilterPopover({ field, anchorEl: event.currentTarget });
+                        }}
+                        sx={{ width: 28, height: 28, bgcolor: value ? "action.selected" : "transparent" }}
+                    >
+                        <FilterListIcon fontSize="small" />
+                    </IconButton>
+                </Tooltip>
+                <Popover
+                    open={isOpen}
+                    anchorEl={filterPopover.anchorEl}
+                    onClose={() => setFilterPopover({ field: "", anchorEl: null })}
+                    anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+                    transformOrigin={{ vertical: "top", horizontal: "left" }}
+                >
+                    <Box sx={{ p: 1.5, width: 260 }}>
+                        <TextField
+                            fullWidth
+                            size="small"
+                            label={label}
+                            value={value}
+                            placeholder={placeholder}
+                            onChange={(event) => updateQueryFilter(setter, queryKey, event.target.value)}
+                            autoFocus
+                        />
+                        <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 1.5 }}>
+                            <Button size="small" onClick={() => updateQueryFilter(setter, queryKey, "")}>Bỏ lọc</Button>
+                            <Button size="small" variant="contained" onClick={() => setFilterPopover({ field: "", anchorEl: null })}>Đóng</Button>
+                        </Stack>
+                    </Box>
+                </Popover>
+            </Stack>
         );
-    }, [rows, search]);
+    };
 
     const create = async () => {
         if (!form.ngayKiem || !Number(form.phanXuongId)) {
@@ -72,7 +224,7 @@ export default function CongDoanList() {
             setCreating(true);
             const response = await createCongDoanPhieu(form);
             setOpen(false);
-            navigate(`/phieu-kiem/cong-doan/${response.data.Id}`);
+            openDetail(response.data.Id);
         } catch (error) {
             window.alert(error.response?.data?.message || "Không tạo được phiếu công đoạn.");
         } finally {
@@ -89,7 +241,40 @@ export default function CongDoanList() {
                 </Box>
                 {canCreate && <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpen(true)}>Tạo phiếu</Button>}
             </Stack>
-            <TextField size="small" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm số phiếu, phân xưởng, tổ/máy, KCS" sx={{ width: { xs: "100%", md: 420 }, mb: 2 }} />
+            <Paper variant="outlined" sx={{ p: 1.5, mb: 2, borderRadius: 2 }}>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1} useFlexGap flexWrap="wrap">
+                    <TextField
+                        size="small"
+                        value={search}
+                        onChange={(event) => updateQueryFilter(setSearch, "q", event.target.value)}
+                        placeholder="Tìm số phiếu, phân xưởng, tổ/máy, KCS"
+                        sx={{ flex: { sm: "1 1 320px" } }}
+                    />
+                    <TextField size="small" type="date" label="Từ ngày" value={dateFrom}
+                        onChange={(event) => updateQueryFilter(setDateFrom, "from", event.target.value)}
+                        slotProps={{ inputLabel: { shrink: true } }} sx={{ minWidth: 145 }} />
+                    <TextField size="small" type="date" label="Đến ngày" value={dateTo}
+                        onChange={(event) => updateQueryFilter(setDateTo, "to", event.target.value)}
+                        slotProps={{ inputLabel: { shrink: true } }} sx={{ minWidth: 145 }} />
+                    <TextField select size="small" label="Phân xưởng" value={workshopFilter}
+                        onChange={(event) => {
+                            updateQueryFilter(setWorkshopFilter, "workshop", event.target.value);
+                            if (teamFilter) updateQueryFilter(setTeamFilter, "team", "");
+                        }} sx={{ minWidth: 180 }}>
+                        <MenuItem value="">Tất cả phân xưởng</MenuItem>
+                        {workshopOptions.map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}
+                    </TextField>
+                    <TextField select size="small" label="Trạng thái" value={statusFilter}
+                        onChange={(event) => updateQueryFilter(setStatusFilter, "status", event.target.value)} sx={{ minWidth: 160 }}>
+                        <MenuItem value="">Tất cả trạng thái</MenuItem>
+                        {Object.entries(statusMeta).map(([value, meta]) => <MenuItem key={value} value={value}>{meta[0]}</MenuItem>)}
+                    </TextField>
+                    <Button startIcon={<RestartAltIcon />} disabled={!hasFilters} onClick={resetFilters}>Xóa lọc</Button>
+                </Stack>
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+                    Hiển thị {filteredRows.length}/{rows.length} phiếu
+                </Typography>
+            </Paper>
 
             <Paper variant="outlined">
                 {loading ? (
@@ -113,19 +298,30 @@ export default function CongDoanList() {
                                         <Typography variant="body2" color="text.secondary">
                                             {item.SoKeHoach || 0} kế hoạch · HL {item.TongSoLuongHieuLuc || 0} · {item.TongSoLuongLoi || 0} lỗi
                                         </Typography>
-                                        <Button fullWidth variant="outlined" startIcon={<VisibilityIcon />} onClick={() => navigate(`/phieu-kiem/cong-doan/${item.Id}`)}>Mở phiếu</Button>
+                                        <Button fullWidth variant="outlined" startIcon={<VisibilityIcon />} onClick={() => openDetail(item.Id)}>Mở phiếu</Button>
                                     </Stack>
                                 </Paper>
                             );
                         })}
                         {!filteredRows.length && <Typography textAlign="center" color="text.secondary" sx={{ py: 5 }}>Chưa có phiếu phù hợp.</Typography>}
                     </Stack>
-                    <TableContainer sx={{ display: { xs: "none", md: "block" } }}>
+                    <TableContainer ref={tableContainerRef} sx={{ display: { xs: "none", md: "block" } }}>
                         <Table>
                             <TableHead>
                                 <TableRow>
                                     <TableCell>Số phiếu</TableCell><TableCell>Ngày kiểm</TableCell>
-                                    <TableCell>Phân xưởng / tổ máy</TableCell><TableCell>Người tạo</TableCell>
+                                    <TableCell>
+                                        {renderColumnFilter({
+                                            field: "team", label: "Phân xưởng / tổ máy", value: teamFilter,
+                                            setter: setTeamFilter, queryKey: "team", placeholder: "Nhập tổ / máy"
+                                        })}
+                                    </TableCell>
+                                    <TableCell>
+                                        {renderColumnFilter({
+                                            field: "creator", label: "Người tạo", value: creatorFilter,
+                                            setter: setCreatorFilter, queryKey: "creator", placeholder: "Nhập tên người tạo"
+                                        })}
+                                    </TableCell>
                                     <TableCell align="right">Kế hoạch</TableCell><TableCell align="right">KH / TT / Hiệu lực</TableCell><TableCell align="right">Số lỗi</TableCell>
                                     <TableCell>Trạng thái</TableCell><TableCell width={64} />
                                 </TableRow>
@@ -143,7 +339,7 @@ export default function CongDoanList() {
                                             <TableCell align="right">{item.TongSoLuongKeHoach || 0} / {item.SoKeHoachDaNhapThucTe ? item.TongSoLuongThucTe : "Chưa nhập"} / {item.TongSoLuongHieuLuc || 0}</TableCell>
                                             <TableCell align="right">{item.TongSoLuongLoi || 0}</TableCell>
                                             <TableCell><Chip size="small" label={meta[0]} color={meta[1]} /></TableCell>
-                                            <TableCell><Button title="Xem chi tiết" onClick={() => navigate(`/phieu-kiem/cong-doan/${item.Id}`)}><VisibilityIcon /></Button></TableCell>
+                                            <TableCell><Button title="Xem chi tiết" onClick={() => openDetail(item.Id)}><VisibilityIcon /></Button></TableCell>
                                         </TableRow>
                                     );
                                 })}

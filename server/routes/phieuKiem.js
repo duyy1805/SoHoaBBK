@@ -176,6 +176,53 @@ const normalizePositiveIds = (values = []) => [...new Set(
         .filter((value) => Number.isInteger(value) && value > 0)
 )];
 
+const attachInputProductIds = async (pool, rows = []) => {
+    if (!Array.isArray(rows) || rows.length === 0) return [];
+
+    const unresolvedRows = rows
+        .map((row, index) => ({
+            index,
+            maVatTu: String(row?.Ma_VatTu || '').trim(),
+            quyCach: String(row?.QuyCach || '').trim()
+        }))
+        .filter((row) => row.maVatTu && !rows[row.index]?.SanPhamId);
+
+    if (unresolvedRows.length === 0) return rows;
+
+    const result = await pool.request()
+        .input('RowsJson', sql.NVarChar(sql.MAX), JSON.stringify(unresolvedRows))
+        .query(`
+            SELECT sourceRow.RowIndex, matchedProduct.Id AS SanPhamId
+            FROM OPENJSON(@RowsJson)
+            WITH (
+                RowIndex INT '$.index',
+                MaVatTu NVARCHAR(100) '$.maVatTu',
+                QuyCach NVARCHAR(1000) '$.quyCach'
+            ) sourceRow
+            OUTER APPLY (
+                SELECT TOP (1) product.Id
+                FROM dbo.DM_SAN_PHAM product
+                WHERE UPPER(LTRIM(RTRIM(product.MaSanPham))) = UPPER(LTRIM(RTRIM(sourceRow.MaVatTu)))
+                ORDER BY
+                    CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(product.TenSanPham, ''))))
+                        = UPPER(LTRIM(RTRIM(ISNULL(sourceRow.QuyCach, '')))) THEN 0 ELSE 1 END,
+                    CASE WHEN ISNULL(product.TrangThai, 1) = 1 THEN 0 ELSE 1 END,
+                    product.Id DESC
+            ) matchedProduct;
+        `);
+
+    const productIdByIndex = new Map(
+        (result.recordset || [])
+            .filter((row) => row.SanPhamId)
+            .map((row) => [Number(row.RowIndex), Number(row.SanPhamId)])
+    );
+
+    return rows.map((row, index) => ({
+        ...row,
+        SanPhamId: row.SanPhamId || productIdByIndex.get(index) || null
+    }));
+};
+
 const loadSxbtImportPlans = async (request, keHoachNhapIds, { lockPrimaryLinks = false } = {}) => {
     const ids = normalizePositiveIds(keHoachNhapIds);
     if (ids.length === 0) return [];
@@ -1195,7 +1242,7 @@ router.get(
             const result = await pool.request()
                 .execute('sp_ChungTuNhapChiTiet_GetList_ChuaKiem');
 
-            res.json(result.recordset);
+            res.json(await attachInputProductIds(pool, result.recordset || []));
 
         } catch (err) {
             console.error(err);

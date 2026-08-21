@@ -502,15 +502,11 @@ export default function PhieuKiemCreate() {
             // 2. Map lấy SanPhamId chính xác qua API
             const resolvedRows = await Promise.all(selectedLichList.map(async (row) => {
                 const isDongCont = selectedLoai?.MaLoai === "KIEM_DONG_CONT";
+                const isDauVao = selectedLoai?.MaLoai === "DAU_VAO";
                 let mappedSpId = row.SanPhamId;
 
-                if (isDongCont) {
-                    const itemCode = row.ItemId;
-                    console.log("[PhieuKiemCreate][KIEM_DONG_CONT] resolve ItemId:", {
-                        ItemId: row.ItemId,
-                        itemIdType: typeof row.ItemId,
-                        row
-                    });
+                if (isDongCont || (isDauVao && !mappedSpId)) {
+                    const itemCode = isDongCont ? row.ItemId : row.Ma_VatTu;
                     if (spCache.has(itemCode)) {
                         mappedSpId = spCache.get(itemCode);
                     } else {
@@ -531,7 +527,7 @@ export default function PhieuKiemCreate() {
                     }
 
                     if (!mappedSpId) {
-                        throw new Error(`Mã vật tư/sản phẩm [${itemCode}] chưa tồn tại trong danh mục hệ thống.`);
+                        throw new Error(`Mã vật tư/sản phẩm [${itemCode || "trống"}] chưa tồn tại trong danh mục sản phẩm kiểm.`);
                     }
                 }
 

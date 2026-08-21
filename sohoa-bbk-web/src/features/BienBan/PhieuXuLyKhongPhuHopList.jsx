@@ -39,6 +39,8 @@ import { createStandaloneBienBan, getStandaloneBienBanList } from "../../api/bie
 import { decodeToken } from "../../utils/auth";
 import { getBienBanStatusMeta } from "./components/bienBanWorkflow";
 import WorkFilterTabLabel from "./components/WorkFilterTabLabel";
+import ListRecordTime from "./components/ListRecordTime";
+import { getRecordReferenceDate } from "./components/listRecordTime.utils";
 import {
     CreatorSummary,
     NonconformitySummary,
@@ -254,9 +256,9 @@ export default function PhieuXuLyKhongPhuHopList() {
             if (!["all", "mine"].includes(opinionDepartmentFilter)
                 && !opinionDepartmentIds.includes(Number(opinionDepartmentFilter))) return false;
 
-            const createdAt = item.CreatedAt ? new Date(item.CreatedAt) : null;
-            if (dateFrom && (!createdAt || createdAt < new Date(`${dateFrom}T00:00:00`))) return false;
-            if (dateTo && (!createdAt || createdAt > new Date(`${dateTo}T23:59:59.999`))) return false;
+            const referenceDate = getRecordReferenceDate(item);
+            if (dateFrom && (!referenceDate || referenceDate < new Date(`${dateFrom}T00:00:00`))) return false;
+            if (dateTo && (!referenceDate || referenceDate > new Date(`${dateTo}T23:59:59.999`))) return false;
 
             if (!keyword) return true;
             const searchableText = normalizeSearchText([
@@ -645,9 +647,7 @@ export default function PhieuXuLyKhongPhuHopList() {
                                             >
                                                 <TableCell>
                                                     <Typography variant="body2" fontWeight={700} color="primary.main">{item.SoBienBan || `BB#${item.BienBanId}`}</Typography>
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        {item.CreatedAt ? new Date(item.CreatedAt).toLocaleString("vi-VN") : "Chưa có ngày tạo"}
-                                                    </Typography>
+                                                    <ListRecordTime item={item} />
                                                     <Box sx={{ mt: 0.6 }}>{renderTrangThaiChip(item.TrangThai)}</Box>
                                                 </TableCell>
                                                 <TableCell>
@@ -701,9 +701,7 @@ export default function PhieuXuLyKhongPhuHopList() {
                                         <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
                                             <Box sx={{ minWidth: 0 }}>
                                                 <Typography variant="body2" fontWeight={800} color="primary.main">{item.SoBienBan || `BB#${item.BienBanId}`}</Typography>
-                                                <Typography variant="caption" color="text.secondary">
-                                                    {item.CreatedAt ? new Date(item.CreatedAt).toLocaleString("vi-VN") : "Chưa có ngày tạo"}
-                                                </Typography>
+                                                <ListRecordTime item={item} />
                                             </Box>
                                             {renderTrangThaiChip(item.TrangThai)}
                                         </Stack>

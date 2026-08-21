@@ -372,7 +372,7 @@ const buildCuoiChuyenOfficialPages = ({ phieu = {}, plans = [], dynamicFields = 
                 return {
                     key: `${plan.Id || planIndex}-${slot.Id || slotIndex}`,
                     date: formatDate(plan.NgayKeHoach || phieu.NgayKiem),
-                    materialOrder: text(plan.LenhXuatVatTu),
+                    lot: text(plan.Lot),
                     time: slot.legacy || slot.IsLegacy || !slot.GioKiem
                         ? "" : `${text(slot.GioKiem) < "12:00" ? "S" : "C"} ${text(slot.GioKiem)}`,
                     checkedQty,
@@ -384,7 +384,7 @@ const buildCuoiChuyenOfficialPages = ({ phieu = {}, plans = [], dynamicFields = 
                     repairedFail: repairs.failed
                 };
             });
-        }).sort((a, b) => a.date.localeCompare(b.date) || a.materialOrder.localeCompare(b.materialOrder)
+        }).sort((a, b) => a.date.localeCompare(b.date) || a.lot.localeCompare(b.lot)
             || a.time.localeCompare(b.time));
         const rowChunks = [];
         const sourceRows = rows.length ? rows : [];
@@ -466,7 +466,7 @@ const CuoiChuyenOfficialPrint = ({ printRef, phieu, plans, dynamicFields, xacNha
                         </colgroup>
                         <thead>
                             <tr style={{ height: 12 }}>
-                                <th rowSpan={2}>Ngày</th><th rowSpan={2}>Lệnh<br/>xuất VT</th><th rowSpan={2}>Thời gian<br/>S/C</th>
+                                <th rowSpan={2}>Ngày</th><th rowSpan={2}>Lô/Lot</th><th rowSpan={2}>Thời gian<br/>S/C</th>
                                 <th rowSpan={2}>Tổng<br/>SL kiểm</th><th rowSpan={2}>SL lỗi</th><th rowSpan={2}>% lỗi</th>
                                 <th colSpan={3}>Mức độ lỗi</th><th colSpan={15}>Dạng lỗi (Số lỗi)</th>
                                 <th colSpan={2}>Báo cáo sửa lỗi</th><th colSpan={2}>Ký xác nhận</th>
@@ -483,7 +483,7 @@ const CuoiChuyenOfficialPrint = ({ printRef, phieu, plans, dynamicFields, xacNha
                             {page.rows.map((row, rowIndex) => {
                                 const defectMap = makeDefectMap(page.columns, row.defects || []);
                                 return <tr className="cc-official-row" key={row.key}>
-                                    <td>{row.date || ""}</td><td>{row.materialOrder || ""}</td><td>{row.time || ""}</td>
+                                    <td>{row.date || ""}</td><td>{row.lot || ""}</td><td>{row.time || ""}</td>
                                     <td>{displayNumber(row.checkedQty)}</td><td>{displayNumber(row.defectQty)}</td>
                                     <td>{number(row.checkedQty) ? `${(number(row.defectQty) * 100 / number(row.checkedQty)).toFixed(2)}%` : ""}</td>
                                     <td>{displayNumber(row.severity?.minor)}</td><td>{displayNumber(row.severity?.major)}</td><td>{displayNumber(row.severity?.critical)}</td>

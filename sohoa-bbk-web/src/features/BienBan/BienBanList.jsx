@@ -42,6 +42,8 @@ import { decodeToken } from "../../utils/auth";
 import { getBienBanStatusMeta } from "./components/bienBanWorkflow";
 import WorkFilterTabLabel from "./components/WorkFilterTabLabel";
 import { CreatorSummary, NonconformitySummary, ProductSummary } from "./components/ListRecordSummary";
+import ListRecordTime from "./components/ListRecordTime";
+import { getRecordReferenceDate } from "./components/listRecordTime.utils";
 
 const normalizeSearchText = (value) => String(value || "")
     .normalize("NFD")
@@ -295,9 +297,9 @@ export default function BienBanList() {
             // Lọc theo trạng thái
             if (filterStatus && item.TrangThai !== filterStatus) return false;
 
-            const createdAt = item.CreatedAt ? new Date(item.CreatedAt) : null;
-            if (dateFrom && (!createdAt || createdAt < new Date(`${dateFrom}T00:00:00`))) return false;
-            if (dateTo && (!createdAt || createdAt > new Date(`${dateTo}T23:59:59.999`))) return false;
+            const referenceDate = getRecordReferenceDate(item);
+            if (dateFrom && (!referenceDate || referenceDate < new Date(`${dateFrom}T00:00:00`))) return false;
+            if (dateTo && (!referenceDate || referenceDate > new Date(`${dateTo}T23:59:59.999`))) return false;
 
             // Lọc theo text (Tìm kiếm trên nhiều cột)
             if (searchText) {
@@ -774,9 +776,7 @@ export default function BienBanList() {
                                                 <Typography variant="body2" fontWeight={700} color="primary.main" sx={{ lineHeight: 1.3, overflowWrap: "anywhere" }}>
                                                     {item.SoPhieu}
                                                 </Typography>
-                                                <Typography variant="caption" color="text.secondary">
-                                                    {item.CreatedAt ? new Date(item.CreatedAt).toLocaleDateString('vi-VN') : "Chưa có ngày tạo"}
-                                                </Typography>
+                                                <ListRecordTime item={item} />
                                                 <Stack spacing={0.5} alignItems="flex-start" sx={{ mt: 0.65 }}>
                                                     <Chip label={getLoaiKiemLabel(item)} size="small" variant="outlined" sx={{ height: 21, fontSize: "0.7rem" }} />
                                                     {renderTrangThaiChip(item)}
@@ -855,9 +855,7 @@ export default function BienBanList() {
                                     <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
                                         <Box sx={{ minWidth: 0 }}>
                                             <Typography variant="body2" fontWeight={800} color="primary.main">{item.SoPhieu}</Typography>
-                                            <Typography variant="caption" color="text.secondary">
-                                                {item.CreatedAt ? new Date(item.CreatedAt).toLocaleDateString('vi-VN') : "Chưa có ngày tạo"}
-                                            </Typography>
+                                            <ListRecordTime item={item} />
                                         </Box>
                                         {renderTrangThaiChip(item)}
                                     </Stack>

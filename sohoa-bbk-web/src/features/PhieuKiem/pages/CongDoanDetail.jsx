@@ -18,7 +18,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
 import BrokenImageOutlinedIcon from "@mui/icons-material/BrokenImageOutlined";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useReactToPrint } from "react-to-print";
 import {
     addCongDoanPlan, approveCongDoanPhieu, completeCongDoanPhieu,
@@ -227,6 +227,7 @@ function PlanDefectDetails({ plan, onOpenImages }) {
 export default function CongDoanDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
+    const location = useLocation();
     const oldPrintRef = useRef(null);
     const newPrintRef = useRef(null);
     const [data, setData] = useState({ phieu: null, plans: [], xacNhans: [], capabilities: {} });
@@ -247,6 +248,10 @@ export default function CongDoanDetail() {
     const [gallery, setGallery] = useState({ images: [], index: 0 });
     const autoExpandedPhieuRef = useRef(null);
     const user = getCurrentUser();
+    const returnTo = typeof location.state?.returnTo === "string"
+        && /^\/phieu-kiem\/cong-doan(?:\?|$)/.test(location.state.returnTo)
+        ? location.state.returnTo
+        : "/phieu-kiem/cong-doan";
 
     const load = useCallback(async ({ background = false } = {}) => {
         try {
@@ -430,7 +435,7 @@ export default function CongDoanDetail() {
                         <IconButton
                             color="inherit"
                             aria-label="Quay lại danh sách phiếu công đoạn"
-                            onClick={() => navigate("/phieu-kiem/cong-doan")}
+                            onClick={() => navigate(returnTo)}
                             sx={{ flexShrink: 0 }}
                         >
                             <ArrowBackIcon />
@@ -469,7 +474,7 @@ export default function CongDoanDetail() {
                     }}
                 >
                     <DeletePhieuKiemButton phieuKiemId={id} soPhieu={phieu?.SoPhieu}
-                        onDeleted={() => navigate("/phieu-kiem/cong-doan")} />
+                        onDeleted={() => navigate(returnTo)} />
                     {canEdit && (
                         <>
                             <Button variant="outlined" startIcon={<AddIcon />} onClick={openAddPlan}>

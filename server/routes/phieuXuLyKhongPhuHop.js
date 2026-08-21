@@ -7,6 +7,7 @@ const authenticateToken = require("../middlewares/auth.middleware");
 const requireExactPermission = require("../middlewares/exactPermission.middleware");
 const { getManagedDepartmentIds, canLeadDepartment } = require("../utils/managedDepartments");
 const { loadBienBanListSummaries, mergeBienBanListSummary } = require("../utils/bienBanListSummary");
+const { sortKphListRows } = require("../utils/kphListSorting");
 const { loadSignatureDataUrlMap } = require("../utils/signatureImage");
 const { loadKphSectionRows } = require("../utils/kphSectionRows");
 const {
@@ -210,6 +211,8 @@ router.get("/", authenticateToken, async (req, res) => {
         const creatorDepartmentResult = await pool.request().query(`
             SELECT
                 bb.Id AS BienBanId,
+                bb.CreatorConfirmedAt AS FollowUpReadyAt,
+                CASE WHEN bb.TrangThai = N'HOAN_TAT' THEN followUp.ThoiGian ELSE NULL END AS CompletedAt,
                 COALESCE(bb.BoPhanTaoId, creator.BoPhanId) AS CreatorBoPhanId,
                 department.MaBoPhan AS MaBoPhanTao,
                 department.TenBoPhan AS TenBoPhanTao
@@ -217,6 +220,12 @@ router.get("/", authenticateToken, async (req, res) => {
             LEFT JOIN dbo.USERS creator ON creator.Id = bb.NguoiLapId
             LEFT JOIN dbo.DM_BO_PHAN department
                 ON department.Id = COALESCE(bb.BoPhanTaoId, creator.BoPhanId)
+            OUTER APPLY (
+                SELECT TOP 1 evaluation.ThoiGian
+                FROM dbo.BIEN_BAN_THEO_DOI_DANH_GIA evaluation
+                WHERE evaluation.BienBanId = bb.Id
+                ORDER BY evaluation.ThoiGian DESC, evaluation.Id DESC
+            ) followUp
             WHERE bb.Id IN (${ids.join(",")})
         `);
         const creatorDepartmentMap = new Map(
@@ -264,7 +273,7 @@ router.get("/", authenticateToken, async (req, res) => {
             });
             progressMap.set(key, progress);
         }
-        res.json(rows.map((item) => {
+        const normalizedRows = rows.map((item) => {
             const creatorDepartment = creatorDepartmentMap.get(Number(item.BienBanId)) || {};
             const summaryFields = summaryFieldMap.get(Number(item.BienBanId));
             const progress = progressMap.get(Number(item.BienBanId));
@@ -290,7 +299,8 @@ router.get("/", authenticateToken, async (req, res) => {
                     : null,
                 OpinionDepartments: progress.departments
             }, summaryFields);
-        }));
+        });
+        res.json(sortKphListRows(normalizedRows));
     } catch (err) {
         console.error("GetStandaloneBienBanList error:", err);
         res.status(500).json({ message: "Không tải được danh sách phiếu xử lý không phù hợp" });
