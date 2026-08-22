@@ -9,14 +9,6 @@ dist/
 build/
 
 *.sql
-!server/sql/migrations/20260811_user_signature_image.sql
-!server/sql/migrations/20260811_product_responsible_opinion_routing.sql
-!server/sql/migrations/20260812_delete_kcs_records_permission.sql
-!server/sql/migrations/20260813_sxbt_actual_quantity.sql
-!server/sql/migrations/20260813_user_managed_departments.sql
-!server/sql/migrations/20260814_sxbt_confirmation_after_warehouse.sql
-!server/sql/migrations/20260818_plan_list_duplicate_by_type_and_day.sql
-!server/sql/migrations/20260818_cuoi_chuyen_time_slots.sql
-!server/sql/migrations/20260818_cuoi_chuyen_legacy_time_slot.sql
+!server/sql/migrations/20260821_kph_work_center_list_meta.sql
 
 *.xlsx

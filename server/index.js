@@ -28,6 +28,7 @@ app.use('/api/phieu-xu-ly-khong-phu-hop', require('./routes/phieuXuLyKhongPhuHop
 app.use('/api/lookup', require('./routes/lookup.routes'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/dashboard', require('./routes/dashboard'));
+app.use('/api/work-center', require('./routes/workCenter'));
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 

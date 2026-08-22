@@ -19,6 +19,9 @@ import CongDoanList from '../features/PhieuKiem/pages/CongDoanList';
 import CongDoanDetail from '../features/PhieuKiem/pages/CongDoanDetail';
 import UserAdminPage from '../features/UserAdmin/UserAdminPage';
 import UserAdminRoute from './UserAdminRoute';
+import WorkCenterPage from '../features/WorkCenter/WorkCenterPage';
+
+const workCenterEnabled = import.meta.env.VITE_ENABLE_WORK_CENTER !== 'false';
 
 export default function AppRoutes() {
     return (
@@ -44,6 +47,10 @@ export default function AppRoutes() {
                     <Route path="/bien-ban/:id" element={<BienBanDetail />} />
                     <Route path="/phieu-xu-ly-khong-phu-hop" element={<PhieuXuLyKhongPhuHopList />} />
                     <Route path="/phieu-xu-ly-khong-phu-hop/:id" element={<PhieuXuLyKhongPhuHopDetail />} />
+                    <Route
+                        path="/trung-tam-xu-ly"
+                        element={workCenterEnabled ? <WorkCenterPage /> : <Navigate to="/bien-ban" replace />}
+                    />
                     <Route element={<UserAdminRoute />}>
                         <Route path="/quan-ly-nguoi-dung" element={<UserAdminPage />} />
                     </Route>
