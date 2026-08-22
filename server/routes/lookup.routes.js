@@ -1021,7 +1021,7 @@ router.get("/defect-management", authenticateToken, async (req, res) => {
                updater.FullName AS UpdatedByName,
                approvedRequest.Id AS ApprovedRequestId,
                approvedRequest.RowVersion AS ApprovedRequestRowVersion,
-               COALESCE(approvedRequest.CreatedAt, d.CreatedAt) AS SubmittedAt,
+               COALESCE(createRequest.CreatedAt, d.CreatedAt) AS SubmittedAt,
                b7Preparer.FullName AS B7PreparedByName,
                COALESCE(approvedRequest.UpdatedAt, approvedRequest.CreatedAt) AS B7PreparedAt,
                approver.FullName AS TbpB7ApprovedByName,
@@ -1030,6 +1030,14 @@ router.get("/defect-management", authenticateToken, async (req, res) => {
         LEFT JOIN dbo.USERS creator ON creator.Id=d.CreatedBy
         LEFT JOIN dbo.USERS approver ON approver.Id=d.ApprovedBy
         LEFT JOIN dbo.USERS updater ON updater.Id=d.UpdatedBy
+        OUTER APPLY (
+          SELECT TOP (1) requestRow.CreatedAt
+          FROM dbo.DM_DEFECT_REQUEST requestRow
+          WHERE requestRow.DefectId=d.Id
+            AND requestRow.RequestType='CREATE'
+            AND requestRow.Status='APPROVED'
+          ORDER BY requestRow.Id ASC
+        ) createRequest
         OUTER APPLY (
           SELECT TOP (1) requestRow.Id, requestRow.RequestType,
                  requestRow.CreatedBy, requestRow.CreatedAt,
