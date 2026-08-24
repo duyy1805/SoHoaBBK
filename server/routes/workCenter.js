@@ -5,6 +5,7 @@ const { poolPromise } = require("../db");
 const authenticateToken = require("../middlewares/auth.middleware");
 const { getManagedDepartmentIds } = require("../utils/managedDepartments");
 const { loadBienBanListSummaries, mergeBienBanListSummary } = require("../utils/bienBanListSummary");
+const { canViewKphListItem } = require("../utils/kphListVisibility");
 
 const router = express.Router();
 
@@ -82,7 +83,8 @@ const loadBasicMeta = async (pool, ids) => {
         .query(`
             SELECT bb.Id AS BienBanId, bb.LoaiBienBan,
                 ISNULL(bb.MauPhieuVersion, N'V00') AS MauPhieuVersion,
-                bb.TrangThai, bb.CreatedAt,
+                bb.TrangThai, bb.CreatedAt, bb.NguoiLapId,
+                bb.OpinionDepartmentsConfirmedAt,
                 bb.CreatorConfirmedAt AS FollowUpReadyAt,
                 COALESCE(bb.BoPhanTaoId, creator.BoPhanId) AS CreatorBoPhanId,
                 department.MaBoPhan AS MaBoPhanTao,
@@ -199,7 +201,7 @@ router.get("/", authenticateToken, async (req, res) => {
                 ProposalSummary: metadata.ProposalSummary || null,
                 DepartmentProgress: workMeta.departments.get(bienBanId) || []
             };
-        });
+        }).filter((item) => canViewKphListItem(item, req.user, managedDepartmentIds));
 
         res.json({ items, generatedAt: new Date().toISOString() });
     } catch (error) {

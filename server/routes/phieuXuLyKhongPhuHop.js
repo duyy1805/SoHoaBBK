@@ -10,6 +10,7 @@ const { loadBienBanListSummaries, mergeBienBanListSummary } = require("../utils/
 const { sortKphListRows } = require("../utils/kphListSorting");
 const { loadSignatureDataUrlMap } = require("../utils/signatureImage");
 const { loadKphSectionRows } = require("../utils/kphSectionRows");
+const { canViewKphListItem } = require("../utils/kphListVisibility");
 const {
     getBienBanFiles,
     deleteBienBanData,
@@ -211,6 +212,10 @@ router.get("/", authenticateToken, async (req, res) => {
         const creatorDepartmentResult = await pool.request().query(`
             SELECT
                 bb.Id AS BienBanId,
+                bb.LoaiBienBan,
+                bb.NguoiLapId,
+                ISNULL(bb.MauPhieuVersion, N'V00') AS MauPhieuVersion,
+                bb.OpinionDepartmentsConfirmedAt,
                 bb.CreatorConfirmedAt AS FollowUpReadyAt,
                 CASE WHEN bb.TrangThai = N'HOAN_TAT' THEN followUp.ThoiGian ELSE NULL END AS CompletedAt,
                 COALESCE(bb.BoPhanTaoId, creator.BoPhanId) AS CreatorBoPhanId,
@@ -300,7 +305,10 @@ router.get("/", authenticateToken, async (req, res) => {
                 OpinionDepartments: progress.departments
             }, summaryFields);
         });
-        res.json(sortKphListRows(normalizedRows));
+        const visibleRows = normalizedRows.filter((item) =>
+            canViewKphListItem(item, req.user, managedDepartmentIds)
+        );
+        res.json(sortKphListRows(visibleRows));
     } catch (err) {
         console.error("GetStandaloneBienBanList error:", err);
         res.status(500).json({ message: "Không tải được danh sách phiếu xử lý không phù hợp" });

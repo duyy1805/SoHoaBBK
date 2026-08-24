@@ -18,6 +18,7 @@ const { loadBienBanListSummaries, mergeBienBanListSummary } = require("../utils/
 const { sortKphListRows } = require("../utils/kphListSorting");
 const { loadKphSectionRows } = require("../utils/kphSectionRows");
 const { loadInputInspectionSource } = require("../utils/inputInspectionSource");
+const { canViewKphListItem } = require("../utils/kphListVisibility");
 
 const hasPermission = (user, permissionCode) =>
     Array.isArray(user?.permissions) && user.permissions.includes(permissionCode);
@@ -591,6 +592,10 @@ router.get(
                 .query(`
                     SELECT
                         bb.Id AS BienBanId,
+                        bb.LoaiBienBan,
+                        bb.NguoiLapId,
+                        ISNULL(bb.MauPhieuVersion, N'V00') AS MauPhieuVersion,
+                        bb.OpinionDepartmentsConfirmedAt,
                         bb.CreatorConfirmedAt AS FollowUpReadyAt,
                         CASE
                             WHEN bb.TrangThai = N'HOAN_TAT' THEN followUp.ThoiGian
@@ -722,7 +727,10 @@ router.get(
                 };
             });
 
-            res.json(sortKphListRows(normalizedRows));
+            const visibleRows = normalizedRows.filter((item) =>
+                canViewKphListItem(item, req.user, managedDepartmentIds)
+            );
+            res.json(sortKphListRows(visibleRows));
 
         } catch (err) {
 
