@@ -7,14 +7,14 @@ import AccountTreeOutlinedIcon from "@mui/icons-material/AccountTreeOutlined";
 import { getWorkBucket, isRepeated } from "./workCenter.utils";
 
 const cards = [
-    { key: "action", label: "Cần tôi xử lý", icon: AssignmentTurnedInOutlinedIcon, color: "#4f46e5", test: (item) => getWorkBucket(item) === "action" },
+    { key: "action", label: "Cần tôi xử lý", icon: AssignmentTurnedInOutlinedIcon, color: "#4f46e5", test: (item, currentUser) => getWorkBucket(item, currentUser) === "action" },
     { key: "overdue", label: "Quá hạn", icon: AlarmOutlinedIcon, color: "#dc2626", test: (item) => item.IsOverdue },
     { key: "critical", label: "Critical", icon: ErrorOutlineIcon, color: "#e11d48", test: (item) => item.HasCritical },
     { key: "repeated", label: "Lỗi lặp lại", icon: ReplayIcon, color: "#d97706", test: isRepeated },
-    { key: "waiting", label: "Chờ bộ phận khác", icon: AccountTreeOutlinedIcon, color: "#0284c7", test: (item) => getWorkBucket(item) === "waiting" }
+    { key: "waiting", label: "Chờ bộ phận khác", icon: AccountTreeOutlinedIcon, color: "#0284c7", test: (item, currentUser) => getWorkBucket(item, currentUser) === "waiting" }
 ];
 
-export default function WorkCenterSummaryCards({ items, activeKey, onSelect }) {
+export default function WorkCenterSummaryCards({ items, activeKey, onSelect, currentUser }) {
     return (
         <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr 1fr", md: "repeat(5, minmax(0, 1fr))" }, gap: 1 }}>
             {cards.map((card) => {
@@ -36,7 +36,7 @@ export default function WorkCenterSummaryCards({ items, activeKey, onSelect }) {
                             </Box>
                             <Box>
                                 <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.1 }}>{card.label}</Typography>
-                                <Typography fontSize="1.12rem" fontWeight={850} lineHeight={1.15}>{items.filter(card.test).length}</Typography>
+                                <Typography fontSize="1.12rem" fontWeight={850} lineHeight={1.15}>{items.filter((item) => card.test(item, currentUser)).length}</Typography>
                             </Box>
                         </Stack>
                     </Paper>

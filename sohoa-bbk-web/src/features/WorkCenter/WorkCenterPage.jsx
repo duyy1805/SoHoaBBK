@@ -14,6 +14,7 @@ import {
     exportWorkCenterCsv, getReadableStatus, getWorkBucket, isRepeated, normalizeText,
     recordDateValue, searchableRecordText, sortRecords
 } from "./workCenter.utils";
+import { decodeToken } from "../../utils/auth";
 
 const RECENT_DAYS = 14;
 const filterDefaults = { q: "", work: "action", type: "all", quick: "", department: "all", status: "all", from: "", to: "", sort: "newest", advanced: false };
@@ -27,6 +28,7 @@ export default function WorkCenterPage() {
     const [error, setError] = useState("");
     const [legacyAnchor, setLegacyAnchor] = useState(null);
     const [now, setNow] = useState(() => Date.now());
+    const currentUser = useMemo(() => decodeToken() || {}, []);
 
     const filters = useMemo(() => ({
         q: searchParams.get("q") || "", work: searchParams.get("work") || "action",
@@ -96,10 +98,11 @@ export default function WorkCenterPage() {
         const startAt = today.getTime() - (RECENT_DAYS - 1) * 24 * 60 * 60 * 1000;
         const endAt = today.getTime() + 24 * 60 * 60 * 1000 - 1;
         return items.filter((item) => {
+            if (getWorkBucket(item, currentUser) === "action") return true;
             const createdAt = recordDateValue(item);
             return createdAt > 0 && createdAt >= startAt && createdAt <= endAt;
         });
-    }, [items, now]);
+    }, [currentUser, items, now]);
 
     const departments = useMemo(() => {
         const values = new Map();
@@ -111,15 +114,8 @@ export default function WorkCenterPage() {
     }, [recentItems]);
     const statuses = useMemo(() => [...new Set(recentItems.map((item) => item.TrangThai).filter(Boolean))]
         .map((value) => ({ value, label: getReadableStatus(value) })).sort((a, b) => a.label.localeCompare(b.label, "vi")), [recentItems]);
-    const workCounts = useMemo(() => recentItems.reduce((counts, item) => {
-        counts[getWorkBucket(item)] += 1;
-        counts.all += 1;
-        return counts;
-    }, { action: 0, waiting: 0, done: 0, all: 0 }), [recentItems]);
-
-    const filtered = useMemo(() => sortRecords(recentItems.filter((item) => {
+    const filteredBeforeWork = useMemo(() => recentItems.filter((item) => {
         if (filters.q && !searchableRecordText(item).includes(normalizeText(filters.q))) return false;
-        if (filters.work !== "all" && getWorkBucket(item) !== filters.work) return false;
         if (filters.type === "KPH_STANDALONE" && item.recordSource !== "KPH_STANDALONE") return false;
         if (filters.type === "BIEN_BAN" && (item.recordSource !== "BIEN_BAN" || item.recordType === "SXBT")) return false;
         if (!["all", "KPH_STANDALONE", "BIEN_BAN"].includes(filters.type) && item.recordType !== filters.type) return false;
@@ -134,7 +130,18 @@ export default function WorkCenterPage() {
         if (filters.from && (!date || date < new Date(`${filters.from}T00:00:00`).getTime())) return false;
         if (filters.to && (!date || date > new Date(`${filters.to}T23:59:59.999`).getTime())) return false;
         return true;
-    }), filters.sort, now), [filters, recentItems, now]);
+    }), [filters.department, filters.from, filters.q, filters.quick, filters.status, filters.to, filters.type, recentItems]);
+
+    const workCounts = useMemo(() => filteredBeforeWork.reduce((counts, item) => {
+        counts[getWorkBucket(item, currentUser)] += 1;
+        counts.all += 1;
+        return counts;
+    }, { action: 0, waiting: 0, done: 0, all: 0 }), [currentUser, filteredBeforeWork]);
+
+    const filtered = useMemo(() => sortRecords(filteredBeforeWork.filter((item) => {
+        if (filters.work !== "all" && getWorkBucket(item, currentUser) !== filters.work) return false;
+        return true;
+    }), filters.sort, now), [currentUser, filteredBeforeWork, filters.sort, filters.work, now]);
 
     const previewRecord = recentItems.find((item) => item.recordKey === previewKey) || null;
     const docked = Boolean(previewRecord && dockedViewport);
@@ -145,7 +152,7 @@ export default function WorkCenterPage() {
             <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2} sx={{ mb: 2 }}>
                 <Box>
                     <Typography variant="h5" fontWeight={900}>Trung tâm xử lý</Typography>
-                    <Typography variant="body2" color="text.secondary">Tổng quan và xử lý nhanh Biên bản, Phiếu KPH trong 14 ngày gần nhất</Typography>
+                    <Typography variant="body2" color="text.secondary">Hiển thị đầy đủ hồ sơ cần bộ phận bạn xử lý; các hồ sơ khác trong 14 ngày gần nhất</Typography>
                 </Box>
                 <Button size="small" variant="text" color="inherit" startIcon={<HistoryOutlinedIcon />} endIcon={<KeyboardArrowDownIcon />}
                     onClick={(event) => setLegacyAnchor(event.currentTarget)}>Màn hình cũ</Button>
@@ -158,7 +165,7 @@ export default function WorkCenterPage() {
             {error && <Alert severity="error" action={<Button color="inherit" onClick={load}>Thử lại</Button>} sx={{ mb: 1.5 }}>{error}</Alert>}
             <Box sx={{ display: "grid", gridTemplateColumns: docked ? "minmax(0,1fr) 430px" : "minmax(0,1fr)", gap: 1.5, alignItems: "start", transition: "grid-template-columns .2s" }}>
                 <Stack spacing={1.5} minWidth={0}>
-                    <WorkCenterSummaryCards items={recentItems} activeKey={activeSummary} onSelect={selectSummary} />
+                    <WorkCenterSummaryCards items={recentItems} activeKey={activeSummary} onSelect={selectSummary} currentUser={currentUser} />
                     <WorkCenterFilters filters={filters} onChange={updateParam} departments={departments} statuses={statuses} workCounts={workCounts}
                         onExport={() => exportWorkCenterCsv(filtered)} resultCount={filtered.length} />
                     {loading ? <Stack alignItems="center" sx={{ py: 8 }}><CircularProgress /><Typography color="text.secondary" sx={{ mt: 1 }}>Đang tải hồ sơ...</Typography></Stack> : filtered.length ? (

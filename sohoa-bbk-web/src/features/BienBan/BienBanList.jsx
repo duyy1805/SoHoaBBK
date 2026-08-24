@@ -44,6 +44,7 @@ import WorkFilterTabLabel from "./components/WorkFilterTabLabel";
 import { CreatorSummary, NonconformitySummary, ProductSummary } from "./components/ListRecordSummary";
 import ListRecordTime from "./components/ListRecordTime";
 import { getRecordReferenceDate } from "./components/listRecordTime.utils";
+import { getUnifiedWorkBucket } from "../../utils/workBucket";
 
 const normalizeSearchText = (value) => String(value || "")
     .normalize("NFD")
@@ -66,26 +67,6 @@ const getMyDepartmentOpinionMeta = (status) => {
         return { label: "Chờ TBP bộ phận bạn xác nhận", color: "info" };
     }
     return null;
-};
-
-const getWorkBucket = (item, currentUser, isManager, isSxbt) => {
-    const managedDepartmentIds = new Set((currentUser.managedBoPhanIds || [currentUser.boPhanId]).map(Number));
-    if (isSxbt) {
-        if (item.TrangThai === "BB_SXBT_HOAN_TAT") return "done";
-        return managedDepartmentIds.has(Number(item.BoPhanDangChoId))
-            ? "action"
-            : "waiting";
-    }
-    if (["HOAN_TAT", "HOAN_THANH", "DA_XAC_NHAN"].includes(item.TrangThai)) return "done";
-    if (!isManager && item.MyDepartmentOpinionStatus === "CHO_Y_KIEN" && item.MyPendingSuggestedUserId) {
-        return Number(item.MyPendingSuggestedUserId) === Number(currentUser.userId) ? "action" : "waiting";
-    }
-    const explicitMyTurn = item.CanCurrentUserAct === true || item.CanCurrentUserAct === 1 ||
-        Number(item.NguoiXuLyId) === Number(currentUser.userId) ||
-        managedDepartmentIds.has(Number(item.BoPhanId)) ||
-        managedDepartmentIds.has(Number(item.BoPhanDangChoId));
-    const managerTurn = isManager && ["BB_MOI", "CHO_PHAN_BO_XU_LY", "CHO_PHAN_BO_XY_LY", "CHO_TP_B8", "TRA_LAI_CHINH_SUA"].includes(item.TrangThai);
-    return explicitMyTurn || managerTurn ? "action" : "waiting";
 };
 
 export default function BienBanList() {
@@ -122,11 +103,6 @@ export default function BienBanList() {
     const managedDepartmentIds = useMemo(() => new Set(
         (currentUser.managedBoPhanIds || [currentUser.boPhanId]).map(Number)
     ), [currentUser]);
-    const isManager = (currentUser.roles || []).some((role) =>
-        String(role || "").toUpperCase().startsWith("TP_")
-    ) || (currentUser.permissions || []).some((permission) =>
-        ["QUAN_TRI_DM", "XAC_NHAN_NGUOI_XU_LY", "KET_LUAN"].includes(permission)
-    );
 
     const listUrl = `${location.pathname}${location.search}`;
     const scrollStorageKey = `bien-ban:list-scroll:${listUrl}`;
@@ -236,10 +212,10 @@ export default function BienBanList() {
 
     // Lọc dữ liệu bằng useMemo để tối ưu hiệu năng
     const workCounts = useMemo(() => data.reduce((result, item) => {
-        const bucket = getWorkBucket(item, currentUser, isManager, isSxbtBienBan(item));
+        const bucket = getUnifiedWorkBucket(item, currentUser);
         result[bucket] += 1;
         return result;
-    }, { action: 0, waiting: 0, done: 0 }), [data, currentUser, isManager]);
+    }, { action: 0, waiting: 0, done: 0 }), [data, currentUser]);
 
     const departmentOptions = useMemo(() => {
         const options = new Map();
@@ -285,7 +261,7 @@ export default function BienBanList() {
                 .includes(normalizeSearchText(filterProduct))) return false;
             if (filterCreator && !normalizeSearchText(`${item.NguoiLap || ""} ${item.MaBoPhanTao || ""} ${item.TenBoPhanTao || ""}`)
                 .includes(normalizeSearchText(filterCreator))) return false;
-            if (workFilter !== "all" && getWorkBucket(item, currentUser, isManager, isSxbtBienBan(item)) !== workFilter) return false;
+            if (workFilter !== "all" && getUnifiedWorkBucket(item, currentUser) !== workFilter) return false;
             if (departmentFilter === "mine" && !managedDepartmentIds.has(Number(item.BoPhanTaoId))) return false;
             if (!["all", "mine"].includes(departmentFilter) && Number(item.BoPhanTaoId) !== Number(departmentFilter)) return false;
             const opinionDepartmentIds = (Array.isArray(item.OpinionDepartments) ? item.OpinionDepartments : [])
@@ -330,7 +306,7 @@ export default function BienBanList() {
             }
             return true;
         });
-    }, [data, filterStatus, filterSoPhieu, filterLoaiKiem, filterProduct, filterCreator, searchText, workFilter, departmentFilter, opinionDepartmentFilter, typeFilter, dateFrom, dateTo, currentUser, isManager, managedDepartmentIds]);
+    }, [data, filterStatus, filterSoPhieu, filterLoaiKiem, filterProduct, filterCreator, searchText, workFilter, departmentFilter, opinionDepartmentFilter, typeFilter, dateFrom, dateTo, currentUser, managedDepartmentIds]);
 
     const resetFilters = () => {
         setSearchText("");
@@ -513,7 +489,7 @@ export default function BienBanList() {
     );
 
     const getActionLabel = (item) => {
-        const bucket = getWorkBucket(item, currentUser, isManager, isSxbtBienBan(item));
+        const bucket = getUnifiedWorkBucket(item, currentUser);
         if (bucket === "action") return "Xử lý ngay";
         if (bucket === "done") return "Xem kết quả";
         return "Xem tiến độ";
@@ -757,7 +733,7 @@ export default function BienBanList() {
                                     </TableRow>
                                 ) : paginatedData.map((item) => {
                                     const pendingText = getPendingDepartmentsText(item);
-                                    const bucket = getWorkBucket(item, currentUser, isManager, isSxbtBienBan(item));
+                                    const bucket = getUnifiedWorkBucket(item, currentUser);
                                     const myOpinionMeta = getMyDepartmentOpinionMeta(item.MyDepartmentOpinionStatus);
                                     return (
                                         <TableRow
@@ -897,7 +873,7 @@ export default function BienBanList() {
                                     <Button
                                         fullWidth
                                         size="small"
-                                        variant={getWorkBucket(item, currentUser, isManager, isSxbtBienBan(item)) === "action" ? "contained" : "outlined"}
+                                        variant={getUnifiedWorkBucket(item, currentUser) === "action" ? "contained" : "outlined"}
                                         endIcon={<ArrowForwardIcon />}
                                         onClick={(event) => {
                                             event.stopPropagation();

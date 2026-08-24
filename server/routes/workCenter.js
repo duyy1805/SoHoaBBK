@@ -31,19 +31,47 @@ const listNormalRecords = async (pool, user) => {
 };
 
 const listStandaloneRecords = async (pool, user, managedDepartmentIds) => {
-    if (hasGlobalKphVisibility(user)) {
-        const result = await pool.request().execute("sp_PhieuXuLyKPH_GetList");
-        return result.recordset || [];
-    }
     const rowsById = new Map();
+    const mergePersonalizedRow = (item) => {
+        const id = Number(item.BienBanId);
+        const current = rowsById.get(id);
+        if (!current) {
+            rowsById.set(id, item);
+            return;
+        }
+        rowsById.set(id, {
+            ...current,
+            CanCurrentUserAct: Boolean(current.CanCurrentUserAct) || Boolean(item.CanCurrentUserAct),
+            MyDepartmentOpinionStatus: current.MyDepartmentOpinionStatus || item.MyDepartmentOpinionStatus || null,
+            MyPendingSuggestedUserId: current.MyPendingSuggestedUserId || item.MyPendingSuggestedUserId || null,
+            MyPendingSuggestedUserName: current.MyPendingSuggestedUserName || item.MyPendingSuggestedUserName || null
+        });
+    };
+
     for (const departmentId of managedDepartmentIds) {
         const result = await pool.request()
             .input("UserId", sql.Int, user.userId)
             .input("BoPhanId", sql.Int, departmentId)
             .input("IsDepartmentLead", sql.Bit, hasRole(user, "TP_BP"))
             .execute("sp_PhieuXuLyKPH_GetList");
-        (result.recordset || []).forEach((item) => rowsById.set(Number(item.BienBanId), item));
+        (result.recordset || []).forEach(mergePersonalizedRow);
     }
+
+    if (hasGlobalKphVisibility(user)) {
+        const globalResult = await pool.request().execute("sp_PhieuXuLyKPH_GetList");
+        return (globalResult.recordset || []).map((item) => {
+            const personalized = rowsById.get(Number(item.BienBanId));
+            if (!personalized) return item;
+            return {
+                ...item,
+                CanCurrentUserAct: Boolean(personalized.CanCurrentUserAct),
+                MyDepartmentOpinionStatus: personalized.MyDepartmentOpinionStatus || null,
+                MyPendingSuggestedUserId: personalized.MyPendingSuggestedUserId || null,
+                MyPendingSuggestedUserName: personalized.MyPendingSuggestedUserName || null
+            };
+        });
+    }
+
     return [...rowsById.values()];
 };
 

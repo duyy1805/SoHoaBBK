@@ -47,6 +47,7 @@ import {
     ProductSummary
 } from "./components/ListRecordSummary";
 import { MUC_DO_LABELS, PHAT_HIEN_TU_LABELS } from "./components/listRecordSummary.constants";
+import { getUnifiedWorkBucket } from "../../utils/workBucket";
 
 const normalizeSearchText = (value) => String(value || "")
     .normalize("NFD")
@@ -64,34 +65,6 @@ const parsePageParam = (value) => {
 const renderTrangThaiChip = (trangThai) => {
     const status = getBienBanStatusMeta(trangThai);
     return <Chip label={status.label} color={status.color} size="small" sx={{ fontWeight: 500 }} />;
-};
-
-const ACTIONABLE_MANAGER_STATUSES = new Set([
-    "BB_MOI",
-    "CHO_PHAN_BO_XU_LY",
-    "CHO_PHAN_BO_XY_LY",
-    "CHO_TP_B8",
-    "CHO_XAC_NHAN",
-    "TRA_LAI_CHINH_SUA"
-]);
-
-const getWorkBucket = (item, currentUser, access) => {
-    const managedDepartmentIds = new Set((currentUser.managedBoPhanIds || [currentUser.boPhanId]).map(Number));
-    if (["HOAN_TAT", "HOAN_THANH", "DA_XAC_NHAN"].includes(item.TrangThai)) return "done";
-    if (!access.isGlobalManager && item.MyDepartmentOpinionStatus === "CHO_Y_KIEN" && item.MyPendingSuggestedUserId) {
-        return Number(item.MyPendingSuggestedUserId) === Number(currentUser.userId) ? "action" : "waiting";
-    }
-    const hasServerDecision = item.CanCurrentUserAct !== null && item.CanCurrentUserAct !== undefined;
-    const explicitMyTurn = hasServerDecision
-        ? item.CanCurrentUserAct === true || item.CanCurrentUserAct === 1
-        : Number(item.NguoiXuLyId) === Number(currentUser.userId) ||
-            managedDepartmentIds.has(Number(item.BoPhanId)) ||
-            managedDepartmentIds.has(Number(item.BoPhanDangChoId));
-    const globalManagerTurn = access.isGlobalManager && ACTIONABLE_MANAGER_STATUSES.has(item.TrangThai);
-    const departmentLeadFallback = !hasServerDecision && access.isDepartmentLead &&
-        managedDepartmentIds.has(Number(item.CreatorBoPhanId)) &&
-        ACTIONABLE_MANAGER_STATUSES.has(item.TrangThai);
-    return explicitMyTurn || globalManagerTurn || departmentLeadFallback ? "action" : "waiting";
 };
 
 export default function PhieuXuLyKhongPhuHopList() {
@@ -127,16 +100,6 @@ export default function PhieuXuLyKhongPhuHopList() {
     const managedDepartmentIds = useMemo(() => new Set(
         (currentUser.managedBoPhanIds || [currentUser.boPhanId]).map(Number)
     ), [currentUser]);
-    const access = useMemo(() => {
-        const permissions = currentUser.permissions || [];
-        const roles = (currentUser.roles || []).map((role) => String(role || "").toUpperCase());
-        return {
-            isGlobalManager: roles.includes("ADMIN") || permissions.some((permission) =>
-                ["QUAN_TRI_DM", "XAC_NHAN_NGUOI_XU_LY", "KET_LUAN"].includes(permission)
-            ),
-            isDepartmentLead: roles.includes("TP_BP") || permissions.includes("PHAN_CONG_NGUOI_XU_LY")
-        };
-    }, [currentUser]);
 
     const listUrl = `${location.pathname}${location.search}`;
     const scrollStorageKey = `phieu-xu-ly-kph:list-scroll:${listUrl}`;
@@ -190,17 +153,17 @@ export default function PhieuXuLyKhongPhuHopList() {
     useEffect(() => {
         if (loading || initialWorkFilterResolvedRef.current) return;
         initialWorkFilterResolvedRef.current = true;
-        if (data.some((item) => getWorkBucket(item, currentUser, access) === "action")) {
+        if (data.some((item) => getUnifiedWorkBucket(item, currentUser) === "action")) {
             setWorkFilter("action");
             updateQuery({ work: "action", page: 1 });
         }
-    }, [access, currentUser, data, loading, updateQuery]);
+    }, [currentUser, data, loading, updateQuery]);
 
     const counts = useMemo(() => data.reduce((result, item) => {
-        const bucket = getWorkBucket(item, currentUser, access);
+        const bucket = getUnifiedWorkBucket(item, currentUser);
         result[bucket] += 1;
         return result;
-    }, { action: 0, waiting: 0, done: 0 }), [data, currentUser, access]);
+    }, { action: 0, waiting: 0, done: 0 }), [data, currentUser]);
 
     const departmentOptions = useMemo(() => {
         const options = new Map();
@@ -246,7 +209,7 @@ export default function PhieuXuLyKhongPhuHopList() {
             if (descriptionFilter && !normalizeSearchText(item.MoTaChung).includes(normalizeSearchText(descriptionFilter))) return false;
             if (creatorFilter && !normalizeSearchText(`${item.NguoiLap || ""} ${item.MaBoPhanTao || ""} ${item.TenBoPhanTao || ""}`)
                 .includes(normalizeSearchText(creatorFilter))) return false;
-            if (workFilter !== "all" && getWorkBucket(item, currentUser, access) !== workFilter) return false;
+            if (workFilter !== "all" && getUnifiedWorkBucket(item, currentUser) !== workFilter) return false;
             if (statusFilter && item.TrangThai !== statusFilter) return false;
             if (departmentFilter === "mine" && !managedDepartmentIds.has(Number(item.CreatorBoPhanId))) return false;
             if (!["all", "mine"].includes(departmentFilter) && Number(item.CreatorBoPhanId) !== Number(departmentFilter)) return false;
@@ -282,7 +245,7 @@ export default function PhieuXuLyKhongPhuHopList() {
             ].filter(Boolean).join(" "));
             return searchableText.includes(normalizeSearchText(keyword));
         });
-    }, [data, searchText, numberFilter, itemFilter, kphFilter, descriptionFilter, creatorFilter, workFilter, statusFilter, departmentFilter, opinionDepartmentFilter, dateFrom, dateTo, currentUser, access, managedDepartmentIds]);
+    }, [data, searchText, numberFilter, itemFilter, kphFilter, descriptionFilter, creatorFilter, workFilter, statusFilter, departmentFilter, opinionDepartmentFilter, dateFrom, dateTo, currentUser, managedDepartmentIds]);
 
     const paginatedData = useMemo(() => {
         const startIndex = page * rowsPerPage;
@@ -670,7 +633,7 @@ export default function PhieuXuLyKhongPhuHopList() {
                                                     )}
                                                     <Button
                                                         size="small"
-                                                        variant={getWorkBucket(item, currentUser, access) === "action" ? "contained" : "outlined"}
+                                                        variant={getUnifiedWorkBucket(item, currentUser) === "action" ? "contained" : "outlined"}
                                                         endIcon={<ArrowForwardIcon />}
                                                         onClick={(event) => {
                                                             event.stopPropagation();
@@ -678,9 +641,9 @@ export default function PhieuXuLyKhongPhuHopList() {
                                                         }}
                                                         sx={{ whiteSpace: "nowrap", mt: 0.8, minWidth: 0 }}
                                                     >
-                                                        {getWorkBucket(item, currentUser, access) === "action"
+                                                        {getUnifiedWorkBucket(item, currentUser) === "action"
                                                             ? "Xử lý ngay"
-                                                            : getWorkBucket(item, currentUser, access) === "done" ? "Xem kết quả" : "Xem tiến độ"}
+                                                            : getUnifiedWorkBucket(item, currentUser) === "done" ? "Xem kết quả" : "Xem tiến độ"}
                                                     </Button>
                                                 </TableCell>
                                             </TableRow>
@@ -695,7 +658,7 @@ export default function PhieuXuLyKhongPhuHopList() {
                                     <Typography color="text.secondary">Chưa có phiếu xử lý không phù hợp</Typography>
                                 </Box>
                             ) : paginatedData.map((item) => {
-                                const bucket = getWorkBucket(item, currentUser, access);
+                                const bucket = getUnifiedWorkBucket(item, currentUser);
                                 return (
                                     <Paper key={item.BienBanId} variant="outlined" onClick={() => openDetail(item.BienBanId)} sx={{ p: 1.5, borderRadius: 2, cursor: "pointer" }}>
                                         <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>

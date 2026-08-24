@@ -1,4 +1,5 @@
-const DONE_STATUSES = new Set(["HOAN_TAT", "HOAN_THANH", "DA_XAC_NHAN", "BB_SXBT_HOAN_TAT"]);
+import { getUnifiedWorkBucket } from "../../utils/workBucket";
+
 const HOUR_MS = 60 * 60 * 1000;
 
 const STATUS_LABELS = {
@@ -26,12 +27,7 @@ export const normalizeText = (value) => String(value || "")
     .replace(/Đ/g, "D")
     .toLowerCase();
 
-export const getWorkBucket = (item) => {
-    if (DONE_STATUSES.has(String(item.TrangThai || "").toUpperCase())) return "done";
-    return item.CanCurrentUserAct === true || item.CanCurrentUserAct === 1 ||
-        ["CHO_Y_KIEN", "CHO_TBP_XAC_NHAN"].includes(item.MyDepartmentOpinionStatus)
-        ? "action" : "waiting";
-};
+export const getWorkBucket = getUnifiedWorkBucket;
 
 export const isRepeated = (item) => String(item.MucDo || "").toUpperCase() === "LOILAPLAI";
 
