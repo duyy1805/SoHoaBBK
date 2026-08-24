@@ -21,6 +21,7 @@ import UploadFileIcon from "@mui/icons-material/UploadFile";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { useToast } from "../../../components/common/ToastContext"
 import ConfirmDialog from "../../../components/common/ConfirmDialog"
+import { canManageCheckCatalog } from "../../../utils/auth";
 import {
     getNhomKiemList,
     getCheckItemByNhom,
@@ -103,6 +104,8 @@ function GroupPreviewList({ groups = [], current = false }) {
 }
 
 export default function CheckItemManager() {
+
+    const canManage = canManageCheckCatalog();
 
     const [nhomList, setNhomList] = useState([]);
     const [selectedNhom, setSelectedNhom] = useState("");
@@ -356,7 +359,7 @@ export default function CheckItemManager() {
                     )}
                 </Box>
 
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                {canManage && <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
                     <Button
                         variant="outlined"
                         startIcon={<UploadFileIcon />}
@@ -383,7 +386,7 @@ export default function CheckItemManager() {
                     >
                         Thêm mục kiểm
                     </Button>
-                </Stack>
+                </Stack>}
             </Stack>
 
             {/* MAIN CONTENT AREA */}
@@ -428,14 +431,14 @@ export default function CheckItemManager() {
                                     <TableCell sx={{ fontWeight: 600 }}>Phương pháp kiểm</TableCell>
                                     <TableCell sx={{ fontWeight: 600 }}>Tiêu chuẩn</TableCell>
                                     <TableCell sx={{ fontWeight: 600, width: 140 }} align="center">Điểm trọng yếu</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, width: 120 }} align="right">Thao tác</TableCell>
+                                    {canManage && <TableCell sx={{ fontWeight: 600, width: 120 }} align="right">Thao tác</TableCell>}
                                 </TableRow>
                             </TableHead>
 
                             <TableBody>
                                 {data.length === 0 && !loading ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} align="center" sx={{ py: 5 }}>
+                                        <TableCell colSpan={canManage ? 7 : 6} align="center" sx={{ py: 5 }}>
                                             <ChecklistRtlIcon sx={{ fontSize: 48, color: "text.disabled", mb: 1 }} />
                                             <Typography color="text.secondary">Nhóm này chưa có mục kiểm nào.</Typography>
                                         </TableCell>
@@ -457,7 +460,7 @@ export default function CheckItemManager() {
                                             <TableCell align="center">
                                                 {row.DiemTrongYeu ? <Chip label="Trọng yếu" size="small" color="warning" /> : "--"}
                                             </TableCell>
-                                            <TableCell align="right">
+                                            {canManage && <TableCell align="right">
                                                 <Stack direction="row" spacing={0.5} justifyContent="flex-end" sx={{ whiteSpace: "nowrap" }}>
                                                     <Tooltip title="Chỉnh sửa">
                                                         <IconButton color="primary" onClick={() => { setForm({ ...row }); setOpen(true); }}>
@@ -470,7 +473,7 @@ export default function CheckItemManager() {
                                                         </IconButton>
                                                     </Tooltip>
                                                 </Stack>
-                                            </TableCell>
+                                            </TableCell>}
                                         </TableRow>
                                     ))
                                 )}

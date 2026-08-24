@@ -99,12 +99,8 @@ const slugifyFilePart = (value) => {
   return normalized || "defect";
 };
 
-const normalizeDefectType = (loaiLoiSXBT, defectType) => {
-  const loai = String(loaiLoiSXBT || "").trim().toUpperCase();
+const normalizeDefectType = (defectType) => {
   const type = String(defectType || "").trim().toUpperCase();
-
-  if (loai === "C") return "CRITICAL";
-  if (loai === "B" && type === "CRITICAL") return "MAJOR";
   return type || null;
 };
 
@@ -140,6 +136,7 @@ const isDefectAdmin = (user) =>
   (Array.isArray(user?.permissions) && user.permissions.includes("QUAN_TRI_DM")) ||
   (Array.isArray(user?.roles) && user.roles.some((role) => String(role || "").toUpperCase() === "ADMIN"));
 const DEFECT_APPROVE_PERMISSION = "DUYET_DANH_MUC_LOI";
+const CHECK_CATALOG_MANAGE_PERMISSION = "QUAN_LY_DANH_MUC_KIEM";
 const DEFECT_B7_DEPARTMENT_CODE = "B7";
 const DEFECT_GROUP_CODES = new Set(["L01", "L02", "L03", "L04", "L05"]);
 const hasDefectRole = (user, roleCode) =>
@@ -184,7 +181,7 @@ const normalizeDefectPayload = (source = {}) => {
   payload.MaLoi = trimValue(payload.MaLoi) || null;
   payload.TenLoi = trimValue(payload.TenLoi);
   payload.MaNhomLoi = trimValue(payload.MaNhomLoi) || null;
-  payload.DefectType = normalizeDefectType(payload.LoaiLoiSXBT, payload.DefectType);
+  payload.DefectType = normalizeDefectType(payload.DefectType);
   payload.ImageUrls = normalizeImageUrls(payload.ImageUrls, payload.ImageUrl).slice(0, 10);
   payload.ImageUrl = payload.ImageUrls[0] || null;
   payload.ThuTu = parseOptionalOrder(payload.ThuTu);
@@ -1061,7 +1058,11 @@ router.get("/defect-management", authenticateToken, async (req, res) => {
                CASE WHEN r.Status IN ('PENDING','REJECTED')
                     THEN COALESCE(requestUpdater.FullName, creator.FullName) END AS B7PreparedByName,
                CASE WHEN r.Status IN ('PENDING','REJECTED')
-                    THEN COALESCE(r.UpdatedAt, r.CreatedAt) END AS B7PreparedAt
+                    THEN COALESCE(r.UpdatedAt, r.CreatedAt) END AS B7PreparedAt,
+               CASE WHEN r.Status='APPROVED'
+                    THEN reviewer.FullName END AS TbpB7ApprovedByName,
+               CASE WHEN r.Status='APPROVED'
+                    THEN r.ReviewedAt END AS TbpB7ApprovedAt
         FROM dbo.DM_DEFECT_REQUEST r
         LEFT JOIN dbo.USERS creator ON creator.Id=r.CreatedBy
         LEFT JOIN dbo.USERS reviewer ON reviewer.Id=r.ReviewedBy
@@ -1514,7 +1515,7 @@ router.get(
         MaLoi: "",
         TenLoi: "Bề mặt vải bẩn",
         DefectType: "MINOR",
-        LoaiLoiSXBT: "B",
+        LoaiLoiSXBT: "C",
         PhanHe: "KCS",
         MaNhomLoi: "L02",
         TenSanPham: "Lều mẫu",
@@ -1957,7 +1958,7 @@ router.get(
 router.post(
   "/check-item",
   authenticateToken,
-  authorize("QUAN_TRI_DM"),
+  authorize(CHECK_CATALOG_MANAGE_PERMISSION),
   async (req, res) => {
     const { NhomKiemId, TenMucKiem, ThamChieu, PhuongPhapKiem, TieuChuan, ThuTu, DiemTrongYeu } = req.body;
 
@@ -1986,7 +1987,7 @@ router.post(
 router.put(
   "/check-item/:id",
   authenticateToken,
-  authorize("QUAN_TRI_DM"),
+  authorize(CHECK_CATALOG_MANAGE_PERMISSION),
   async (req, res) => {
     const { id } = req.params;
     const { TenMucKiem, ThamChieu, PhuongPhapKiem, TieuChuan, ThuTu, TrangThai, DiemTrongYeu } = req.body;
@@ -2024,7 +2025,7 @@ router.put(
 router.delete(
   "/check-item/:id",
   authenticateToken,
-  authorize("QUAN_TRI_DM"),
+  authorize(CHECK_CATALOG_MANAGE_PERMISSION),
   async (req, res) => {
     const { id } = req.params;
 
@@ -2706,7 +2707,7 @@ router.delete(
 router.get(
   "/import-danh-muc-kiem/template",
   authenticateToken,
-  authorize("QUAN_TRI_DM"),
+  authorize(CHECK_CATALOG_MANAGE_PERMISSION),
   async (req, res) => {
     const rows = [
       {
@@ -2790,7 +2791,7 @@ router.get(
 router.get(
   "/san-pham/:sanPhamId/danh-muc-kiem/export",
   authenticateToken,
-  authorize("QUAN_TRI_DM"),
+  authorize(CHECK_CATALOG_MANAGE_PERMISSION),
   async (req, res) => {
     const { sanPhamId } = req.params;
 
@@ -2923,7 +2924,7 @@ router.get(
 router.post(
   "/import-danh-muc-kiem/preview",
   authenticateToken,
-  authorize("QUAN_TRI_DM"),
+  authorize(CHECK_CATALOG_MANAGE_PERMISSION),
   danhMucKiemUpload,
   async (req, res) => {
     try {
@@ -2949,7 +2950,7 @@ router.post(
 router.post(
   "/import-danh-muc-kiem",
   authenticateToken,
-  authorize("QUAN_TRI_DM"),
+  authorize(CHECK_CATALOG_MANAGE_PERMISSION),
   danhMucKiemUpload,
   async (req, res) => {
     if (String(req.body.confirmReplace || "").toLowerCase() !== "true") {

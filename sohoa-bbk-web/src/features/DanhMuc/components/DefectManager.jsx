@@ -53,7 +53,7 @@ const parseImages = (value) => {
 const getImages = (row = {}) => [...new Set([...parseImages(row.ImageUrls), ...parseImages(row.ImageUrl)])];
 const splitScopes = (value) => String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
 const formatDate = (value) => value ? new Date(value).toLocaleString("vi-VN") : "---";
-const normalizeType = (loai, type) => loai === "C" ? "CRITICAL" : (loai === "B" && type === "CRITICAL" ? "MAJOR" : type || "");
+const normalizeType = (type) => String(type || "").trim().toUpperCase();
 const statusMeta = {
     WAITING_B7: { label: "Chờ B7 bổ sung", color: "info" },
     PENDING: { label: "Chờ duyệt", color: "warning" },
@@ -128,7 +128,7 @@ export default function DefectManager() {
     const defectMap = useMemo(() => new Map(management.defects.map((item) => [Number(item.Id), item])), [management.defects]);
     const pending = useMemo(() => management.requests.filter((item) => item.Status === "PENDING"), [management.requests]);
     const waitingB7 = useMemo(() => management.requests.filter((item) => ["WAITING_B7", "REJECTED"].includes(item.Status)), [management.requests]);
-    const myRequests = useMemo(() => management.requests.filter((item) => Number(item.CreatedBy) === userId && item.Status !== "APPROVED"), [management.requests, userId]);
+    const myRequests = useMemo(() => management.requests.filter((item) => Number(item.CreatedBy) === userId), [management.requests, userId]);
     const rows = useMemo(() => {
         const search = deferredKeyword.trim().toLowerCase();
         let values;
@@ -190,7 +190,9 @@ export default function DefectManager() {
             return {
                 ...prev,
                 defects,
-                requests: prev.requests.filter((item) => !approvedIds.has(Number(item.Id)))
+                requests: prev.requests.map((item) => approvedIds.has(Number(item.Id))
+                    ? { ...item, Status: "APPROVED" }
+                    : item)
             };
         });
     };
@@ -209,7 +211,7 @@ export default function DefectManager() {
         TenLoi: String(form.TenLoi || "").trim(),
         MaLoi: String(form.MaLoi || "").trim() || null,
         MaNhomLoi: String(form.MaNhomLoi || "").trim() || null,
-        DefectType: normalizeType(form.LoaiLoiSXBT, form.DefectType),
+        DefectType: normalizeType(form.DefectType),
         PhamViApDung: splitScopes(form.PhamViApDung).join(", ") || null,
         ImageUrls: images,
         ImageUrl: images[0] || null,
@@ -220,7 +222,7 @@ export default function DefectManager() {
         if (!String(form.TenLoi || "").trim() || !String(form.MoTa || "").trim()) {
             setError("Vui lòng nhập tên lỗi và mô tả lỗi"); return;
         }
-        if (editTarget && !editTarget.ProposedData && (!form.MaLoi && !form.MaNhomLoi || !normalizeType(form.LoaiLoiSXBT, form.DefectType))) {
+        if (editTarget && !editTarget.ProposedData && (!form.MaLoi && !form.MaNhomLoi || !normalizeType(form.DefectType))) {
             setError("Vui lòng nhập mã nhóm lỗi và phân loại trước khi gửi sửa đổi"); return;
         }
         setSaving(true);
@@ -496,7 +498,7 @@ export default function DefectManager() {
             <Paper variant="outlined" sx={{ mb: 2, borderRadius: 2 }}>
                 <Tabs value={tab} onChange={(_, value) => setTab(value)}>
                     <Tab value="catalog" label="Danh mục đã duyệt" />
-                    <Tab value="mine" label={`Báo lỗi của tôi (${myRequests.length})`} />
+                    <Tab value="mine" label={`Theo dõi lỗi của tôi (${myRequests.length})`} />
                     {management.capabilities.canPrepare && <Tab value="waiting-b7" label={`Chờ B7 bổ sung (${waitingB7.length})`} />}
                     {management.capabilities.canApprove && <Tab value="pending" label={`Chờ TP B7 duyệt (${pending.length})`} />}
                 </Tabs>
@@ -527,8 +529,8 @@ export default function DefectManager() {
                         <TextField label="Ghi chú / Lưu ý" value={form.GhiChu || ""} onChange={(e) => updateForm("GhiChu", e.target.value)} />
                         <TextField label="Phương án xử lý" multiline minRows={2} value={form.PhuongAnXuLy || ""} onChange={(e) => updateForm("PhuongAnXuLy", e.target.value)} />
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                            <TextField select label="Loại B/C" fullWidth value={form.LoaiLoiSXBT || ""} onChange={(e) => { updateForm("LoaiLoiSXBT", e.target.value); updateForm("DefectType", normalizeType(e.target.value, form.DefectType)); }}><MenuItem value="">Chưa phân loại</MenuItem><MenuItem value="B">B</MenuItem><MenuItem value="C">C</MenuItem></TextField>
-                            <TextField select label="Phân loại" fullWidth value={normalizeType(form.LoaiLoiSXBT, form.DefectType)} onChange={(e) => updateForm("DefectType", e.target.value)} disabled={form.LoaiLoiSXBT === "C"}><MenuItem value="">Chưa xác định</MenuItem><MenuItem value="CRITICAL">CRITICAL</MenuItem>{form.LoaiLoiSXBT !== "C" && <MenuItem value="MAJOR">MAJOR</MenuItem>}{form.LoaiLoiSXBT !== "C" && <MenuItem value="MINOR">MINOR</MenuItem>}</TextField>
+                            <TextField select label="Loại B/C" fullWidth value={form.LoaiLoiSXBT || ""} onChange={(e) => updateForm("LoaiLoiSXBT", e.target.value)}><MenuItem value="">Chưa phân loại</MenuItem><MenuItem value="B">B</MenuItem><MenuItem value="C">C</MenuItem></TextField>
+                            <TextField select label="Phân loại" fullWidth value={normalizeType(form.DefectType)} onChange={(e) => updateForm("DefectType", e.target.value)}><MenuItem value="">Chưa xác định</MenuItem><MenuItem value="CRITICAL">CRITICAL (Nghiêm trọng)</MenuItem><MenuItem value="MAJOR">MAJOR (Nặng)</MenuItem><MenuItem value="MINOR">MINOR (Nhẹ)</MenuItem></TextField>
                         </Stack>
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                             <TextField label="Tên sản phẩm" fullWidth value={form.TenSanPham || ""} onChange={(e) => updateForm("TenSanPham", e.target.value)} />

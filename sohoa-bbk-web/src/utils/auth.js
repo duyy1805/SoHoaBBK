@@ -135,6 +135,14 @@ export const canManageUsers = (user = getCurrentUser()) => {
         || permissions.includes("QUAN_TRI_NGUOI_DUNG");
 };
 
+export const canManageCheckCatalog = (user = getCurrentUser()) => {
+    const roles = Array.isArray(user?.roles) ? user.roles : [];
+    const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+    return roles.some((role) => String(role || "").toUpperCase() === "ADMIN")
+        || permissions.includes("QUAN_TRI_DM")
+        || permissions.includes("QUAN_LY_DANH_MUC_KIEM");
+};
+
 /* ================================
    LOGOUT
    ================================ */

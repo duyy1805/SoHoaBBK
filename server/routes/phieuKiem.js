@@ -861,6 +861,9 @@ const applyClosingScheduleSnapshot = (phieu, dynamicFields = []) => {
 
     phieu.DongContInvoiceNo = invoiceNo || null;
     phieu.DongContPackingMethod = packingMethod || null;
+    if (Number(phieu.LoaiKiemId) === 5 && customer === 'DEK') {
+        phieu.SoDonHang = String(fieldMap.get('SoDonHang') || packingMethod || phieu.SoDonHang || '').trim() || null;
+    }
     const packageValue = fieldMap.get('DongCont_Package');
     const normalizedPackage = packageValue === '' || packageValue === null || packageValue === undefined
         ? null
@@ -2314,7 +2317,8 @@ router.post(
                     DongCont_InvoiceNo: invoiceNo,
                     DongCont_PackingMethod: packingMethod,
                     DongCont_WarehouseId: String(closingScheduleSnapshot.DongCont_WarehouseId || '').trim(),
-                    DongCont_Package: closingSchedulePackage ?? ''
+                    DongCont_Package: closingSchedulePackage ?? '',
+                    ...(khachHang === 'DEK' ? { SoDonHang: packingMethod } : {})
                 });
             }
 

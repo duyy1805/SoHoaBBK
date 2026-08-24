@@ -121,7 +121,11 @@ export default function PhieuDetailScreen({ route, navigation }) {
         const parsedHieuLucTest = parseStoredDate((res.data.dynamicFields || []).find((field) => field?.FieldName === "HieuLucTest")?.FieldValue);
         setHieuLucTest(parsedHieuLucTest);
         setHieuLucTestDraft(parsedHieuLucTest);
-        setSoDonHang((res.data.dynamicFields || []).find((field) => field?.FieldName === "SoDonHang")?.FieldValue || "");
+        setSoDonHang(
+            (res.data.dynamicFields || []).find((field) => field?.FieldName === "SoDonHang")?.FieldValue
+            || phieuData?.SoDonHang
+            || ""
+        );
         setPhienBan((res.data.dynamicFields || []).find((field) => field?.FieldName === "PhienBan")?.FieldValue || phieuData?.PhienBan || "");
         const savedThamChieuTieuChuan = (res.data.dynamicFields || []).find((field) => field?.FieldName === "ThamChieuTieuChuan")?.FieldValue;
         const defaultThamChieuTieuChuan = Number(phieuData?.LoaiKiemId) === KIEM_DONG_CONT_LOAI_KIEM_ID

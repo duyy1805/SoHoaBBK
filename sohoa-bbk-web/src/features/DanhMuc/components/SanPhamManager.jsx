@@ -41,6 +41,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import PeopleAltOutlinedIcon from "@mui/icons-material/PeopleAltOutlined";
 import ConfirmDialog from "../../../components/common/ConfirmDialog"
+import { canManageCheckCatalog } from "../../../utils/auth";
 import SanPhamThongSoDialog from "./SanPhamThongSoDialog";
 import ProductResponsiblesDialog from "./ProductResponsiblesDialog";
 import {
@@ -101,6 +102,7 @@ function CheckItemPreview({ items = [] }) {
 }
 
 export default function SanPhamManager() {
+    const canManageCheckItems = canManageCheckCatalog();
     const [data, setData] = useState([]);
 
     // State Sản phẩm
@@ -593,7 +595,7 @@ export default function SanPhamManager() {
                                                     Người phụ trách
                                                 </Button>
                                             </Stack>
-                                            <Tooltip title="Tải danh mục kiểm theo mẫu import">
+                                            {canManageCheckItems && <Tooltip title="Tải danh mục kiểm theo mẫu import">
                                                 <span>
                                                     <IconButton
                                                         size="small"
@@ -605,7 +607,7 @@ export default function SanPhamManager() {
                                                         <DownloadIcon fontSize="small" />
                                                     </IconButton>
                                                 </span>
-                                            </Tooltip>
+                                            </Tooltip>}
                                             <Tooltip title="Tải thông số kiểm">
                                                 <span>
                                                     <IconButton

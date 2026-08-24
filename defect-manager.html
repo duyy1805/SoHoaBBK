@@ -881,7 +881,8 @@
                 <input id="keyword" type="search" placeholder="Nhập mã lỗi, tên lỗi, mô tả, phạm vi, thị trường...">
             </div>
             <button id="reloadButton" class="btn btn-ghost" type="button">Tải lại</button>
-            <button id="mineButton" class="btn btn-primary" type="button">Danh mục và báo lỗi của tôi</button>
+            <button id="catalogButton" class="btn btn-primary" type="button">Danh mục đã duyệt</button>
+            <button id="mineButton" class="btn btn-ghost" type="button">Theo dõi lỗi của tôi</button>
             <button id="waitingB7Button" class="btn btn-ghost hidden" type="button">Chờ B7 bổ sung</button>
             <button id="pendingButton" class="btn btn-ghost hidden" type="button">Chờ TP B7 duyệt</button>
             <button id="batchApproveButton" class="btn btn-ghost hidden" type="button" disabled>Duyệt đã chọn (0)</button>
@@ -1181,7 +1182,7 @@
                 ThiTruong: []
             },
             activeFilterField: "",
-            view: "mine"
+            view: "catalog"
         };
 
         const els = {
@@ -1195,6 +1196,7 @@
             appAlert: document.getElementById("appAlert"),
             keyword: document.getElementById("keyword"),
             reloadButton: document.getElementById("reloadButton"),
+            catalogButton: document.getElementById("catalogButton"),
             mineButton: document.getElementById("mineButton"),
             waitingB7Button: document.getElementById("waitingB7Button"),
             pendingButton: document.getElementById("pendingButton"),
@@ -1494,7 +1496,6 @@
                 els.downloadTemplateButton.classList.toggle("hidden", !state.capabilities.canImport);
                 els.importButton.classList.toggle("hidden", !state.capabilities.canImport);
                 const requests = (result.requests || [])
-                    .filter((request) => request.Status !== "APPROVED")
                     .map((request) => ({
                         ...(request.ProposedData || {}),
                         RequestId: request.Id,
@@ -1504,10 +1505,13 @@
                         CreatedBy: request.CreatedBy,
                         CreatedByName: request.CreatedByName,
                         CreatedAt: request.CreatedAt,
+                        SubmittedAt: request.SubmittedAt || request.CreatedAt,
                         ReviewedByName: request.ReviewedByName,
                         ReviewedAt: request.ReviewedAt,
                         B7PreparedByName: request.B7PreparedByName,
                         B7PreparedAt: request.B7PreparedAt,
+                        TbpB7ApprovedByName: request.TbpB7ApprovedByName,
+                        TbpB7ApprovedAt: request.TbpB7ApprovedAt,
                         ReviewNote: request.ReviewNote,
                         DefectId: request.DefectId,
                         RequestType: request.RequestType,
@@ -1587,7 +1591,10 @@
                     RequestId: null,
                     RequestRowVersion: null
                 };
-                state.defects.splice(requestIndex, 1);
+                state.defects.splice(requestIndex, 1, {
+                    ...request,
+                    ApprovalStatus: "APPROVED"
+                });
                 state.selectedRequestIds.delete(Number(approved.requestId));
                 const currentDefectIndex = state.defects.findIndex((item) => !item.IsRequest && Number(item.Id) === Number(approved.defectId));
                 if (currentDefectIndex >= 0) state.defects.splice(currentDefectIndex, 1, catalogRow);
@@ -1691,7 +1698,9 @@
                     ? row.ApprovalStatus === "PENDING"
                     : state.view === "waiting-b7"
                         ? row.IsRequest && ["WAITING_B7", "REJECTED"].includes(row.ApprovalStatus)
-                    : !row.IsRequest || Number(row.CreatedBy) === currentUserId;
+                    : state.view === "mine"
+                        ? row.IsRequest && Number(row.CreatedBy) === currentUserId
+                        : !row.IsRequest;
                 const matchesKeyword = !keyword || [
                         row.MaLoi,
                         row.TenLoi,
@@ -1759,25 +1768,23 @@
             return "chip-major";
         }
 
-        function normalizeDefectType(loaiLoiSXBT, defectType) {
-            const loai = String(loaiLoiSXBT || "").trim().toUpperCase();
+        function normalizeDefectType(defectType) {
             const type = String(defectType || "").trim().toUpperCase();
-            if (loai === "C") return "CRITICAL";
-            if (loai === "B" && type === "CRITICAL") return "MAJOR";
             return type || "";
         }
 
         function renderDefectTypeOptions() {
-            const loai = document.getElementById("LoaiLoiSXBT").value;
             const select = document.getElementById("DefectType");
-            const current = normalizeDefectType(loai, select.value || state.form.DefectType);
-            const options = loai === "C"
-                ? [["CRITICAL", "CRITICAL (Nghiêm trọng)"]]
-                : [["", "Chưa xác định"], ["MAJOR", "MAJOR (Nặng)"], ["MINOR", "MINOR (Nhẹ)"]];
+            const current = normalizeDefectType(select.value || state.form.DefectType);
+            const options = [
+                ["", "Chưa xác định"],
+                ["CRITICAL", "CRITICAL (Nghiêm trọng)"],
+                ["MAJOR", "MAJOR (Nặng)"],
+                ["MINOR", "MINOR (Nhẹ)"]
+            ];
 
             select.innerHTML = options.map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
             select.value = options.some(([value]) => value === current) ? current : "";
-            select.disabled = loai === "C";
         }
 
         function renderTable() {
@@ -1814,7 +1821,7 @@
                             <div class="strong line-clamp" title="${escapeHtml(row.TenLoi || "")}">${escapeHtml(row.TenLoi || "")}</div>
                             ${row.MoTa && row.MoTa !== row.TenLoi ? `<div class="muted line-clamp" style="font-size: 12px;">${escapeHtml(row.MoTa)}</div>` : ""}
                             ${row.GhiChu ? `<div class="line-clamp" style="font-size: 12px; color: var(--primary);">${escapeHtml(row.GhiChu)}</div>` : ""}
-                            <div class="muted" style="font-size: 11px; margin-top: 4px;">Người thêm: ${escapeHtml(row.CreatedByName || "Dữ liệu hệ thống")}</div>
+                            <div class="muted" style="font-size: 11px; margin-top: 4px;">Người thêm: ${escapeHtml(row.CreatedByName || "Dữ liệu hệ thống")} · ${escapeHtml(formatDateTime(row.SubmittedAt || row.CreatedAt))}</div>
                             <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;">
                                 ${row.B7PreparedByName ? `<span class="chip" title="Thời gian trình duyệt: ${escapeHtml(formatDateTime(row.B7PreparedAt))}">NV B7: ${escapeHtml(row.B7PreparedByName)}</span>` : ""}
                                 ${row.TbpB7ApprovedByName ? `<span class="chip chip-success" title="Thời gian duyệt: ${escapeHtml(formatDateTime(row.TbpB7ApprovedAt))}">TBP B7 duyệt: ${escapeHtml(row.TbpB7ApprovedByName)}</span>` : ""}
@@ -1843,7 +1850,7 @@
                             ` : `<span class="muted">Không có</span>`}
                         </td>
                         <td class="center">
-                            <span class="chip ${row.ApprovalStatus === "APPROVED" ? "chip-success" : row.ApprovalStatus === "PENDING" ? "chip-major" : ""}">${row.ApprovalStatus === "WAITING_B7" ? "Chờ B7 bổ sung" : row.ApprovalStatus === "PENDING" ? "Chờ TP B7 duyệt" : row.ApprovalStatus === "REJECTED" ? "B7 cần bổ sung lại" : row.ApprovalStatus === "RETURNED" ? "B7 đã trả lại" : row.ApprovalStatus === "CANCELLED" ? "Đã rút" : (row.TrangThai ? "Đã duyệt" : "Tạm ngưng")}</span>
+                            <span class="chip ${row.ApprovalStatus === "APPROVED" ? "chip-success" : row.ApprovalStatus === "PENDING" ? "chip-major" : ""}">${row.ApprovalStatus === "WAITING_B7" ? "Chờ B7 bổ sung" : row.ApprovalStatus === "PENDING" ? "Chờ TP B7 duyệt" : row.ApprovalStatus === "REJECTED" ? "B7 cần bổ sung lại" : row.ApprovalStatus === "RETURNED" ? "B7 đã trả lại" : row.ApprovalStatus === "CANCELLED" ? "Đã rút" : row.ApprovalStatus === "APPROVED" ? "Đã duyệt" : (row.TrangThai ? "Đã duyệt" : "Tạm ngưng")}</span>
                         </td>
                         <td class="right">
                             ${(state.capabilities.canPrepare && ((!row.IsRequest) || (row.IsRequest && ["WAITING_B7", "REJECTED"].includes(row.ApprovalStatus)))) || (row.IsRequest && isOwner && row.ApprovalStatus === "RETURNED") ? `<button class="btn btn-icon" type="button" data-edit="${escapeHtml(row.ManagementKey)}" title="${row.ApprovalStatus === "RETURNED" ? "Điều chỉnh báo lỗi" : "B7 bổ sung thông tin"}">✎</button>` : ""}
@@ -1910,7 +1917,7 @@
                         </button>
                     `).join("") : `<span class="muted">Không có ảnh</span>`}
                 </div>
-                <div class="detail-text muted">Người thêm: ${escapeHtml(row.CreatedByName || "Dữ liệu hệ thống")} · ${escapeHtml(formatDateTime(row.CreatedAt))}</div>
+                <div class="detail-text muted">Người thêm: ${escapeHtml(row.CreatedByName || "Dữ liệu hệ thống")} · ${escapeHtml(formatDateTime(row.SubmittedAt || row.CreatedAt))}</div>
                 ${row.B7PreparedByName ? `<div class="detail-text muted">Nhân viên B7: ${escapeHtml(row.B7PreparedByName)} · ${escapeHtml(formatDateTime(row.B7PreparedAt))}</div>` : ""}
                 ${row.TbpB7ApprovedByName ? `<div class="detail-text muted">TBP B7 duyệt: ${escapeHtml(row.TbpB7ApprovedByName)} · ${escapeHtml(formatDateTime(row.TbpB7ApprovedAt))}</div>` : ""}
                 ${row.ReviewedByName && !row.TbpB7ApprovedByName ? `<div class="detail-text muted">Người xử lý: ${escapeHtml(row.ReviewedByName)} · ${escapeHtml(formatDateTime(row.ReviewedAt))}</div>` : ""}
@@ -1938,7 +1945,7 @@
                 ThuTu: row.ThuTu ?? "",
                 TenSanPham: row.TenSanPham || "",
                 ChungLoai: row.ChungLoai || "",
-                DefectType: normalizeDefectType(row.LoaiLoiSXBT, row.DefectType),
+                DefectType: normalizeDefectType(row.DefectType),
                 PhamViApDung: row.PhamViApDung || "",
                 PhuongAnXuLy: row.PhuongAnXuLy || ""
             };
@@ -2067,7 +2074,7 @@
                 ...state.form,
                 MaLoi: maLoi || null,
                 TenLoi: String(formData.get("TenLoi") || "").trim(),
-                DefectType: normalizeDefectType(formData.get("LoaiLoiSXBT"), formData.get("DefectType")),
+                DefectType: normalizeDefectType(formData.get("DefectType")),
                 MoTa: String(formData.get("MoTa") || "").trim() || null,
                 GhiChu: formData.get("GhiChu") || null,
                 PhuongAnXuLy: formData.get("PhuongAnXuLy") || null,
@@ -2503,8 +2510,17 @@
         els.clearFiltersButton.addEventListener("click", clearFilters);
 
         els.reloadButton.addEventListener("click", () => loadDefects({ showSuccess: true }));
+        els.catalogButton.addEventListener("click", () => {
+            state.view = "catalog";
+            els.catalogButton.className = "btn btn-primary";
+            els.mineButton.className = "btn btn-ghost";
+            els.waitingB7Button.className = state.capabilities.canPrepare ? "btn btn-ghost" : "btn btn-ghost hidden";
+            els.pendingButton.className = state.capabilities.canApprove ? "btn btn-ghost" : "btn btn-ghost hidden";
+            applyFilter();
+        });
         els.mineButton.addEventListener("click", () => {
             state.view = "mine";
+            els.catalogButton.className = "btn btn-ghost";
             els.mineButton.className = "btn btn-primary";
             els.waitingB7Button.className = state.capabilities.canPrepare ? "btn btn-ghost" : "btn btn-ghost hidden";
             els.pendingButton.className = state.capabilities.canApprove ? "btn btn-ghost" : "btn btn-ghost hidden";
@@ -2512,6 +2528,7 @@
         });
         els.waitingB7Button.addEventListener("click", () => {
             state.view = "waiting-b7";
+            els.catalogButton.className = "btn btn-ghost";
             els.waitingB7Button.className = "btn btn-primary";
             els.mineButton.className = "btn btn-ghost";
             els.pendingButton.className = state.capabilities.canApprove ? "btn btn-ghost" : "btn btn-ghost hidden";
@@ -2519,6 +2536,7 @@
         });
         els.pendingButton.addEventListener("click", () => {
             state.view = "pending";
+            els.catalogButton.className = "btn btn-ghost";
             els.pendingButton.className = "btn btn-primary";
             els.mineButton.className = "btn btn-ghost";
             els.waitingB7Button.className = state.capabilities.canPrepare ? "btn btn-ghost" : "btn btn-ghost hidden";
@@ -2545,7 +2563,6 @@
         });
         els.createButton.addEventListener("click", openCreateModal);
         els.defectForm.addEventListener("submit", saveDefect);
-        document.getElementById("LoaiLoiSXBT").addEventListener("change", renderDefectTypeOptions);
         document.getElementById("PhamViApDungSelect").addEventListener("change", (event) => {
             addPhamViApDung(event.target.value);
             event.target.value = "";
