@@ -930,7 +930,15 @@ const normalizeTrenChuyenSlots = (slots = []) => slots.map((slot, slotIndex) => 
         ? slot.entries.map((entry, entryIndex) => ({
             congDoan: String(entry?.congDoan || '').trim(),
             tenCongNhanGayLoi: String(entry?.tenCongNhanGayLoi || '').trim(),
+            lotProvided: Object.prototype.hasOwnProperty.call(entry || {}, 'lot')
+                || Object.prototype.hasOwnProperty.call(entry || {}, 'Lot'),
+            lot: String(entry?.lot ?? entry?.Lot ?? '').trim(),
             soLuongKiem: optionalNonNegativeInteger(entry?.soLuongKiem ?? entry?.SoLuongKiem),
+            tongSoLuong: optionalNonNegativeInteger(entry?.tongSoLuong ?? entry?.TongSoLuong),
+            ketLuan: String(entry?.ketLuan ?? entry?.KetLuan ?? '').trim().toUpperCase() || null,
+            vatTuDauVaoStatus: String(entry?.vatTuDauVaoStatus ?? entry?.VatTuDauVaoStatus ?? '').trim().toUpperCase() || null,
+            taiLieuStatus: String(entry?.taiLieuStatus ?? entry?.TaiLieuStatus ?? '').trim().toUpperCase() || null,
+            thietBiStatus: String(entry?.thietBiStatus ?? entry?.ThietBiStatus ?? '').trim().toUpperCase() || null,
             soLoiBuiBan: Number(entry?.soLoiBuiBan ?? entry?.SoLoiBuiBan ?? 0),
             soLoiConTrung: Number(entry?.soLoiConTrung ?? entry?.SoLoiConTrung ?? 0),
             nguoiGhiNhanId: Number(entry?.nguoiGhiNhanId || 0) || null,
@@ -1482,6 +1490,48 @@ router.patch(
 );
 
 router.patch(
+    '/:id/input-inspection-mode',
+    authenticateToken,
+    authorize('THUC_HIEN_KIEM'),
+    async (req, res) => {
+        const phieuKiemId = Number(req.params.id);
+        const loaiKiemTra = String(req.body?.loaiKiemTra || '').trim().toUpperCase();
+        if (!Number.isInteger(phieuKiemId) || phieuKiemId <= 0) {
+            return res.status(400).json({ message: 'PhieuKiemId không hợp lệ' });
+        }
+        if (!['CD1', 'CD2'].includes(loaiKiemTra)) {
+            return res.status(400).json({ message: 'Chế độ kiểm đầu vào chỉ nhận CĐ1 hoặc CĐ2' });
+        }
+
+        try {
+            const pool = await poolPromise;
+            const result = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .query(`
+                    SELECT pk.Id, pk.TrangThai, inspectionType.MaLoai
+                    FROM dbo.PHIEU_KIEM pk
+                    JOIN dbo.DM_LOAI_KIEM inspectionType ON inspectionType.Id = pk.LoaiKiemId
+                    WHERE pk.Id = @PhieuKiemId
+                `);
+            const phieu = result.recordset[0];
+            if (!phieu) return res.status(404).json({ message: 'Không tìm thấy phiếu kiểm' });
+            if (String(phieu.MaLoai || '').trim().toUpperCase() !== 'DAU_VAO') {
+                return res.status(400).json({ message: 'Chế độ CĐ1/CĐ2 chỉ áp dụng cho phiếu kiểm đầu vào' });
+            }
+            if (!['TAO_MOI', 'CHUA_KIEM', 'DA_TAO_SECTION', 'DANG_KIEM'].includes(String(phieu.TrangThai || '').toUpperCase())) {
+                return res.status(409).json({ message: 'Phiếu đã hoàn thành nên không thể đổi chế độ kiểm đầu vào' });
+            }
+
+            await upsertPhieuKiemCustomFields(pool, phieuKiemId, { LoaiKiemTra: loaiKiemTra });
+            res.json({ success: true, LoaiKiemTra: loaiKiemTra });
+        } catch (error) {
+            console.error('Update input inspection mode error:', error);
+            res.status(500).json({ message: error.message || 'Không cập nhật được chế độ kiểm đầu vào' });
+        }
+    }
+);
+
+router.patch(
     '/tren-chuyen/:id/source-fields',
     authenticateToken,
     authorize('THUC_HIEN_KIEM'),
@@ -1931,7 +1981,9 @@ router.get(
                 const entryExtraResult = await pool.request()
                     .input('PhieuKiemId', sql.Int, Number(id))
                     .query(`
-                        SELECT entryRow.Id, entryRow.SoLuongKiem,
+                        SELECT entryRow.Id, entryRow.Lot, entryRow.SoLuongKiem, entryRow.TongSoLuong,
+                            entryRow.KetLuan, entryRow.VatTuDauVaoStatus,
+                            entryRow.TaiLieuStatus, entryRow.ThietBiStatus,
                             entryRow.SoLoiBuiBan, entryRow.SoLoiConTrung
                         FROM dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY entryRow
                         INNER JOIN dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT slotRow ON slotRow.Id = entryRow.SlotId
@@ -1954,6 +2006,7 @@ router.get(
                             SlotId: record.SlotId,
                             CongDoan: record.CongDoan,
                             TenCongNhanGayLoi: record.TenCongNhanGayLoi || '',
+                            Lot: extraByEntry.get(Number(record.EntryId))?.Lot || '',
                             NguoiGhiNhanId: record.NguoiGhiNhanId || null,
                             TenNguoiGhiNhan: record.TenNguoiGhiNhan || '',
                             GhiChu: record.EntryGhiChu || '',
@@ -1961,6 +2014,11 @@ router.get(
                             CreatedAt: record.EntryCreatedAt || null,
                             UpdatedAt: record.EntryUpdatedAt || null,
                             SoLuongKiem: extraByEntry.get(Number(record.EntryId))?.SoLuongKiem ?? null,
+                            TongSoLuong: extraByEntry.get(Number(record.EntryId))?.TongSoLuong ?? null,
+                            KetLuan: extraByEntry.get(Number(record.EntryId))?.KetLuan ?? null,
+                            VatTuDauVaoStatus: extraByEntry.get(Number(record.EntryId))?.VatTuDauVaoStatus ?? null,
+                            TaiLieuStatus: extraByEntry.get(Number(record.EntryId))?.TaiLieuStatus ?? null,
+                            ThietBiStatus: extraByEntry.get(Number(record.EntryId))?.ThietBiStatus ?? null,
                             SoLoiBuiBan: Number(extraByEntry.get(Number(record.EntryId))?.SoLoiBuiBan || 0),
                             SoLoiConTrung: Number(extraByEntry.get(Number(record.EntryId))?.SoLoiConTrung || 0),
                             Defects: []
@@ -2495,7 +2553,7 @@ router.post(
     authenticateToken,
     authorize('THUC_HIEN_KIEM'),
     async (req, res) => {
-        const { phieuKiemId, slots } = req.body;
+        const { phieuKiemId, slots, signatureFormVersion, signatureFormHour } = req.body;
         const userId = req.user?.id || req.user?.userId;
 
         if (!phieuKiemId || !Array.isArray(slots)) {
@@ -2503,14 +2561,51 @@ router.post(
         }
 
         try {
+            const invalidRawDefect = slots
+                .flatMap((slot) => Array.isArray(slot?.entries) ? slot.entries : [])
+                .flatMap((entry) => Array.isArray(entry?.defects) ? entry.defects : [])
+                .find((defect) => {
+                    const quantity = Number(defect?.soLuong ?? defect?.SoLuong);
+                    const repairedPassRaw = defect?.soLuongDatSauSua ?? defect?.SoLuongDatSauSua;
+                    const repairedFailRaw = defect?.soLuongKhongDatSauSua ?? defect?.SoLuongKhongDatSauSua;
+                    const repairedPass = repairedPassRaw === '' || repairedPassRaw == null ? 0 : Number(repairedPassRaw);
+                    const repairedFail = repairedFailRaw === '' || repairedFailRaw == null ? 0 : Number(repairedFailRaw);
+                    return !Number.isInteger(quantity) || quantity < 0
+                        || !Number.isInteger(repairedPass) || repairedPass < 0
+                        || !Number.isInteger(repairedFail) || repairedFail < 0
+                        || repairedPass + repairedFail > quantity;
+                });
+            if (invalidRawDefect) {
+                return res.status(400).json({ message: 'Số lỗi và số lượng sau sửa phải là số nguyên không âm; tổng sau sửa không được vượt số lỗi' });
+            }
             const normalizedSlots = normalizeTrenChuyenSlots(slots);
-            const invalidEntry = normalizedSlots.flatMap((slot) => slot.entries).find((entry) =>
-                Number.isNaN(entry.soLuongKiem)
-                || !Number.isInteger(entry.soLoiBuiBan) || entry.soLoiBuiBan < 0
-                || !Number.isInteger(entry.soLoiConTrung) || entry.soLoiConTrung < 0
-            );
+            const usesSignatureForm = Number(signatureFormVersion) >= 1;
+            const normalizedEntries = normalizedSlots.flatMap((slot) => slot.entries.map((entry) => ({ ...entry, gioKiem: slot.gioKiem })));
+            const invalidEntry = normalizedEntries.find((entry) => {
+                const totalDefects = entry.defects.reduce((sum, defect) => sum + Number(defect.soLuong || 0), 0)
+                    + entry.soLoiBuiBan + entry.soLoiConTrung;
+                const invalidStatuses = (entry.ketLuan && !['DAT', 'KHONG_DAT'].includes(entry.ketLuan))
+                    || (entry.vatTuDauVaoStatus && !['OK', 'NOK'].includes(entry.vatTuDauVaoStatus))
+                    || (entry.taiLieuStatus && !['OK', 'NOK'].includes(entry.taiLieuStatus))
+                    || (entry.thietBiStatus && !['OK', 'NOK'].includes(entry.thietBiStatus));
+                const requiresSignatureData = usesSignatureForm && (!signatureFormHour || entry.gioKiem === signatureFormHour);
+                const missingSignatureData = requiresSignatureData && (
+                    entry.tongSoLuong === null || entry.soLuongKiem === null
+                    || !entry.ketLuan || !entry.vatTuDauVaoStatus
+                    || !entry.taiLieuStatus || !entry.thietBiStatus
+                );
+                return Number.isNaN(entry.soLuongKiem) || Number.isNaN(entry.tongSoLuong)
+                    || entry.lot.length > 100
+                    || !Number.isInteger(entry.soLoiBuiBan) || entry.soLoiBuiBan < 0
+                    || !Number.isInteger(entry.soLoiConTrung) || entry.soLoiConTrung < 0
+                    || invalidStatuses || missingSignatureData
+                    || (entry.soLuongKiem !== null && totalDefects > entry.soLuongKiem)
+                    || (entry.tongSoLuong !== null && entry.soLuongKiem !== null && entry.tongSoLuong < entry.soLuongKiem);
+            });
             if (invalidEntry) {
-                return res.status(400).json({ message: 'Số lượng kiểm và lỗi đặc biệt phải là số nguyên không âm' });
+                return res.status(400).json({
+                    message: 'Dữ liệu bản ký không hợp lệ: Tổng SL ≥ SL kiểm ≥ tổng SL lỗi; số lượng phải là số nguyên không âm và các lựa chọn phải đầy đủ, đúng giá trị'
+                });
             }
 
             const pool = await poolPromise;
@@ -2542,11 +2637,24 @@ router.post(
                         await new sql.Request(transaction)
                             .input('EntryId', sql.Int, entryId)
                             .input('SoLuongKiem', sql.Int, entry.soLuongKiem)
+                            .input('LotProvided', sql.Bit, entry.lotProvided ? 1 : 0)
+                            .input('Lot', sql.NVarChar(100), entry.lot)
+                            .input('TongSoLuong', sql.Int, entry.tongSoLuong)
+                            .input('KetLuan', sql.NVarChar(20), entry.ketLuan)
+                            .input('VatTuDauVaoStatus', sql.NVarChar(10), entry.vatTuDauVaoStatus)
+                            .input('TaiLieuStatus', sql.NVarChar(10), entry.taiLieuStatus)
+                            .input('ThietBiStatus', sql.NVarChar(10), entry.thietBiStatus)
                             .input('SoLoiBuiBan', sql.Int, entry.soLoiBuiBan)
                             .input('SoLoiConTrung', sql.Int, entry.soLoiConTrung)
                             .query(`
                                 UPDATE dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY
                                 SET SoLuongKiem = @SoLuongKiem,
+                                    Lot = CASE WHEN @LotProvided = 1 THEN NULLIF(@Lot, N'') ELSE Lot END,
+                                    TongSoLuong = COALESCE(@TongSoLuong, TongSoLuong),
+                                    KetLuan = COALESCE(@KetLuan, KetLuan),
+                                    VatTuDauVaoStatus = COALESCE(@VatTuDauVaoStatus, VatTuDauVaoStatus),
+                                    TaiLieuStatus = COALESCE(@TaiLieuStatus, TaiLieuStatus),
+                                    ThietBiStatus = COALESCE(@ThietBiStatus, ThietBiStatus),
                                     SoLoiBuiBan = @SoLoiBuiBan,
                                     SoLoiConTrung = @SoLoiConTrung
                                 WHERE Id = @EntryId
@@ -3223,6 +3331,44 @@ router.post(
 
         try {
             const pool = await poolPromise;
+            const signatureValidation = await pool.request()
+                .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+                .query(`
+                    SELECT entryRow.Id, entryRow.CongDoan, entryRow.TenCongNhanGayLoi,
+                        entryRow.SoLuongKiem, entryRow.TongSoLuong, entryRow.KetLuan,
+                        entryRow.VatTuDauVaoStatus, entryRow.TaiLieuStatus, entryRow.ThietBiStatus,
+                        ISNULL(entryRow.SoLoiBuiBan, 0) + ISNULL(entryRow.SoLoiConTrung, 0)
+                            + ISNULL(SUM(defect.SoLuong), 0) AS TongLoi
+                    FROM dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY entryRow
+                    INNER JOIN dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT slotRow ON slotRow.Id = entryRow.SlotId
+                    LEFT JOIN dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY_DEFECT defect ON defect.EntryId = entryRow.Id
+                    WHERE slotRow.PhieuKiemId = @PhieuKiemId
+                    GROUP BY entryRow.Id, entryRow.CongDoan, entryRow.TenCongNhanGayLoi,
+                        entryRow.SoLuongKiem, entryRow.TongSoLuong, entryRow.KetLuan,
+                        entryRow.VatTuDauVaoStatus, entryRow.TaiLieuStatus, entryRow.ThietBiStatus,
+                        entryRow.SoLoiBuiBan, entryRow.SoLoiConTrung
+                `);
+            if (!signatureValidation.recordset.length) {
+                return res.status(409).json({ message: 'Phiếu cần ít nhất một dòng kiểm trước khi hoàn tất' });
+            }
+            const invalidSignatureEntry = signatureValidation.recordset.find((entry) => (
+                !String(entry.CongDoan || '').trim()
+                || !String(entry.TenCongNhanGayLoi || '').trim()
+                || !Number.isInteger(Number(entry.SoLuongKiem))
+                || Number(entry.SoLuongKiem) <= 0
+                || !Number.isInteger(Number(entry.TongSoLuong))
+                || Number(entry.TongSoLuong) < Number(entry.SoLuongKiem)
+                || Number(entry.TongLoi || 0) > Number(entry.SoLuongKiem)
+                || !['DAT', 'KHONG_DAT'].includes(String(entry.KetLuan || '').toUpperCase())
+                || !['OK', 'NOK'].includes(String(entry.VatTuDauVaoStatus || '').toUpperCase())
+                || !['OK', 'NOK'].includes(String(entry.TaiLieuStatus || '').toUpperCase())
+                || !['OK', 'NOK'].includes(String(entry.ThietBiStatus || '').toUpperCase())
+            ));
+            if (invalidSignatureEntry) {
+                return res.status(409).json({
+                    message: `Dòng kiểm #${invalidSignatureEntry.Id} chưa đủ dữ liệu bản ký hoặc không thỏa Tổng SL ≥ SL kiểm ≥ tổng SL lỗi`
+                });
+            }
             const versionResult = await pool.request()
                 .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
                 .input('FieldName', sql.NVarChar(100), UNIFIED_PRINT_DATA_VERSION_FIELD)
@@ -3255,14 +3401,8 @@ router.post(
                     GROUP BY pk.SoLuongThucTe, pk.SoLuong
                 `);
             if (isUnifiedPrintData) {
-                if (!quantityValidation.recordset.length) {
-                    return res.status(409).json({ message: 'Phiếu cần ít nhất một dòng kiểm trước khi hoàn tất' });
-                }
                 const invalidEntry = quantityValidation.recordset.find((entry) => {
-                    const hasSoLuongKiem = entry.SoLuongKiem !== null
-                        && entry.SoLuongKiem !== undefined
-                        && entry.SoLuongKiem !== '';
-                    const invalidSoLuongKiem = hasSoLuongKiem && (
+                    const invalidSoLuongKiem = (
                         !Number.isInteger(Number(entry.SoLuongKiem))
                         || Number(entry.SoLuongKiem) <= 0
                         || Number(entry.TongLoi || 0) > Number(entry.SoLuongKiem)

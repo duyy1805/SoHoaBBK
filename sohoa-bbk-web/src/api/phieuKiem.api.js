@@ -168,6 +168,9 @@ export const completeTrenChuyen = (phieuKiemId, ketLuan) => {
 export const updatePhieuKiemActualQuantity = (id, soLuongThucTe) =>
     axiosClient.patch(`/phieu-kiem/${id}/actual-quantity`, { soLuongThucTe });
 
+export const updateInputInspectionMode = (id, loaiKiemTra) =>
+    axiosClient.patch(`/phieu-kiem/${id}/input-inspection-mode`, { loaiKiemTra });
+
 export const updateTrenChuyenSourceFields = (id, fields) =>
     axiosClient.patch(`/phieu-kiem/tren-chuyen/${id}/source-fields`, fields);
 

@@ -18,7 +18,11 @@ export default function InspectionPrintCompareDialog({
     newContent,
     oldContent,
     onPrintNew,
-    onPrintOld
+    onPrintOld,
+    newLabel = "Mẫu mới",
+    oldLabel = "Mẫu cũ",
+    printNewLabel = "In mẫu mới",
+    printOldLabel = "In mẫu cũ"
 }) {
     const [selectedTab, setSelectedTab] = useState(0);
 
@@ -46,8 +50,8 @@ export default function InspectionPrintCompareDialog({
                 onChange={(_, value) => setSelectedTab(value)}
                 sx={{ px: 3, borderBottom: 1, borderColor: "divider" }}
             >
-                <Tab label="Mẫu mới" />
-                <Tab label="Mẫu cũ" />
+                <Tab label={newLabel} />
+                <Tab label={oldLabel} />
             </Tabs>
             <DialogContent dividers sx={{ bgcolor: "#e5e7eb", overflow: "auto", p: 2 }}>
                 <Box
@@ -72,7 +76,7 @@ export default function InspectionPrintCompareDialog({
             <DialogActions>
                 <Button onClick={handleClose}>Đóng</Button>
                 <Button variant="contained" startIcon={<PrintIcon />} onClick={handlePrint}>
-                    {selectedTab === 0 ? "In mẫu mới" : "In mẫu cũ"}
+                    {selectedTab === 0 ? printNewLabel : printOldLabel}
                 </Button>
             </DialogActions>
         </Dialog>

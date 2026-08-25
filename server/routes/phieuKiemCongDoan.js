@@ -310,6 +310,7 @@ router.get(
                 }
                 map[defect.PlanId].push({
                     ...defect,
+                    NgayGhiNhan: dateKey(defect.CreatedAt),
                     ImageUrls: Array.isArray(imageUrls) ? imageUrls : []
                 });
                 return map;
@@ -317,7 +318,10 @@ router.get(
             const plans = (result.recordsets[1] || [])
                 .map((plan) => {
                     const withQuantity = quantityFields(normalizePlanDates(plan));
-                    const planLots = lotsByPlan[plan.Id] || [];
+                    const planLots = (lotsByPlan[plan.Id] || []).map((lot) => ({
+                        ...lot,
+                        NgayGhiNhan: dateKey(lot.CreatedAt)
+                    }));
                     const planDefects = defectsByPlan[plan.Id] || [];
                     const lotSpecialDefects = planLots.reduce((sum, lot) =>
                         sum + Number(lot.SoLoiBuiBan || 0) + Number(lot.SoLoiConTrung || 0), 0);

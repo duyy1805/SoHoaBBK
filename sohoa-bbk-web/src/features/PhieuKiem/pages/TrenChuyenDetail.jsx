@@ -35,11 +35,10 @@ import CheckCircleOutlineOutlinedIcon from "@mui/icons-material/CheckCircleOutli
 import AddIcon from "@mui/icons-material/Add";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import { approveTrenChuyen, completeTrenChuyen, createTrenChuyenBienBan, getPhieuKiemDetail, updatePhieuKiemActualQuantity, updateTrenChuyenSourceFields } from "../../../api/phieuKiem.api";
-import { updateSanPhamImage, uploadSanPhamImage } from "../../../api/lookup.api";
 import { getCurrentUser } from "../../../utils/auth";
-import TrenChuyenPrintTemplate from "../components/TrenChuyenPrintTemplate";
 import InspectionPrintCompareDialog from "../components/InspectionPrintCompareDialog";
 import UnifiedInspectionPrintTemplate from "../components/UnifiedInspectionPrintTemplate";
+import TrenChuyenSignaturePrintTemplate from "../components/TrenChuyenSignaturePrintTemplate";
 import TrenChuyenSlotEditor from "../components/TrenChuyenSlotEditor";
 import DeletePhieuKiemButton from "../components/DeletePhieuKiemButton";
 
@@ -128,7 +127,6 @@ export default function TrenChuyenDetail() {
     const returnToList = () => navigate(location.state?.returnTo || "/phieu-kiem");
     const oldPrintRef = useRef();
     const newPrintRef = useRef();
-    const productImageInputRef = useRef(null);
 
     const [loading, setLoading] = useState(true);
     const [creatingBienBan, setCreatingBienBan] = useState(false);
@@ -152,11 +150,11 @@ export default function TrenChuyenDetail() {
 
     const handlePrintOld = useReactToPrint({
         contentRef: oldPrintRef,
-        documentTitle: phieu?.SoPhieu ? `TrenChuyen_${phieu.SoPhieu}_MauCu` : "PhieuKiemTrenChuyen_MauCu"
+        documentTitle: phieu?.SoPhieu ? `TrenChuyen_${phieu.SoPhieu}_DoiChieu` : "PhieuKiemTrenChuyen_DoiChieu"
     });
     const handlePrintNew = useReactToPrint({
         contentRef: newPrintRef,
-        documentTitle: phieu?.SoPhieu ? `TrenChuyen_${phieu.SoPhieu}_MauMoi` : "PhieuKiemTrenChuyen_MauMoi"
+        documentTitle: phieu?.SoPhieu ? `TrenChuyen_${phieu.SoPhieu}_BanKy` : "PhieuKiemTrenChuyen_BanKy"
     });
 
     useEffect(() => {
@@ -218,34 +216,6 @@ export default function TrenChuyenDetail() {
             window.alert(error.response?.data?.message || "Không bổ sung được thông tin nguồn.");
         } finally {
             setSavingSourceFields(false);
-        }
-    };
-
-    const handleTriggerProductImageUpload = () => {
-        if (!phieu?.SanPhamId) {
-            window.alert("Phiếu chưa có sản phẩm để gắn ảnh.");
-            return;
-        }
-        productImageInputRef.current?.click();
-    };
-
-    const handleProductImageSelected = async (event) => {
-        const file = event.target.files?.[0];
-        event.target.value = "";
-        if (!file || !phieu?.SanPhamId) return;
-
-        try {
-            const uploadRes = await uploadSanPhamImage(file, {
-                maSanPham: phieu?.MaSanPham || getFieldValue(dynamicFields, "TrenChuyen_MaSanPham"),
-                tenSanPham: phieu?.TenSanPham || getFieldValue(dynamicFields, "TrenChuyen_TenSanPham")
-            });
-            const imageUrl = uploadRes?.data?.imageUrl;
-            if (!imageUrl) throw new Error("UPLOAD_FAILED");
-            await updateSanPhamImage(phieu.SanPhamId, imageUrl);
-            await loadData({ background: true });
-        } catch (error) {
-            console.error(error);
-            window.alert(error?.response?.data?.message || "Không thể cập nhật ảnh sản phẩm.");
         }
     };
 
@@ -689,10 +659,16 @@ export default function TrenChuyenDetail() {
                                                                             Công nhân: {entry.TenCongNhanGayLoi || "—"}
                                                                         </Typography>
                                                                         <Typography variant="body2" color="text.secondary">
+                                                                            Lot/Lô: {entry.Lot || getFieldValue(dynamicFields, "TrenChuyen_Lot") || "—"}
+                                                                        </Typography>
+                                                                        <Typography variant="body2" color="text.secondary">
                                                                             Người ghi nhận: {entry.TenNguoiGhiNhan || "—"}
                                                                         </Typography>
                                                                         <Typography variant="body2" color="text.secondary">
-                                                                            Số lượng kiểm: {entry.SoLuongKiem ?? "—"} • Bụi bẩn: {entry.SoLoiBuiBan || 0} • Côn trùng: {entry.SoLoiConTrung || 0}
+                                                                            Tổng SL: {entry.TongSoLuong ?? "—"} • Số lượng kiểm: {entry.SoLuongKiem ?? "—"} • Bụi bẩn: {entry.SoLoiBuiBan || 0} • Côn trùng: {entry.SoLoiConTrung || 0}
+                                                                        </Typography>
+                                                                        <Typography variant="body2" color="text.secondary">
+                                                                            Kết luận: {entry.KetLuan === "DAT" ? "Đạt" : entry.KetLuan === "KHONG_DAT" ? "Không đạt" : "—"} • Vật tư: {entry.VatTuDauVaoStatus || "—"} • Tài liệu: {entry.TaiLieuStatus || "—"} • Thiết bị: {entry.ThietBiStatus || "—"}
                                                                         </Typography>
                                                                     </Box>
                                                                     <Chip
@@ -778,23 +754,19 @@ export default function TrenChuyenDetail() {
                     </Stack>
                 </Container>
 
-                <input
-                    ref={productImageInputRef}
-                    type="file"
-                    accept="image/*"
-                    style={{ display: "none" }}
-                    onChange={handleProductImageSelected}
-                />
                 <InspectionPrintCompareDialog
                     open={openPrint}
                     onClose={() => setOpenPrint(false)}
                     title="Xem in phiếu kiểm trên chuyền"
+                    newLabel="Bản ký chính thức"
+                    oldLabel="Mẫu hiện tại – đối chiếu"
+                    printNewLabel="In bản ký chính thức"
+                    printOldLabel="In mẫu đối chiếu"
                     onPrintNew={handlePrintNew}
                     onPrintOld={handlePrintOld}
                     newContent={(
-                        <UnifiedInspectionPrintTemplate
+                        <TrenChuyenSignaturePrintTemplate
                             ref={newPrintRef}
-                            kind="tren-chuyen"
                             phieu={phieu}
                             slots={slots}
                             dynamicFields={dynamicFields}
@@ -802,14 +774,13 @@ export default function TrenChuyenDetail() {
                         />
                     )}
                     oldContent={(
-                        <TrenChuyenPrintTemplate
+                        <UnifiedInspectionPrintTemplate
                             ref={oldPrintRef}
+                            kind="tren-chuyen"
                             phieu={phieu}
-                            dynamicFields={dynamicFields}
                             slots={slots}
-                            summary={summary}
+                            dynamicFields={dynamicFields}
                             xacNhans={xacNhans}
-                            onRequestProductImageUpload={handleTriggerProductImageUpload}
                         />
                     )}
                 />

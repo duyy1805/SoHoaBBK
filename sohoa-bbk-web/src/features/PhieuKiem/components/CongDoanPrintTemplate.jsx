@@ -109,6 +109,13 @@ const CongDoanPrintTemplate = forwardRef(function CongDoanPrintTemplate(
             return detailLines.map((detail, detailIndex) => ({
                 ...plan,
                 Id: `${plan.Id}-${lot?.Id || `general-${targetIndex}`}-${detail.key}`,
+                inspectionDate: lot?.NgayGhiNhan
+                    || lot?.CreatedAt
+                    || defects.find((defect) => defect?.NgayGhiNhan)?.NgayGhiNhan
+                    || defects.find((defect) => defect?.CreatedAt)?.CreatedAt
+                    || plan.CreatedAt
+                    || plan.NgayKeHoach
+                    || phieu?.NgayKiem,
                 isFirstInGroup: detailIndex === 0,
                 rowSpan: detailLines.length,
                 defectId: detail.defectId || null,
@@ -124,7 +131,7 @@ const CongDoanPrintTemplate = forwardRef(function CongDoanPrintTemplate(
                 rowNote: [detail.note, detailIndex === 0 ? plan.GhiChu : ""].filter(Boolean).join("; ")
             }));
         });
-    }), [plans]);
+    }), [plans, phieu?.NgayKiem]);
 
     const totalColumns = 16 + defectColumns.length;
     const tableFontSize = totalColumns > 22 ? 6.3 : totalColumns > 19 ? 7 : 7.8;
@@ -241,7 +248,7 @@ const CongDoanPrintTemplate = forwardRef(function CongDoanPrintTemplate(
                     {rows.map((row) => (
                         <tr key={row.Id} className="cong-doan-print-row" style={{ height: 25 }}>
                             {row.isFirstInGroup && (
-                                <td rowSpan={row.rowSpan} style={cell}>{formatDate(row.NgayKeHoach || phieu?.NgayKiem)}</td>
+                                <td rowSpan={row.rowSpan} style={cell}>{formatDate(row.inspectionDate)}</td>
                             )}
                             {row.isFirstInGroup && (
                                 <td rowSpan={row.rowSpan} style={cell}>{text(row.TenNguoiGhiNhan)}</td>

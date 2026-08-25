@@ -11,5 +11,6 @@ build/
 *.sql
 !server/sql/migrations/20260821_kph_work_center_list_meta.sql
 !server/sql/migrations/20260824_check_catalog_management_permission.sql
+!server/sql/migrations/20260825_tren_chuyen_signature_form.sql
 
 *.xlsx

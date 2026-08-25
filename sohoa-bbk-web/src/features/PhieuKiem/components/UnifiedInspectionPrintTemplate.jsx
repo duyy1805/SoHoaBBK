@@ -102,7 +102,15 @@ const buildCongDoanRows = ({ phieu, plans, columns }) => plans.flatMap((plan, pl
         const totalDefects = defectTotal(defects) + dirty + insect;
         return {
             key: `cong-doan-${plan.Id || planIndex}-${lot?.Id || targetIndex}`,
-            date: formatDate(plan.NgayKeHoach || phieu?.NgayKiem),
+            date: formatDate(
+                lot?.NgayGhiNhan
+                || lot?.CreatedAt
+                || defects.find((defect) => defect?.NgayGhiNhan)?.NgayGhiNhan
+                || defects.find((defect) => defect?.CreatedAt)?.CreatedAt
+                || plan.CreatedAt
+                || plan.NgayKeHoach
+                || phieu?.NgayKiem
+            ),
             inspector: text(plan.TenNguoiGhiNhan || phieu?.TenNguoiKiem),
             worker: uniqueText(defects.map((defect) => defect.TenCongNhan)).join(", "),
             product: [text(plan.MaSanPham || plan.ItemCode), text(plan.TenSanPham)].filter(Boolean).join(" - "),

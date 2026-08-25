@@ -41,9 +41,15 @@ const mapSlot = (slot, slotIndex) => ({
         localId: entry.Id || `entry-${slotIndex}-${entryIndex}`,
         congDoan: entry.CongDoan || "",
         tenCongNhanGayLoi: entry.TenCongNhanGayLoi || "",
+        lot: entry.Lot || "",
         nguoiGhiNhanId: entry.NguoiGhiNhanId || null,
         tenNguoiGhiNhan: entry.TenNguoiGhiNhan || "",
         soLuongKiem: entry.SoLuongKiem == null ? "" : String(entry.SoLuongKiem),
+        tongSoLuong: entry.TongSoLuong == null ? "" : String(entry.TongSoLuong),
+        ketLuan: entry.KetLuan || "",
+        vatTuDauVaoStatus: entry.VatTuDauVaoStatus || "",
+        taiLieuStatus: entry.TaiLieuStatus || "",
+        thietBiStatus: entry.ThietBiStatus || "",
         soLoiBuiBan: String(entry.SoLoiBuiBan || ""),
         soLoiConTrung: String(entry.SoLoiConTrung || ""),
         ghiChu: entry.GhiChu || "",
@@ -67,15 +73,53 @@ const newEntry = (index, user) => ({
     localId: `entry-${Date.now()}-${index}`,
     congDoan: "",
     tenCongNhanGayLoi: "",
+    lot: "",
     nguoiGhiNhanId: user?.id || user?.userId || null,
     tenNguoiGhiNhan: user?.fullName || user?.FullName || "",
     soLuongKiem: "",
+    tongSoLuong: "",
+    ketLuan: "",
+    vatTuDauVaoStatus: "",
+    taiLieuStatus: "",
+    thietBiStatus: "",
     soLoiBuiBan: "",
     soLoiConTrung: "",
     ghiChu: "",
     sortOrder: index + 1,
     defects: []
 });
+
+const validateEntry = (entry) => {
+    if (!entry.congDoan.trim()) return "Chưa nhập tên công đoạn.";
+    if (!entry.tenCongNhanGayLoi.trim()) return "Chưa nhập công nhân.";
+    if (!Number.isInteger(Number(entry.soLuongKiem)) || Number(entry.soLuongKiem) <= 0) {
+        return "Số lượng kiểm phải là số nguyên dương.";
+    }
+    if (!Number.isInteger(Number(entry.tongSoLuong)) || Number(entry.tongSoLuong) < 0) {
+        return "Tổng số lượng phải là số nguyên không âm.";
+    }
+    if (Number(entry.tongSoLuong) < Number(entry.soLuongKiem)) {
+        return "Tổng số lượng phải lớn hơn hoặc bằng số lượng kiểm.";
+    }
+    if (!['DAT', 'KHONG_DAT'].includes(entry.ketLuan)) return "Chưa chọn kết luận.";
+    if (![entry.vatTuDauVaoStatus, entry.taiLieuStatus, entry.thietBiStatus].every((value) => ['OK', 'NOK'].includes(value))) {
+        return "Chưa chọn đủ OK/NOK cho ba nội dung kiểm soát.";
+    }
+    const specialTotal = Number(entry.soLoiBuiBan || 0) + Number(entry.soLoiConTrung || 0);
+    const total = entry.defects.reduce((sum, defect) => sum + Number(defect.soLuong || 0), specialTotal);
+    if (total > Number(entry.soLuongKiem)) return "Tổng lỗi vượt số lượng kiểm.";
+    const invalidRepair = entry.defects.find((defect) => {
+        const quantity = Number(defect.soLuong || 0);
+        const repairedPass = Number(defect.soLuongDatSauSua || 0);
+        const repairedFail = Number(defect.soLuongKhongDatSauSua || 0);
+        return !Number.isInteger(quantity) || quantity < 0
+            || !Number.isInteger(repairedPass) || repairedPass < 0
+            || !Number.isInteger(repairedFail) || repairedFail < 0
+            || repairedPass + repairedFail > quantity;
+    });
+    if (invalidRepair) return "Số lượng sửa đạt và sửa không đạt không được vượt số lỗi.";
+    return "";
+};
 
 export default function TrenChuyenSlotEditor({ open, phieuId, gioKiem, slots = [], onClose, onSaved }) {
     const user = useMemo(() => getCurrentUser(), []);
@@ -158,14 +202,8 @@ export default function TrenChuyenSlotEditor({ open, phieuId, gioKiem, slots = [
         if (!TREN_CHUYEN_HOURS.includes(slot.gioKiem)) return "Khung giờ không hợp lệ.";
         if (!slot.entries.length) return "Cần ít nhất một công đoạn để lưu.";
         for (const entry of slot.entries) {
-            if (!entry.congDoan.trim()) return "Có công đoạn chưa nhập tên.";
-            if (!entry.tenCongNhanGayLoi.trim()) return "Có công đoạn chưa nhập công nhân.";
-            if (!Number.isInteger(Number(entry.soLuongKiem)) || Number(entry.soLuongKiem) <= 0) {
-                return "Số lượng kiểm của mỗi công đoạn phải là số nguyên dương.";
-            }
-            const specialTotal = Number(entry.soLoiBuiBan || 0) + Number(entry.soLoiConTrung || 0);
-            const total = entry.defects.reduce((sum, defect) => sum + Number(defect.soLuong || 0), specialTotal);
-            if (total > Number(entry.soLuongKiem)) return "Tổng lỗi của một công đoạn vượt số lượng kiểm.";
+            const entryError = validateEntry(entry);
+            if (entryError) return `Công đoạn ${entry.congDoan || "chưa đặt tên"}: ${entryError}`;
         }
         return "";
     };
@@ -198,13 +236,21 @@ export default function TrenChuyenSlotEditor({ open, phieuId, gioKiem, slots = [
                 .sort((a, b) => a.sortOrder - b.sortOrder);
             await saveTrenChuyenData({
                 phieuKiemId: phieuId,
+                signatureFormVersion: 1,
+                signatureFormHour: readySlot.gioKiem,
                 slots: merged.map((item, slotIndex) => ({
                     gioKiem: item.gioKiem,
                     sortOrder: item.sortOrder || slotIndex + 1,
                     entries: item.entries.map((entry, entryIndex) => ({
                         congDoan: entry.congDoan.trim(),
                         tenCongNhanGayLoi: entry.tenCongNhanGayLoi.trim(),
+                        lot: entry.lot.trim(),
                         soLuongKiem: Number(entry.soLuongKiem),
+                        tongSoLuong: Number(entry.tongSoLuong),
+                        ketLuan: entry.ketLuan,
+                        vatTuDauVaoStatus: entry.vatTuDauVaoStatus,
+                        taiLieuStatus: entry.taiLieuStatus,
+                        thietBiStatus: entry.thietBiStatus,
                         soLoiBuiBan: Number(entry.soLoiBuiBan || 0),
                         soLoiConTrung: Number(entry.soLoiConTrung || 0),
                         nguoiGhiNhanId: entry.nguoiGhiNhanId || user?.id || user?.userId || null,
@@ -264,14 +310,33 @@ export default function TrenChuyenSlotEditor({ open, phieuId, gioKiem, slots = [
                                         <Typography fontWeight={800}>Công đoạn {entryIndex + 1}</Typography>
                                         <IconButton color="error" onClick={() => removeEntry(entryIndex)}><DeleteOutlineIcon /></IconButton>
                                     </Stack>
+                                    {validateEntry(entry) && <Alert severity="warning">{validateEntry(entry)}</Alert>}
                                     <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                                         <TextField fullWidth label="Tên công đoạn" value={entry.congDoan} onChange={(event) => setEntry(entryIndex, { congDoan: event.target.value })} />
                                         <TextField fullWidth label="Công nhân" value={entry.tenCongNhanGayLoi} onChange={(event) => setEntry(entryIndex, { tenCongNhanGayLoi: event.target.value })} />
+                                        <TextField fullWidth label="Lot/Lô" value={entry.lot} slotProps={{ htmlInput: { maxLength: 100 } }} onChange={(event) => setEntry(entryIndex, { lot: event.target.value })} />
                                     </Stack>
                                     <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                                         <TextField fullWidth required label="Số lượng kiểm" type="number" value={entry.soLuongKiem} onChange={(event) => setEntry(entryIndex, { soLuongKiem: event.target.value.replace(/\D/g, "") })} />
+                                        <TextField fullWidth required label="Tổng SL" type="number" value={entry.tongSoLuong} onChange={(event) => setEntry(entryIndex, { tongSoLuong: event.target.value.replace(/\D/g, "") })} />
                                         <TextField fullWidth label="Bụi bẩn" type="number" value={entry.soLoiBuiBan} onChange={(event) => setEntry(entryIndex, { soLoiBuiBan: event.target.value.replace(/\D/g, "") })} />
                                         <TextField fullWidth label="Côn trùng" type="number" value={entry.soLoiConTrung} onChange={(event) => setEntry(entryIndex, { soLoiConTrung: event.target.value.replace(/\D/g, "") })} />
+                                    </Stack>
+                                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                                        <TextField fullWidth required select label="Kết luận" value={entry.ketLuan} onChange={(event) => setEntry(entryIndex, { ketLuan: event.target.value })}>
+                                            <MenuItem value="DAT">Đạt</MenuItem>
+                                            <MenuItem value="KHONG_DAT">Không đạt</MenuItem>
+                                        </TextField>
+                                        {[
+                                            ['vatTuDauVaoStatus', 'Vật tư đầu vào'],
+                                            ['taiLieuStatus', 'Tài liệu'],
+                                            ['thietBiStatus', 'Thiết bị']
+                                        ].map(([field, label]) => (
+                                            <TextField key={field} fullWidth required select label={label} value={entry[field]} onChange={(event) => setEntry(entryIndex, { [field]: event.target.value })}>
+                                                <MenuItem value="OK">OK</MenuItem>
+                                                <MenuItem value="NOK">NOK</MenuItem>
+                                            </TextField>
+                                        ))}
                                     </Stack>
                                     <TextField label="Ghi chú công đoạn" multiline minRows={2} value={entry.ghiChu} onChange={(event) => setEntry(entryIndex, { ghiChu: event.target.value })} />
                                     <DefectPickerDialog

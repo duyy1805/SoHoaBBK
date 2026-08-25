@@ -24,7 +24,12 @@ import {
     IconButton,
     Tooltip,
     Tabs,
-    Tab
+    Tab,
+    FormControl,
+    FormControlLabel,
+    FormLabel,
+    Radio,
+    RadioGroup
 } from "@mui/material";
 import { PhieuKiemPrintTemplate } from "../components/PhieuKiemPrintTemplate";
 import { DekOfficialPrintTemplate } from "../components/DekOfficialPrintTemplate";
@@ -51,7 +56,8 @@ import {
     confirmPX,
     deletePhieuKiem,
     createDongContRetest,
-    updatePhieuKiemActualQuantity
+    updatePhieuKiemActualQuantity,
+    updateInputInspectionMode
 } from "../../../api/phieuKiem.api";
 
 import { getSanPhamNhomKiem, getInspectionLevels, updateSanPhamImage, uploadSanPhamImage } from "../../../api/lookup.api"
@@ -89,6 +95,8 @@ export default function PhieuKiemDetail() {
     const [actionNotice, setActionNotice] = useState(null);
     const [actualQuantity, setActualQuantity] = useState("");
     const [savingActualQuantity, setSavingActualQuantity] = useState(false);
+    const [inputInspectionMode, setInputInspectionMode] = useState("");
+    const [savingInputInspectionMode, setSavingInputInspectionMode] = useState(false);
     const componentRef = useRef();
     const dekOfficialPrintRef = useRef();
     const productImageInputRef = useRef(null);
@@ -173,6 +181,9 @@ export default function PhieuKiemDetail() {
             setCheckItems(data.checkItems);
             setDefects(data.defects);
             setDynamicFields(data.dynamicFields);
+            setInputInspectionMode(String(
+                (data.dynamicFields || []).find((field) => field?.FieldName === "LoaiKiemTra")?.FieldValue || ""
+            ).toUpperCase());
             setXacNhans(data.xacNhans || []);
             setCapabilities(data.capabilities || {});
             setRetestInfo(data.retestInfo || null);
@@ -224,6 +235,32 @@ export default function PhieuKiemDetail() {
             });
         } finally {
             setSavingActualQuantity(false);
+        }
+    };
+
+    const handleInputInspectionModeChange = async (event) => {
+        const nextMode = String(event.target.value || "").toUpperCase();
+        if (!['CD1', 'CD2'].includes(nextMode) || nextMode === inputInspectionMode) return;
+
+        const previousMode = inputInspectionMode;
+        try {
+            setSavingInputInspectionMode(true);
+            setActionNotice(null);
+            setInputInspectionMode(nextMode);
+            await updateInputInspectionMode(id, nextMode);
+            setDynamicFields((current) => {
+                const remaining = (current || []).filter((field) => field?.FieldName !== "LoaiKiemTra");
+                return [...remaining, { FieldName: "LoaiKiemTra", FieldValue: nextMode }];
+            });
+            setActionNotice({ type: "success", message: `Đã lưu chế độ kiểm đầu vào ${nextMode}.` });
+        } catch (error) {
+            setInputInspectionMode(previousMode);
+            setActionNotice({
+                type: "error",
+                message: error.response?.data?.message || "Không lưu được chế độ kiểm đầu vào."
+            });
+        } finally {
+            setSavingInputInspectionMode(false);
         }
     };
 
@@ -638,6 +675,46 @@ export default function PhieuKiemDetail() {
                                 <Typography variant="subtitle2">Mức độ kiểm tra</Typography>
                                 <Typography fontWeight={600} color="secondary">{phieu?.MucDoKiemTra || "Chưa xác định"}</Typography>
                             </Grid>
+                            {Number(phieu?.LoaiKiemId) === 1 && (
+                                <Grid size={{ xs: 12 }}>
+                                    <FormControl
+                                        component="fieldset"
+                                        disabled={!canEditInspection || savingInputInspectionMode}
+                                        sx={{ width: "100%" }}
+                                    >
+                                        <FormLabel component="legend" sx={{ fontWeight: 700, color: "text.primary" }}>
+                                            Chế độ kiểm đầu vào
+                                        </FormLabel>
+                                        <RadioGroup
+                                            value={inputInspectionMode}
+                                            onChange={handleInputInspectionModeChange}
+                                            sx={{
+                                                mt: 0.5,
+                                                flexDirection: { xs: "column", md: "row" },
+                                                columnGap: 4
+                                            }}
+                                        >
+                                            <FormControlLabel
+                                                value="CD1"
+                                                control={<Radio />}
+                                                label="CĐ1 - Kiểm tra bình thường"
+                                            />
+                                            <FormControlLabel
+                                                value="CD2"
+                                                control={<Radio />}
+                                                label="CĐ2 - Kiểm lần đầu, lô trước không đạt, có khiếu nại hoặc cảnh báo"
+                                            />
+                                        </RadioGroup>
+                                        <Typography variant="caption" color="text.secondary">
+                                            {savingInputInspectionMode
+                                                ? "Đang lưu lựa chọn..."
+                                                : inputInspectionMode
+                                                    ? `Đã chọn ${inputInspectionMode}; bản in sẽ tự động tích đúng ô.`
+                                                    : "Chưa chọn chế độ kiểm đầu vào."}
+                                        </Typography>
+                                    </FormControl>
+                                </Grid>
+                            )}
                         </Grid>
 
                     </CardContent>
