@@ -92,32 +92,10 @@ const newEntry = (index, user) => ({
 const validateEntry = (entry) => {
     if (!entry.congDoan.trim()) return "Chưa nhập tên công đoạn.";
     if (!entry.tenCongNhanGayLoi.trim()) return "Chưa nhập công nhân.";
-    if (!Number.isInteger(Number(entry.soLuongKiem)) || Number(entry.soLuongKiem) <= 0) {
-        return "Số lượng kiểm phải là số nguyên dương.";
-    }
-    if (!Number.isInteger(Number(entry.tongSoLuong)) || Number(entry.tongSoLuong) < 0) {
-        return "Tổng số lượng phải là số nguyên không âm.";
-    }
-    if (Number(entry.tongSoLuong) < Number(entry.soLuongKiem)) {
-        return "Tổng số lượng phải lớn hơn hoặc bằng số lượng kiểm.";
-    }
     if (!['DAT', 'KHONG_DAT'].includes(entry.ketLuan)) return "Chưa chọn kết luận.";
     if (![entry.vatTuDauVaoStatus, entry.taiLieuStatus, entry.thietBiStatus].every((value) => ['OK', 'NOK'].includes(value))) {
         return "Chưa chọn đủ OK/NOK cho ba nội dung kiểm soát.";
     }
-    const specialTotal = Number(entry.soLoiBuiBan || 0) + Number(entry.soLoiConTrung || 0);
-    const total = entry.defects.reduce((sum, defect) => sum + Number(defect.soLuong || 0), specialTotal);
-    if (total > Number(entry.soLuongKiem)) return "Tổng lỗi vượt số lượng kiểm.";
-    const invalidRepair = entry.defects.find((defect) => {
-        const quantity = Number(defect.soLuong || 0);
-        const repairedPass = Number(defect.soLuongDatSauSua || 0);
-        const repairedFail = Number(defect.soLuongKhongDatSauSua || 0);
-        return !Number.isInteger(quantity) || quantity < 0
-            || !Number.isInteger(repairedPass) || repairedPass < 0
-            || !Number.isInteger(repairedFail) || repairedFail < 0
-            || repairedPass + repairedFail > quantity;
-    });
-    if (invalidRepair) return "Số lượng sửa đạt và sửa không đạt không được vượt số lỗi.";
     return "";
 };
 
@@ -245,8 +223,8 @@ export default function TrenChuyenSlotEditor({ open, phieuId, gioKiem, slots = [
                         congDoan: entry.congDoan.trim(),
                         tenCongNhanGayLoi: entry.tenCongNhanGayLoi.trim(),
                         lot: entry.lot.trim(),
-                        soLuongKiem: Number(entry.soLuongKiem),
-                        tongSoLuong: Number(entry.tongSoLuong),
+                        soLuongKiem: entry.soLuongKiem === "" ? null : Number(entry.soLuongKiem),
+                        tongSoLuong: entry.tongSoLuong === "" ? null : Number(entry.tongSoLuong),
                         ketLuan: entry.ketLuan,
                         vatTuDauVaoStatus: entry.vatTuDauVaoStatus,
                         taiLieuStatus: entry.taiLieuStatus,
@@ -317,8 +295,8 @@ export default function TrenChuyenSlotEditor({ open, phieuId, gioKiem, slots = [
                                         <TextField fullWidth label="Lot/Lô" value={entry.lot} slotProps={{ htmlInput: { maxLength: 100 } }} onChange={(event) => setEntry(entryIndex, { lot: event.target.value })} />
                                     </Stack>
                                     <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                                        <TextField fullWidth required label="Số lượng kiểm" type="number" value={entry.soLuongKiem} onChange={(event) => setEntry(entryIndex, { soLuongKiem: event.target.value.replace(/\D/g, "") })} />
-                                        <TextField fullWidth required label="Tổng SL" type="number" value={entry.tongSoLuong} onChange={(event) => setEntry(entryIndex, { tongSoLuong: event.target.value.replace(/\D/g, "") })} />
+                                        <TextField fullWidth label="Số lượng kiểm" type="number" value={entry.soLuongKiem} onChange={(event) => setEntry(entryIndex, { soLuongKiem: event.target.value.replace(/\D/g, "") })} />
+                                        <TextField fullWidth label="Tổng SL" type="number" value={entry.tongSoLuong} onChange={(event) => setEntry(entryIndex, { tongSoLuong: event.target.value.replace(/\D/g, "") })} />
                                         <TextField fullWidth label="Bụi bẩn" type="number" value={entry.soLoiBuiBan} onChange={(event) => setEntry(entryIndex, { soLoiBuiBan: event.target.value.replace(/\D/g, "") })} />
                                         <TextField fullWidth label="Côn trùng" type="number" value={entry.soLoiConTrung} onChange={(event) => setEntry(entryIndex, { soLoiConTrung: event.target.value.replace(/\D/g, "") })} />
                                     </Stack>

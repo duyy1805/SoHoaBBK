@@ -933,6 +933,8 @@ const normalizeTrenChuyenSlots = (slots = []) => slots.map((slot, slotIndex) => 
             lotProvided: Object.prototype.hasOwnProperty.call(entry || {}, 'lot')
                 || Object.prototype.hasOwnProperty.call(entry || {}, 'Lot'),
             lot: String(entry?.lot ?? entry?.Lot ?? '').trim(),
+            tongSoLuongProvided: Object.prototype.hasOwnProperty.call(entry || {}, 'tongSoLuong')
+                || Object.prototype.hasOwnProperty.call(entry || {}, 'TongSoLuong'),
             soLuongKiem: optionalNonNegativeInteger(entry?.soLuongKiem ?? entry?.SoLuongKiem),
             tongSoLuong: optionalNonNegativeInteger(entry?.tongSoLuong ?? entry?.TongSoLuong),
             ketLuan: String(entry?.ketLuan ?? entry?.KetLuan ?? '').trim().toUpperCase() || null,
@@ -2572,8 +2574,7 @@ router.post(
                     const repairedFail = repairedFailRaw === '' || repairedFailRaw == null ? 0 : Number(repairedFailRaw);
                     return !Number.isInteger(quantity) || quantity < 0
                         || !Number.isInteger(repairedPass) || repairedPass < 0
-                        || !Number.isInteger(repairedFail) || repairedFail < 0
-                        || repairedPass + repairedFail > quantity;
+                        || !Number.isInteger(repairedFail) || repairedFail < 0;
                 });
             if (invalidRawDefect) {
                 return res.status(400).json({ message: 'Số lỗi và số lượng sau sửa phải là số nguyên không âm; tổng sau sửa không được vượt số lỗi' });
@@ -2582,29 +2583,24 @@ router.post(
             const usesSignatureForm = Number(signatureFormVersion) >= 1;
             const normalizedEntries = normalizedSlots.flatMap((slot) => slot.entries.map((entry) => ({ ...entry, gioKiem: slot.gioKiem })));
             const invalidEntry = normalizedEntries.find((entry) => {
-                const totalDefects = entry.defects.reduce((sum, defect) => sum + Number(defect.soLuong || 0), 0)
-                    + entry.soLoiBuiBan + entry.soLoiConTrung;
                 const invalidStatuses = (entry.ketLuan && !['DAT', 'KHONG_DAT'].includes(entry.ketLuan))
                     || (entry.vatTuDauVaoStatus && !['OK', 'NOK'].includes(entry.vatTuDauVaoStatus))
                     || (entry.taiLieuStatus && !['OK', 'NOK'].includes(entry.taiLieuStatus))
                     || (entry.thietBiStatus && !['OK', 'NOK'].includes(entry.thietBiStatus));
                 const requiresSignatureData = usesSignatureForm && (!signatureFormHour || entry.gioKiem === signatureFormHour);
                 const missingSignatureData = requiresSignatureData && (
-                    entry.tongSoLuong === null || entry.soLuongKiem === null
-                    || !entry.ketLuan || !entry.vatTuDauVaoStatus
+                    !entry.ketLuan || !entry.vatTuDauVaoStatus
                     || !entry.taiLieuStatus || !entry.thietBiStatus
                 );
                 return Number.isNaN(entry.soLuongKiem) || Number.isNaN(entry.tongSoLuong)
                     || entry.lot.length > 100
                     || !Number.isInteger(entry.soLoiBuiBan) || entry.soLoiBuiBan < 0
                     || !Number.isInteger(entry.soLoiConTrung) || entry.soLoiConTrung < 0
-                    || invalidStatuses || missingSignatureData
-                    || (entry.soLuongKiem !== null && totalDefects > entry.soLuongKiem)
-                    || (entry.tongSoLuong !== null && entry.soLuongKiem !== null && entry.tongSoLuong < entry.soLuongKiem);
+                    || invalidStatuses || missingSignatureData;
             });
             if (invalidEntry) {
                 return res.status(400).json({
-                    message: 'Dữ liệu bản ký không hợp lệ: Tổng SL ≥ SL kiểm ≥ tổng SL lỗi; số lượng phải là số nguyên không âm và các lựa chọn phải đầy đủ, đúng giá trị'
+                    message: 'Dữ liệu bản ký không hợp lệ: số lượng phải là số nguyên không âm và các lựa chọn phải đúng giá trị'
                 });
             }
 
@@ -2639,6 +2635,7 @@ router.post(
                             .input('SoLuongKiem', sql.Int, entry.soLuongKiem)
                             .input('LotProvided', sql.Bit, entry.lotProvided ? 1 : 0)
                             .input('Lot', sql.NVarChar(100), entry.lot)
+                            .input('TongSoLuongProvided', sql.Bit, entry.tongSoLuongProvided ? 1 : 0)
                             .input('TongSoLuong', sql.Int, entry.tongSoLuong)
                             .input('KetLuan', sql.NVarChar(20), entry.ketLuan)
                             .input('VatTuDauVaoStatus', sql.NVarChar(10), entry.vatTuDauVaoStatus)
@@ -2650,7 +2647,7 @@ router.post(
                                 UPDATE dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY
                                 SET SoLuongKiem = @SoLuongKiem,
                                     Lot = CASE WHEN @LotProvided = 1 THEN NULLIF(@Lot, N'') ELSE Lot END,
-                                    TongSoLuong = COALESCE(@TongSoLuong, TongSoLuong),
+                                    TongSoLuong = CASE WHEN @TongSoLuongProvided = 1 THEN @TongSoLuong ELSE TongSoLuong END,
                                     KetLuan = COALESCE(@KetLuan, KetLuan),
                                     VatTuDauVaoStatus = COALESCE(@VatTuDauVaoStatus, VatTuDauVaoStatus),
                                     TaiLieuStatus = COALESCE(@TaiLieuStatus, TaiLieuStatus),
@@ -3356,8 +3353,10 @@ router.post(
                 || !String(entry.TenCongNhanGayLoi || '').trim()
                 || !Number.isInteger(Number(entry.SoLuongKiem))
                 || Number(entry.SoLuongKiem) <= 0
-                || !Number.isInteger(Number(entry.TongSoLuong))
-                || Number(entry.TongSoLuong) < Number(entry.SoLuongKiem)
+                || (entry.TongSoLuong !== null && entry.TongSoLuong !== undefined && (
+                    !Number.isInteger(Number(entry.TongSoLuong))
+                    || Number(entry.TongSoLuong) < Number(entry.SoLuongKiem)
+                ))
                 || Number(entry.TongLoi || 0) > Number(entry.SoLuongKiem)
                 || !['DAT', 'KHONG_DAT'].includes(String(entry.KetLuan || '').toUpperCase())
                 || !['OK', 'NOK'].includes(String(entry.VatTuDauVaoStatus || '').toUpperCase())
@@ -3366,7 +3365,7 @@ router.post(
             ));
             if (invalidSignatureEntry) {
                 return res.status(409).json({
-                    message: `Dòng kiểm #${invalidSignatureEntry.Id} chưa đủ dữ liệu bản ký hoặc không thỏa Tổng SL ≥ SL kiểm ≥ tổng SL lỗi`
+                    message: `Dòng kiểm #${invalidSignatureEntry.Id} chưa đủ dữ liệu bản ký, có tổng lỗi vượt SL kiểm hoặc Tổng SL đã nhập nhỏ hơn SL kiểm`
                 });
             }
             const versionResult = await pool.request()

@@ -97,29 +97,31 @@ const buildRows = (slots, fields, phieu) => {
     }));
 };
 
-const border = { border: "0.6px solid #000" };
-const th = { ...border, padding: "2px 1px", textAlign: "center", verticalAlign: "middle", fontWeight: 700, lineHeight: 1.05 };
-const td = { ...border, padding: "1px", textAlign: "center", verticalAlign: "middle", height: "4.7mm", lineHeight: 1.02 };
-const vertical = { writingMode: "vertical-rl", transform: "rotate(180deg)", height: "24mm", display: "inline-flex", alignItems: "center", justifyContent: "center" };
+const border = { border: "1px solid #000" };
+const th = { ...border, padding: "1px", textAlign: "center", verticalAlign: "middle", fontWeight: 700, lineHeight: 1.05, overflowWrap: "anywhere" };
+const td = { ...border, padding: "1px 2px", textAlign: "center", verticalAlign: "middle", height: "5mm", lineHeight: 1.05, overflowWrap: "anywhere" };
+const vertical = { writingMode: "vertical-rl", transform: "rotate(180deg)", height: "23mm", display: "inline-flex", alignItems: "center", justifyContent: "center", whiteSpace: "nowrap" };
 
 function Header({ workshop, team, week, date, product, pageNote }) {
     return <>
-        <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-            <tbody><tr>
-                <td style={{ ...border, width: "21%", textAlign: "center", padding: 3 }}><img src="/logo.png" alt="Z76" style={{ height: 45, maxWidth: "90%", objectFit: "contain" }} /></td>
-                <td style={{ ...border, width: "59%", textAlign: "center", padding: 3 }}>
-                    <div style={{ fontSize: 11 }}>CÔNG TY TNHH MTV 76</div>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginTop: 5 }}>{FORM.title}</div>
-                </td>
-                <td style={{ ...border, width: "20%", fontSize: 9, lineHeight: 1.35, padding: 4 }}>
-                    <div>Mã số: {FORM.code}</div><div>Ngày hiệu lực: {FORM.effectiveDate}</div><div>Phiên bản: {FORM.version}</div>
-                </td>
-            </tr></tbody>
+        <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 8 }}>
+            <tbody>
+                <tr>
+                    <td rowSpan={3} style={{ ...th, width: "16%" }}><img src="/logo.png" alt="Z76" style={{ width: "86%", maxHeight: 54, objectFit: "contain", display: "block", margin: "0 auto" }} /></td>
+                    <td style={{ ...th, fontSize: 11, fontWeight: 400 }}>CÔNG TY TNHH MTV 76</td>
+                    <td style={{ ...th, width: "23%", textAlign: "left", paddingLeft: 6 }}>Mã số: {FORM.code}</td>
+                </tr>
+                <tr>
+                    <td rowSpan={2} style={{ ...th, fontWeight: 700, fontSize: 15 }}>{FORM.title}</td>
+                    <td style={{ ...th, textAlign: "left", paddingLeft: 6 }}>Ngày hiệu lực: {FORM.effectiveDate}</td>
+                </tr>
+                <tr><td style={{ ...th, textAlign: "left", paddingLeft: 6 }}>Phiên bản: {FORM.version}</td></tr>
+            </tbody>
         </table>
-        <div style={{ display: "grid", gridTemplateColumns: "1.2fr .65fr .55fr .65fr", gap: 8, margin: "4px 0 2px", fontSize: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1.25fr .75fr .45fr .7fr", gap: 12, minHeight: "7mm", alignItems: "center", fontSize: 9 }}>
             <div>Phân xưởng: <b>{workshop}</b></div><div>Tổ: <b>{team}</b></div><div>Tuần: <b>{week}</b></div><div>Ngày: <b>{date}</b></div>
         </div>
-        <div style={{ textAlign: "center", fontSize: 10, marginBottom: 4 }}>Sản phẩm: <b>{product}</b>{pageNote ? ` — ${pageNote}` : ""}</div>
+        <div style={{ textAlign: "center", fontWeight: 700, fontSize: 11, minHeight: "6mm" }}>Sản phẩm: {product}{pageNote ? ` — ${pageNote}` : ""}</div>
     </>;
 }
 
@@ -127,33 +129,46 @@ function InspectionTable({ rows, columns }) {
     const paddedColumns = [...columns];
     while (paddedColumns.length < DEFECTS_PER_PAGE) paddedColumns.push({ id: `blank-${paddedColumns.length}`, label: "", code: "" });
     const paddedRows = [...rows];
-    while (paddedRows.length < ROWS_PER_PAGE) paddedRows.push({ key: `blank-row-${paddedRows.length}`, severity: {}, defectMap: {} });
-    return <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 6.7 }}>
+    while (paddedRows.length < ROWS_PER_PAGE) paddedRows.push({ key: `blank-row-${paddedRows.length}`, blank: true, severity: {}, defectMap: {} });
+    const dateSpans = paddedRows.map((row, index) => {
+        if (row.blank) return 1;
+        const groupKey = `${row.date || ""}|${row.time || ""}`;
+        const previous = paddedRows[index - 1];
+        if (previous && !previous.blank && `${previous.date || ""}|${previous.time || ""}` === groupKey) return 0;
+        let span = 1;
+        while (index + span < paddedRows.length) {
+            const next = paddedRows[index + span];
+            if (next.blank || `${next.date || ""}|${next.time || ""}` !== groupKey) break;
+            span += 1;
+        }
+        return span;
+    });
+    return <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 6.5 }}>
         <colgroup>
-            <col style={{ width: "14mm" }} /><col style={{ width: "28mm" }} /><col style={{ width: "10mm" }} />
-            <col style={{ width: "9mm" }} /><col style={{ width: "9mm" }} /><col style={{ width: "10mm" }} /><col style={{ width: "11mm" }} />
-            <col style={{ width: "6mm" }} /><col style={{ width: "6mm" }} /><col style={{ width: "6mm" }} />
-            <col style={{ width: "10mm" }} /><col style={{ width: "9mm" }} /><col style={{ width: "8mm" }} />
-            {paddedColumns.map((column) => <col key={`col-${column.id}`} style={{ width: "8.7mm" }} />)}
-            <col style={{ width: "7mm" }} /><col style={{ width: "8mm" }} />
+            <col style={{ width: "5%" }} /><col style={{ width: "10%" }} /><col style={{ width: "4%" }} />
+            <col style={{ width: "3.2%" }} /><col style={{ width: "3.2%" }} /><col style={{ width: "3.5%" }} /><col style={{ width: "4%" }} />
+            <col style={{ width: "2%" }} /><col style={{ width: "2%" }} /><col style={{ width: "2%" }} />
+            <col style={{ width: "3.5%" }} /><col style={{ width: "3.5%" }} /><col style={{ width: "3.5%" }} />
+            {paddedColumns.map((column) => <col key={`col-${column.id}`} style={{ width: "3.3%" }} />)}
+            <col style={{ width: "4%" }} /><col style={{ width: "4%" }} />
         </colgroup>
         <thead>
             <tr>
-                <th style={th} rowSpan={3}>Ngày</th><th style={th} rowSpan={3}>Công nhân/BTP</th><th style={th} rowSpan={3}>Lô</th>
-                <th style={th} rowSpan={3}>SL lỗi</th><th style={th} rowSpan={3}>SL kiểm</th><th style={th} rowSpan={3}>Tổng SL</th><th style={th} rowSpan={3}>Kết luận</th>
+                <th style={th} rowSpan={2}>Ngày</th><th style={th} rowSpan={2}>Công nhân/BTP</th><th style={th} rowSpan={2}>Lô</th>
+                <th style={th} rowSpan={2}>SL lỗi</th><th style={th} rowSpan={2}>SL kiểm</th><th style={th} rowSpan={2}>Tổng SL</th><th style={th} rowSpan={2}>Kết luận</th>
                 <th style={th} colSpan={3}>Mức độ lỗi</th><th style={th} colSpan={3}>Kiểm soát</th><th style={th} colSpan={DEFECTS_PER_PAGE}>Dạng lỗi (Số lỗi)</th>
                 <th style={th} colSpan={2}>Báo cáo sửa lỗi</th>
             </tr>
             <tr>
-                <th style={th} rowSpan={2}><span style={vertical}>Nhẹ</span></th><th style={th} rowSpan={2}><span style={vertical}>Nặng</span></th><th style={th} rowSpan={2}><span style={vertical}>Nghiêm trọng</span></th>
-                <th style={th} rowSpan={2}><span style={vertical}>Vật tư đầu vào</span></th><th style={th} rowSpan={2}><span style={vertical}>Tài liệu</span></th><th style={th} rowSpan={2}><span style={vertical}>Thiết bị</span></th>
-                {paddedColumns.map((column) => <th key={column.id} style={th} rowSpan={2}><span style={vertical}>{[column.code, column.label].filter(Boolean).join(" - ")}</span></th>)}
-                <th style={th} rowSpan={2}>SL đạt</th><th style={th} rowSpan={2}>SL không đạt</th>
-            </tr><tr />
+                <th style={th}><span style={vertical}>Nhẹ</span></th><th style={th}><span style={vertical}>Nặng</span></th><th style={th}><span style={vertical}>Nghiêm trọng</span></th>
+                <th style={th}><span style={vertical}>Vật tư đầu vào</span></th><th style={th}><span style={vertical}>Tài liệu</span></th><th style={th}><span style={vertical}>Thiết bị</span></th>
+                {paddedColumns.map((column) => <th key={column.id} style={th}><span style={vertical}>{[column.code, column.label].filter(Boolean).join(" - ")}</span></th>)}
+                <th style={th}>SL đạt</th><th style={th}>SL không đạt</th>
+            </tr>
         </thead>
-        <tbody>{paddedRows.map((row) => <tr key={row.key}>
-            <td style={td}><div>{row.date || ""}</div><div>{row.time || ""}</div></td>
-            <td style={{ ...td, textAlign: "left", paddingLeft: 2 }}><div style={{ fontWeight: 700 }}>{row.worker || ""}</div><div>{row.process || ""}</div></td>
+        <tbody>{paddedRows.map((row, rowIndex) => <tr key={row.key}>
+            {dateSpans[rowIndex] > 0 && <td rowSpan={dateSpans[rowIndex]} style={td}><div>{row.date || ""}</div><div>{row.time || ""}</div></td>}
+            <td style={{ ...td, textAlign: "left", paddingLeft: 2 }}><div style={{ fontWeight: 700 }}>{row.worker || ""}</div><div>{row.process ? `CĐ: ${row.process}` : ""}</div></td>
             <td style={td}>{row.lot || ""}</td><td style={td}>{printableNumber(row.defectTotal)}</td><td style={td}>{printableNumber(row.checked)}</td><td style={td}>{printableNumber(row.total)}</td><td style={td}>{row.conclusion || ""}</td>
             <td style={td}>{row.severity?.minor || ""}</td><td style={td}>{row.severity?.major || ""}</td><td style={td}>{row.severity?.critical || ""}</td>
             <td style={td}>{row.material || ""}</td><td style={td}>{row.document || ""}</td><td style={td}>{row.equipment || ""}</td>
@@ -165,14 +180,14 @@ function InspectionTable({ rows, columns }) {
 
 function Footer({ qc, ttsx }) {
     return <>
-        <div style={{ marginTop: 4, fontSize: 7.4, lineHeight: 1.18, fontStyle: "italic" }}>
+        <div style={{ margin: "2mm 10mm 0", fontSize: 7, lineHeight: 1.22, fontWeight: 700, fontStyle: "italic" }}>
             <div><b>* Ghi chú:</b> Báo cáo không được sửa chữa, tẩy xóa; QC gạch chéo vào thông tin sai, ghi lại thông tin đúng và ký tên bên cạnh.</div>
             <div>- QC ghi tổng số lượng với trường hợp bị ít chiếc và không cộng vào tổng cuối giờ hoặc cuối ca kiểm số lượng nhập.</div>
             <div>- Khi kiểm tra lỗi sửa không đạt, QC khoanh tròn lỗi đó (không cộng lỗi khoanh tròn), cho sửa và kiểm tra lại; nếu không đạt thì lập biên bản.</div>
             <div>- Nếu phát sinh dạng lỗi chưa có: QC ghi thêm vào cột trống và gạch bỏ dạng lỗi không xảy ra; ô có hai dạng lỗi thì gạch bỏ dạng không xảy ra.</div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", marginTop: 5, fontSize: 10, textAlign: "center" }}>
-            {[["QC", qc], ["TTSX", ttsx]].map(([title, signer]) => <div key={title} style={{ minHeight: 63 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", marginTop: 4, fontSize: 10, textAlign: "center" }}>
+            {[["QC", qc], ["TTSX", ttsx]].map(([title, signer]) => <div key={title} style={{ minHeight: 58 }}>
                 <div style={{ fontWeight: 700 }}>{title}</div>
                 <PrintSignatureImage src={signer.signature} height={36} />
                 <div style={{ fontWeight: 700 }}>{signer.name}</div>
@@ -194,9 +209,9 @@ const TrenChuyenSignaturePrintTemplate = forwardRef(function TrenChuyenSignature
     const ttsx = { name: tbp.TenNguoiXacNhan || "", signature: tbp.SignatureDataUrl || null };
     const pages = rowPages.flatMap((pageRows, rowPageIndex) => columnPages.map((pageColumns, columnPageIndex) => ({ pageRows, pageColumns, rowPageIndex, columnPageIndex })));
 
-    return <div ref={ref}>
-        <style>{`@page{size:A4 landscape;margin:6mm}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.tren-chuyen-signature-page{break-after:page;page-break-after:always}.tren-chuyen-signature-page:last-child{break-after:auto;page-break-after:auto}}`}</style>
-        {pages.map((page, index) => <div className="tren-chuyen-signature-page" key={`${page.rowPageIndex}-${page.columnPageIndex}`} style={{ width: "285mm", minHeight: "198mm", boxSizing: "border-box", background: "#fff", color: "#000", fontFamily: '"Times New Roman", serif' }}>
+    return <div ref={ref} className="tren-chuyen-signature-root">
+        <style>{`@page{size:A4 landscape;margin:0}.tren-chuyen-signature-root{background:#fff;color:#000;font-family:"Times New Roman",serif}.tren-chuyen-signature-page{width:297mm;min-height:210mm;padding:5mm 6mm;box-sizing:border-box;background:#fff}@media print{html,body{margin:0!important;padding:0!important;background:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.tren-chuyen-signature-page{break-after:page;page-break-after:always}.tren-chuyen-signature-page:last-child{break-after:auto;page-break-after:auto}tr{break-inside:avoid;page-break-inside:avoid}}`}</style>
+        {pages.map((page, index) => <section className="tren-chuyen-signature-page" key={`${page.rowPageIndex}-${page.columnPageIndex}`}>
             <Header
                 workshop={phieu.PhanXuong || phieu.Ten_BoPhan || getFieldValue(fields, "TrenChuyen_PhanXuong")}
                 team={phieu.ToMay || getFieldValue(fields, "TrenChuyen_To")}
@@ -205,7 +220,7 @@ const TrenChuyenSignaturePrintTemplate = forwardRef(function TrenChuyenSignature
             />
             <InspectionTable rows={page.pageRows} columns={page.pageColumns} />
             <Footer qc={qc} ttsx={ttsx} />
-        </div>)}
+        </section>)}
     </div>;
 });
 
