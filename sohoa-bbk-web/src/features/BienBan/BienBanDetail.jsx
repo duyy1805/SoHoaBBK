@@ -65,6 +65,7 @@ import {
     confirmUser,
     getBoPhan,
     assignDepartments,
+    saveRecipientDepartments,
     saveStandaloneBienBanHeader,
     saveStandaloneBienBanDefects,
     saveBienBanDefects,
@@ -165,6 +166,7 @@ export default function BienBanDetail({ standalone = false }) {
     const [phieuKiemXacNhan, setPhieuKiemXacNhan] = useState([]);
     const [hanhDong, setHanhDong] = useState([]);
     const [specialistOpinions, setSpecialistOpinions] = useState([]);
+    const [recipientDepartments, setRecipientDepartments] = useState([]);
     const [followUpEvaluation, setFollowUpEvaluation] = useState(null);
 
     const [loading, setLoading] = useState(true);
@@ -183,6 +185,7 @@ export default function BienBanDetail({ standalone = false }) {
 
     // Modals state
     const [openAssignModal, setOpenAssignModal] = useState(false);
+    const [openRecipientModal, setOpenRecipientModal] = useState(false);
     const [openAssignUserModal, setOpenAssignUserModal] = useState(false);
     const [selectedAssign, setSelectedAssign] = useState(null);
     const [openXuLyModal, setOpenXuLyModal] = useState(false);
@@ -364,6 +367,7 @@ export default function BienBanDetail({ standalone = false }) {
             setPhieuKiemXacNhan(res.data.phieuKiemXacNhan || []);
             setHanhDong(res.data.hanhDong || []);
             setSpecialistOpinions(res.data.specialistOpinions || []);
+            setRecipientDepartments(res.data.recipientDepartments || []);
             setFollowUpEvaluation(res.data.followUpEvaluation || null);
             setDynamicFields(res.data.dynamicFields || []);
             setCanEditKphCustomFields(Boolean(res.data.canEditKphCustomFields ?? res.data.info?.canEditKphCustomFields));
@@ -1268,6 +1272,34 @@ export default function BienBanDetail({ standalone = false }) {
                                 </CardContent>
                             </Card>
 
+                            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                                <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1}
+                                        justifyContent="space-between" alignItems={{ sm: "center" }}>
+                                        <Box>
+                                            <Typography variant="h6" sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                                                <GroupWorkIcon color="action" /> Bộ phận nhận
+                                            </Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                                Thành viên các bộ phận này được quyền xem, không phát sinh trách nhiệm xử lý hoặc duyệt.
+                                            </Typography>
+                                        </Box>
+                                        {info.CanManageRecipientDepartments && (
+                                            <Button size="small" variant="outlined" onClick={() => setOpenRecipientModal(true)}>
+                                                Chọn bộ phận nhận
+                                            </Button>
+                                        )}
+                                    </Stack>
+                                    <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1.25 }}>
+                                        {recipientDepartments.length > 0 ? recipientDepartments.map((department) => (
+                                            <Chip key={department.BoPhanId}
+                                                label={[department.MaBoPhan, department.TenBoPhan].filter(Boolean).join(" - ")}
+                                                size="small" variant="outlined" />
+                                        )) : <Typography variant="body2" color="text.secondary">Chưa chọn bộ phận nhận.</Typography>}
+                                    </Stack>
+                                </CardContent>
+                            </Card>
+
                             {!isStandaloneBienBan && info.MauPhieuVersion === "V01" && (
                                 <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
                                     <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
@@ -2087,6 +2119,13 @@ export default function BienBanDetail({ standalone = false }) {
                 assignedIds={workflowDepartments.map(a => a.BoPhanId)}
                 isOpinionFlow={isV01}
             />
+            <RecipientDepartmentDialog
+                open={openRecipientModal}
+                onClose={() => setOpenRecipientModal(false)}
+                bienBanId={bienBanId}
+                reload={refreshData}
+                recipientIds={recipientDepartments.map((item) => Number(item.BoPhanId))}
+            />
             <XuLyDialog open={openXuLyModal} editingRow={editingXuLyRow} onClose={() => { setOpenXuLyModal(false); setEditingXuLyRow(null); }} bienBanId={bienBanId} reload={refreshData} />
             <ChiPhiDialog open={openChiPhiModal} editingRow={editingChiPhiRow} onClose={() => { setOpenChiPhiModal(false); setEditingChiPhiRow(null); }} bienBanId={bienBanId} reload={refreshData} />
             <HanhDongDialog open={openHanhDongModal} editingRow={editingHanhDongRow} onClose={() => { setOpenHanhDongModal(false); setEditingHanhDongRow(null); }} bienBanId={bienBanId} reload={refreshData} />
@@ -2121,6 +2160,70 @@ export default function BienBanDetail({ standalone = false }) {
 }
 
 // --- Sub-components (Dialogs) ---
+
+function RecipientDepartmentDialog({ open, onClose, bienBanId, reload, recipientIds }) {
+    const [departments, setDepartments] = useState([]);
+    const [selected, setSelected] = useState(recipientIds || []);
+    const [saving, setSaving] = useState(false);
+    const recipientIdsKey = (recipientIds || []).map(Number).sort((a, b) => a - b).join(",");
+
+    useEffect(() => {
+        if (!open) return;
+        setSelected(recipientIdsKey ? recipientIdsKey.split(",").map(Number) : []);
+        getBoPhan().then((response) => setDepartments(response.data || []));
+    }, [open, recipientIdsKey]);
+
+    const handleSubmit = async () => {
+        if (saving) return;
+        try {
+            setSaving(true);
+            await saveRecipientDepartments(bienBanId, selected);
+            onClose();
+            await reload();
+        } catch (error) {
+            alert(error?.response?.data?.message || "Không thể lưu bộ phận nhận");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+            <DialogTitle fontWeight="bold">Chọn bộ phận nhận</DialogTitle>
+            <DialogContent dividers>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                    Người thuộc bộ phận được chọn sẽ nhìn thấy biên bản hoặc phiếu KPH này.
+                </Typography>
+                <FormControl fullWidth>
+                    <InputLabel>Danh sách bộ phận</InputLabel>
+                    <Select multiple value={selected}
+                        onChange={(event) => setSelected(
+                            (typeof event.target.value === "string"
+                                ? event.target.value.split(",") : event.target.value).map(Number)
+                        )}
+                        label="Danh sách bộ phận"
+                        renderValue={(values) => values.map((id) => {
+                            const department = departments.find((item) => Number(item.Id) === Number(id));
+                            return department?.TenBoPhan || department?.MaBoPhan || `#${id}`;
+                        }).join(", ")}>
+                        {departments.map((department) => (
+                            <MenuItem key={department.Id} value={Number(department.Id)}>
+                                <Checkbox checked={selected.includes(Number(department.Id))} />
+                                <ListItemText primary={department.TenBoPhan} secondary={department.MaBoPhan} />
+                            </MenuItem>
+                        ))}
+                    </Select>
+                </FormControl>
+            </DialogContent>
+            <DialogActions sx={{ p: 2 }}>
+                <Button onClick={onClose} color="inherit" disabled={saving}>Hủy</Button>
+                <Button onClick={handleSubmit} variant="contained" disabled={saving}>
+                    {saving ? "Đang lưu..." : "Lưu bộ phận nhận"}
+                </Button>
+            </DialogActions>
+        </Dialog>
+    );
+}
 
 function AssignDepartmentDialog({ open, onClose, bienBanId, reload, assignedIds, isOpinionFlow = false }) {
     const [departments, setDepartments] = useState([]);

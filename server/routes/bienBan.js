@@ -19,6 +19,13 @@ const { sortKphListRows } = require("../utils/kphListSorting");
 const { loadKphSectionRows } = require("../utils/kphSectionRows");
 const { loadInputInspectionSource } = require("../utils/inputInspectionSource");
 const { canViewKphListItem } = require("../utils/kphListVisibility");
+const {
+    normalizeRecipientDepartmentIds,
+    getRecipientDepartments,
+    getRecipientBienBanIds,
+    getRecipientManageAccess,
+    loadRecipientDepartmentMap
+} = require("../utils/recipientDepartments");
 
 const hasPermission = (user, permissionCode) =>
     Array.isArray(user?.permissions) && user.permissions.includes(permissionCode);
@@ -431,7 +438,23 @@ router.get(
             }
 
             const result = await request.execute("sp_BienBan_GetList");
-            const rows = result.recordset || [];
+            let rows = result.recordset || [];
+
+            if (!isManager) {
+                const managedDepartmentIds = await getManagedDepartmentIds(
+                    pool, req.user.userId, req.user.boPhanId
+                );
+                const recipientIds = new Set(await getRecipientBienBanIds(pool, managedDepartmentIds));
+                if (recipientIds.size > 0) {
+                    const allResult = await pool.request().execute("sp_BienBan_GetList");
+                    const rowsById = new Map(rows.map((item) => [Number(item.BienBanId), item]));
+                    for (const item of allResult.recordset || []) {
+                        const id = Number(item.BienBanId);
+                        if (recipientIds.has(id)) rowsById.set(id, item);
+                    }
+                    rows = [...rowsById.values()];
+                }
+            }
 
             if (rows.length === 0) {
                 return res.json(rows);
@@ -687,12 +710,14 @@ router.get(
                 (listMetaResult.recordset || []).map((item) => [Number(item.BienBanId), item])
             );
             const listSummaryByBienBanId = await loadBienBanListSummaries(pool, bienBanIds);
+            const recipientDepartmentMap = await loadRecipientDepartmentMap(pool, bienBanIds);
 
             const normalizedRows = rows.map((item) => {
                 const listMeta = listMetaByBienBanId.get(Number(item.BienBanId)) || {};
                 const enrichedItem = mergeBienBanListSummary({
                     ...item,
-                    ...listMeta
+                    ...listMeta,
+                    RecipientDepartments: recipientDepartmentMap.get(Number(item.BienBanId)) || []
                 }, listSummaryByBienBanId.get(Number(item.BienBanId)));
                 const progress = progressByBienBanId.get(Number(item.BienBanId));
                 const normalProgress = normalProgressByBienBanId.get(Number(item.BienBanId));
@@ -807,6 +832,8 @@ router.get(
             const customFieldAccess = await getKphCustomFieldAccess(pool, id, req.user);
             const flowAccess = await getKphV01FlowAccess(pool, id, req.user);
             const sectionContributionAccess = await getKphSectionContributionAccess(pool, Number(id), req.user, flowAccess);
+            const recipientDepartments = await getRecipientDepartments(pool, Number(id));
+            const recipientAccess = await getRecipientManageAccess(pool, Number(id), req.user);
             let detailDefects = defectResult.recordset || [];
             if (flowAccess.isKphV01 && flowAccess.record.LoaiBienBan !== "STANDALONE") {
                 const overrideResult = await pool.request().input("BienBanId", sql.Int, id).query(`
@@ -1027,6 +1054,7 @@ router.get(
                     YeuCauChiPhi: Boolean(v01Data.meta.YeuCauChiPhi),
                     YeuCauHanhDong: Boolean(v01Data.meta.YeuCauHanhDong),
                     CanManageKphFlow: flowAccess.canEdit,
+                    CanManageRecipientDepartments: recipientAccess.canManage,
                     CanConfigureRequirements: flowAccess.canEdit,
                     CanContributeKphSections: sectionContributionAccess.canContribute,
                     CanEditReturned: flowAccess.canEdit && flowAccess.record.TrangThai === "TRA_LAI_CHINH_SUA",
@@ -1042,6 +1070,7 @@ router.get(
                 } : null,
                 defects: detailDefects,
                 assigns: mergedAssigns,
+                recipientDepartments,
                 xuLy: proposalResult.recordset || [],
                 chiPhi: sectionRows.chiPhi,
                 xacNhan: bienBanXacNhanRows.map((item) => withSignature(item, "NguoiXacNhanId")),
@@ -1063,6 +1092,69 @@ router.get(
 
             res.status(500).json({
                 message: "Lỗi tải chi tiết biên bản"
+            });
+        }
+    }
+);
+
+router.post(
+    "/:id/recipient-departments",
+    authenticateToken,
+    async (req, res) => {
+        const bienBanId = Number(req.params.id);
+        const boPhanIds = normalizeRecipientDepartmentIds(req.body?.boPhanIds);
+        if (!Number.isInteger(bienBanId) || bienBanId <= 0) {
+            return res.status(400).json({ message: "Biên bản không hợp lệ" });
+        }
+
+        const pool = await poolPromise;
+        const access = await getRecipientManageAccess(pool, bienBanId, req.user);
+        if (!access.exists) return res.status(404).json({ message: "Không tìm thấy biên bản" });
+        if (!access.canManage) {
+            return res.status(403).json({ message: "Bạn không có quyền chọn bộ phận nhận" });
+        }
+
+        const transaction = new sql.Transaction(pool);
+        try {
+            await transaction.begin();
+            if (boPhanIds.length > 0) {
+                const departmentResult = await new sql.Request(transaction)
+                    .input("BoPhanIds", sql.NVarChar(sql.MAX), boPhanIds.join(","))
+                    .query(`
+                        SELECT Id FROM dbo.DM_BO_PHAN
+                        WHERE Id IN (SELECT TRY_CONVERT(int,[value]) FROM STRING_SPLIT(@BoPhanIds,','))
+                          AND ISNULL(TrangThai,1)=1
+                    `);
+                if ((departmentResult.recordset || []).length !== boPhanIds.length) {
+                    const error = new Error("Danh sách bộ phận nhận có bộ phận không tồn tại hoặc đã ngưng hoạt động");
+                    error.statusCode = 400;
+                    throw error;
+                }
+            }
+
+            await new sql.Request(transaction)
+                .input("BienBanId", sql.Int, bienBanId)
+                .query("DELETE FROM dbo.BIEN_BAN_BO_PHAN_NHAN WHERE BienBanId=@BienBanId");
+            for (const boPhanId of boPhanIds) {
+                await new sql.Request(transaction)
+                    .input("BienBanId", sql.Int, bienBanId)
+                    .input("BoPhanId", sql.Int, boPhanId)
+                    .input("CreatedBy", sql.Int, Number(req.user.userId) || null)
+                    .query(`
+                        INSERT dbo.BIEN_BAN_BO_PHAN_NHAN (BienBanId,BoPhanId,CreatedBy)
+                        VALUES (@BienBanId,@BoPhanId,@CreatedBy)
+                    `);
+            }
+            await transaction.commit();
+            res.json({
+                success: true,
+                recipientDepartments: await getRecipientDepartments(pool, bienBanId)
+            });
+        } catch (error) {
+            try { await transaction.rollback(); } catch { /* transaction chưa bắt đầu */ }
+            console.error("SaveRecipientDepartments error:", error);
+            res.status(error.statusCode || 500).json({
+                message: error.message || "Không thể lưu bộ phận nhận"
             });
         }
     }

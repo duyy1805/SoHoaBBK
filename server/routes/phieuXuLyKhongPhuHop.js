@@ -12,6 +12,12 @@ const { loadSignatureDataUrlMap } = require("../utils/signatureImage");
 const { loadKphSectionRows } = require("../utils/kphSectionRows");
 const { canViewKphListItem } = require("../utils/kphListVisibility");
 const {
+    getRecipientDepartments,
+    getRecipientBienBanIds,
+    getRecipientManageAccess,
+    loadRecipientDepartmentMap
+} = require("../utils/recipientDepartments");
+const {
     getBienBanFiles,
     deleteBienBanData,
     removeBienBanFiles
@@ -116,6 +122,25 @@ const getStandaloneReadAccess = async (pool, bienBanId, user) => {
                           AND TRY_CAST(customField.FieldValue AS int) = @BoPhanId
                     )
 
+                    -- 8. Bộ phận nhận (chỉ cấp quyền xem)
+                    OR EXISTS (
+                        SELECT 1
+                        FROM dbo.BIEN_BAN_BO_PHAN_NHAN recipient
+                        WHERE recipient.BienBanId=bb.Id
+                          AND (
+                              recipient.BoPhanId=@BoPhanId
+                              OR (
+                                  @IsDepartmentLead=1
+                                  AND EXISTS (
+                                      SELECT 1 FROM dbo.USER_BO_PHAN_QUAN_LY managed
+                                      WHERE managed.UserId=@UserId
+                                        AND managed.IsActive=1
+                                        AND managed.BoPhanId=recipient.BoPhanId
+                                  )
+                              )
+                          )
+                    )
+
                     THEN 1
                     ELSE 0
                 END AS bit) AS CanRead
@@ -205,6 +230,16 @@ router.get("/", authenticateToken, async (req, res) => {
                     .execute("sp_PhieuXuLyKPH_GetList");
                 (result.recordset || []).forEach((item) => rowsById.set(Number(item.BienBanId), item));
             }
+            const recipientIds = new Set(await getRecipientBienBanIds(
+                pool, managedDepartmentIds, "STANDALONE"
+            ));
+            if (recipientIds.size > 0) {
+                const allResult = await pool.request().execute("sp_PhieuXuLyKPH_GetList");
+                for (const item of allResult.recordset || []) {
+                    const id = Number(item.BienBanId);
+                    if (recipientIds.has(id)) rowsById.set(id, item);
+                }
+            }
             rows = [...rowsById.values()];
         }
         const ids = rows.map((item) => Number(item.BienBanId)).filter((id) => Number.isInteger(id) && id > 0);
@@ -237,6 +272,7 @@ router.get("/", authenticateToken, async (req, res) => {
             (creatorDepartmentResult.recordset || []).map((item) => [Number(item.BienBanId), item])
         );
         const summaryFieldMap = await loadBienBanListSummaries(pool, ids);
+        const recipientDepartmentMap = await loadRecipientDepartmentMap(pool, ids);
         const progressResult = await pool.request().query(`
             SELECT yk.BienBanId,yk.BoPhanId,bp.MaBoPhan,bp.TenBoPhan,
                 yk.SuggestedUserId,suggestedUser.FullName AS SuggestedUserName,
@@ -285,6 +321,7 @@ router.get("/", authenticateToken, async (req, res) => {
             if (!progress) return mergeBienBanListSummary({
                 ...item,
                 ...creatorDepartment,
+                RecipientDepartments: recipientDepartmentMap.get(Number(item.BienBanId)) || [],
                 OpinionDepartments: []
             }, summaryFields);
             const myPending = progress.pending.find((pending) =>
@@ -293,6 +330,7 @@ router.get("/", authenticateToken, async (req, res) => {
             return mergeBienBanListSummary({
                 ...item,
                 ...creatorDepartment,
+                RecipientDepartments: recipientDepartmentMap.get(Number(item.BienBanId)) || [],
                 SoBoPhan: progress.total,
                 DaCoYKien: progress.done,
                 BoPhanChuaXacNhanText: progress.pending.map((pending) =>
@@ -320,8 +358,13 @@ router.get("/catalog-items", authenticateToken, async (req, res) => {
         const keyword = String(req.query.keyword || "").trim();
         const orderId = Number(req.query.orderId) || null;
         const page = Math.max(Number(req.query.page) || 0, 0);
-        const pageSize = Math.min(Math.max(Number(req.query.pageSize) || 20, 1), 50);
+        const pageSize = Math.min(
+            Math.max(Number(req.query.pageSize) || 20, 1),
+            50
+        );
+
         const pool = await poolPromise;
+
         const result = await pool.request()
             .input("Keyword", sql.NVarChar(200), keyword || null)
             .input("OrderId", sql.Int, orderId)
@@ -329,50 +372,111 @@ router.get("/catalog-items", authenticateToken, async (req, res) => {
             .input("PageSize", sql.Int, pageSize)
             .query(`
                 WITH catalog AS (
-                    SELECT localProduct.Id AS LocalProductId,
+                    SELECT
+                        localProduct.Id AS LocalProductId,
                         localProduct.MaSanPham AS Code,
                         localProduct.TenSanPham AS Name,
-                        CASE WHEN material.ID_VatTu IS NOT NULL THEN N'VAT_TU' ELSE N'SAN_PHAM' END AS SourceType,
-                        COALESCE(material.ID_VatTu, sourceProduct.ID_SanPham) AS SourceId
+
+                        CASE
+                            WHEN material.ID_VatTu IS NOT NULL
+                                THEN N'VAT_TU'
+                            ELSE N'SAN_PHAM'
+                        END AS SourceType,
+
+                        COALESCE(
+                            material.ID_VatTu,
+                            sourceProduct.ID_SanPham
+                        ) AS SourceId
+
                     FROM dbo.DM_SAN_PHAM localProduct
+
+                    ---------------------------------------------------
+                    -- Vật tư
+                    ---------------------------------------------------
                     OUTER APPLY (
-                        SELECT TOP (1) materialRow.ID_VatTu
+                        SELECT TOP (1)
+                            materialRow.ID_VatTu
                         FROM TAG_QTKD.dbo.DM_VatTu materialRow
                         WHERE materialRow.Ma_VatTu = localProduct.MaSanPham
                           AND ISNULL(materialRow.TonTai, 1) = 1
                         ORDER BY materialRow.ID_VatTu
                     ) material
+
+                    ---------------------------------------------------
+                    -- Sản phẩm / Sản phẩm + ký hiệu quy trình
+                    ---------------------------------------------------
                     OUTER APPLY (
-                        SELECT TOP (1) productRow.ID_SanPham
+                        SELECT TOP (1)
+                            productRow.ID_SanPham,
+                            productRow.ItemCode
                         FROM TAG_QTKD.dbo.DM_SanPham productRow
-                        WHERE productRow.ItemCode = localProduct.MaSanPham
-                          AND ISNULL(productRow.TonTai, 1) = 1
-                        ORDER BY productRow.ID_SanPham
+                        WHERE ISNULL(productRow.TonTai, 1) = 1
+                          AND (
+                                localProduct.MaSanPham = productRow.ItemCode
+                                OR localProduct.MaSanPham
+                                    LIKE productRow.ItemCode + N'.%'
+                              )
+                        ORDER BY
+                            CASE
+                                WHEN localProduct.MaSanPham = productRow.ItemCode
+                                    THEN 0
+                                ELSE 1
+                            END,
+                            LEN(productRow.ItemCode) DESC,
+                            productRow.ID_SanPham
                     ) sourceProduct
+
                     WHERE localProduct.TrangThai = 1
-                      AND (material.ID_VatTu IS NOT NULL OR sourceProduct.ID_SanPham IS NOT NULL)
-                      AND (@Keyword IS NULL OR localProduct.MaSanPham LIKE N'%' + @Keyword + N'%'
-                           OR localProduct.TenSanPham LIKE N'%' + @Keyword + N'%')
-                      AND (@OrderId IS NULL OR material.ID_VatTu IS NOT NULL OR EXISTS (
-                          SELECT 1 FROM TAG_QTKD.dbo.DonHang_SanPham orderProduct
-                          WHERE orderProduct.ID_DonHang = @OrderId
-                            AND orderProduct.ID_SanPham = sourceProduct.ID_SanPham
-                            AND ISNULL(orderProduct.TonTai, 1) = 1
-                      ))
+
+                      AND (
+                            material.ID_VatTu IS NOT NULL
+                            OR sourceProduct.ID_SanPham IS NOT NULL
+                          )
+
+                      AND (
+                            @Keyword IS NULL
+                            OR localProduct.MaSanPham
+                                LIKE N'%' + @Keyword + N'%'
+                            OR localProduct.TenSanPham
+                                LIKE N'%' + @Keyword + N'%'
+                          )
+
+                      AND (
+                            @OrderId IS NULL
+                            OR material.ID_VatTu IS NOT NULL
+                            OR EXISTS (
+                                SELECT 1
+                                FROM TAG_QTKD.dbo.DonHang_SanPham orderProduct
+                                WHERE orderProduct.ID_DonHang = @OrderId
+                                  AND orderProduct.ID_SanPham =
+                                        sourceProduct.ID_SanPham
+                                  AND ISNULL(orderProduct.TonTai, 1) = 1
+                            )
+                          )
                 )
-                SELECT *, COUNT(*) OVER() AS Total
+
+                SELECT
+                    *,
+                    COUNT(*) OVER() AS Total
                 FROM catalog
                 ORDER BY Code
-                OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+                OFFSET @Offset ROWS
+                FETCH NEXT @PageSize ROWS ONLY;
             `);
+
         const rows = result.recordset || [];
+
         res.json({
             data: rows.map(({ Total, ...item }) => item),
             total: Number(rows[0]?.Total || 0)
         });
+
     } catch (err) {
         console.error("SearchStandaloneCatalogItems error:", err);
-        res.status(500).json({ message: "Không tìm được danh mục VT/BTP/TP" });
+
+        res.status(500).json({
+            message: "Không tìm được danh mục VT/BTP/TP"
+        });
     }
 });
 
@@ -540,6 +644,8 @@ router.get("/:id", authenticateToken, async (req, res) => {
             `);
         const printMeta = v01Result.recordsets?.[0]?.[0] || { MauPhieuVersion: "V00" };
         const headerAccess = await getHeaderAccess(pool, bienBanId, req.user);
+        const recipientDepartments = await getRecipientDepartments(pool, bienBanId);
+        const recipientAccess = await getRecipientManageAccess(pool, bienBanId, req.user);
         const managedDepartmentIds = await getManagedDepartmentIds(pool, req.user.userId, req.user.boPhanId);
         const proposalResult = await pool.request()
             .input("BienBanId", sql.Int, bienBanId)
@@ -566,6 +672,7 @@ router.get("/:id", authenticateToken, async (req, res) => {
             info.OpinionDepartmentsConfirmedAt = printMeta.OpinionDepartmentsConfirmedAt;
             info.CreatorConfirmedAt = printMeta.CreatorConfirmedAt;
             info.CanManageKphFlow = headerAccess.canEdit;
+            info.CanManageRecipientDepartments = recipientAccess.canManage;
             info.CanConfigureRequirements = headerAccess.canEdit;
             info.IsAdmin = isAdmin(req.user);
             info.CanEditReturned = headerAccess.canEdit && info.TrangThai === "TRA_LAI_CHINH_SUA";
@@ -628,6 +735,7 @@ router.get("/:id", authenticateToken, async (req, res) => {
             info,
             defects: await enrichDefectCodes(pool, defectResult.recordset || []),
             assigns: result.recordsets?.[2] || [],
+            recipientDepartments,
             xuLy: proposalResult.recordset || [],
             chiPhi: sectionRows.chiPhi,
             xacNhan: confirmationRows.map((item) => ({

@@ -13,5 +13,7 @@ build/
 !server/sql/migrations/20260824_check_catalog_management_permission.sql
 !server/sql/migrations/20260825_tren_chuyen_signature_form.sql
 !server/sql/migrations/20260826_tren_chuyen_relax_draft_quantity.sql
+!server/sql/migrations/20260827_bien_ban_recipient_departments.sql
+!server/sql/migrations/20260827_bien_ban_recipient_departments.rollback.sql
 
 *.xlsx

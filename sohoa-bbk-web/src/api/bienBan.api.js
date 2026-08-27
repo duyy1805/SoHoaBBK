@@ -80,6 +80,9 @@ export const assignDepartments = (bienBanId, boPhanIds, bpsxSignatureBoPhanId = 
     });
 };
 
+export const saveRecipientDepartments = (bienBanId, boPhanIds) =>
+    axiosClient.post(`/bien-ban/${bienBanId}/recipient-departments`, { boPhanIds });
+
 export const confirmAssign = (bienBanId) => {
     return axiosClient.post(`/bien-ban/${bienBanId}/confirm-assign`);
 };

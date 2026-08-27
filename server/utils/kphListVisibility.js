@@ -13,8 +13,13 @@ const canViewKphListItem = (item, user, managedDepartmentIds = []) => {
     if (hasRole(user, "ADMIN")) return true;
     if (Number(item.NguoiLapId) === Number(user?.userId)) return true;
 
+    const managedIds = managedDepartmentIds.map(Number);
+    const isRecipient = (Array.isArray(item.RecipientDepartments) ? item.RecipientDepartments : [])
+        .some((department) => managedIds.includes(Number(department.BoPhanId || department.id)));
+    if (isRecipient) return true;
+
     const creatorDepartmentId = Number(item.CreatorBoPhanId || item.BoPhanTaoId);
-    return managedDepartmentIds.map(Number).includes(creatorDepartmentId);
+    return managedIds.includes(creatorDepartmentId);
 };
 
 module.exports = { canViewKphListItem, isPrivateKphDraft };
