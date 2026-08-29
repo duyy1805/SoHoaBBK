@@ -16,6 +16,7 @@ import FactoryIcon from '@mui/icons-material/Factory';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import HubOutlinedIcon from '@mui/icons-material/HubOutlined';
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
+import AssignmentReturnIcon from '@mui/icons-material/AssignmentReturn';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { canManageUsers, getCurrentUser } from '../../utils/auth';
 
@@ -29,11 +30,19 @@ export default function Sidebar({
     const location = useLocation();
     const navigate = useNavigate();
     const showUserAdmin = canManageUsers(getCurrentUser());
+    const currentUser = getCurrentUser();
+    const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : [];
+    const roles = Array.isArray(currentUser?.roles) ? currentUser.roles : [];
+    const showDoiTraPhoiLoi = permissions.includes('THUC_HIEN_KIEM')
+        || permissions.includes('XEM_PHIEU_KIEM')
+        || permissions.includes('QUAN_TRI_DM')
+        || roles.some((role) => String(role || '').toUpperCase().includes('ADMIN'));
     const workCenterEnabled = import.meta.env.VITE_ENABLE_WORK_CENTER !== 'false';
 
     const menus = [
         { label: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
         { label: 'Phiếu kiểm', icon: <AssignmentIcon />, path: '/phieu-kiem' },
+        { label: 'Đổi trả phôi lỗi', icon: <AssignmentReturnIcon />, path: '/doi-tra-phoi-loi', visible: showDoiTraPhoiLoi },
         { label: 'Biên bản', icon: <DescriptionIcon />, path: '/bien-ban' },
         { label: 'Phiếu xử lý không phù hợp', icon: <ReportProblemIcon />, path: '/phieu-xu-ly-khong-phu-hop' },
         { label: 'Trung tâm xử lý', icon: <HubOutlinedIcon />, path: '/trung-tam-xu-ly', visible: workCenterEnabled },

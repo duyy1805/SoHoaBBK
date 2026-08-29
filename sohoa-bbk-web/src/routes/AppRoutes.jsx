@@ -20,6 +20,9 @@ import CongDoanDetail from '../features/PhieuKiem/pages/CongDoanDetail';
 import UserAdminPage from '../features/UserAdmin/UserAdminPage';
 import UserAdminRoute from './UserAdminRoute';
 import WorkCenterPage from '../features/WorkCenter/WorkCenterPage';
+import DoiTraPhoiLoiList from '../features/DoiTraPhoiLoi/pages/DoiTraPhoiLoiList';
+import DoiTraPhoiLoiCreate from '../features/DoiTraPhoiLoi/pages/DoiTraPhoiLoiCreate';
+import DoiTraPhoiLoiDetail from '../features/DoiTraPhoiLoi/pages/DoiTraPhoiLoiDetail';
 
 const workCenterEnabled = import.meta.env.VITE_ENABLE_WORK_CENTER !== 'false';
 
@@ -41,6 +44,9 @@ export default function AppRoutes() {
                     <Route path="/phieu-kiem/tren-chuyen/:id" element={<TrenChuyenDetail />} />
                     <Route path="/phieu-kiem/:id" element={<PhieuKiemDetail />} />
                     <Route path="/phieu-kiem/create" element={<PhieuKiemCreate />} />
+                    <Route path="/doi-tra-phoi-loi" element={<DoiTraPhoiLoiList />} />
+                    <Route path="/doi-tra-phoi-loi/create" element={<DoiTraPhoiLoiCreate />} />
+                    <Route path="/doi-tra-phoi-loi/:id" element={<DoiTraPhoiLoiDetail />} />
                     <Route path="/danh-muc" element={<DanhMucManager />} />
                     <Route path="/bien-ban" element={<BienBanList />} />
                     <Route path="/bien-ban/sxbt/:id" element={<BienBanSxbtDetail />} />
