@@ -542,8 +542,8 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{d ? Number(d.SoLuong || 0).toLocaleString('vi-VN') : ''}</td>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>
                                                         {d && Number(getInspectedQuantity(d)) > 0
-                                                            ? ((Number(d.SoLuong || 0) / Number(getInspectedQuantity(d))) * 100).toFixed(0) + '%'
-                                                            : d ? '0%' : ''}
+                                                            ? ((Number(d.SoLuong || 0) / Number(getInspectedQuantity(d))) * 100).toFixed(2) + '%'
+                                                            : d ? '0.00%' : ''}
                                                     </td>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{d ? getDefectCode(d) : ''}</td>
                                                     <td style={styles.td}>{d?.GhiChu || ''}</td>

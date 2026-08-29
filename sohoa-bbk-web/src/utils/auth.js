@@ -138,9 +138,12 @@ export const canManageUsers = (user = getCurrentUser()) => {
 export const canManageCheckCatalog = (user = getCurrentUser()) => {
     const roles = Array.isArray(user?.roles) ? user.roles : [];
     const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
-    return roles.some((role) => String(role || "").toUpperCase() === "ADMIN")
+    return roles.some((role) => {
+        const roleCode = String(role || "").toUpperCase();
+        return roleCode === "ADMIN" || roleCode === "IMPORT_DM_KIEM";
+    })
         || permissions.includes("QUAN_TRI_DM")
-        || permissions.includes("QUAN_LY_DANH_MUC_KIEM");
+        || permissions.includes("IMPORT_DM_KIEM");
 };
 
 /* ================================

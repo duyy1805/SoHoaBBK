@@ -12,6 +12,7 @@ sharp.cache(false);
 const { poolPromise } = require('../db');
 const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
+const authorizeCheckCatalogCrud = require('../middlewares/checkCatalogCrud.middleware');
 const {
   buildSyncPlan: buildDanhMucKiemSyncPlan,
   executeSyncPlan: executeDanhMucKiemSyncPlan,
@@ -1958,7 +1959,7 @@ router.get(
 router.post(
   "/check-item",
   authenticateToken,
-  authorize(CHECK_CATALOG_MANAGE_PERMISSION),
+  authorizeCheckCatalogCrud,
   async (req, res) => {
     const { NhomKiemId, TenMucKiem, ThamChieu, PhuongPhapKiem, TieuChuan, ThuTu, DiemTrongYeu } = req.body;
 
@@ -1987,7 +1988,7 @@ router.post(
 router.put(
   "/check-item/:id",
   authenticateToken,
-  authorize(CHECK_CATALOG_MANAGE_PERMISSION),
+  authorizeCheckCatalogCrud,
   async (req, res) => {
     const { id } = req.params;
     const { TenMucKiem, ThamChieu, PhuongPhapKiem, TieuChuan, ThuTu, TrangThai, DiemTrongYeu } = req.body;
@@ -2025,7 +2026,7 @@ router.put(
 router.delete(
   "/check-item/:id",
   authenticateToken,
-  authorize(CHECK_CATALOG_MANAGE_PERMISSION),
+  authorizeCheckCatalogCrud,
   async (req, res) => {
     const { id } = req.params;
 

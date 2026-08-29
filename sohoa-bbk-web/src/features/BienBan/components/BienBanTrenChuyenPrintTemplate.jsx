@@ -45,6 +45,16 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
         info.SoLuongKeHoach,
         info.SoLuong
     ].find((value) => value !== null && value !== undefined && value !== '') ?? '';
+    const getInspectedQuantity = (defect = {}) => [
+        defect.SoLuongKiem,
+        info.SoLuong,
+        bienBanSoLuongKhongPhuHop
+    ].find((value) => (
+        value !== null &&
+        value !== undefined &&
+        String(value).trim() !== '' &&
+        Number(value) > 0
+    )) ?? '';
 
     const normalizeText = (value) =>
         String(value || '')
@@ -426,8 +436,10 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                             <tr>
                                                 <th style={{ ...styles.th, width: '40px' }}>TT</th>
                                                 <th style={styles.th}>VT/BTP/TP</th>
-                                                <th style={{ ...styles.th, width: '110px' }}>Số lượng lỗi</th>
-                                                <th style={{ ...styles.th, width: '120px' }}>Mã lỗi</th>
+                                                <th style={{ ...styles.th, width: '82px' }}>Số lượng kiểm</th>
+                                                <th style={{ ...styles.th, width: '82px' }}>Số lượng lỗi</th>
+                                                <th style={{ ...styles.th, width: '76px' }}>Tỷ lệ lỗi, %</th>
+                                                <th style={{ ...styles.th, width: '100px' }}>Mã lỗi</th>
                                                 <th style={styles.th}>Ghi chú</th>
                                             </tr>
                                         </thead>
@@ -436,13 +448,21 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                                 <tr key={index}>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{index + 1}</td>
                                                     <td style={styles.td}>{d.TenLoi}</td>
-                                                    <td style={{ ...styles.td, textAlign: 'center' }}>{d.SoLuong || 0}</td>
+                                                    <td style={{ ...styles.td, textAlign: 'center' }}>{getInspectedQuantity(d)}</td>
+                                                    <td style={{ ...styles.td, textAlign: 'center' }}>{Number(d.SoLuong || 0).toLocaleString('vi-VN')}</td>
+                                                    <td style={{ ...styles.td, textAlign: 'center' }}>
+                                                        {Number(getInspectedQuantity(d)) > 0
+                                                            ? `${((Number(d.SoLuong || 0) / Number(getInspectedQuantity(d))) * 100).toFixed(2)}%`
+                                                            : '0.00%'}
+                                                    </td>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>{getDefectCode(d)}</td>
-                                                    <td style={styles.td}></td>
+                                                    <td style={styles.td}>{d.GhiChu || ''}</td>
                                                 </tr>
                                             )) : (
                                                 <tr>
                                                     <td style={{ ...styles.td, textAlign: 'center' }}>1</td>
+                                                    <td style={styles.td}>&nbsp;</td>
+                                                    <td style={styles.td}>&nbsp;</td>
                                                     <td style={styles.td}>&nbsp;</td>
                                                     <td style={styles.td}>&nbsp;</td>
                                                     <td style={styles.td}>&nbsp;</td>
