@@ -1,0 +1,2 @@
+# Use LF for every file Git detects as text. Binary files remain untouched.
+* text=auto eol=lf
