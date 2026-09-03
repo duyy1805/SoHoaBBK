@@ -13,6 +13,7 @@ const {
     resolveSignaturePath,
     readSignatureDataUrl
 } = require("../utils/signatureImage");
+const { EXECUTIVE_APPROVAL_PERMISSION } = require("../utils/executiveApproval");
 
 const router = express.Router();
 router.use(authenticateToken, requireUserAdministrator);
@@ -357,6 +358,79 @@ router.get("/metadata", async (_req, res) => {
         });
     } catch (error) {
         handleError(res, error, "Không tải được dữ liệu phân quyền");
+    }
+});
+
+router.get("/settings/workflow", async (_req, res) => {
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request().query(`
+            SELECT TOP 1 Id,CAST(BitValue AS bit) AS RequireExecutiveApprovalForKph,
+                UpdatedBy,UpdatedAt,RowVersion
+            FROM dbo.SYSTEM_SETTINGS
+            WHERE SettingKey=N'REQUIRE_EXECUTIVE_APPROVAL_KPH'
+        `);
+        const setting = result.recordset?.[0];
+        if (!setting) return res.status(404).json({ message: "Không tìm thấy cấu hình quy trình" });
+        res.json({
+            ...setting,
+            RequireExecutiveApprovalForKph: Boolean(setting.RequireExecutiveApprovalForKph),
+            RowVersion: encodeRowVersion(setting.RowVersion)
+        });
+    } catch (error) {
+        handleError(res, error, "Không tải được cấu hình quy trình");
+    }
+});
+
+router.put("/settings/workflow", async (req, res) => {
+    const pool = await poolPromise;
+    const transaction = new sql.Transaction(pool);
+    try {
+        if (typeof req.body.requireExecutiveApprovalForKph !== "boolean") {
+            throw httpError(400, "Trạng thái yêu cầu xác nhận Ban giám đốc không hợp lệ");
+        }
+        const rowVersion = decodeRowVersion(req.body.rowVersion);
+        if (!rowVersion) throw httpError(400, "Thiếu phiên bản dữ liệu, vui lòng tải lại");
+
+        await transaction.begin();
+        const beforeResult = await txRequest(transaction).query(`
+            SELECT TOP 1 Id,BitValue,UpdatedBy,UpdatedAt,RowVersion
+            FROM dbo.SYSTEM_SETTINGS WITH (UPDLOCK,HOLDLOCK)
+            WHERE SettingKey=N'REQUIRE_EXECUTIVE_APPROVAL_KPH'
+        `);
+        const before = beforeResult.recordset?.[0];
+        if (!before) throw httpError(404, "Không tìm thấy cấu hình quy trình");
+
+        const updated = await txRequest(transaction)
+            .input("BitValue", sql.Bit, req.body.requireExecutiveApprovalForKph)
+            .input("ActorUserId", sql.Int, req.user.userId)
+            .input("RowVersion", sql.VarBinary(8), rowVersion)
+            .query(`
+                UPDATE dbo.SYSTEM_SETTINGS
+                SET BitValue=@BitValue,UpdatedBy=@ActorUserId,UpdatedAt=SYSDATETIME()
+                OUTPUT INSERTED.Id,INSERTED.BitValue,INSERTED.UpdatedBy,
+                    INSERTED.UpdatedAt,INSERTED.RowVersion
+                WHERE SettingKey=N'REQUIRE_EXECUTIVE_APPROVAL_KPH'
+                  AND RowVersion=@RowVersion
+            `);
+        if (!updated.recordset.length) {
+            throw httpError(409, "Cấu hình đã được người khác cập nhật, vui lòng tải lại");
+        }
+        const after = updated.recordset[0];
+        await writeAudit(transaction, req.user.userId, "UPDATE_WORKFLOW_SETTING", "SETTING", before.Id,
+            { requireExecutiveApprovalForKph: Boolean(before.BitValue) },
+            { requireExecutiveApprovalForKph: Boolean(after.BitValue), permission: EXECUTIVE_APPROVAL_PERMISSION });
+        await transaction.commit();
+        res.json({
+            Id: after.Id,
+            RequireExecutiveApprovalForKph: Boolean(after.BitValue),
+            UpdatedBy: after.UpdatedBy,
+            UpdatedAt: after.UpdatedAt,
+            RowVersion: encodeRowVersion(after.RowVersion)
+        });
+    } catch (error) {
+        try { await transaction.rollback(); } catch { /* transaction chưa bắt đầu */ }
+        handleError(res, error, "Không cập nhật được cấu hình quy trình");
     }
 });
 

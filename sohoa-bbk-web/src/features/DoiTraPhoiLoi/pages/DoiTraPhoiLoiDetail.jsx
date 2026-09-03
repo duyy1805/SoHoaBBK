@@ -1,21 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog,
+    Alert, Autocomplete, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog,
     DialogActions, DialogContent, DialogTitle, Divider, Grid, Paper, Stack, Step,
     StepLabel, Stepper, Tab, Table, TableBody, TableCell, TableContainer,
-    TableHead, TableRow, Tabs, Typography
+    TableHead, TableRow, Tabs, TextField, Typography
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import PrintIcon from '@mui/icons-material/Print';
 import CancelOutlinedIcon from '@mui/icons-material/CancelOutlined';
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
 import HistoryIcon from '@mui/icons-material/History';
+import TaskAltOutlinedIcon from '@mui/icons-material/TaskAltOutlined';
+import ReplayOutlinedIcon from '@mui/icons-material/ReplayOutlined';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useReactToPrint } from 'react-to-print';
-import { cancelDoiTraPhoiLoi, getDoiTraPhoiLoiDetail } from '../../../api/doiTraPhoiLoi.api';
+import {
+    cancelDoiTraPhoiLoi, deleteDoiTraPhoiLoi, executeDoiTraAction,
+    getDoiTraPhoiLoiDetail, getDoiTraTraceabilityLookups
+} from '../../../api/doiTraPhoiLoi.api';
+import { hasPermission } from '../../../utils/auth';
 import DoiTraPhoiLoiPrintTemplate from '../components/DoiTraPhoiLoiPrintTemplate';
 import DoiTraPhoiLoiSummaryPrintTemplate from '../components/DoiTraPhoiLoiSummaryPrintTemplate';
 import DoiTraPhoiEditor from '../components/DoiTraPhoiEditor';
+import DoiTraDinhMucEditor from '../components/DoiTraDinhMucEditor';
 import { doiTraStatusMeta, formatDoiTraDate, formatDoiTraQuantity } from '../doiTraPhoiLoi.utils';
 
 const Info = ({ label, value }) => (
@@ -30,11 +38,18 @@ export default function DoiTraPhoiLoiDetail() {
     const navigate = useNavigate();
     const printRef = useRef(null);
     const summaryPrintRef = useRef(null);
-    const [data, setData] = useState({ phieu: null, plans: [], history: [], phoiItems: [], workflow: { steps: [] }, defectGroups: [], capabilities: {} });
+    const [data, setData] = useState({ phieu: null, plans: [], history: [], phoiItems: [], dinhMucItems: [], workflow: { steps: [], availableActions: [] }, defectGroups: [], capabilities: {} });
     const [loading, setLoading] = useState(true);
     const [cancelling, setCancelling] = useState(false);
     const [printOpen, setPrintOpen] = useState(false);
     const [printTab, setPrintTab] = useState('kph');
+    const [phoiDirty, setPhoiDirty] = useState(false);
+    const [actionDialog, setActionDialog] = useState(null);
+    const [actionNote, setActionNote] = useState('');
+    const [responsibleDepartment, setResponsibleDepartment] = useState(null);
+    const [departments, setDepartments] = useState([]);
+    const [actionLoading, setActionLoading] = useState(false);
+    const [deleting, setDeleting] = useState(false);
 
     const load = useCallback(async ({ background = false } = {}) => {
         try {
@@ -72,15 +87,72 @@ export default function DoiTraPhoiLoiDetail() {
         }
     };
 
+    const deleteTicket = async () => {
+        if (!window.confirm(`Xóa phiếu ${data.phieu.SoPhieu} cùng toàn bộ dữ liệu liên quan? Hành động này không thể hoàn tác.`)) return;
+        try {
+            setDeleting(true);
+            await deleteDoiTraPhoiLoi(id);
+            navigate('/doi-tra-phoi-loi', { replace: true });
+        } catch (error) {
+            window.alert(error.response?.data?.message || 'Không thể xóa phiếu đổi trả phôi lỗi.');
+        } finally {
+            setDeleting(false);
+        }
+    };
+
+    const openAction = async (action) => {
+        if (phoiDirty && ['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(action.ActionCode)) {
+            return window.alert('Danh sách phôi đang có thay đổi chưa lưu. Vui lòng lưu nháp trước.');
+        }
+        setActionDialog(action);
+        setActionNote('');
+        setResponsibleDepartment(null);
+        if (['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(action.ActionCode) && !departments.length) {
+            try {
+                const response = await getDoiTraTraceabilityLookups();
+                setDepartments(response.data?.departments || []);
+            } catch (error) {
+                setActionDialog(null);
+                window.alert(error.response?.data?.message || 'Không tải được danh sách bộ phận.');
+            }
+        }
+    };
+
+    const executeAction = async () => {
+        if (!actionDialog) return;
+        const isKcs = ['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(actionDialog.ActionCode);
+        if (isKcs && !responsibleDepartment) return window.alert('Vui lòng chọn bộ phận gây lỗi.');
+        if (actionDialog.ActionCode === 'TBP_RETURN' && !actionNote.trim()) return window.alert('Vui lòng nhập lý do trả lại.');
+        try {
+            setActionLoading(true);
+            await executeDoiTraAction(id, actionDialog.ActionCode, {
+                rowVersion: data.phieu.RowVersion,
+                ghiChu: actionNote.trim() || null,
+                boPhanGayLoiId: responsibleDepartment?.Id || null
+            });
+            setActionDialog(null);
+            await load({ background: true });
+        } catch (error) {
+            window.alert(error.response?.data?.message || 'Không thực hiện được thao tác.');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
     if (loading) return <Box sx={{ py: 10, display: 'grid', placeItems: 'center' }}><CircularProgress /></Box>;
     if (!data.phieu) return <Alert severity="error">Không tìm thấy phiếu đổi trả phôi lỗi.</Alert>;
 
-    const { phieu, plans, history, phoiItems = [], workflow = {}, defectGroups = [], capabilities } = data;
+    const { phieu, plans, history, phoiItems = [], dinhMucItems = [], workflow = {}, defectGroups = [], capabilities } = data;
     const plan = plans[0] || {};
     const status = doiTraStatusMeta(phieu.TrangThai);
     const workflowSteps = workflow.steps || [];
     const configuredStepIndex = workflowSteps.findIndex((step) => step.IsCurrent);
-    const activeStep = configuredStepIndex >= 0 ? configuredStepIndex : Math.min(status.step, Math.max(workflowSteps.length - 1, 0));
+    const activeStep = phieu.TrangThai === 'HOAN_TAT_DINH_MUC'
+        ? workflowSteps.length
+        : (configuredStepIndex >= 0 ? configuredStepIndex : Math.min(status.step, Math.max(workflowSteps.length - 1, 0)));
+    const availableActions = workflow.availableActions || [];
+    const regularActions = availableActions.filter((action) => action.ActionCode !== 'B7_CONFIRM');
+    const canB7Confirm = availableActions.some((action) => action.ActionCode === 'B7_CONFIRM');
     const summaryData = {
         tickets: [{ ...plan, ...phieu }],
         phoiItems,
@@ -99,9 +171,13 @@ export default function DoiTraPhoiLoiDetail() {
                         <Typography variant="h5" fontWeight={800}>{phieu.SoPhieu}</Typography>
                         <Chip size="small" color={status.color} label={status.label} />
                     </Stack>
-                    <Typography color="text.secondary">Phiếu đổi trả phôi lỗi — giai đoạn khởi tạo bộ khung</Typography>
+                    <Typography color="text.secondary">Phiếu đổi trả phôi lỗi</Typography>
                 </Box>
                 <Stack direction="row" spacing={1} alignItems="flex-start">
+                    {hasPermission('XOA_HO_SO_KCS') && (
+                        <Button color="error" variant="outlined" startIcon={deleting ? <CircularProgress size={18} /> : <DeleteOutlineIcon />}
+                            disabled={deleting} onClick={deleteTicket}>{deleting ? 'Đang xóa…' : 'Xóa phiếu'}</Button>
+                    )}
                     {capabilities.canCancel && (
                         <Button color="error" variant="outlined" startIcon={cancelling ? <CircularProgress size={18} /> : <CancelOutlinedIcon />}
                             disabled={cancelling} onClick={cancel}>Hủy phiếu</Button>
@@ -116,9 +192,18 @@ export default function DoiTraPhoiLoiDetail() {
                         <Step key={label}><StepLabel>{label}</StepLabel></Step>
                     ))}
                 </Stepper>
-                <Alert severity="info" sx={{ mt: 2 }}>
-                    Giai đoạn hiện tại cho phép KCS lưu nháp phôi và lỗi. Các thao tác hoàn tất KCS, TBP xác nhận và B7 nhập định mức sẽ được mở ở giai đoạn sau.
-                </Alert>
+                {phieu.TrangThai === 'TRA_LAI_KCS' && <Alert severity="warning" sx={{ mt: 2 }}><strong>Lý do trả lại:</strong> {phieu.LyDoTraLai || 'Chưa ghi rõ lý do'}</Alert>}
+                {phoiDirty && <Alert severity="warning" sx={{ mt: 2 }}>Bạn đang có thay đổi phôi/lỗi chưa lưu. Hãy lưu nháp trước khi hoàn tất KCS.</Alert>}
+                {regularActions.length > 0 && <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 2 }}>
+                    {regularActions.map((action) => <Button
+                        key={action.ActionCode}
+                        variant={action.ActionCode === 'TBP_RETURN' ? 'outlined' : 'contained'}
+                        color={action.ActionCode === 'TBP_RETURN' ? 'warning' : 'primary'}
+                        startIcon={action.ActionCode === 'TBP_RETURN' ? <ReplayOutlinedIcon /> : <TaskAltOutlinedIcon />}
+                        disabled={phoiDirty && ['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(action.ActionCode)}
+                        onClick={() => openAction(action)}
+                    >{action.ActionName}</Button>)}
+                </Stack>}
             </Paper>
 
             <Grid container spacing={2} sx={{ mb: 2 }}>
@@ -130,6 +215,7 @@ export default function DoiTraPhoiLoiDetail() {
                                 <Info label="Ngày lập" value={formatDoiTraDate(phieu.NgayLap)} />
                                 <Info label="Người lập" value={phieu.TenNguoiLap} />
                                 <Info label="Bộ phận KCS" value={[phieu.MaBoPhanKcs, phieu.TenBoPhanKcs].filter(Boolean).join(' - ')} />
+                                <Info label="Bộ phận gây lỗi" value={[phieu.MaBoPhanGayLoiSnapshot, phieu.TenBoPhanGayLoiSnapshot].filter(Boolean).join(' - ')} />
                                 <Info label="Thời gian tạo" value={formatDoiTraDate(phieu.CreatedAt, true)} />
                             </Stack>
                         </CardContent>
@@ -168,8 +254,30 @@ export default function DoiTraPhoiLoiDetail() {
                     items={phoiItems}
                     canEdit={capabilities.canEditPhoi}
                     onSaved={() => load({ background: true })}
+                    onDirtyChange={setPhoiDirty}
                 />
             </Paper>
+
+            {['CHO_B7_NHAP_DINH_MUC', 'HOAN_TAT_DINH_MUC'].includes(phieu.TrangThai) && <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+                <Typography variant="subtitle1" fontWeight={800} sx={{ mb: 1.5 }}>Định mức đổi trả</Typography>
+                <DoiTraDinhMucEditor
+                    phieu={phieu}
+                    phoiItems={phoiItems}
+                    dinhMucItems={dinhMucItems}
+                    canEdit={capabilities.canEditDinhMuc}
+                    canConfirm={canB7Confirm}
+                    onChanged={() => load({ background: true })}
+                />
+            </Paper>}
+
+            {(phieu.KcsCompletedAt || phieu.TbpKcsConfirmedAt || phieu.B7ConfirmedAt) && <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+                <Typography variant="subtitle1" fontWeight={800} sx={{ mb: 1.5 }}>Thông tin xác nhận</Typography>
+                <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, md: 4 }}><Info label="KCS hoàn tất" value={phieu.KcsCompletedAt ? `${phieu.TenKcsHoanTat || '---'} — ${formatDoiTraDate(phieu.KcsCompletedAt, true)}` : null} /></Grid>
+                    <Grid size={{ xs: 12, md: 4 }}><Info label="TBP KCS xác nhận" value={phieu.TbpKcsConfirmedAt ? `${phieu.TenTbpKcsXacNhan || '---'} — ${formatDoiTraDate(phieu.TbpKcsConfirmedAt, true)}` : null} /></Grid>
+                    <Grid size={{ xs: 12, md: 4 }}><Info label="B7 xác nhận định mức" value={phieu.B7ConfirmedAt ? `${phieu.TenB7XacNhan || '---'} — ${formatDoiTraDate(phieu.B7ConfirmedAt, true)}` : null} /></Grid>
+                </Grid>
+            </Paper>}
 
             <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ p: 2, pb: 1 }}>
@@ -193,6 +301,33 @@ export default function DoiTraPhoiLoiDetail() {
                     </Table>
                 </TableContainer>
             </Paper>
+
+            <Dialog open={Boolean(actionDialog)} onClose={() => !actionLoading && setActionDialog(null)} fullWidth maxWidth="sm">
+                <DialogTitle>{actionDialog?.ActionName}</DialogTitle>
+                <DialogContent dividers>
+                    <Stack spacing={2} sx={{ pt: 0.5 }}>
+                        {['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(actionDialog?.ActionCode) && <Autocomplete
+                            options={departments}
+                            value={responsibleDepartment}
+                            getOptionLabel={(item) => [item.MaBoPhan, item.TenBoPhan].filter(Boolean).join(' — ')}
+                            onChange={(_, value) => setResponsibleDepartment(value)}
+                            renderInput={(params) => <TextField {...params} required label="Bộ phận gây lỗi" />}
+                        />}
+                        <TextField
+                            label={actionDialog?.ActionCode === 'TBP_RETURN' ? 'Lý do trả lại' : 'Ghi chú'}
+                            required={actionDialog?.ActionCode === 'TBP_RETURN'}
+                            multiline minRows={3} value={actionNote}
+                            onChange={(event) => setActionNote(event.target.value)}
+                            inputProps={{ maxLength: 1000 }}
+                        />
+                        {['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(actionDialog?.ActionCode) && <Alert severity="info">Sau khi gửi, danh sách phôi và lỗi sẽ bị khóa đến khi TBP KCS trả lại.</Alert>}
+                    </Stack>
+                </DialogContent>
+                <DialogActions>
+                    <Button disabled={actionLoading} onClick={() => setActionDialog(null)}>Đóng</Button>
+                    <Button variant="contained" disabled={actionLoading} startIcon={actionLoading ? <CircularProgress size={18} /> : <TaskAltOutlinedIcon />} onClick={executeAction}>Xác nhận</Button>
+                </DialogActions>
+            </Dialog>
 
             <Dialog open={printOpen} onClose={() => setPrintOpen(false)} maxWidth="xl" fullWidth>
                 <DialogTitle sx={{ pb: 0 }}>Xem trước bản in đổi trả phôi lỗi</DialogTitle>

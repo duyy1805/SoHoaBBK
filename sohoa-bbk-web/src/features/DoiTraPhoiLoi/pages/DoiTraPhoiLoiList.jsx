@@ -8,9 +8,10 @@ import AddIcon from '@mui/icons-material/Add';
 import PrintIcon from '@mui/icons-material/Print';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import SearchIcon from '@mui/icons-material/Search';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { useNavigate } from 'react-router-dom';
 import { useReactToPrint } from 'react-to-print';
-import { getDoiTraPhoiLoiList, previewDoiTraSummary } from '../../../api/doiTraPhoiLoi.api';
+import { deleteDoiTraPhoiLoi, getDoiTraPhoiLoiList, previewDoiTraSummary } from '../../../api/doiTraPhoiLoi.api';
 import { getCurrentUser } from '../../../utils/auth';
 import { DOI_TRA_STATUS_META, doiTraStatusMeta, formatDoiTraDate, formatDoiTraQuantity } from '../doiTraPhoiLoi.utils';
 import DoiTraPhoiLoiSummaryPrintTemplate from '../components/DoiTraPhoiLoiSummaryPrintTemplate';
@@ -25,11 +26,13 @@ export default function DoiTraPhoiLoiList() {
     const [summaryData, setSummaryData] = useState(null);
     const summaryPrintRef = useRef(null);
     const [filters, setFilters] = useState({ keyword: '', status: '', fromDate: '', toDate: '' });
+    const [deletingId, setDeletingId] = useState(null);
     const user = getCurrentUser();
     const permissions = user?.permissions || [];
     const isAdmin = permissions.includes('QUAN_TRI_DM')
         || (user?.roles || []).some((role) => String(role).toUpperCase().includes('ADMIN'));
     const canCreate = isAdmin || permissions.includes('THUC_HIEN_KIEM');
+    const canDelete = permissions.includes('XOA_HO_SO_KCS');
     const printableRows = rows.filter((row) => row.TrangThai !== 'DA_HUY');
 
     const printSummary = useReactToPrint({
@@ -64,6 +67,20 @@ export default function DoiTraPhoiLoiList() {
             window.alert(error.response?.data?.message || 'Không tạo được bản xem trước tổng hợp.');
         } finally {
             setSummaryLoading(false);
+        }
+    };
+
+    const deleteTicket = async (row) => {
+        if (!window.confirm(`Xóa phiếu ${row.SoPhieu || row.Id} cùng toàn bộ dữ liệu liên quan? Hành động này không thể hoàn tác.`)) return;
+        try {
+            setDeletingId(row.Id);
+            await deleteDoiTraPhoiLoi(row.Id);
+            setSelectedIds((current) => current.filter((id) => Number(id) !== Number(row.Id)));
+            await load();
+        } catch (error) {
+            window.alert(error.response?.data?.message || 'Không thể xóa phiếu đổi trả phôi lỗi.');
+        } finally {
+            setDeletingId(null);
         }
     };
 
@@ -146,7 +163,10 @@ export default function DoiTraPhoiLoiList() {
                                             <TableCell>{row.TenNguoiLap || '---'}</TableCell>
                                             <TableCell><Chip size="small" color={status.color} label={status.label} /></TableCell>
                                             <TableCell align="center">
-                                                <Button size="small" startIcon={<VisibilityOutlinedIcon />} onClick={() => navigate(`/doi-tra-phoi-loi/${row.Id}`)}>Xem</Button>
+                                                <Stack direction="row" spacing={0.5} justifyContent="center">
+                                                    <Button size="small" startIcon={<VisibilityOutlinedIcon />} onClick={() => navigate(`/doi-tra-phoi-loi/${row.Id}`)}>Xem</Button>
+                                                    {canDelete && <Button size="small" color="error" startIcon={deletingId === row.Id ? <CircularProgress size={16} /> : <DeleteOutlineIcon />} disabled={deletingId !== null} onClick={() => deleteTicket(row)}>{deletingId === row.Id ? 'Đang xóa…' : 'Xóa'}</Button>}
+                                                </Stack>
                                             </TableCell>
                                         </TableRow>
                                     );

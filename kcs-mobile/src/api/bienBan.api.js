@@ -10,6 +10,8 @@ export const getMyBienBan = () => {
     return axiosClient.get("/bien-ban");
 };
 
+export const getStandaloneBienBanList = () => axiosClient.get("/phieu-xu-ly-khong-phu-hop");
+
 /* ================================
    Chi tiết biên bản
 ================================ */
@@ -17,6 +19,9 @@ export const getMyBienBan = () => {
 export const getBienBanDetail = (id) => {
     return axiosClient.get(`/bien-ban/${id}`);
 };
+
+export const getStandaloneBienBanDetail = (id) =>
+    axiosClient.get(`/phieu-xu-ly-khong-phu-hop/${id}`);
 
 /* ================================
    Lỗi từ phiếu kiểm
@@ -73,6 +78,9 @@ export const respondSpecialistOpinion = (bienBanId, opinionId, data) =>
 
 export const confirmKphByCreatorDepartment = (bienBanId) =>
     axiosClient.post(`/bien-ban/${bienBanId}/creator-confirm`);
+
+export const submitExecutiveApproval = (bienBanId, decision, reason = "") =>
+    axiosClient.post(`/bien-ban/${bienBanId}/executive-approval`, { decision, reason });
 
 export const updateKphRequirements = (bienBanId, data) =>
     axiosClient.patch(`/bien-ban/${bienBanId}/requirements`, data);

@@ -43,12 +43,12 @@ const DoiTraPhoiLoiSummaryPrintTemplate = forwardRef(function DoiTraPhoiLoiSumma
     const headerCell = { ...cell, textAlign: 'center', fontWeight: 700 };
 
     return (
-        <div ref={ref} className="dtpl-summary-preview" style={{ fontFamily: 'Times New Roman, serif', color: '#000', background: '#e5e7eb', padding: 24 }}>
+        <div ref={ref} className="dtpl-summary-preview" style={{ fontFamily: 'Times New Roman, serif', color: '#000', background: '#e5e7eb', padding: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>
             <style>{`
-                @page { size: A4 landscape; margin: 8mm 10mm; }
+                @page { size: A4 landscape; margin: 5mm 15mm; }
                 @media print {
                     body { margin: 0; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                    .dtpl-summary-preview { padding: 0 !important; background: transparent !important; }
+                    .dtpl-summary-preview { padding: 0 !important; background: transparent !important; display: block !important; }
                     .dtpl-summary-page {
                         width: 100% !important;
                         min-height: auto !important;
@@ -67,7 +67,7 @@ const DoiTraPhoiLoiSummaryPrintTemplate = forwardRef(function DoiTraPhoiLoiSumma
                         key={pageIndex}
                         style={{
                             width: '297mm', minHeight: '210mm', boxSizing: 'border-box',
-                            background: '#fff', padding: '8mm 10mm', margin: '0 auto 20px', position: 'relative',
+                            background: '#fff', padding: '5mm 15mm', margin: 0, position: 'relative',
                             boxShadow: '0 2px 14px rgba(0,0,0,.16)', pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'auto',
                             fontSize: '8pt'
                         }}

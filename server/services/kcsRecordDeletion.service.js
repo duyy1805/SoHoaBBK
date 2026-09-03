@@ -108,6 +108,10 @@ const deleteBienBanData = async (transaction, bienBanIds, deletedBy) => {
             DELETE FROM dbo.BIEN_BAN_KPH_REVIEW_HISTORY
             WHERE BienBanId IN (SELECT Id FROM #TargetBienBan)
                OR XinYKienId IN (SELECT Id FROM #TargetOpinion);
+            DELETE FROM dbo.BIEN_BAN_BGD_APPROVAL WHERE BienBanId IN (SELECT Id FROM #TargetBienBan);
+            DELETE FROM dbo.NOTIFICATIONS
+            WHERE Type IN ('EXECUTIVE_APPROVAL_BB','EXECUTIVE_APPROVAL_KPH')
+              AND ReferenceId IN (SELECT Id FROM #TargetBienBan);
             DELETE FROM dbo.TRA_LOI_Y_KIEN WHERE XinYKienId IN (SELECT Id FROM #TargetOpinion);
             DELETE FROM dbo.XIN_Y_KIEN WHERE Id IN (SELECT Id FROM #TargetOpinion);
             DELETE FROM dbo.BIEN_BAN_THEO_DOI_DANH_GIA WHERE BienBanId IN (SELECT Id FROM #TargetBienBan);

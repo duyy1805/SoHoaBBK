@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import Toast from "react-native-toast-message";
 import { useFocusEffect } from "@react-navigation/native";
-import { getMyBienBan } from "../api/bienBan.api";
+import { getMyBienBan, getStandaloneBienBanList } from "../api/bienBan.api";
 
 export default function BienBanListScreen({ navigation }) {
 
@@ -28,9 +28,19 @@ export default function BienBanListScreen({ navigation }) {
     const loadData = async () => {
         try {
 
-            const res = await getMyBienBan();
-
-            setData(res.data || []);
+            const [bienBanResponse, standaloneResponse] = await Promise.all([
+                getMyBienBan(),
+                getStandaloneBienBanList()
+            ]);
+            const merged = new Map();
+            (bienBanResponse.data || []).forEach((item) => merged.set(Number(item.BienBanId), item));
+            (standaloneResponse.data || []).forEach((item) => merged.set(Number(item.BienBanId), {
+                ...item,
+                IsStandalone: true
+            }));
+            setData([...merged.values()].sort((left, right) =>
+                new Date(right.ListSortAt || right.CreatedAt || 0) - new Date(left.ListSortAt || left.CreatedAt || 0)
+            ));
 
         } catch (err) {
             console.log("Load BienBan error:", err);
@@ -54,7 +64,8 @@ export default function BienBanListScreen({ navigation }) {
             String(item.TrangThai || "").startsWith("BB_SXBT");
 
         const getStatusLabel = () => {
-            if (!isSxbtBienBan) return item.TrangThai;
+            if (!isSxbtBienBan) return item.TrangThai === "CHO_BGD_XAC_NHAN"
+                ? "Chờ Ban giám đốc xác nhận" : item.TrangThai;
             if (item.TrangThai === "BB_SXBT_HOAN_TAT") return "SXBT hoàn tất";
             if (item.TrangThai === "BB_SXBT_CHO_XAC_NHAN") {
                 const waitingDepartment = item.MaBoPhanDangCho || item.TenBoPhanDangCho;
@@ -73,12 +84,12 @@ export default function BienBanListScreen({ navigation }) {
                     const screenName = isSxbtBienBan
                         ? "BienBanSxbtDetail"
                         : "BienBanDetail";
-                    navigation.navigate(screenName, { bienBanId: item.BienBanId });
+                    navigation.navigate(screenName, { bienBanId: item.BienBanId, standalone: Boolean(item.IsStandalone) });
                 }}
             >
 
                 <Text style={styles.title}>
-                    {item.SoPhieu}
+                    {item.SoPhieu || item.SoBienBan || `BB#${item.BienBanId}`}
                 </Text>
 
                 <Text style={styles.product}>

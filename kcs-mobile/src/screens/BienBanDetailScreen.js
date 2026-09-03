@@ -13,11 +13,13 @@ import KeyboardFormScrollView from "../components/KeyboardFormScrollView";
 
 import {
     getBienBanDetail,
+    getStandaloneBienBanDetail,
     updateMoTaChung,
     completeBienBan,
     confirmAssign,
     confirmUser,
     confirmKphByCreatorDepartment,
+    submitExecutiveApproval,
     updateKphRequirements
 } from "../api/bienBan.api";
 
@@ -28,9 +30,10 @@ import XuLyModal from "../components/XuLyModal";
 import ChiPhiModal from "../components/ChiPhiModal";
 import HanhDongModal from "../components/HanhDongModal";
 import OpinionResponseModal from "../components/OpinionResponseModal";
+import ExecutiveApprovalReturnModal from "../components/ExecutiveApprovalReturnModal";
 export default function BienBanDetailScreen({ route, navigation }) {
 
-    const { bienBanId } = route.params;
+    const { bienBanId, standalone = false } = route.params;
 
     const [info, setInfo] = useState(null);
     const [moTaChung, setMoTaChung] = useState("");
@@ -42,6 +45,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
     const [xacNhan, setXacNhan] = useState([]);
     const [hanhDong, setHanhDong] = useState([]);
     const [specialistOpinions, setSpecialistOpinions] = useState([]);
+    const [executiveApprovals, setExecutiveApprovals] = useState([]);
 
     const [loading, setLoading] = useState(true);
     const [showAssignDeptModal, setShowAssignDeptModal] = useState(false);
@@ -56,6 +60,8 @@ export default function BienBanDetailScreen({ route, navigation }) {
     const [currentUserPermissions, setCurrentUserPermissions] = useState([]);
     const [currentUserRoles, setCurrentUserRoles] = useState([]);
     const [selectedAssign, setSelectedAssign] = useState(null);
+    const [showExecutiveReturnModal, setShowExecutiveReturnModal] = useState(false);
+    const [executiveSaving, setExecutiveSaving] = useState(false);
     /* LOAD DATA */
 
     useEffect(() => {
@@ -76,7 +82,9 @@ export default function BienBanDetailScreen({ route, navigation }) {
         try {
 
             setLoading(true);
-            const res = await getBienBanDetail(bienBanId);
+            const res = standalone
+                ? await getStandaloneBienBanDetail(bienBanId)
+                : await getBienBanDetail(bienBanId);
 
             setInfo(res.data.info || []);
             setDefects(res.data.defects || []);
@@ -86,6 +94,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
             setXacNhan(res.data.xacNhan || []);
             setHanhDong(res.data.hanhDong || []);
             setSpecialistOpinions(res.data.specialistOpinions || []);
+            setExecutiveApprovals(res.data.executiveApprovals || []);
             const moTa = res.data.info?.MoTaChung || "";
 
             setMoTaChung(moTa);
@@ -203,8 +212,10 @@ export default function BienBanDetailScreen({ route, navigation }) {
         try {
 
             if (info?.MauPhieuVersion === "V01") {
-                await confirmKphByCreatorDepartment(bienBanId);
-                Alert.alert("Thành công", "Đã xác nhận và chuyển biên bản sang theo dõi");
+                const response = await confirmKphByCreatorDepartment(bienBanId);
+                Alert.alert("Thành công", response.data?.nextStatus === "CHO_BGD_XAC_NHAN"
+                    ? "Đã xác nhận và chuyển Ban giám đốc duyệt"
+                    : "Đã xác nhận và chuyển biên bản sang theo dõi");
                 loadData();
             } else {
                 await completeBienBan(bienBanId);
@@ -223,6 +234,45 @@ export default function BienBanDetailScreen({ route, navigation }) {
             }
         }
 
+    };
+
+    const handleExecutiveApprove = () => {
+        Alert.alert(
+            "Ban giám đốc xác nhận",
+            "Xác nhận hồ sơ để chuyển sang bước theo dõi hiệu lực?",
+            [
+                { text: "Hủy", style: "cancel" },
+                {
+                    text: "Xác nhận",
+                    onPress: async () => {
+                        try {
+                            setExecutiveSaving(true);
+                            await submitExecutiveApproval(bienBanId, "APPROVE");
+                            Alert.alert("Thành công", "Ban giám đốc đã xác nhận hồ sơ");
+                            loadData();
+                        } catch (error) {
+                            Alert.alert("Lỗi", error?.response?.data?.message || "Không thể xác nhận hồ sơ");
+                        } finally {
+                            setExecutiveSaving(false);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    const handleExecutiveReturn = async (reason) => {
+        try {
+            setExecutiveSaving(true);
+            await submitExecutiveApproval(bienBanId, "RETURN", reason);
+            setShowExecutiveReturnModal(false);
+            Alert.alert("Thành công", "Đã trả hồ sơ cho bộ phận tạo chỉnh sửa");
+            loadData();
+        } catch (error) {
+            Alert.alert("Lỗi", error?.response?.data?.message || "Không thể trả lại hồ sơ");
+        } finally {
+            setExecutiveSaving(false);
+        }
     };
 
     /* STATUS */
@@ -271,7 +321,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
     const requiredSectionsReady = xuLy.length > 0 &&
         (!info?.YeuCauChiPhi || chiPhi.length > 0) &&
         (!info?.YeuCauHanhDong || hanhDong.length > 0);
-    const canCreatorConfirm = isV01 && info?.CanManageKphFlow &&
+    const canCreatorConfirm = isV01 && Boolean(info?.CanCreatorConfirm) &&
         info?.OpinionDepartmentsConfirmed && allOpinionsAnswered &&
         requiredSectionsReady && !["CHO_THEO_DOI", "HOAN_TAT"].includes(info?.TrangThai);
     const handleConfirmUser = async () => {
@@ -704,6 +754,53 @@ export default function BienBanDetailScreen({ route, navigation }) {
                 </View>
             ))}
 
+            {isV01 && info.RequiresExecutiveApproval && (
+                <View style={styles.executiveCard}>
+                    <View style={styles.rowBetween}>
+                        <Text style={styles.executiveTitle}>Ban giám đốc xác nhận</Text>
+                        <Text style={info.ExecutiveApprovalStatus === "APPROVED" ? styles.done
+                            : info.ExecutiveApprovalStatus === "RETURNED" ? styles.returned : styles.pending}>
+                            {info.ExecutiveApprovalStatus === "APPROVED" ? "Đã xác nhận"
+                                : info.ExecutiveApprovalStatus === "RETURNED" ? "Đã trả lại"
+                                    : info.TrangThai === "CHO_BGD_XAC_NHAN" ? "Đang chờ" : "Chưa đến bước"}
+                        </Text>
+                    </View>
+                    {info.ExecutiveApprovalAt ? (
+                        <Text style={styles.meta}>
+                            {info.ExecutiveApprovalByName || "Ban giám đốc"} · {new Date(info.ExecutiveApprovalAt).toLocaleString("vi-VN")}
+                        </Text>
+                    ) : null}
+                    {info.ExecutiveApprovalReason ? (
+                        <Text style={styles.executiveReason}>Lý do: {info.ExecutiveApprovalReason}</Text>
+                    ) : null}
+                    {executiveApprovals.length > 1 ? (
+                        <Text style={styles.meta}>Đã ghi nhận {executiveApprovals.length} vòng xử lý.</Text>
+                    ) : null}
+                    {(info.CanExecutiveApprove || info.CanExecutiveReturn) && (
+                        <View style={styles.executiveActions}>
+                            {info.CanExecutiveReturn && (
+                                <TouchableOpacity
+                                    style={styles.executiveReturnButton}
+                                    disabled={executiveSaving}
+                                    onPress={() => setShowExecutiveReturnModal(true)}
+                                >
+                                    <Text style={styles.executiveReturnText}>Trả lại</Text>
+                                </TouchableOpacity>
+                            )}
+                            {info.CanExecutiveApprove && (
+                                <TouchableOpacity
+                                    style={styles.executiveApproveButton}
+                                    disabled={executiveSaving}
+                                    onPress={handleExecutiveApprove}
+                                >
+                                    <Text style={styles.btnText}>{executiveSaving ? "Đang xử lý…" : "Xác nhận"}</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    )}
+                </View>
+            )}
+
             {/* COMPLETE */}
             {!isV01 && info.AssignConfirmed && isAssigned && !isConfirmed && hasXuLy && hasChiPhi && hasHanhDong && (
 
@@ -724,7 +821,9 @@ export default function BienBanDetailScreen({ route, navigation }) {
                     onPress={handleComplete}
                 >
                     <Text style={styles.btnText}>
-                        {isV01 ? "Xác nhận và chuyển theo dõi" : "Hoàn thành biên bản"}
+                        {isV01
+                            ? info.RequiresExecutiveApproval ? "Xác nhận và trình Ban giám đốc" : "Xác nhận và chuyển theo dõi"
+                            : "Hoàn thành biên bản"}
                     </Text>
                 </TouchableOpacity>
 
@@ -783,6 +882,12 @@ export default function BienBanDetailScreen({ route, navigation }) {
                     setSelectedOpinionDepartment(null);
                 }}
             />
+            <ExecutiveApprovalReturnModal
+                visible={showExecutiveReturnModal}
+                saving={executiveSaving}
+                onClose={() => !executiveSaving && setShowExecutiveReturnModal(false)}
+                onSubmit={handleExecutiveReturn}
+            />
         </KeyboardFormScrollView>
 
     );
@@ -828,6 +933,21 @@ const styles = StyleSheet.create({
         fontWeight: "700",
         textAlign: "center"
     },
+    executiveCard: {
+        marginTop: 18,
+        padding: 14,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: "#a78bfa",
+        backgroundColor: "#faf5ff"
+    },
+    executiveTitle: { fontSize: 16, fontWeight: "700", color: "#4c1d95" },
+    executiveReason: { marginTop: 8, color: "#b91c1c", lineHeight: 20 },
+    returned: { color: "#b91c1c", fontWeight: "700" },
+    executiveActions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 14 },
+    executiveReturnButton: { borderWidth: 1, borderColor: "#dc2626", borderRadius: 9, paddingHorizontal: 16, paddingVertical: 11 },
+    executiveReturnText: { color: "#dc2626", fontWeight: "700" },
+    executiveApproveButton: { backgroundColor: "#15803d", borderRadius: 9, paddingHorizontal: 18, paddingVertical: 12 },
 
     headerCard: {
         backgroundColor: "#fff",

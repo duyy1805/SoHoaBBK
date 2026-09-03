@@ -42,6 +42,11 @@ export default function NotificationScreen({ navigation }) {
         // Điều hướng
         if (item.Type === 'NEW_PHIEU' && item.ReferenceId) {
             navigation.navigate('PhieuDetail', { id: item.ReferenceId });
+        } else if (['EXECUTIVE_APPROVAL_BB', 'EXECUTIVE_APPROVAL_KPH'].includes(item.Type) && item.ReferenceId) {
+            navigation.navigate('BienBanDetail', {
+                bienBanId: item.ReferenceId,
+                standalone: item.Type === 'EXECUTIVE_APPROVAL_KPH'
+            });
         }
     };
 

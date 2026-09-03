@@ -5,6 +5,7 @@ export const BIEN_BAN_STATUS = {
     CHO_TP_B8: { label: "Chờ TP B8 kết luận", color: "secondary" },
     DA_KET_LUAN: { label: "Đã kết luận", color: "primary" },
     CHO_XAC_NHAN: { label: "Đang xử lý và xác nhận", color: "info" },
+    CHO_BGD_XAC_NHAN: { label: "Chờ Ban giám đốc xác nhận", color: "secondary" },
     DA_XAC_NHAN: { label: "Đã xác nhận", color: "success" },
     CHO_THEO_DOI: { label: "Chờ theo dõi đánh giá", color: "warning" },
     TRA_LAI_CHINH_SUA: { label: "Trả lại chỉnh sửa", color: "error" },
@@ -16,7 +17,7 @@ export const getBienBanStatusMeta = (status) => (
     BIEN_BAN_STATUS[status] || { label: status || "Mới tạo", color: "default" }
 );
 
-const WORKFLOW_STEPS = [
+const BASE_WORKFLOW_STEPS = [
     "Thông tin & lỗi",
     "Phân công",
     "Phương án xử lý",
@@ -47,6 +48,10 @@ export function buildBienBanWorkflow({
     const isFinished = ["HOAN_TAT", "HOAN_THANH", "DA_XAC_NHAN"].includes(status) || Boolean(evaluation);
     const isReturned = status === "TRA_LAI_CHINH_SUA";
     const isV01 = info?.MauPhieuVersion === "V01";
+    const requiresExecutiveApproval = isV01 && Boolean(info?.RequiresExecutiveApproval);
+    const workflowSteps = requiresExecutiveApproval
+        ? [...BASE_WORKFLOW_STEPS.slice(0, 5), "Ban giám đốc", ...BASE_WORKFLOW_STEPS.slice(5)]
+        : BASE_WORKFLOW_STEPS;
     const assignConfirmed = isV01
         ? Boolean(info?.OpinionDepartmentsConfirmed)
         : Boolean(info?.AssignConfirmed);
@@ -67,7 +72,9 @@ export function buildBienBanWorkflow({
     if (assignConfirmed && allProcessingDone) activeStep = 3;
     if (assignConfirmed && allProcessingDone && allOpinionsAnswered) activeStep = 4;
     if (allConfirmed || status === "CHO_THEO_DOI") activeStep = 5;
-    if (isFinished) activeStep = 6;
+    if (requiresExecutiveApproval && info?.CreatorConfirmedAt) activeStep = 5;
+    if (status === "CHO_THEO_DOI") activeStep = requiresExecutiveApproval ? 6 : 5;
+    if (isFinished) activeStep = workflowSteps.length;
     if (isReturned) activeStep = 3;
 
     const waitingDepartments = assigns
@@ -165,6 +172,20 @@ export function buildBienBanWorkflow({
             onAction: actions.complete,
             tone: "success"
         };
+    } else if (status === "CHO_BGD_XAC_NHAN") {
+        guidance = info?.CanExecutiveApprove ? {
+            eyebrow: "VIỆC BẠN CẦN LÀM",
+            title: "Hồ sơ chờ Ban giám đốc xác nhận",
+            description: "Kiểm tra hồ sơ trước khi chuyển sang theo dõi hiệu lực hoặc trả lại để chỉnh sửa.",
+            actionLabel: "Đến phần xác nhận",
+            onAction: actions.openExecutiveApproval,
+            tone: "warning"
+        } : {
+            eyebrow: "ĐANG CHỜ",
+            title: "Chờ Ban giám đốc xác nhận",
+            description: "Hồ sơ đã được Trưởng bộ phận tạo phiếu xác nhận và đang chờ Ban giám đốc xử lý.",
+            tone: "info"
+        };
     } else if (status === "CHO_THEO_DOI") {
         guidance = {
             eyebrow: "BƯỚC CUỐI",
@@ -180,6 +201,6 @@ export function buildBienBanWorkflow({
         activeStep,
         returnedStep: isReturned ? 3 : null,
         guidance,
-        steps: WORKFLOW_STEPS
+        steps: workflowSteps
     };
 }

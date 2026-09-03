@@ -48,7 +48,8 @@ const DoiTraPhoiLoiPrintTemplate = forwardRef(function DoiTraPhoiLoiPrintTemplat
         SoPhieu: phieu.SoPhieu,
         NgayKiem: phieu.NgayLap,
         CreatedAt: phieu.CreatedAt,
-        NguoiLap: phieu.TenNguoiLap,
+        NguoiLap: phieu.TenKcsHoanTat || phieu.TenNguoiLap,
+        NguoiLapSignatureDataUrl: phieu.KcsSignatureDataUrl || phieu.NguoiLapSignatureDataUrl,
         MaDonViTaoPhieu: phieu.MaBoPhanKcs,
         DonViTaoPhieu: phieu.TenBoPhanKcs,
         MaBoPhan: plan.DepartmentCode,
@@ -63,7 +64,9 @@ const DoiTraPhoiLoiPrintTemplate = forwardRef(function DoiTraPhoiLoiPrintTemplat
             ? `Đổi trả ${phoiItems.length} loại phôi lỗi theo kế hoạch ${plan.PlanNo || plan.PlanID || ''}.`
             : 'Chưa cập nhật danh sách phôi lỗi.',
         PhieuKiemTbpXacNhanAt: phieu.TbpKcsConfirmedAt,
-        PhieuKiemTbpXacNhanName: phieu.TenTbpKcsXacNhan
+        PhieuKiemTbpXacNhanId: phieu.TbpKcsConfirmedBy,
+        PhieuKiemTbpXacNhanName: phieu.TenTbpKcsXacNhan,
+        PhieuKiemTbpSignatureDataUrl: phieu.TbpKcsSignatureDataUrl
     };
 
     const dynamicFields = [

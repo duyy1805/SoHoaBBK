@@ -28,3 +28,7 @@ export const changeManagedRoleStatus = (id, trangThai, rowVersion) =>
     axiosClient.patch(`/admin/roles/${id}/status`, { trangThai, rowVersion });
 export const updateManagedRolePermissions = (id, permissionIds, rowVersion) =>
     axiosClient.put(`/admin/roles/${id}/permissions`, { permissionIds, rowVersion });
+
+export const getWorkflowSettings = () => axiosClient.get("/admin/settings/workflow");
+export const updateWorkflowSettings = (requireExecutiveApprovalForKph, rowVersion) =>
+    axiosClient.put("/admin/settings/workflow", { requireExecutiveApprovalForKph, rowVersion });

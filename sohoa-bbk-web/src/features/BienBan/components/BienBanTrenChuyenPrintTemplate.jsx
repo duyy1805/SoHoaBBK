@@ -634,6 +634,22 @@ export const BienBanTrenChuyenPrintTemplate = React.forwardRef(({
                                     </Box>
                                 )}
 
+                                {info.RequiresExecutiveApproval && (
+                                    <Box className="avoid-break" mt={2} style={{ border: '1px solid #000', padding: '8px' }}>
+                                        <div style={{ ...styles.boldText, textAlign: 'center' }}>XÁC NHẬN CỦA BAN GIÁM ĐỐC</div>
+                                        <div style={{ ...styles.text, textAlign: 'center', marginTop: '4px' }}>
+                                            {info.ExecutiveApprovalStatus === 'APPROVED' && info.ExecutiveApprovalAt
+                                                ? new Date(info.ExecutiveApprovalAt).toLocaleDateString('vi-VN') : 'Ngày'}
+                                        </div>
+                                        <div style={{ textAlign: 'center', minHeight: '78px' }}>
+                                            {info.ExecutiveApprovalStatus === 'APPROVED' && <>
+                                                <PrintSignatureImage src={info.ExecutiveApprovalSignatureDataUrl} height={58} />
+                                                <div style={styles.text}>{info.ExecutiveApprovalByName || '(Ký, họ tên)'}</div>
+                                            </>}
+                                        </div>
+                                    </Box>
+                                )}
+
                                 {/* 8. Theo dõi */}
                                 <Box className="avoid-break" mt={2} pt={0}>
                                     <div style={styles.sectionTitle}>8. Theo dõi đánh giá</div>

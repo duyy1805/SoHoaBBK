@@ -11,6 +11,7 @@ const STATUS_LABELS = {
     CHO_XAC_NHAN: "Đang xử lý và xác nhận",
     DA_XAC_NHAN: "Đã xác nhận",
     CHO_THEO_DOI: "Chờ theo dõi đánh giá",
+    CHO_BGD_XAC_NHAN: "Chờ Ban giám đốc xác nhận",
     TRA_LAI_CHINH_SUA: "Trả lại chỉnh sửa",
     HOAN_THANH: "Hoàn thành",
     HOAN_TAT: "Hoàn tất",

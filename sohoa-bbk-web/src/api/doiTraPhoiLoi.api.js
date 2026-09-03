@@ -18,6 +18,9 @@ export const getDoiTraPhoiLoiDetail = (id) =>
 export const cancelDoiTraPhoiLoi = (id, rowVersion) =>
     axiosClient.post(`/doi-tra-phoi-loi/${id}/cancel`, { rowVersion });
 
+export const deleteDoiTraPhoiLoi = (id) =>
+    axiosClient.delete(`/doi-tra-phoi-loi/${id}`);
+
 export const getDoiTraDefectGroups = () =>
     axiosClient.get('/doi-tra-phoi-loi/defect-groups');
 
@@ -26,6 +29,12 @@ export const getDoiTraPhoiOptions = (id) =>
 
 export const saveDoiTraPhoi = (id, rowVersion, items) =>
     axiosClient.put(`/doi-tra-phoi-loi/${id}/phoi`, { rowVersion, items });
+
+export const saveDoiTraDinhMuc = (id, rowVersion, items) =>
+    axiosClient.put(`/doi-tra-phoi-loi/${id}/dinh-muc`, { rowVersion, items });
+
+export const executeDoiTraAction = (id, actionCode, data) =>
+    axiosClient.post(`/doi-tra-phoi-loi/${id}/actions/${actionCode}`, data);
 
 export const getDoiTraDefectGroupManagement = () =>
     axiosClient.get('/doi-tra-phoi-loi/defect-groups/manage');

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     Alert, Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions,
     DialogContent, DialogTitle, FormControl, IconButton, InputLabel, MenuItem,
-    Paper, Select, Stack, Tab, Table, TableBody, TableCell, TableContainer,
+    Paper, Select, Stack, Switch, Tab, Table, TableBody, TableCell, TableContainer,
     TableHead, TablePagination, TableRow, Tabs, TextField, Tooltip, Typography
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
@@ -13,12 +13,13 @@ import LockIcon from "@mui/icons-material/Lock";
 import LockOpenIcon from "@mui/icons-material/LockOpen";
 import ManageAccountsIcon from "@mui/icons-material/ManageAccounts";
 import SecurityIcon from "@mui/icons-material/Security";
+import SettingsIcon from "@mui/icons-material/Settings";
 import {
     changeManagedRoleStatus, changeManagedUserStatus, createManagedRole,
     createManagedUser, getManagedRoles, getManagedUser, getManagedUsers,
     getUserAdminMetadata, resetManagedUserPassword, updateManagedRole,
     updateManagedRolePermissions, updateManagedUser, uploadManagedUserSignature,
-    deleteManagedUserSignature
+    deleteManagedUserSignature, getWorkflowSettings, updateWorkflowSettings
 } from "../../api/admin.api";
 import { getCurrentUser } from "../../utils/auth";
 
@@ -71,6 +72,10 @@ export default function UserAdminPage() {
     const [roleForm, setRoleForm] = useState(emptyRoleForm);
     const [permissionTarget, setPermissionTarget] = useState(null);
     const [permissionIds, setPermissionIds] = useState([]);
+    const [workflowSettings, setWorkflowSettings] = useState({
+        RequireExecutiveApprovalForKph: false,
+        RowVersion: ""
+    });
 
     useEffect(() => {
         const timer = window.setTimeout(() => setDebouncedKeyword(filters.keyword.trim()), 350);
@@ -110,10 +115,14 @@ export default function UserAdminPage() {
     }, []);
 
     useEffect(() => {
-        Promise.all([getUserAdminMetadata(), getManagedRoles()])
-            .then(([metadataRes, rolesRes]) => {
+        Promise.all([getUserAdminMetadata(), getManagedRoles(), getWorkflowSettings()])
+            .then(([metadataRes, rolesRes, workflowRes]) => {
                 setMetadata(metadataRes.data || { departments: [], roles: [], permissions: [] });
                 setRoles(rolesRes.data || []);
+                setWorkflowSettings(workflowRes.data || {
+                    RequireExecutiveApprovalForKph: false,
+                    RowVersion: ""
+                });
             })
             .catch((err) => setError(errorMessage(err, "Không tải được dữ liệu quản trị")));
     }, []);
@@ -135,6 +144,23 @@ export default function UserAdminPage() {
             ...prev,
             roles: prev.roles.map((item) => Number(item.Id) === Number(updated.Id) ? { ...item, ...updated } : item)
         }));
+    };
+
+    const toggleExecutiveApprovalSetting = async (event) => {
+        const enabled = event.target.checked;
+        setSaving(true);
+        try {
+            const response = await updateWorkflowSettings(enabled, workflowSettings.RowVersion);
+            setWorkflowSettings(response.data);
+            setNotice(enabled
+                ? "Đã bật bước xác nhận Ban giám đốc cho hồ sơ tạo mới."
+                : "Đã tắt bước xác nhận Ban giám đốc cho hồ sơ tạo mới.");
+            setError("");
+        } catch (err) {
+            setError(errorMessage(err, "Không cập nhật được cấu hình quy trình"));
+        } finally {
+            setSaving(false);
+        }
     };
 
     const openCreateUser = () => {
@@ -394,13 +420,13 @@ export default function UserAdminPage() {
                     </Stack>
                     <Typography color="text.secondary">Quản lý tài khoản, bộ phận, role và permission của hệ thống.</Typography>
                 </Box>
-                <Button
+                {tab !== 2 && <Button
                     variant="contained"
                     startIcon={<AddIcon />}
                     onClick={tab === 0 ? openCreateUser : openCreateRole}
                 >
                     {tab === 0 ? "Tạo tài khoản" : "Tạo role"}
-                </Button>
+                </Button>}
             </Stack>
 
             {error && <Alert severity="error" onClose={() => setError("")} sx={{ mb: 2 }}>{error}</Alert>}
@@ -411,6 +437,7 @@ export default function UserAdminPage() {
                 <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ px: 2, borderBottom: 1, borderColor: "divider" }}>
                     <Tab icon={<ManageAccountsIcon />} iconPosition="start" label="Tài khoản" />
                     <Tab icon={<SecurityIcon />} iconPosition="start" label="Role & permission" />
+                    <Tab icon={<SettingsIcon />} iconPosition="start" label="Cấu hình hệ thống" />
                 </Tabs>
 
                 {tab === 0 && (
@@ -519,6 +546,34 @@ export default function UserAdminPage() {
                             </TableBody>
                         </Table>
                     </TableContainer>
+                )}
+
+                {tab === 2 && (
+                    <Box sx={{ p: 3, maxWidth: 820 }}>
+                        <Typography variant="h6" fontWeight={800}>Quy trình biên bản và phiếu KPH</Typography>
+                        <Typography color="text.secondary" sx={{ mt: 0.5, mb: 2 }}>
+                            Cấu hình chỉ được chụp cho hồ sơ V01 loại biên bản thường hoặc phiếu KPH độc lập tại thời điểm tạo.
+                        </Typography>
+                        <Paper variant="outlined" sx={{ p: 2 }}>
+                            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={2}>
+                                <Box>
+                                    <Typography fontWeight={700}>Yêu cầu Ban giám đốc xác nhận</Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        Khi bật, hồ sơ mới phải được Ban giám đốc xác nhận sau Trưởng bộ phận tạo phiếu rồi mới chuyển sang theo dõi hiệu lực.
+                                    </Typography>
+                                </Box>
+                                <Switch
+                                    checked={Boolean(workflowSettings.RequireExecutiveApprovalForKph)}
+                                    onChange={toggleExecutiveApprovalSetting}
+                                    disabled={saving || !workflowSettings.RowVersion}
+                                    inputProps={{ "aria-label": "Yêu cầu Ban giám đốc xác nhận" }}
+                                />
+                            </Stack>
+                        </Paper>
+                        <Alert severity="info" sx={{ mt: 2 }}>
+                            Việc bật hoặc tắt không thay đổi hồ sơ đã tạo. Hãy gán permission XAC_NHAN_BAN_GIAM_DOC và ảnh chữ ký cho ít nhất một tài khoản lãnh đạo trước khi bật.
+                        </Alert>
+                    </Box>
                 )}
             </Paper>
 

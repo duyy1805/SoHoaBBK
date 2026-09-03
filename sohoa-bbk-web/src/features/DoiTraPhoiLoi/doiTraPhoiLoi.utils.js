@@ -20,10 +20,10 @@ export const formatDoiTraDate = (value, includeTime = false) => {
         : { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
 
-export const formatDoiTraQuantity = (value) => {
+export const formatDoiTraQuantity = (value, maximumFractionDigits = 3) => {
     if (value === null || value === undefined || value === '') return '---';
     const number = Number(value);
     return Number.isFinite(number)
-        ? number.toLocaleString('vi-VN', { maximumFractionDigits: 3 })
+        ? number.toLocaleString('vi-VN', { maximumFractionDigits })
         : String(value);
 };

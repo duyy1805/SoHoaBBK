@@ -608,6 +608,7 @@ export default function BienBanList() {
                             <MenuItem value="DA_KET_LUAN">Đã kết luận</MenuItem>
                             <MenuItem value="CHO_XAC_NHAN">Chờ xác nhận</MenuItem>
                             <MenuItem value="TRA_LAI_CHINH_SUA">Trả lại chỉnh sửa</MenuItem>
+                            <MenuItem value="CHO_BGD_XAC_NHAN">Chờ Ban giám đốc xác nhận</MenuItem>
                             <MenuItem value="DA_XAC_NHAN">Đã xác nhận</MenuItem>
                             <MenuItem value="CHO_THEO_DOI">Chờ theo dõi đánh giá</MenuItem>
                             <MenuItem value="HOAN_TAT">Hoàn tất</MenuItem>

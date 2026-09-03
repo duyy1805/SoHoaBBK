@@ -118,6 +118,9 @@ export const confirmOpinionDepartments = (bienBanId, boPhanIds) =>
 export const confirmKphByCreatorDepartment = (bienBanId) =>
     axiosClient.post(`/bien-ban/${bienBanId}/creator-confirm`);
 
+export const submitExecutiveApproval = (bienBanId, decision, reason = "") =>
+    axiosClient.post(`/bien-ban/${bienBanId}/executive-approval`, { decision, reason });
+
 export const addHanhDong = (data) =>
     axiosClient.post("/bien-ban/hanh-dong", data);
 

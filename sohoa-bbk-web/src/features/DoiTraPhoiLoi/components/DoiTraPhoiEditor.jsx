@@ -53,7 +53,7 @@ const toDraft = (item, defaultLot = '') => ({
     }))
 });
 
-export default function DoiTraPhoiEditor({ phieuId, phieu, plan, items = [], canEdit, onSaved }) {
+export default function DoiTraPhoiEditor({ phieuId, phieu, plan, items = [], canEdit, onSaved, onDirtyChange }) {
     const defaultLot = plan?.PlanNo || plan?.PlanID || '';
     const [editing, setEditing] = useState(false);
     const [pickerOpen, setPickerOpen] = useState(false);
@@ -70,6 +70,8 @@ export default function DoiTraPhoiEditor({ phieuId, phieu, plan, items = [], can
     useEffect(() => {
         if (!editing) setDraft(items.map((item) => toDraft(item, defaultLot)));
     }, [defaultLot, editing, items]);
+
+    useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
     const selectedIds = useMemo(() => new Set(draft.map((item) => Number(item.sourceLoiPhoiId))), [draft]);
     const filteredOptions = useMemo(() => {
@@ -108,13 +110,18 @@ export default function DoiTraPhoiEditor({ phieuId, phieu, plan, items = [], can
     const beginEdit = async () => {
         setDraft(items.map((item) => toDraft(item, defaultLot)));
         setEditing(true);
+        onDirtyChange?.(false);
         await loadLookups();
     };
 
-    const patchItem = (index, patch) => setDraft((current) => current.map((item, itemIndex) => (
+    const updateDraft = (updater) => {
+        setDraft(updater);
+        onDirtyChange?.(true);
+    };
+    const patchItem = (index, patch) => updateDraft((current) => current.map((item, itemIndex) => (
         itemIndex === index ? { ...item, ...patch } : item
     )));
-    const patchDefect = (itemIndex, defectIndex, patch) => setDraft((current) => current.map((item, currentItemIndex) => (
+    const patchDefect = (itemIndex, defectIndex, patch) => updateDraft((current) => current.map((item, currentItemIndex) => (
         currentItemIndex !== itemIndex ? item : {
             ...item,
             defects: item.defects.map((defect, currentDefectIndex) => (
@@ -125,7 +132,7 @@ export default function DoiTraPhoiEditor({ phieuId, phieu, plan, items = [], can
 
     const togglePhoi = (option, material) => {
         const id = Number(option.SourceLoiPhoiId);
-        setDraft((current) => current.some((item) => Number(item.sourceLoiPhoiId) === id)
+        updateDraft((current) => current.some((item) => Number(item.sourceLoiPhoiId) === id)
             ? current.filter((item) => Number(item.sourceLoiPhoiId) !== id)
             : [...current, toDraft({ ...option, ...material, SourceLoiPhoiId: id }, defaultLot)]);
     };
@@ -187,6 +194,7 @@ export default function DoiTraPhoiEditor({ phieuId, phieu, plan, items = [], can
                 }))
             })));
             setEditing(false);
+            onDirtyChange?.(false);
             await onSaved?.();
         } catch (error) {
             window.alert(error.response?.data?.message || 'Không lưu được danh sách phôi và lỗi.');
@@ -248,7 +256,7 @@ export default function DoiTraPhoiEditor({ phieuId, phieu, plan, items = [], can
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                 <Button startIcon={<AddIcon />} variant="outlined" disabled={loadingLookups} onClick={() => setPickerOpen(true)}>Chọn loại phôi</Button>
                 <Box sx={{ flex: 1 }} />
-                <Button onClick={() => setEditing(false)} disabled={saving}>Hủy chỉnh sửa</Button>
+                <Button onClick={() => { setEditing(false); onDirtyChange?.(false); }} disabled={saving}>Hủy chỉnh sửa</Button>
                 <Button startIcon={saving ? <CircularProgress size={18} /> : <SaveIcon />} variant="contained" disabled={saving || loadingLookups} onClick={save}>Lưu nháp</Button>
             </Stack>
 
@@ -260,7 +268,7 @@ export default function DoiTraPhoiEditor({ phieuId, phieu, plan, items = [], can
                             <Typography fontWeight={800}>{phoiTitle(item)}</Typography>
                             <Typography variant="body2" color="text.secondary">{[item.MaVatTu, item.QuyCachVatTu, item.DaoChat].filter(Boolean).join(' — ')}</Typography>
                         </Box>
-                        <IconButton color="error" onClick={() => setDraft((current) => current.filter((_, index) => index !== itemIndex))}><DeleteOutlineIcon /></IconButton>
+                        <IconButton color="error" onClick={() => updateDraft((current) => current.filter((_, index) => index !== itemIndex))}><DeleteOutlineIcon /></IconButton>
                     </Stack>
                     <Grid container spacing={1.25} sx={{ mt: 0.5 }}>
                         <Grid size={{ xs: 6, md: 2 }}><TextField fullWidth size="small" type="number" label="Số lượng kiểm" value={item.soLuongKiem} inputProps={{ min: 1, step: 1 }} onChange={(event) => patchItem(itemIndex, { soLuongKiem: event.target.value })} /></Grid>

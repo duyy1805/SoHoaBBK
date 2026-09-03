@@ -169,8 +169,8 @@ export const BienBanPrintTemplate = React.forwardRef(({
         boldText: { fontSize: '12pt', fontWeight: 'bold' },
         sectionTitle: { fontWeight: 'bold', fontSize: '12pt', marginTop: '15px', marginBottom: '8px' },
         table: { border: '1px solid #000', borderCollapse: 'collapse', tableLayout: 'fixed', width: '100%', marginBottom: '10px' },
-        th: { border: '1px solid #000', padding: '4px', fontWeight: 'bold', textAlign: 'center', fontSize: '11pt' },
-        td: { border: '1px solid #000', padding: '4px', fontSize: '11pt', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' },
+        th: { border: '1px solid #000', padding: '3px 2px', fontWeight: 'bold', textAlign: 'center', fontSize: '9.5pt', lineHeight: 1.15, verticalAlign: 'middle' },
+        td: { border: '1px solid #000', padding: '3px 2px', fontSize: '9pt', lineHeight: 1.15, verticalAlign: 'top', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' },
         headerTable: { width: '100%', borderCollapse: 'collapse', marginBottom: '15px', border: '1px solid #000' },
         headerTd: { border: '1px solid #000', padding: '6px', textAlign: 'center', verticalAlign: 'middle' },
         signatureBlock: { display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', rowGap: '20px', marginTop: '15px', textAlign: 'center', width: '100%' },
@@ -236,6 +236,30 @@ export const BienBanPrintTemplate = React.forwardRef(({
                             <textarea name={field.name} className="custom-field" rows={getFieldRows(field.value)} defaultValue={field.value ?? ''} style={{ ...styles.inputField, cursor: 'text' }} />
                         ) : (field.value ?? '')}
                     </span>
+                </div>
+            ))}
+        </div>
+    );
+    const renderInfoColumns = (columns) => (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', ...styles.text }}>
+            {columns.map((column, columnIndex) => (
+                <div
+                    key={columnIndex}
+                    style={{ flex: column.grow || 1, minWidth: 0 }}
+                >
+                    {column.fields.map((field) => (
+                        <div
+                            key={field.name}
+                            style={{ display: 'flex', alignItems: 'flex-start', minWidth: 0, marginBottom: '8px' }}
+                        >
+                            <span style={{ whiteSpace: 'nowrap', marginRight: '6px' }}>{field.label}:</span>
+                            <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
+                                {canEditCustomFields ? (
+                                    <textarea name={field.name} className="custom-field" rows={getFieldRows(field.value)} defaultValue={field.value ?? ''} style={{ ...styles.inputField, cursor: 'text' }} />
+                                ) : (field.value ?? '')}
+                            </span>
+                        </div>
+                    ))}
                 </div>
             ))}
         </div>
@@ -733,6 +757,21 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                                 <div style={styles.text}>{item.FullName || '(Ký, họ tên)'}</div>
                                             </Box>
                                         ))}
+                                    </Box>
+                                )}
+
+                                {isV01 && info.RequiresExecutiveApproval && (
+                                    <Box className="avoid-break" mt={2} style={{ border: '1px solid #000', padding: '8px' }}>
+                                        <div style={{ ...styles.boldText, textAlign: 'center' }}>XÁC NHẬN CỦA BAN GIÁM ĐỐC</div>
+                                        <div style={{ ...styles.text, textAlign: 'center', marginTop: '4px' }}>
+                                            {info.ExecutiveApprovalStatus === 'APPROVED' ? formatSignatureDate(info.ExecutiveApprovalAt) : 'Ngày'}
+                                        </div>
+                                        <div style={{ textAlign: 'center', minHeight: '78px' }}>
+                                            {info.ExecutiveApprovalStatus === 'APPROVED' && <>
+                                                <PrintSignatureImage src={info.ExecutiveApprovalSignatureDataUrl} height={58} />
+                                                <div style={styles.text}>{info.ExecutiveApprovalByName || '(Ký, họ tên)'}</div>
+                                            </>}
+                                        </div>
                                     </Box>
                                 )}
 

@@ -82,6 +82,7 @@ import {
     searchStandaloneOrders,
     confirmOpinionDepartments,
     confirmKphByCreatorDepartment,
+    submitExecutiveApproval,
     resubmitKphReview,
     updateOwnedSectionRow,
     deleteOwnedSectionRow
@@ -166,6 +167,7 @@ export default function BienBanDetail({ standalone = false }) {
     const [phieuKiemXacNhan, setPhieuKiemXacNhan] = useState([]);
     const [hanhDong, setHanhDong] = useState([]);
     const [specialistOpinions, setSpecialistOpinions] = useState([]);
+    const [executiveApprovals, setExecutiveApprovals] = useState([]);
     const [recipientDepartments, setRecipientDepartments] = useState([]);
     const [followUpEvaluation, setFollowUpEvaluation] = useState(null);
 
@@ -237,6 +239,8 @@ export default function BienBanDetail({ standalone = false }) {
         onConfirm: null
     });
     const [confirmSaving, setConfirmSaving] = useState(false);
+    const [executiveReturnOpen, setExecutiveReturnOpen] = useState(false);
+    const [executiveReturnReason, setExecutiveReturnReason] = useState("");
 
     useEffect(() => {
         const dirty = isEditingKphHeader || isEditingStandaloneHeader || isEditingStandaloneDefects;
@@ -367,6 +371,7 @@ export default function BienBanDetail({ standalone = false }) {
             setPhieuKiemXacNhan(res.data.phieuKiemXacNhan || []);
             setHanhDong(res.data.hanhDong || []);
             setSpecialistOpinions(res.data.specialistOpinions || []);
+            setExecutiveApprovals(res.data.executiveApprovals || []);
             setRecipientDepartments(res.data.recipientDepartments || []);
             setFollowUpEvaluation(res.data.followUpEvaluation || null);
             setDynamicFields(res.data.dynamicFields || []);
@@ -761,7 +766,9 @@ export default function BienBanDetail({ standalone = false }) {
             open: true,
             title: info?.MauPhieuVersion === "V01" ? 'Xác nhận cuối của bộ phận tạo phiếu' : 'Hoàn thành biên bản',
             message: info?.MauPhieuVersion === "V01"
-                ? 'Sau khi xác nhận, mục 5/6/7 và các ý kiến sẽ bị khóa, biên bản chuyển sang theo dõi đánh giá.'
+                ? info?.RequiresExecutiveApproval
+                    ? 'Sau khi xác nhận, nội dung sẽ bị khóa và hồ sơ được chuyển tới Ban giám đốc.'
+                    : 'Sau khi xác nhận, mục 5/6/7 và các ý kiến sẽ bị khóa, biên bản chuyển sang theo dõi đánh giá.'
                 : 'Bạn có chắc chắn muốn hoàn thành biên bản này? Hành động này không thể hoàn tác.',
             type: 'success',
             onConfirm: async () => {
@@ -770,8 +777,10 @@ export default function BienBanDetail({ standalone = false }) {
                 setConfirmSaving(true);
                 try {
                     if (info?.MauPhieuVersion === "V01") {
-                        await confirmKphByCreatorDepartment(bienBanId);
-                        showToast("Đã xác nhận và chuyển biên bản sang theo dõi", "success");
+                        const response = await confirmKphByCreatorDepartment(bienBanId);
+                        showToast(response.data?.nextStatus === "CHO_BGD_XAC_NHAN"
+                            ? "Đã xác nhận và chuyển Ban giám đốc duyệt"
+                            : "Đã xác nhận và chuyển biên bản sang theo dõi", "success");
                         setConfirmDialog(prev => ({ ...prev, open: false }));
                         await refreshData();
                     } else {
@@ -787,6 +796,48 @@ export default function BienBanDetail({ standalone = false }) {
                 }
             }
         });
+    };
+
+    const handleExecutiveApprove = () => {
+        setConfirmDialog({
+            open: true,
+            title: "Ban giám đốc xác nhận",
+            message: "Sau khi xác nhận, hồ sơ sẽ chuyển sang bước theo dõi và đánh giá hiệu lực.",
+            type: "success",
+            onConfirm: async () => {
+                try {
+                    setConfirmSaving(true);
+                    await submitExecutiveApproval(bienBanId, "APPROVE");
+                    setConfirmDialog((current) => ({ ...current, open: false }));
+                    showToast("Ban giám đốc đã xác nhận hồ sơ", "success");
+                    await refreshData();
+                } catch (error) {
+                    showToast(error?.response?.data?.message || "Không thể xác nhận hồ sơ", "error");
+                } finally {
+                    setConfirmSaving(false);
+                }
+            }
+        });
+    };
+
+    const handleExecutiveReturn = async () => {
+        const reason = executiveReturnReason.trim();
+        if (!reason) {
+            showToast("Vui lòng nhập lý do trả lại", "warning");
+            return;
+        }
+        try {
+            setConfirmSaving(true);
+            await submitExecutiveApproval(bienBanId, "RETURN", reason);
+            setExecutiveReturnOpen(false);
+            setExecutiveReturnReason("");
+            showToast("Đã trả hồ sơ cho bộ phận tạo chỉnh sửa", "success");
+            await refreshData();
+        } catch (error) {
+            showToast(error?.response?.data?.message || "Không thể trả lại hồ sơ", "error");
+        } finally {
+            setConfirmSaving(false);
+        }
     };
 
     const patchSpecialistOpinion = (opinionId, changes) => {
@@ -1077,6 +1128,7 @@ export default function BienBanDetail({ standalone = false }) {
             openOpinions: () => scrollToSection("bien-ban-y-kien-chuyen-mon", { focus: true }),
             confirmProcessing: handleConfirmUser,
             complete: handleComplete,
+            openExecutiveApproval: () => scrollToSection("bien-ban-xac-nhan"),
             openFollowUp: () => scrollToSection("bien-ban-theo-doi", { focus: true })
         }
     });
@@ -1817,8 +1869,56 @@ export default function BienBanDetail({ standalone = false }) {
                                                     onClick={handleComplete}
                                                     sx={{ flexShrink: 0 }}
                                                 >
-                                                    Xác nhận và chuyển theo dõi
+                                                    {info.RequiresExecutiveApproval
+                                                        ? "Xác nhận và trình Ban giám đốc"
+                                                        : "Xác nhận và chuyển theo dõi"}
                                                 </Button>
+                                            )}
+                                        </Stack>
+                                    </CardContent>
+                                </Card>
+                            )}
+                            {isV01 && info.RequiresExecutiveApproval && (
+                                <Card elevation={0} sx={{
+                                    border: "1px solid",
+                                    borderColor: info.ExecutiveApprovalStatus === "APPROVED"
+                                        ? "success.light"
+                                        : info.ExecutiveApprovalStatus === "RETURNED" ? "error.light" : "secondary.light",
+                                    borderRadius: 2
+                                }}>
+                                    <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
+                                        <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={2}>
+                                            <Box>
+                                                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                                                    <Typography variant="h6" fontWeight={700}>Ban giám đốc xác nhận</Typography>
+                                                    <Chip size="small" color={info.ExecutiveApprovalStatus === "APPROVED"
+                                                        ? "success" : info.ExecutiveApprovalStatus === "RETURNED" ? "error" : "secondary"}
+                                                    label={info.ExecutiveApprovalStatus === "APPROVED"
+                                                        ? "Đã xác nhận" : info.ExecutiveApprovalStatus === "RETURNED"
+                                                            ? "Đã trả lại" : info.TrangThai === "CHO_BGD_XAC_NHAN"
+                                                                ? "Đang chờ xử lý" : "Chưa đến bước"} />
+                                                </Stack>
+                                                {info.ExecutiveApprovalAt && (
+                                                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                                                        {info.ExecutiveApprovalByName || "Ban giám đốc"} · {new Date(info.ExecutiveApprovalAt).toLocaleString("vi-VN")}
+                                                    </Typography>
+                                                )}
+                                                {info.ExecutiveApprovalReason && (
+                                                    <Typography variant="body2" color="error.main" sx={{ mt: 0.5, whiteSpace: "pre-wrap" }}>
+                                                        Lý do: {info.ExecutiveApprovalReason}
+                                                    </Typography>
+                                                )}
+                                                {executiveApprovals.length > 1 && (
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        Đã ghi nhận {executiveApprovals.length} vòng xử lý của Ban giám đốc.
+                                                    </Typography>
+                                                )}
+                                            </Box>
+                                            {(info.CanExecutiveApprove || info.CanExecutiveReturn) && (
+                                                <Stack direction="row" spacing={1} alignItems="center">
+                                                    {info.CanExecutiveReturn && <Button color="error" variant="outlined" onClick={() => setExecutiveReturnOpen(true)}>Trả lại</Button>}
+                                                    {info.CanExecutiveApprove && <Button color="success" variant="contained" startIcon={<VerifiedIcon />} onClick={handleExecutiveApprove}>Xác nhận</Button>}
+                                                </Stack>
                                             )}
                                         </Stack>
                                     </CardContent>
@@ -2155,6 +2255,24 @@ export default function BienBanDetail({ standalone = false }) {
                 type={confirmDialog.type}
                 loading={confirmSaving}
             />
+            <Dialog open={executiveReturnOpen} onClose={() => !confirmSaving && setExecutiveReturnOpen(false)} maxWidth="sm" fullWidth>
+                <DialogTitle>Ban giám đốc trả lại hồ sơ</DialogTitle>
+                <DialogContent dividers>
+                    <TextField
+                        autoFocus fullWidth multiline minRows={4}
+                        label="Lý do trả lại" required
+                        value={executiveReturnReason}
+                        onChange={(event) => setExecutiveReturnReason(event.target.value)}
+                        inputProps={{ maxLength: 4000 }}
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button disabled={confirmSaving} onClick={() => setExecutiveReturnOpen(false)}>Hủy</Button>
+                    <Button disabled={confirmSaving || !executiveReturnReason.trim()} color="error" variant="contained" onClick={handleExecutiveReturn}>
+                        {confirmSaving ? "Đang xử lý…" : "Trả lại để chỉnh sửa"}
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Box>
     );
 }

@@ -6,6 +6,7 @@ const authenticateToken = require("../middlewares/auth.middleware");
 const { getManagedDepartmentIds } = require("../utils/managedDepartments");
 const { loadBienBanListSummaries, mergeBienBanListSummary } = require("../utils/bienBanListSummary");
 const { canViewKphListItem } = require("../utils/kphListVisibility");
+const { EXECUTIVE_APPROVAL_PERMISSION, canActAsExecutive } = require("../utils/executiveApproval");
 
 const router = express.Router();
 
@@ -17,12 +18,14 @@ const hasPermission = (user, permissionCode) => Array.isArray(user?.permissions)
     user.permissions.includes(permissionCode);
 const isAdmin = (user) => hasRole(user, "ADMIN");
 const hasGlobalKphVisibility = (user) => isAdmin(user) ||
-    ["QUAN_TRI_DM", "XAC_NHAN_NGUOI_XU_LY", "KET_LUAN"].some((code) => hasPermission(user, code));
+    ["QUAN_TRI_DM", "XAC_NHAN_NGUOI_XU_LY", "KET_LUAN", EXECUTIVE_APPROVAL_PERMISSION]
+        .some((code) => hasPermission(user, code));
 
 const listNormalRecords = async (pool, user) => {
     const request = pool.request();
     const isManager = hasPermission(user, "QUAN_TRI_DM") ||
-        hasPermission(user, "XAC_NHAN_NGUOI_XU_LY") || hasLeadRole(user);
+        hasPermission(user, "XAC_NHAN_NGUOI_XU_LY") ||
+        hasPermission(user, EXECUTIVE_APPROVAL_PERMISSION) || hasLeadRole(user);
     if (!isManager) {
         request.input("UserId", sql.Int, user.userId);
         request.input("BoPhanId", sql.Int, user.boPhanId);
@@ -86,6 +89,7 @@ const loadBasicMeta = async (pool, ids) => {
                 bb.TrangThai, bb.CreatedAt, bb.NguoiLapId,
                 bb.OpinionDepartmentsConfirmedAt,
                 bb.CreatorConfirmedAt AS FollowUpReadyAt,
+                ISNULL(bb.RequiresExecutiveApproval,0) AS RequiresExecutiveApproval,
                 COALESCE(bb.BoPhanTaoId, creator.BoPhanId) AS CreatorBoPhanId,
                 department.MaBoPhan AS MaBoPhanTao,
                 department.TenBoPhan AS TenBoPhanTao,
@@ -182,6 +186,8 @@ router.get("/", authenticateToken, async (req, res) => {
                 : recordType === "SXBT" ? `/bien-ban/sxbt/${bienBanId}` : `/bien-ban/${bienBanId}`;
             return {
                 ...merged,
+                CanCurrentUserAct: Boolean(merged.CanCurrentUserAct) ||
+                    (merged.TrangThai === "CHO_BGD_XAC_NHAN" && canActAsExecutive(user)),
                 BienBanId: bienBanId,
                 recordKey: `${recordSource}:${bienBanId}`,
                 bienBanId,

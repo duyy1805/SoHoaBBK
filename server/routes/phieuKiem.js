@@ -2617,12 +2617,65 @@ router.post(
                 const savedEntries = await new sql.Request(transaction)
                     .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
                     .query(`
-                        SELECT entryRow.Id, entryRow.SortOrder, slotRow.GioKiem
+                        SELECT entryRow.Id, entryRow.SortOrder, slotRow.Id AS SlotId, slotRow.GioKiem
                         FROM dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY entryRow
                         INNER JOIN dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT slotRow ON slotRow.Id = entryRow.SlotId
                         WHERE slotRow.PhieuKiemId = @PhieuKiemId
                     `);
-                const entryByKey = new Map(savedEntries.recordset.map((row) => [
+                const savedEntryRows = [...savedEntries.recordset];
+                const slotIdByHour = new Map(savedEntryRows.map((row) => [
+                    String(row.GioKiem).trim(),
+                    Number(row.SlotId)
+                ]));
+
+                // Một số phiên bản cũ của stored procedure bỏ các dòng không có lỗi.
+                // Khôi phục các dòng này để phiếu kết luận đạt vẫn lưu được dữ liệu kiểm.
+                for (const slot of normalizedSlots) {
+                    for (const entry of slot.entries) {
+                        const entryKey = `${slot.gioKiem}|${Number(entry.sortOrder)}`;
+                        const alreadySaved = savedEntryRows.some((row) => (
+                            `${String(row.GioKiem).trim()}|${Number(row.SortOrder)}` === entryKey
+                        ));
+                        if (alreadySaved || entry.defects.length > 0) continue;
+
+                        let slotId = slotIdByHour.get(slot.gioKiem);
+                        if (!slotId) {
+                            const insertedSlot = await new sql.Request(transaction)
+                                .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+                                .input('GioKiem', sql.NVarChar(20), slot.gioKiem)
+                                .input('SortOrder', sql.Int, slot.sortOrder)
+                                .query(`
+                                    INSERT dbo.PHIEU_KIEM_TREN_CHUYEN_SLOT (PhieuKiemId, GioKiem, SortOrder)
+                                    OUTPUT inserted.Id
+                                    VALUES (@PhieuKiemId, @GioKiem, @SortOrder)
+                                `);
+                            slotId = Number(insertedSlot.recordset[0].Id);
+                            slotIdByHour.set(slot.gioKiem, slotId);
+                        }
+
+                        const insertedEntry = await new sql.Request(transaction)
+                            .input('SlotId', sql.Int, slotId)
+                            .input('CongDoan', sql.NVarChar(50), entry.congDoan)
+                            .input('TenCongNhanGayLoi', sql.NVarChar(255), entry.tenCongNhanGayLoi || null)
+                            .input('NguoiGhiNhanId', sql.Int, entry.nguoiGhiNhanId || userId)
+                            .input('GhiChu', sql.NVarChar(sql.MAX), entry.ghiChu || null)
+                            .input('SortOrder', sql.Int, entry.sortOrder)
+                            .query(`
+                                INSERT dbo.PHIEU_KIEM_TREN_CHUYEN_ENTRY
+                                    (SlotId, CongDoan, TenCongNhanGayLoi, NguoiGhiNhanId, GhiChu, SortOrder)
+                                OUTPUT inserted.Id
+                                VALUES (@SlotId, @CongDoan, @TenCongNhanGayLoi, @NguoiGhiNhanId, @GhiChu, @SortOrder)
+                            `);
+                        savedEntryRows.push({
+                            Id: Number(insertedEntry.recordset[0].Id),
+                            SortOrder: entry.sortOrder,
+                            SlotId: slotId,
+                            GioKiem: slot.gioKiem
+                        });
+                    }
+                }
+
+                const entryByKey = new Map(savedEntryRows.map((row) => [
                     `${String(row.GioKiem).trim()}|${Number(row.SortOrder)}`,
                     Number(row.Id)
                 ]));

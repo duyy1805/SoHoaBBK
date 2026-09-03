@@ -22,6 +22,7 @@ const {
     deleteBienBanData,
     removeBienBanFiles
 } = require("../services/kcsRecordDeletion.service");
+const { canActAsExecutive, loadExecutiveApprovalHistory } = require("../utils/executiveApproval");
 
 const hasStrictLeadRole = (user) => Array.isArray(user?.roles) &&
     user.roles.some((role) => String(role || "").toUpperCase().startsWith("TP_"));
@@ -31,7 +32,7 @@ const hasPermission = (user, permissionCode) => Array.isArray(user?.permissions)
     user.permissions.includes(permissionCode);
 const isAdmin = (user) => hasRole(user, "ADMIN");
 const hasGlobalKphVisibility = (user) => isAdmin(user) ||
-    ["QUAN_TRI_DM", "XAC_NHAN_NGUOI_XU_LY", "KET_LUAN"]
+    ["QUAN_TRI_DM", "XAC_NHAN_NGUOI_XU_LY", "KET_LUAN", "XAC_NHAN_BAN_GIAM_DOC"]
         .some((permission) => hasPermission(user, permission));
 const isDepartmentLead = (user) => hasRole(user, "TP_BP");
 
@@ -252,6 +253,7 @@ router.get("/", authenticateToken, async (req, res) => {
                 ISNULL(bb.MauPhieuVersion, N'V00') AS MauPhieuVersion,
                 bb.OpinionDepartmentsConfirmedAt,
                 bb.CreatorConfirmedAt AS FollowUpReadyAt,
+                ISNULL(bb.RequiresExecutiveApproval,0) AS RequiresExecutiveApproval,
                 CASE WHEN bb.TrangThai = N'HOAN_TAT' THEN followUp.ThoiGian ELSE NULL END AS CompletedAt,
                 COALESCE(bb.BoPhanTaoId, creator.BoPhanId) AS CreatorBoPhanId,
                 department.MaBoPhan AS MaBoPhanTao,
@@ -321,6 +323,8 @@ router.get("/", authenticateToken, async (req, res) => {
             if (!progress) return mergeBienBanListSummary({
                 ...item,
                 ...creatorDepartment,
+                CanCurrentUserAct: Boolean(item.CanCurrentUserAct) ||
+                    (item.TrangThai === "CHO_BGD_XAC_NHAN" && canActAsExecutive(req.user)),
                 RecipientDepartments: recipientDepartmentMap.get(Number(item.BienBanId)) || [],
                 OpinionDepartments: []
             }, summaryFields);
@@ -330,6 +334,8 @@ router.get("/", authenticateToken, async (req, res) => {
             return mergeBienBanListSummary({
                 ...item,
                 ...creatorDepartment,
+                CanCurrentUserAct: Boolean(item.CanCurrentUserAct) ||
+                    (item.TrangThai === "CHO_BGD_XAC_NHAN" && canActAsExecutive(req.user)),
                 RecipientDepartments: recipientDepartmentMap.get(Number(item.BienBanId)) || [],
                 SoBoPhan: progress.total,
                 DaCoYKien: progress.done,
@@ -586,6 +592,7 @@ router.get("/:id", authenticateToken, async (req, res) => {
                     bb.OpinionDepartmentsConfirmedAt,
                     bb.CreatorConfirmedAt, bb.CreatorConfirmedBy,
                     creatorConfirmer.FullName AS CreatorConfirmerName,
+                    ISNULL(bb.RequiresExecutiveApproval,0) AS RequiresExecutiveApproval,
                     ISNULL(bb.ReviewRound,1) AS ReviewRound,
                     bb.LastReturnedBy, returner.FullName AS LastReturnedByName,
                     bb.LastReturnedAt, bb.LastReturnReason,
@@ -643,6 +650,19 @@ router.get("/:id", authenticateToken, async (req, res) => {
                 WHERE td.BienBanId = @BienBanId;
             `);
         const printMeta = v01Result.recordsets?.[0]?.[0] || { MauPhieuVersion: "V00" };
+        const executiveApprovalHistory = printMeta.RequiresExecutiveApproval
+            ? await loadExecutiveApprovalHistory(pool, bienBanId)
+            : [];
+        const latestExecutiveApproval = executiveApprovalHistory.find((item) =>
+            Number(item.ReviewRound) === Number(printMeta.ReviewRound)
+        ) || null;
+        Object.assign(printMeta, {
+            ExecutiveApprovalStatus: latestExecutiveApproval?.Decision || null,
+            ExecutiveApprovalReason: latestExecutiveApproval?.Reason || null,
+            ExecutiveApprovalBy: latestExecutiveApproval?.ActedBy || null,
+            ExecutiveApprovalByName: latestExecutiveApproval?.ActedByName || null,
+            ExecutiveApprovalAt: latestExecutiveApproval?.ActedAt || null
+        });
         const headerAccess = await getHeaderAccess(pool, bienBanId, req.user);
         const recipientDepartments = await getRecipientDepartments(pool, bienBanId);
         const recipientAccess = await getRecipientManageAccess(pool, bienBanId, req.user);
@@ -671,6 +691,15 @@ router.get("/:id", authenticateToken, async (req, res) => {
             info.OpinionDepartmentsConfirmed = Boolean(printMeta.OpinionDepartmentsConfirmed);
             info.OpinionDepartmentsConfirmedAt = printMeta.OpinionDepartmentsConfirmedAt;
             info.CreatorConfirmedAt = printMeta.CreatorConfirmedAt;
+            info.RequiresExecutiveApproval = Boolean(printMeta.RequiresExecutiveApproval);
+            info.ExecutiveApprovalStatus = printMeta.ExecutiveApprovalStatus;
+            info.ExecutiveApprovalReason = printMeta.ExecutiveApprovalReason;
+            info.ExecutiveApprovalBy = printMeta.ExecutiveApprovalBy;
+            info.ExecutiveApprovalByName = printMeta.ExecutiveApprovalByName;
+            info.ExecutiveApprovalAt = printMeta.ExecutiveApprovalAt;
+            info.CanExecutiveApprove = Boolean(printMeta.RequiresExecutiveApproval) &&
+                printMeta.TrangThai === "CHO_BGD_XAC_NHAN" && canActAsExecutive(req.user);
+            info.CanExecutiveReturn = info.CanExecutiveApprove;
             info.CanManageKphFlow = headerAccess.canEdit;
             info.CanManageRecipientDepartments = recipientAccess.canManage;
             info.CanConfigureRequirements = headerAccess.canEdit;
@@ -718,6 +747,7 @@ router.get("/:id", authenticateToken, async (req, res) => {
         const signatureMap = await loadSignatureDataUrlMap(pool, [
             ...confirmationRows.map((item) => item.NguoiXacNhanId),
             ...specialistOpinionRows.map((item) => item.ConfirmedBy),
+            ...executiveApprovalHistory.map((item) => item.ActedBy),
             printMeta.CreatorConfirmedBy,
             printMeta.NguoiLapId ?? info?.NguoiLapId,
             followUpEvaluation?.NguoiTheoDoiId
@@ -728,6 +758,9 @@ router.get("/:id", authenticateToken, async (req, res) => {
             ) || null;
             info.CreatorSignatureDataUrl = signatureMap.get(
                 Number(printMeta.CreatorConfirmedBy)
+            ) || null;
+            info.ExecutiveApprovalSignatureDataUrl = signatureMap.get(
+                Number(printMeta.ExecutiveApprovalBy)
             ) || null;
         }
 
@@ -762,6 +795,10 @@ router.get("/:id", authenticateToken, async (req, res) => {
                     CanReturn: canLeadAct
                 };
             }),
+            executiveApprovals: executiveApprovalHistory.map((item) => ({
+                ...item,
+                SignatureDataUrl: signatureMap.get(Number(item.ActedBy)) || null
+            })),
             followUpEvaluation: followUpEvaluation ? {
                 ...followUpEvaluation,
                 SignatureDataUrl: signatureMap.get(Number(followUpEvaluation.NguoiTheoDoiId)) || null

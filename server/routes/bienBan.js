@@ -26,6 +26,14 @@ const {
     getRecipientManageAccess,
     loadRecipientDepartmentMap
 } = require("../utils/recipientDepartments");
+const {
+    EXECUTIVE_APPROVAL_PERMISSION,
+    canActAsExecutive,
+    getExecutiveNextStatus,
+    isExecutiveApprovalTarget,
+    normalizeExecutiveDecision,
+    loadExecutiveApprovalHistory
+} = require("../utils/executiveApproval");
 
 const hasPermission = (user, permissionCode) =>
     Array.isArray(user?.permissions) && user.permissions.includes(permissionCode);
@@ -50,6 +58,7 @@ const getKphV01FlowAccess = async (pool, bienBanId, user) => {
                 COALESCE(bb.BoPhanTaoId, creator.BoPhanId) AS BoPhanTaoId,
                 bb.OpinionDepartmentsConfirmedAt,
                 bb.CreatorConfirmedAt,
+                ISNULL(bb.RequiresExecutiveApproval,0) AS RequiresExecutiveApproval,
                 ISNULL(bb.ReviewRound,1) AS ReviewRound,
                 bb.LastReturnedBy, bb.LastReturnedAt, bb.LastReturnReason,
                 bb.ResubmittedBy, bb.ResubmittedAt
@@ -312,6 +321,7 @@ const getKphV01Data = async (pool, bienBanId, user) => {
                 bb.CreatorConfirmedAt,
                 bb.CreatorConfirmedBy,
                 creatorConfirmer.FullName AS CreatorConfirmerName,
+                ISNULL(bb.RequiresExecutiveApproval,0) AS RequiresExecutiveApproval,
                 ISNULL(bb.ReviewRound,1) AS ReviewRound,
                 bb.LastReturnedBy, returner.FullName AS LastReturnedByName,
                 bb.LastReturnedAt, bb.LastReturnReason,
@@ -430,6 +440,7 @@ router.get(
             // thì chỉ xem biên bản liên quan đến cá nhân/bộ phận
             const isManager = req.user.permissions.includes("QUAN_TRI_DM") ||
                 req.user.permissions.includes("XAC_NHAN_NGUOI_XU_LY") ||
+                req.user.permissions.includes(EXECUTIVE_APPROVAL_PERMISSION) ||
                 hasLeadRole(req.user);
 
             if (!isManager) {
@@ -620,6 +631,7 @@ router.get(
                         ISNULL(bb.MauPhieuVersion, N'V00') AS MauPhieuVersion,
                         bb.OpinionDepartmentsConfirmedAt,
                         bb.CreatorConfirmedAt AS FollowUpReadyAt,
+                        ISNULL(bb.RequiresExecutiveApproval,0) AS RequiresExecutiveApproval,
                         CASE
                             WHEN bb.TrangThai = N'HOAN_TAT' THEN followUp.ThoiGian
                             WHEN bb.TrangThai = N'BB_SXBT_HOAN_TAT' THEN sxbtCompletion.ConfirmedAt
@@ -717,6 +729,8 @@ router.get(
                 const enrichedItem = mergeBienBanListSummary({
                     ...item,
                     ...listMeta,
+                    CanCurrentUserAct: Boolean(item.CanCurrentUserAct) ||
+                        (item.TrangThai === "CHO_BGD_XAC_NHAN" && canActAsExecutive(req.user)),
                     RecipientDepartments: recipientDepartmentMap.get(Number(item.BienBanId)) || []
                 }, listSummaryByBienBanId.get(Number(item.BienBanId)));
                 const progress = progressByBienBanId.get(Number(item.BienBanId));
@@ -829,6 +843,19 @@ router.get(
 
             const assignRows = await getBienBanAssignRows(pool, id);
             const v01Data = await getKphV01Data(pool, id, req.user);
+            const executiveApprovalHistory = v01Data.meta.RequiresExecutiveApproval
+                ? await loadExecutiveApprovalHistory(pool, id)
+                : [];
+            const latestExecutiveApproval = executiveApprovalHistory.find((item) =>
+                Number(item.ReviewRound) === Number(v01Data.meta.ReviewRound)
+            ) || null;
+            Object.assign(v01Data.meta, {
+                ExecutiveApprovalStatus: latestExecutiveApproval?.Decision || null,
+                ExecutiveApprovalReason: latestExecutiveApproval?.Reason || null,
+                ExecutiveApprovalBy: latestExecutiveApproval?.ActedBy || null,
+                ExecutiveApprovalByName: latestExecutiveApproval?.ActedByName || null,
+                ExecutiveApprovalAt: latestExecutiveApproval?.ActedAt || null
+            });
             const customFieldAccess = await getKphCustomFieldAccess(pool, id, req.user);
             const flowAccess = await getKphV01FlowAccess(pool, id, req.user);
             const sectionContributionAccess = await getKphSectionContributionAccess(pool, Number(id), req.user, flowAccess);
@@ -1009,6 +1036,7 @@ router.get(
                 ...bienBanXacNhanRows.map((item) => item.NguoiXacNhanId),
                 ...phieuKiemXacNhan.map((item) => item.NguoiXacNhanId),
                 ...v01Data.specialistOpinions.map((item) => item.ConfirmedBy),
+                ...executiveApprovalHistory.map((item) => item.ActedBy),
                 v01Data.meta.CreatorConfirmedBy,
                 v01Data.meta.NguoiLapId ?? info?.NguoiLapId,
                 v01Data.followUpEvaluation?.NguoiTheoDoiId
@@ -1037,6 +1065,17 @@ router.get(
                     CreatorConfirmedBy: v01Data.meta.CreatorConfirmedBy,
                     CreatorConfirmerName: v01Data.meta.CreatorConfirmerName,
                     CreatorSignatureDataUrl: signatureMap.get(Number(v01Data.meta.CreatorConfirmedBy)) || null,
+                    RequiresExecutiveApproval: Boolean(v01Data.meta.RequiresExecutiveApproval),
+                    ExecutiveApprovalStatus: v01Data.meta.ExecutiveApprovalStatus,
+                    ExecutiveApprovalReason: v01Data.meta.ExecutiveApprovalReason,
+                    ExecutiveApprovalBy: v01Data.meta.ExecutiveApprovalBy,
+                    ExecutiveApprovalByName: v01Data.meta.ExecutiveApprovalByName,
+                    ExecutiveApprovalAt: v01Data.meta.ExecutiveApprovalAt,
+                    ExecutiveApprovalSignatureDataUrl: signatureMap.get(Number(v01Data.meta.ExecutiveApprovalBy)) || null,
+                    CanExecutiveApprove: Boolean(v01Data.meta.RequiresExecutiveApproval) &&
+                        v01Data.meta.TrangThai === "CHO_BGD_XAC_NHAN" && canActAsExecutive(req.user),
+                    CanExecutiveReturn: Boolean(v01Data.meta.RequiresExecutiveApproval) &&
+                        v01Data.meta.TrangThai === "CHO_BGD_XAC_NHAN" && canActAsExecutive(req.user),
                     NguoiLapSignatureDataUrl: signatureMap.get(Number(v01Data.meta.NguoiLapId ?? info.NguoiLapId)) || null,
                     PhieuKiemTbpXacNhanId: phieuKiemTbpXacNhan?.NguoiXacNhanId || null,
                     PhieuKiemTbpXacNhanName: phieuKiemTbpXacNhan?.TenNguoiXacNhan || null,
@@ -1080,6 +1119,7 @@ router.get(
                 canEditKphCustomFields: customFieldAccess.canEdit,
                 templateVersion: v01Data.meta.MauPhieuVersion,
                 specialistOpinions: v01Data.specialistOpinions.map((item) => withSignature(item, "ConfirmedBy")),
+                executiveApprovals: executiveApprovalHistory.map((item) => withSignature(item, "ActedBy")),
                 followUpEvaluation: v01Data.followUpEvaluation
                     ? withSignature(v01Data.followUpEvaluation, "NguoiTheoDoiId")
                     : null,
@@ -2255,6 +2295,7 @@ router.post(
                 .query(`
                     SELECT
                         bb.TrangThai,bb.CreatorConfirmedAt,
+                        ISNULL(bb.RequiresExecutiveApproval,0) AS RequiresExecutiveApproval,
                         (SELECT COUNT(*) FROM dbo.XIN_Y_KIEN
                          WHERE BienBanId=@BienBanId AND ISNULL(IsActive,1)=1) AS TotalOpinions,
                         (SELECT COUNT(*) FROM dbo.XIN_Y_KIEN yk
@@ -2279,15 +2320,48 @@ router.post(
             await new sql.Request(transaction)
                 .input("BienBanId", sql.Int, bienBanId)
                 .input("UserId", sql.Int, req.user.userId)
+                .input("RequiresExecutiveApproval", sql.Bit, Boolean(state.RequiresExecutiveApproval))
                 .query(`
                     UPDATE dbo.BIEN_BAN_KIEM
                     SET CreatorConfirmedAt = SYSDATETIME(),
                         CreatorConfirmedBy = @UserId,
-                        TrangThai = N'CHO_THEO_DOI'
+                        TrangThai = CASE WHEN RequiresExecutiveApproval=1
+                            THEN N'CHO_BGD_XAC_NHAN' ELSE N'CHO_THEO_DOI' END
                     WHERE Id = @BienBanId AND CreatorConfirmedAt IS NULL
+
+                    IF @RequiresExecutiveApproval=1
+                    BEGIN
+                        INSERT dbo.NOTIFICATIONS (UserId,Title,Message,Type,ReferenceId,IsRead,CreatedAt)
+                        SELECT DISTINCT targetUser.Id,N'Biên bản chờ Ban giám đốc xác nhận',
+                            N'Hồ sơ đã hoàn tất xác nhận các bộ phận và đang chờ Ban giám đốc xử lý.',
+                            CASE WHEN EXISTS (
+                                SELECT 1 FROM dbo.BIEN_BAN_KIEM targetRecord
+                                WHERE targetRecord.Id=@BienBanId AND targetRecord.LoaiBienBan=N'STANDALONE'
+                            ) THEN 'EXECUTIVE_APPROVAL_KPH' ELSE 'EXECUTIVE_APPROVAL_BB' END,
+                            @BienBanId,0,GETDATE()
+                        FROM dbo.USERS targetUser
+                        WHERE ISNULL(targetUser.TrangThai,0)=1
+                          AND (
+                              EXISTS (
+                                  SELECT 1 FROM dbo.USER_ROLE userRole
+                                  JOIN dbo.ROLE_PERMISSION rolePermission ON rolePermission.RoleId=userRole.RoleId
+                                  JOIN dbo.PERMISSIONS permissionRow ON permissionRow.Id=rolePermission.PermissionId
+                                  WHERE userRole.UserId=targetUser.Id
+                                    AND permissionRow.PermissionCode=N'XAC_NHAN_BAN_GIAM_DOC'
+                              )
+                              OR EXISTS (
+                                  SELECT 1 FROM dbo.USER_ROLE userRole
+                                  JOIN dbo.ROLES roleRow ON roleRow.Id=userRole.RoleId
+                                  WHERE userRole.UserId=targetUser.Id AND roleRow.RoleCode=N'ADMIN'
+                              )
+                          );
+                    END
                 `);
             await transaction.commit();
-            res.json({ success: true });
+            res.json({
+                success: true,
+                nextStatus: state.RequiresExecutiveApproval ? "CHO_BGD_XAC_NHAN" : "CHO_THEO_DOI"
+            });
         } catch (error) {
             try { await transaction.rollback(); } catch { /* transaction chưa bắt đầu */ }
             console.error("CreatorConfirmKph error:", error);
@@ -2295,6 +2369,85 @@ router.post(
         }
     }
 );
+
+router.post("/:id/executive-approval", authenticateToken, async (req, res) => {
+    const bienBanId = Number(req.params.id);
+    const decision = normalizeExecutiveDecision(req.body?.decision);
+    const reason = String(req.body?.reason || "").trim();
+    if (!Number.isInteger(bienBanId) || bienBanId <= 0) {
+        return res.status(400).json({ message: "Biên bản không hợp lệ" });
+    }
+    if (!decision) {
+        return res.status(400).json({ message: "Quyết định xác nhận không hợp lệ" });
+    }
+    if (decision === "RETURN" && !reason) {
+        return res.status(400).json({ message: "Vui lòng nhập lý do trả lại" });
+    }
+    if (!canActAsExecutive(req.user)) {
+        return res.status(403).json({ message: "Bạn không có quyền xác nhận Ban giám đốc" });
+    }
+
+    const pool = await poolPromise;
+    const transaction = new sql.Transaction(pool);
+    try {
+        await transaction.begin();
+        const lockedResult = await new sql.Request(transaction)
+            .input("BienBanId", sql.Int, bienBanId)
+            .query(`
+                SELECT TOP 1 Id,TrangThai,LoaiBienBan,ISNULL(MauPhieuVersion,'V00') AS MauPhieuVersion,
+                    ISNULL(RequiresExecutiveApproval,0) AS RequiresExecutiveApproval,
+                    CreatorConfirmedAt,ISNULL(ReviewRound,1) AS ReviewRound
+                FROM dbo.BIEN_BAN_KIEM WITH (UPDLOCK,HOLDLOCK)
+                WHERE Id=@BienBanId
+            `);
+        const record = lockedResult.recordset?.[0];
+        if (!record) throw Object.assign(new Error("Không tìm thấy biên bản"), { statusCode: 404 });
+        if (!isExecutiveApprovalTarget(record)) {
+            throw Object.assign(new Error("Biên bản không yêu cầu xác nhận Ban giám đốc"), { statusCode: 409 });
+        }
+        if (record.TrangThai !== "CHO_BGD_XAC_NHAN" || !record.CreatorConfirmedAt) {
+            throw Object.assign(new Error("Biên bản không còn ở bước xác nhận Ban giám đốc"), { statusCode: 409 });
+        }
+
+        await new sql.Request(transaction)
+            .input("BienBanId", sql.Int, bienBanId)
+            .input("ReviewRound", sql.Int, Number(record.ReviewRound))
+            .input("Decision", sql.VarChar(20), decision === "APPROVE" ? "APPROVED" : "RETURNED")
+            .input("Reason", sql.NVarChar(4000), decision === "RETURN" ? reason : null)
+            .input("UserId", sql.Int, req.user.userId)
+            .query(`
+                INSERT dbo.BIEN_BAN_BGD_APPROVAL
+                    (BienBanId,ReviewRound,Decision,Reason,ActedBy,ActedAt)
+                VALUES (@BienBanId,@ReviewRound,@Decision,@Reason,@UserId,SYSDATETIME());
+
+                UPDATE dbo.BIEN_BAN_KIEM
+                SET TrangThai=CASE WHEN @Decision='APPROVED' THEN N'CHO_THEO_DOI' ELSE N'TRA_LAI_CHINH_SUA' END,
+                    CreatorConfirmedAt=CASE WHEN @Decision='RETURNED' THEN NULL ELSE CreatorConfirmedAt END,
+                    CreatorConfirmedBy=CASE WHEN @Decision='RETURNED' THEN NULL ELSE CreatorConfirmedBy END,
+                    LastReturnedBy=CASE WHEN @Decision='RETURNED' THEN @UserId ELSE LastReturnedBy END,
+                    LastReturnedAt=CASE WHEN @Decision='RETURNED' THEN SYSDATETIME() ELSE LastReturnedAt END,
+                    LastReturnReason=CASE WHEN @Decision='RETURNED' THEN @Reason ELSE LastReturnReason END
+                WHERE Id=@BienBanId AND TrangThai=N'CHO_BGD_XAC_NHAN';
+
+                UPDATE dbo.NOTIFICATIONS SET IsRead=1
+                WHERE ReferenceId=@BienBanId
+                  AND Type IN ('EXECUTIVE_APPROVAL_BB','EXECUTIVE_APPROVAL_KPH');
+            `);
+        await transaction.commit();
+        res.json({
+            success: true,
+            nextStatus: getExecutiveNextStatus(decision)
+        });
+    } catch (error) {
+        try { await transaction.rollback(); } catch { /* transaction chưa bắt đầu */ }
+        const duplicateDecision = error?.number === 2627 || error?.number === 2601;
+        res.status(duplicateDecision ? 409 : (error.statusCode || 500)).json({
+            message: duplicateDecision
+                ? "Vòng xác nhận này đã được Ban giám đốc xử lý"
+                : error.message || "Không thể xử lý xác nhận Ban giám đốc"
+        });
+    }
+});
 
 router.post(
     "/:id/specialist-opinions",

@@ -309,9 +309,6 @@ export default function CuoiChuyenPlanDetailScreen({ route, navigation }) {
       return "Số lượng thực tế phải là số nguyên không âm hoặc để trống.";
     }
     const validDefects = (plan?.defects || []).filter((defect) => Number(defect.defectId) > 0 && Number(defect.soLuong) > 0);
-    if (validDefects.length === 0) {
-      return "Cần có ít nhất một lỗi để lưu kế hoạch.";
-    }
     const effective = plan.soLuongThucTe === "" ? Number(plan.soLuongKeHoach || 0) : Number(plan.soLuongThucTe);
     const totalDefects = validDefects.reduce((sum, defect) => sum + Number(defect.soLuong || 0), 0);
     if (totalDefects > effective) {

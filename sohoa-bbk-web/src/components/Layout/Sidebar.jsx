@@ -35,6 +35,8 @@ export default function Sidebar({
     const roles = Array.isArray(currentUser?.roles) ? currentUser.roles : [];
     const showDoiTraPhoiLoi = permissions.includes('THUC_HIEN_KIEM')
         || permissions.includes('XEM_PHIEU_KIEM')
+        || permissions.includes('XAC_NHAN_LOI')
+        || String(currentUser?.maBoPhan || currentUser?.boPhan || '').trim().toUpperCase() === 'B7'
         || permissions.includes('QUAN_TRI_DM')
         || roles.some((role) => String(role || '').toUpperCase().includes('ADMIN'));
     const workCenterEnabled = import.meta.env.VITE_ENABLE_WORK_CENTER !== 'false';

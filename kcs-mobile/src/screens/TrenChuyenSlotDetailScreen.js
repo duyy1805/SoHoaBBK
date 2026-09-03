@@ -436,20 +436,17 @@ export default function TrenChuyenSlotDetailScreen({ route, navigation }) {
     if (!currentSlot?.gioKiem || !HOUR_OPTIONS.includes(currentSlot.gioKiem)) {
       return "Khung giờ không hợp lệ.";
     }
-    let hasData = false;
-    for (const entry of currentSlot.entries || []) {
-      const validDefects = (entry.defects || []).filter((defect) => defect.defectId > 0 && defect.soLuong > 0);
-      if (validDefects.length === 0) continue;
-      hasData = true;
+    const entries = currentSlot.entries || [];
+    if (entries.length === 0) {
+      return "Cần có ít nhất một công đoạn để lưu khung giờ.";
+    }
+    for (const entry of entries) {
       if (!String(entry.congDoan || "").trim()) {
         return `Khung giờ ${currentSlot.gioKiem} có công đoạn chưa nhập.`;
       }
       if (!String(entry.tenCongNhanGayLoi || "").trim()) {
         return `Khung giờ ${currentSlot.gioKiem} có tên công nhân gây lỗi chưa nhập.`;
       }
-    }
-    if (!hasData) {
-      return "Cần có ít nhất một công đoạn có lỗi để lưu khung giờ.";
     }
     return "";
   };
