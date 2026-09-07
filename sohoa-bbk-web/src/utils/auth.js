@@ -143,6 +143,7 @@ export const canManageCheckCatalog = (user = getCurrentUser()) => {
         return roleCode === "ADMIN" || roleCode === "IMPORT_DM_KIEM";
     })
         || permissions.includes("QUAN_TRI_DM")
+        || permissions.includes("QUAN_LY_DANH_MUC_KIEM")
         || permissions.includes("IMPORT_DM_KIEM");
 };
 

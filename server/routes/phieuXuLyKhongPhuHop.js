@@ -508,7 +508,8 @@ router.get("/orders", authenticateToken, async (req, res) => {
                           SELECT 1
                           FROM dbo.DM_SAN_PHAM localProduct
                           INNER JOIN TAG_QTKD.dbo.DM_SanPham sourceProduct
-                              ON sourceProduct.ItemCode = localProduct.MaSanPham
+                              ON localProduct.MaSanPham = sourceProduct.ItemCode
+                              OR localProduct.MaSanPham LIKE sourceProduct.ItemCode + N'.%'
                           INNER JOIN TAG_QTKD.dbo.DonHang_SanPham orderProduct
                               ON orderProduct.ID_SanPham = sourceProduct.ID_SanPham
                              AND orderProduct.ID_DonHang = orderRow.ID_DonHang
@@ -853,11 +854,20 @@ router.post("/:id/header", authenticateToken, async (req, res) => {
                     ORDER BY materialRow.ID_VatTu
                 ) material
                 OUTER APPLY (
-                    SELECT TOP (1) productRow.ID_SanPham
+                    SELECT TOP (1) productRow.ID_SanPham, productRow.ItemCode
                     FROM TAG_QTKD.dbo.DM_SanPham productRow
-                    WHERE productRow.ItemCode = localProduct.MaSanPham
+                    WHERE (
+                            localProduct.MaSanPham = productRow.ItemCode
+                            OR localProduct.MaSanPham LIKE productRow.ItemCode + N'.%'
+                          )
                       AND ISNULL(productRow.TonTai, 1) = 1
-                    ORDER BY productRow.ID_SanPham
+                    ORDER BY
+                        CASE
+                            WHEN localProduct.MaSanPham = productRow.ItemCode THEN 0
+                            ELSE 1
+                        END,
+                        LEN(productRow.ItemCode) DESC,
+                        productRow.ID_SanPham
                 ) sourceProduct
                 WHERE localProduct.Id = @LocalProductId
                   AND localProduct.TrangThai = 1

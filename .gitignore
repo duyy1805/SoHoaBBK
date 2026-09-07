@@ -9,5 +9,7 @@ dist/
 build/
 
 *.sql
+!server/sql/migrations/20260904_sxbt_level_c_remove_b7.sql
+!server/sql/migrations/20260904_sxbt_level_c_remove_b7.rollback.sql
 
 *.xlsx

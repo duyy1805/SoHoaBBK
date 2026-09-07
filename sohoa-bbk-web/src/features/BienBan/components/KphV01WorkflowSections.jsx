@@ -36,7 +36,8 @@ export default function KphV01WorkflowSections({
     );
     const isDepartmentLead = roles.some((role) => String(role || "").toUpperCase().startsWith("TP_"));
     const canFollowUp = isAdmin || permissions.includes("THEO_DOI_KPH") ||
-        permissions.includes("KET_LUAN") || permissions.includes("QUAN_TRI_DM");
+        permissions.includes("KET_LUAN") || permissions.includes("QUAN_TRI_DM") ||
+        Number(info?.NguoiLapId) === Number(currentUser.userId || currentUser.id);
 
     const opinionValue = (opinion) => responses[opinion.Id] ?? opinion.NoiDung ?? "";
 

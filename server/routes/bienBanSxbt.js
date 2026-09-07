@@ -298,27 +298,28 @@ router.post("/:id/confirm-muc-do", authenticateToken, async (req, res) => {
                 .input("MucDoKhongPhuHop", sql.NVarChar(1), mucDoKhongPhuHop)
                 .query(`
                     SELECT
-                        @MucDoKhongPhuHop AS MucDo,
-                        bp.Id AS BoPhanId,
-                        v.StepOrder
-                    FROM (VALUES
-                        ('B', 'B8', 1),
-                        ('B', 'SXBT', 2),
-                        ('C', 'B8', 1),
-                        ('C', 'SXBT', 2),
-                        ('C', 'B7', 3),
-                        ('C', 'GD', 4)
-                    ) v(MucDo, MaBoPhan, StepOrder)
-                    JOIN dbo.DM_BO_PHAN bp ON bp.MaBoPhan = v.MaBoPhan
-                    WHERE v.MucDo = @MucDoKhongPhuHop
-                    ORDER BY v.StepOrder;
+                        templateRow.MucDo,
+                        templateRow.BoPhanId,
+                        templateRow.StepOrder,
+                        department.MaBoPhan,
+                        ISNULL(department.TrangThai, 1) AS BoPhanTrangThai
+                    FROM dbo.BIEN_BAN_SXBT_CONFIRM_TEMPLATE templateRow
+                    LEFT JOIN dbo.DM_BO_PHAN department ON department.Id = templateRow.BoPhanId
+                    WHERE templateRow.MucDo = @MucDoKhongPhuHop
+                    ORDER BY templateRow.StepOrder, templateRow.Id;
                 `);
 
             const steps = templateResult.recordset || [];
-            const expectedStepCount = mucDoKhongPhuHop === "B" ? 2 : 4;
+            const stepOrders = steps.map((step) => Number(step.StepOrder));
+            const departmentIds = steps.map((step) => Number(step.BoPhanId));
+            const hasInvalidOrder = stepOrders.some((order, index) => order !== index + 1);
+            const hasDuplicateDepartment = new Set(departmentIds).size !== departmentIds.length;
+            const hasInvalidDepartment = steps.some((step) =>
+                !Number.isInteger(Number(step.BoPhanId)) || !step.MaBoPhan || Number(step.BoPhanTrangThai) !== 1
+            );
 
-            if (steps.length !== expectedStepCount) {
-                throw new Error("Thiếu cấu hình bộ phận B8/SXBT/B7/GD");
+            if (!steps.length || hasInvalidOrder || hasDuplicateDepartment || hasInvalidDepartment) {
+                throw new Error(`Cấu hình luồng xác nhận mức ${mucDoKhongPhuHop} không hợp lệ`);
             }
 
             await new sql.Request(transaction)

@@ -3269,7 +3269,7 @@ router.get(
 router.get(
   "/import-thong-so-kiem/template",
   authenticateToken,
-  authorize("QUAN_TRI_DM"),
+  authorize(CHECK_CATALOG_MANAGE_PERMISSION),
   async (req, res) => {
     const rows = [
       {
@@ -3341,7 +3341,7 @@ router.get(
 router.post(
   "/import-thong-so-kiem",
   authenticateToken,
-  authorize("QUAN_TRI_DM"),
+  authorize(CHECK_CATALOG_MANAGE_PERMISSION),
   (req, res, next) => {
     excelUpload.single("file")(req, res, (err) => {
       if (err) {

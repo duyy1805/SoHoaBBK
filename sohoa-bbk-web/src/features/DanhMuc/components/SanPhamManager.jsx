@@ -498,14 +498,14 @@ export default function SanPhamManager() {
                     >
                         Thêm sản phẩm
                     </Button>
-                    <Button
+                    {canManageCheckItems && <Button
                         variant="outlined"
                         startIcon={<UploadFileIcon />}
                         onClick={() => setImportOpen(true)}
                         sx={{ whiteSpace: "nowrap" }}
                     >
                         Import thông số
-                    </Button>
+                    </Button>}
                     <Button
                         variant="outlined"
                         startIcon={<UploadFileIcon />}

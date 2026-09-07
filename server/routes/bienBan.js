@@ -2707,7 +2707,6 @@ router.post("/:id/specialist-opinions/:opinionId/respond", authenticateToken, (_
 router.post(
     "/:id/follow-up-evaluation",
     authenticateToken,
-    authorize(["THEO_DOI_KPH", "KET_LUAN"]),
     async (req, res) => {
         const bienBanId = Number(req.params.id);
         const ketQua = String(req.body?.ketQua || "").toUpperCase();
@@ -2726,7 +2725,7 @@ router.post(
             const state = await pool.request()
                 .input("BienBanId", sql.Int, bienBanId)
                 .query(`
-                    SELECT TOP 1 bb.TrangThai,
+                    SELECT TOP 1 bb.TrangThai,bb.NguoiLapId,
                         CASE WHEN EXISTS (
                             SELECT 1 FROM dbo.BIEN_BAN_THEO_DOI_DANH_GIA td
                             WHERE td.BienBanId = bb.Id
@@ -2735,6 +2734,12 @@ router.post(
                 `);
             const row = state.recordset?.[0];
             if (!row) return res.status(404).json({ message: "Không tìm thấy phiếu" });
+            const canFollowUp = isAdmin(req.user) || hasPermission(req.user, "THEO_DOI_KPH") ||
+                hasPermission(req.user, "KET_LUAN") ||
+                Number(row.NguoiLapId) === Number(req.user?.userId);
+            if (!canFollowUp) {
+                return res.status(403).json({ message: "Chỉ người tạo phiếu hoặc người có quyền theo dõi được đánh giá" });
+            }
             if (row.DaDanhGia) return res.status(409).json({ message: "Phiếu đã được đánh giá và không thể sửa" });
             if (row.TrangThai !== "CHO_THEO_DOI") {
                 return res.status(409).json({ message: "Phiếu chưa sẵn sàng để theo dõi đánh giá" });

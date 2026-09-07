@@ -7,11 +7,6 @@ const LEVEL_LABELS = {
     C: "Mức chất lượng C"
 };
 
-const SIGNATURE_FLOW_BY_LEVEL = {
-    B: ["SXBT", "B8"],
-    C: ["SXBT", "B8", "B7", "GD"]
-};
-
 const SIGNATURE_LABELS = {
     SXBT: "BỘ PHẬN SXBT",
     B8: "PHÒNG KIỂM NGHIỆM",
@@ -102,8 +97,8 @@ export const BienBanSxbtPrintTemplate = React.forwardRef(({
     const mucDo = info.MucDoKhongPhuHop || "B";
     const mucBRows = xuLyRows.filter((row) => !row.MucDo || row.MucDo === "B");
     const mucCRows = xuLyRows.filter((row) => !row.MucDo || row.MucDo === "C");
-    const signatureFlow = SIGNATURE_FLOW_BY_LEVEL[mucDo] || SIGNATURE_FLOW_BY_LEVEL.B;
-    const signatureDisplayFlow = [...signatureFlow].reverse();
+    const signatureDisplaySteps = [...(confirmSteps || [])]
+        .sort((left, right) => Number(right.StepOrder) - Number(left.StepOrder));
 
     const renderEmptyRows = (count, columns) => Array.from({ length: count }).map((_, index) => (
         <tr key={`empty-${columns}-${index}`}>
@@ -136,24 +131,17 @@ export const BienBanSxbtPrintTemplate = React.forwardRef(({
     );
 
     const renderStepSignatures = () => {
-        if (signatureFlow.length === 0) return null;
-
-        const stepByMaBoPhan = new Map(
-            (confirmSteps || [])
-                .filter((step) => step?.MaBoPhan)
-                .map((step) => [String(step.MaBoPhan).toUpperCase(), step])
-        );
+        if (signatureDisplaySteps.length === 0) return null;
 
         return (
             <Box className="avoid-break" style={styles.signatureBlock}>
-                {signatureDisplayFlow.map((maBoPhan, index) => {
-                    const originalOrder = signatureFlow.indexOf(maBoPhan) + 1;
-                    const step = stepByMaBoPhan.get(maBoPhan) || confirmSteps.find((item) => item?.StepOrder === originalOrder);
+                {signatureDisplaySteps.map((step, index) => {
+                    const maBoPhan = String(step?.MaBoPhan || "").trim().toUpperCase();
                     const ngayKy = step?.ConfirmedAt ? formatLongDate(step.ConfirmedAt) : "Ngày";
-                    const nhanKy = SIGNATURE_LABELS[maBoPhan] || maBoPhan;
+                    const nhanKy = SIGNATURE_LABELS[maBoPhan] || step?.TenBoPhan || maBoPhan || "BỘ PHẬN";
 
                     return (
-                        <Box key={step?.Id || `${maBoPhan}-${index}`} style={styles.signatureCol}>
+                        <Box key={step?.Id || `${maBoPhan}-${step?.StepOrder}-${index}`} style={styles.signatureCol}>
                             <div style={{ ...styles.text, fontStyle: "italic" }}>{ngayKy}</div>
                             <div style={styles.boldText}>{nhanKy}</div>
                             <Box height="16px" />
