@@ -53,6 +53,17 @@ const normalizeDinhMucItems = (value) => (Array.isArray(value) ? value : []).map
         ghiChu: trimOrNull(item?.ghiChu ?? item?.GhiChu)
     };
 });
+const normalizeResponsibleDepartment = (body = {}) => {
+    const value = body?.boPhanGayLoi;
+    if (value && typeof value === 'object') {
+        return {
+            source: String(value.source || '').trim().toUpperCase(),
+            sourceId: positiveId(value.sourceId)
+        };
+    }
+    const legacyId = positiveId(body?.boPhanGayLoiId);
+    return legacyId ? { source: 'NOI_BO', sourceId: legacyId } : null;
+};
 
 const isB7Actor = async (executor, user) => {
     if (isAdmin(user)) return true;
@@ -88,6 +99,22 @@ const authorizeDoiTraAccess = async (req, res, next) => {
     try {
         const pool = await poolPromise;
         if (await isB7Actor(pool, req.user)) return next();
+        const routeId = positiveId(String(req.path || '').split('/').filter(Boolean)[0]);
+        if (routeId) {
+            const managedIds = await require('../utils/managedDepartments').getManagedDepartmentIds(
+                pool, userIdOf(req), req.user?.boPhanId
+            );
+            const participant = await pool.request()
+                .input('PhieuId', sql.Int, routeId)
+                .input('UserId', sql.Int, userIdOf(req))
+                .input('ManagedIds', sql.NVarChar(sql.MAX), managedIds.join(','))
+                .query(`SELECT TOP 1 1 Allowed FROM dbo.DOI_TRA_PHOI_LOI p
+                    WHERE p.Id=@PhieuId AND (p.NguoiLapId=@UserId OR EXISTS(
+                        SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_KPH_Y_KIEN y
+                        WHERE y.PhieuId=p.Id AND y.IsActive=1 AND y.BoPhanId IN(
+                            SELECT TRY_CONVERT(INT,value) FROM STRING_SPLIT(@ManagedIds,','))))`);
+            if (participant.recordset?.length) return next();
+        }
         return res.status(403).json({ message: 'Bạn không có quyền truy cập phiếu đổi trả phôi lỗi' });
     } catch (error) {
         console.error('DoiTraPhoiLoi access check error:', error);
@@ -298,8 +325,38 @@ router.get('/traceability-lookups', authorize(VIEW_PERMISSIONS), async (_req, re
                 WHERE userRole.UserId=userRow.Id AND permissionRow.PermissionCode=N'THUC_HIEN_KIEM'
               )
             ORDER BY userRow.FullName, userRow.Username;
+
+            SELECT N'NOI_BO:' + CONVERT(NVARCHAR(20),department.Id) AS [key],
+                N'NOI_BO' AS [source],department.Id AS sourceId,
+                department.MaBoPhan AS departmentCode,
+                department.TenBoPhan AS departmentName,
+                CAST(NULL AS INT) AS unitId,CAST(NULL AS NVARCHAR(255)) AS unitName
+            FROM dbo.DM_BO_PHAN department
+            WHERE ISNULL(department.TrangThai,1)=1
+            UNION ALL
+            SELECT N'TAG_SYSTEM:' + CONVERT(NVARCHAR(20),externalDepartment.ID_BoPhan) AS [key],
+                N'TAG_SYSTEM' AS [source],CONVERT(INT,externalDepartment.ID_BoPhan) AS sourceId,
+                CAST(NULL AS NVARCHAR(100)) AS departmentCode,
+                LTRIM(RTRIM(externalDepartment.Ten_BoPhan)) COLLATE DATABASE_DEFAULT AS departmentName,
+                CONVERT(INT,externalDepartment.ID_DonVi) AS unitId,
+                LTRIM(RTRIM(externalUnit.Ten_DonVi)) COLLATE DATABASE_DEFAULT AS unitName
+            FROM TAG_System.dbo.DM_BoPhan externalDepartment
+            LEFT JOIN TAG_System.dbo.DM_DonVi externalUnit
+              ON externalUnit.ID_DonVi=externalDepartment.ID_DonVi
+            WHERE externalDepartment.SuDung=1 AND externalDepartment.TonTai=1
+              AND NOT EXISTS (
+                  SELECT 1 FROM dbo.DM_BO_PHAN localDepartment
+                  WHERE ISNULL(localDepartment.TrangThai,1)=1
+                    AND UPPER(LTRIM(RTRIM(localDepartment.TenBoPhan)))=
+                        UPPER(LTRIM(RTRIM(externalDepartment.Ten_BoPhan COLLATE DATABASE_DEFAULT)))
+              )
+            ORDER BY departmentName,unitName,departmentCode,sourceId;
         `);
-        res.json({ departments: result.recordsets[0] || [], inspectors: result.recordsets[1] || [] });
+        res.json({
+            departments: result.recordsets[0] || [],
+            inspectors: result.recordsets[1] || [],
+            responsibleDepartments: result.recordsets[2] || []
+        });
     } catch (error) {
         console.error('DoiTraPhoiLoi traceability lookup error:', error);
         res.status(500).json({ message: errorMessage(error, 'Không tải được danh mục truy nguyên') });
@@ -380,7 +437,12 @@ router.get('/', authorizeDoiTraAccess, async (req, res) => {
             .query(`
                 SELECT phieu.Id, phieu.SoPhieu, phieu.TrangThai, phieu.NgayLap,
                     phieu.NguoiLapId, phieu.BoPhanKcsId, phieu.CreatedAt, phieu.UpdatedAt,
+                    COALESCE(phieu.DinhMucTrangThai,
+                        CASE WHEN phieu.B7ConfirmedAt IS NULL THEN N'CHUA_NHAP' ELSE N'DA_XAC_NHAN' END
+                    ) AS DinhMucTrangThai,
+                    phieu.B7ConfirmedAt,
                     COALESCE(NULLIF(creator.FullName, N''), creator.Username) AS TenNguoiLap,
+                    COALESCE(NULLIF(b7Actor.FullName, N''), b7Actor.Username) AS TenB7XacNhan,
                     department.MaBoPhan AS MaBoPhanKcs,
                     department.TenBoPhan AS TenBoPhanKcs,
                     planRow.PlanSelectKey, planRow.PlanID, planRow.PlanNo,
@@ -392,6 +454,7 @@ router.get('/', authorizeDoiTraAccess, async (req, res) => {
                 FROM dbo.DOI_TRA_PHOI_LOI phieu
                 INNER JOIN dbo.DOI_TRA_PHOI_LOI_PLAN planRow ON planRow.PhieuId = phieu.Id
                 LEFT JOIN dbo.USERS creator ON creator.Id = phieu.NguoiLapId
+                LEFT JOIN dbo.USERS b7Actor ON b7Actor.Id = phieu.B7ConfirmedBy
                 LEFT JOIN dbo.DM_BO_PHAN department ON department.Id = phieu.BoPhanKcsId
                 WHERE (@Status IS NULL OR phieu.TrangThai = @Status)
                   AND (@FromDate IS NULL OR phieu.NgayLap >= @FromDate)
@@ -462,6 +525,7 @@ router.post('/', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                 DECLARE @PhieuId INT;
                 DECLARE @WorkflowId INT;
                 DECLARE @CurrentStepId INT;
+                DECLARE @DinhMucStepId INT;
 
                 SELECT @WorkflowId=Id FROM dbo.DOI_TRA_PHOI_LOI_WORKFLOW
                 WHERE EntityType=N'PHIEU_KIEM' AND IsActive=1;
@@ -471,6 +535,8 @@ router.post('/', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                 );
                 IF @WorkflowId IS NULL OR @CurrentStepId IS NULL
                     THROW 52003, N'Chưa cấu hình workflow đổi trả phôi lỗi đang hoạt động.', 1;
+                SELECT @DinhMucStepId=Id FROM dbo.DOI_TRA_PHOI_LOI_WORKFLOW_STEP
+                WHERE WorkflowId=@WorkflowId AND StepCode=N'B7_DINH_MUC';
 
                 EXEC @LockResult = sys.sp_getapplock
                     @Resource = N'DOI_TRA_PHOI_LOI_NUMBER',
@@ -488,9 +554,11 @@ router.post('/', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                 END;
 
                 INSERT dbo.DOI_TRA_PHOI_LOI (
-                    SoPhieu, TrangThai, NgayLap, NguoiLapId, BoPhanKcsId, WorkflowId, CurrentStepId
+                    SoPhieu, TrangThai, NgayLap, NguoiLapId, BoPhanKcsId, WorkflowId, CurrentStepId,
+                    DinhMucTrangThai,DinhMucCurrentStepId
                 ) VALUES (
-                    @SoPhieu, N'TAO_MOI', CONVERT(date, GETDATE()), @NguoiLapId, @BoPhanKcsId, @WorkflowId, @CurrentStepId
+                    @SoPhieu, N'TAO_MOI', CONVERT(date, GETDATE()), @NguoiLapId, @BoPhanKcsId, @WorkflowId, @CurrentStepId,
+                    N'CHUA_NHAP',@DinhMucStepId
                 );
                 SET @PhieuId = SCOPE_IDENTITY();
 
@@ -645,6 +713,11 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                 IF @FromStatus IS NULL
                     THROW 52020, N'Phiếu đã thay đổi, không còn ở bước KCS hoặc bạn không có quyền sửa.', 1;
 
+                SELECT SourceVatTuId,MAX(SoLuongPhoiLoi) AS SoLuongBoLoi
+                INTO #OldMaterialBasis
+                FROM dbo.DOI_TRA_PHOI_LOI_PHOI
+                WHERE PhieuId=@PhieuId GROUP BY SourceVatTuId;
+
                 CREATE TABLE #InputPhoi (
                     SourceLoiPhoiId INT NOT NULL PRIMARY KEY,
                     SoLuongKiem INT NOT NULL,
@@ -781,6 +854,21 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                 INNER JOIN dbo.DM_NHOM_LOI_DOI_TRA_PHOI groupRow ON groupRow.Id=inputDefect.NhomLoiId
                 INNER JOIN dbo.DM_DEFECT defectRow ON defectRow.Id=inputDefect.DefectId;
 
+                IF EXISTS(
+                    SELECT SourceVatTuId,SoLuongBoLoi FROM #OldMaterialBasis
+                    EXCEPT
+                    SELECT SourceVatTuId,MAX(SoLuongPhoiLoi) FROM dbo.DOI_TRA_PHOI_LOI_PHOI WHERE PhieuId=@PhieuId GROUP BY SourceVatTuId
+                ) OR EXISTS(
+                    SELECT SourceVatTuId,MAX(SoLuongPhoiLoi) FROM dbo.DOI_TRA_PHOI_LOI_PHOI WHERE PhieuId=@PhieuId GROUP BY SourceVatTuId
+                    EXCEPT SELECT SourceVatTuId,SoLuongBoLoi FROM #OldMaterialBasis
+                )
+                BEGIN
+                    UPDATE dbo.DOI_TRA_PHOI_LOI SET
+                        DinhMucTrangThai=CASE WHEN B7ConfirmedAt IS NULL THEN ISNULL(DinhMucTrangThai,N'CHUA_NHAP') ELSE N'CAN_XAC_NHAN_LAI' END,
+                        B7ConfirmedBy=NULL,B7ConfirmedAt=NULL
+                    WHERE Id=@PhieuId;
+                END;
+
                 UPDATE dbo.DOI_TRA_PHOI_LOI SET UpdatedAt=SYSDATETIME() WHERE Id=@PhieuId;
                 INSERT dbo.DOI_TRA_PHOI_LOI_HISTORY
                     (PhieuId, ActionCode, FromStatus, ToStatus, ActionBy, GhiChu)
@@ -835,9 +923,9 @@ router.put('/:id/dinh-muc', authorizeDoiTraAccess, async (req, res) => {
                 SELECT @FromStatus=TrangThai
                 FROM dbo.DOI_TRA_PHOI_LOI WITH (UPDLOCK,HOLDLOCK)
                 WHERE Id=@PhieuId AND RowVersion=@RowVersion
-                  AND TrangThai=N'CHO_B7_NHAP_DINH_MUC';
+                  AND TrangThai NOT IN(N'DA_HUY',N'HOAN_TAT');
                 IF @FromStatus IS NULL
-                    THROW 52102, N'Phiếu đã thay đổi hoặc không còn chờ B7 nhập định mức.', 1;
+                    THROW 52102, N'Phiếu đã thay đổi hoặc đã khóa định mức.', 1;
 
                 CREATE TABLE #Input (
                     SourceVatTuId INT NOT NULL PRIMARY KEY,
@@ -914,7 +1002,7 @@ router.put('/:id/dinh-muc', authorizeDoiTraAccess, async (req, res) => {
                     WHERE saved.PhieuId=@PhieuId AND saved.SourceVatTuId=inputRow.SourceVatTuId
                 );
 
-                UPDATE dbo.DOI_TRA_PHOI_LOI SET UpdatedAt=SYSDATETIME() WHERE Id=@PhieuId;
+                UPDATE dbo.DOI_TRA_PHOI_LOI SET DinhMucTrangThai=N'DANG_NHAP',B7ConfirmedBy=NULL,B7ConfirmedAt=NULL,UpdatedAt=SYSDATETIME() WHERE Id=@PhieuId;
                 INSERT dbo.DOI_TRA_PHOI_LOI_HISTORY
                     (PhieuId,ActionCode,FromStatus,ToStatus,ActionBy,GhiChu)
                 VALUES (@PhieuId,N'SAVE_DINH_MUC_DRAFT',@FromStatus,@FromStatus,@UserId,N'Lưu nháp định mức đổi trả');
@@ -940,11 +1028,13 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
     const rowVersion = rowVersionBuffer(req.body?.rowVersion);
     const actionCode = String(req.params.actionCode || '').trim().toUpperCase();
     const ghiChu = trimOrNull(req.body?.ghiChu);
-    const boPhanGayLoiId = positiveId(req.body?.boPhanGayLoiId);
+    const responsibleDepartmentRequest = normalizeResponsibleDepartment(req.body);
+    const isKcsAction = ['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(actionCode);
     const supportedActions = ['KCS_SUBMIT', 'KCS_RESUBMIT', 'TBP_CONFIRM', 'TBP_RETURN', 'B7_CONFIRM'];
     if (!phieuId || !rowVersion || !supportedActions.includes(actionCode)
         || (ghiChu?.length || 0) > 1000 || (actionCode === 'TBP_RETURN' && !ghiChu)
-        || (['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(actionCode) && !boPhanGayLoiId)) {
+        || (isKcsAction && (!responsibleDepartmentRequest?.sourceId
+            || !['NOI_BO', 'TAG_SYSTEM'].includes(responsibleDepartmentRequest.source)))) {
         return res.status(400).json({ message: 'Hành động, nội dung hoặc phiên bản dữ liệu không hợp lệ' });
     }
 
@@ -986,6 +1076,34 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
             return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
         }
 
+        let responsibleDepartment = null;
+        if (isKcsAction && responsibleDepartmentRequest.source === 'NOI_BO') {
+            const lookup = await new sql.Request(transaction)
+                .input('SourceId', sql.Int, responsibleDepartmentRequest.sourceId)
+                .query(`SELECT TOP (1) Id AS SourceId,MaBoPhan AS DepartmentCode,
+                    TenBoPhan AS DepartmentName
+                    FROM dbo.DM_BO_PHAN
+                    WHERE Id=@SourceId AND ISNULL(TrangThai,1)=1;`);
+            responsibleDepartment = lookup.recordset?.[0] || null;
+        } else if (isKcsAction) {
+            const lookup = await new sql.Request(transaction)
+                .input('SourceId', sql.Int, responsibleDepartmentRequest.sourceId)
+                .query(`SELECT TOP (1) CONVERT(INT,department.ID_BoPhan) AS SourceId,
+                    LTRIM(RTRIM(department.Ten_BoPhan)) COLLATE DATABASE_DEFAULT AS DepartmentName,
+                    CONVERT(INT,department.ID_DonVi) AS UnitId,
+                    LTRIM(RTRIM(unitRow.Ten_DonVi)) COLLATE DATABASE_DEFAULT AS UnitName
+                    FROM TAG_System.dbo.DM_BoPhan department
+                    LEFT JOIN TAG_System.dbo.DM_DonVi unitRow ON unitRow.ID_DonVi=department.ID_DonVi
+                    WHERE department.ID_BoPhan=@SourceId
+                      AND department.SuDung=1 AND department.TonTai=1;`);
+            responsibleDepartment = lookup.recordset?.[0] || null;
+        }
+        if (isKcsAction && !responsibleDepartment) {
+            await transaction.rollback();
+            started = false;
+            return res.status(409).json({ message: 'Bộ phận gây lỗi không tồn tại hoặc đã ngừng sử dụng' });
+        }
+
         const result = await new sql.Request(transaction)
             .input('PhieuId', sql.Int, phieuId)
             .input('UserId', sql.Int, userIdOf(req))
@@ -994,7 +1112,14 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
             .input('ToStatus', sql.NVarChar(80), workflowAction.ToStatusCode)
             .input('ToStepId', sql.Int, workflowAction.ToStepId)
             .input('GhiChu', sql.NVarChar(1000), ghiChu)
-            .input('BoPhanGayLoiId', sql.Int, boPhanGayLoiId)
+            .input('BoPhanGayLoiSource', sql.NVarChar(20), responsibleDepartmentRequest?.source || null)
+            .input('BoPhanGayLoiSourceId', sql.Int, responsibleDepartment?.SourceId || null)
+            .input('BoPhanGayLoiId', sql.Int,
+                responsibleDepartmentRequest?.source === 'NOI_BO' ? responsibleDepartment?.SourceId : null)
+            .input('MaBoPhanGayLoi', sql.NVarChar(100), responsibleDepartment?.DepartmentCode || null)
+            .input('TenBoPhanGayLoi', sql.NVarChar(255), responsibleDepartment?.DepartmentName || null)
+            .input('DonViGayLoiSourceId', sql.Int, responsibleDepartment?.UnitId || null)
+            .input('TenDonViGayLoi', sql.NVarChar(255), responsibleDepartment?.UnitName || null)
             .query(`
                 IF @ActionCode IN (N'KCS_SUBMIT',N'KCS_RESUBMIT')
                 BEGIN
@@ -1037,25 +1162,38 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
                             OR defectRow.SoLuongLoi<=0 OR defectRow.SoLuongLoi>phoiRow.SoLuongPhoiLoi
                         )
                     ) THROW 52113, N'Phiếu có nhóm lỗi, lỗi hoặc số lượng lỗi không hợp lệ.', 1;
-                    IF NOT EXISTS (
-                        SELECT 1 FROM dbo.DM_BO_PHAN
-                        WHERE Id=@BoPhanGayLoiId AND ISNULL(TrangThai,1)=1
-                    ) THROW 52114, N'Bộ phận gây lỗi không tồn tại hoặc đã ngừng sử dụng.', 1;
-
                     UPDATE phieu SET
                         TrangThai=@ToStatus,CurrentStepId=@ToStepId,
-                        BoPhanGayLoiId=department.Id,MaBoPhanGayLoi=department.MaBoPhan,
-                        TenBoPhanGayLoi=department.TenBoPhan,KcsCompletedBy=@UserId,
+                        BoPhanGayLoiId=@BoPhanGayLoiId,
+                        BoPhanGayLoiSource=@BoPhanGayLoiSource,
+                        BoPhanGayLoiSourceId=@BoPhanGayLoiSourceId,
+                        MaBoPhanGayLoi=@MaBoPhanGayLoi,
+                        TenBoPhanGayLoi=@TenBoPhanGayLoi,
+                        DonViGayLoiSourceId=@DonViGayLoiSourceId,
+                        TenDonViGayLoi=@TenDonViGayLoi,KcsCompletedBy=@UserId,
                         KcsCompletedAt=SYSDATETIME(),TbpKcsConfirmedBy=NULL,TbpKcsConfirmedAt=NULL,
                         LyDoTraLai=NULL,UpdatedAt=SYSDATETIME()
                     FROM dbo.DOI_TRA_PHOI_LOI phieu
-                    JOIN dbo.DM_BO_PHAN department ON department.Id=@BoPhanGayLoiId
                     WHERE phieu.Id=@PhieuId;
                 END
                 ELSE IF @ActionCode=N'TBP_CONFIRM'
-                    UPDATE dbo.DOI_TRA_PHOI_LOI SET TrangThai=@ToStatus,CurrentStepId=@ToStepId,
+                BEGIN
+                    DECLARE @IsKphResubmit BIT=CASE WHEN EXISTS(
+                        SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI WHERE Id=@PhieuId AND LastReturnedAt IS NOT NULL
+                    ) THEN 1 ELSE 0 END;
+                    UPDATE phieu SET TrangThai=@ToStatus,CurrentStepId=@ToStepId,
                         TbpKcsConfirmedBy=@UserId,TbpKcsConfirmedAt=SYSDATETIME(),LyDoTraLai=NULL,
-                        UpdatedAt=SYSDATETIME() WHERE Id=@PhieuId;
+                        RequiresExecutiveApproval=CASE WHEN phieu.LastReturnedAt IS NULL THEN ISNULL(settingRow.BitValue,0) ELSE phieu.RequiresExecutiveApproval END,
+                        ReviewRound=CASE WHEN @IsKphResubmit=1 THEN ReviewRound+1 ELSE ReviewRound END,
+                        UpdatedAt=SYSDATETIME()
+                    FROM dbo.DOI_TRA_PHOI_LOI phieu
+                    OUTER APPLY(SELECT TOP 1 BitValue FROM dbo.SYSTEM_SETTINGS WHERE SettingKey=N'REQUIRE_EXECUTIVE_APPROVAL_KPH') settingRow
+                    WHERE phieu.Id=@PhieuId;
+                    IF @IsKphResubmit=1
+                        UPDATE dbo.DOI_TRA_PHOI_LOI_KPH_Y_KIEN SET TrangThai=N'CHO_Y_KIEN',OpinionSavedBy=NULL,
+                            OpinionSavedAt=NULL,OpinionReviewRound=NULL,ConfirmedBy=NULL,ConfirmedAt=NULL,ConfirmedReviewRound=NULL
+                        WHERE PhieuId=@PhieuId AND IsActive=1;
+                END
                 ELSE IF @ActionCode=N'TBP_RETURN'
                     UPDATE dbo.DOI_TRA_PHOI_LOI SET TrangThai=@ToStatus,CurrentStepId=@ToStepId,
                         KcsCompletedBy=NULL,KcsCompletedAt=NULL,TbpKcsConfirmedBy=NULL,TbpKcsConfirmedAt=NULL,
@@ -1139,6 +1277,7 @@ router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
                     kcsDepartment.TenBoPhan AS TenBoPhanKcs,
                     COALESCE(phieu.MaBoPhanGayLoi,responsibleDepartment.MaBoPhan) AS MaBoPhanGayLoiSnapshot,
                     COALESCE(phieu.TenBoPhanGayLoi,responsibleDepartment.TenBoPhan) AS TenBoPhanGayLoiSnapshot,
+                    phieu.TenDonViGayLoi AS TenDonViGayLoiSnapshot,
                     COALESCE(NULLIF(kcsActor.FullName,N''),kcsActor.Username) AS TenKcsHoanTat,
                     COALESCE(NULLIF(tbpActor.FullName,N''),tbpActor.Username) AS TenTbpKcsXacNhan,
                     COALESCE(NULLIF(b7Actor.FullName,N''),b7Actor.Username) AS TenB7XacNhan
@@ -1174,12 +1313,12 @@ router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
 
                 SELECT workflow.Id AS WorkflowId,workflow.WorkflowCode,workflow.WorkflowName,workflow.VersionNo,
                     stepRow.Id AS StepId,stepRow.StepCode,stepRow.StepName,stepRow.SortOrder,
-                    stepRow.PendingStatusCode,stepRow.CompletedStatusCode,stepRow.IsRequired,
+                stepRow.PendingStatusCode,stepRow.CompletedStatusCode,stepRow.IsRequired,stepRow.TrackCode,
                     CAST(CASE WHEN stepRow.Id=phieu.CurrentStepId THEN 1 ELSE 0 END AS bit) AS IsCurrent
                 FROM dbo.DOI_TRA_PHOI_LOI phieu
                 JOIN dbo.DOI_TRA_PHOI_LOI_WORKFLOW workflow ON workflow.Id=phieu.WorkflowId
                 JOIN dbo.DOI_TRA_PHOI_LOI_WORKFLOW_STEP stepRow ON stepRow.WorkflowId=workflow.Id
-                WHERE phieu.Id=@PhieuId
+                WHERE phieu.Id=@PhieuId AND ISNULL(stepRow.TrackCode,N'MAIN')=N'MAIN'
                 ORDER BY stepRow.SortOrder,stepRow.Id;
 
                 SELECT groupRow.Id,groupRow.MaNhom,groupRow.TenNhom,groupRow.SortOrder,groupRow.TrangThai
@@ -1257,8 +1396,9 @@ router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
             capabilities: {
                 canCancel: phieu.TrangThai === 'TAO_MOI' && canEditPhoi,
                 canEditPhoi,
-                canEditDinhMuc: phieu.TrangThai === 'CHO_B7_NHAP_DINH_MUC' && b7Actor,
-                canSaveDinhMuc: phieu.TrangThai === 'CHO_B7_NHAP_DINH_MUC' && b7Actor
+                canEditDinhMuc: !['DA_HUY', 'HOAN_TAT'].includes(phieu.TrangThai) && b7Actor,
+                canSaveDinhMuc: !['DA_HUY', 'HOAN_TAT'].includes(phieu.TrangThai) && b7Actor,
+                canConfirmDinhMuc: !['DA_HUY', 'HOAN_TAT'].includes(phieu.TrangThai) && b7Actor
             }
         }));
     } catch (error) {
@@ -1347,6 +1487,11 @@ router.delete('/:id', requireExactPermission('XOA_HO_SO_KCS'), async (req, res) 
                         JSON_QUERY((SELECT planRow.* FROM dbo.DOI_TRA_PHOI_LOI_PLAN planRow WHERE planRow.PhieuId=phieu.Id FOR JSON PATH)) AS Plans,
                         JSON_QUERY((SELECT historyRow.* FROM dbo.DOI_TRA_PHOI_LOI_HISTORY historyRow WHERE historyRow.PhieuId=phieu.Id FOR JSON PATH)) AS History,
                         JSON_QUERY((SELECT quotaRow.* FROM dbo.DOI_TRA_PHOI_LOI_VAT_TU_DINH_MUC quotaRow WHERE quotaRow.PhieuId=phieu.Id FOR JSON PATH)) AS VatTuDinhMuc,
+                        JSON_QUERY((SELECT item.* FROM dbo.DOI_TRA_PHOI_LOI_KPH_Y_KIEN item WHERE item.PhieuId=phieu.Id FOR JSON PATH)) AS KphYKien,
+                        JSON_QUERY((SELECT item.* FROM dbo.DOI_TRA_PHOI_LOI_KPH_XU_LY item WHERE item.PhieuId=phieu.Id FOR JSON PATH)) AS KphXuLy,
+                        JSON_QUERY((SELECT item.* FROM dbo.DOI_TRA_PHOI_LOI_KPH_CHI_PHI item WHERE item.PhieuId=phieu.Id FOR JSON PATH)) AS KphChiPhi,
+                        JSON_QUERY((SELECT item.* FROM dbo.DOI_TRA_PHOI_LOI_KPH_HANH_DONG item WHERE item.PhieuId=phieu.Id FOR JSON PATH)) AS KphHanhDong,
+                        JSON_QUERY((SELECT item.* FROM dbo.DOI_TRA_PHOI_LOI_KPH_REVIEW_HISTORY item WHERE item.PhieuId=phieu.Id FOR JSON PATH)) AS KphHistory,
                         JSON_QUERY((
                             SELECT phoiRow.*,
                                 JSON_QUERY((SELECT defectRow.* FROM dbo.DOI_TRA_PHOI_LOI_PHOI_DEFECT defectRow WHERE defectRow.PhoiId=phoiRow.Id FOR JSON PATH)) AS Defects,

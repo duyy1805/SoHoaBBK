@@ -3,7 +3,7 @@ import {
     Alert, Autocomplete, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog,
     DialogActions, DialogContent, DialogTitle, Divider, Grid, Paper, Stack, Step,
     StepLabel, Stepper, Tab, Table, TableBody, TableCell, TableContainer,
-    TableHead, TableRow, Tabs, TextField, Typography
+    TableHead, TableRow, Tabs, TextField, Typography, createFilterOptions
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import PrintIcon from '@mui/icons-material/Print';
@@ -24,6 +24,7 @@ import DoiTraPhoiLoiPrintTemplate from '../components/DoiTraPhoiLoiPrintTemplate
 import DoiTraPhoiLoiSummaryPrintTemplate from '../components/DoiTraPhoiLoiSummaryPrintTemplate';
 import DoiTraPhoiEditor from '../components/DoiTraPhoiEditor';
 import DoiTraDinhMucEditor from '../components/DoiTraDinhMucEditor';
+import DoiTraKphWorkflow from '../components/DoiTraKphWorkflow';
 import { doiTraStatusMeta, formatDoiTraDate, formatDoiTraQuantity } from '../doiTraPhoiLoi.utils';
 
 const Info = ({ label, value }) => (
@@ -32,6 +33,14 @@ const Info = ({ label, value }) => (
         <Typography variant="body2" fontWeight={700}>{value || '---'}</Typography>
     </Box>
 );
+const responsibleDepartmentLabel = (item) => item?.source === 'TAG_SYSTEM'
+    ? [item.departmentName, item.unitName].filter(Boolean).join(' — ')
+    : [item?.departmentCode, item?.departmentName].filter(Boolean).join(' — ');
+const filterResponsibleDepartments = createFilterOptions({
+    stringify: (item) => [
+        item.departmentCode, item.departmentName, item.unitName, item.sourceId, item.source
+    ].filter(Boolean).join(' ')
+});
 
 export default function DoiTraPhoiLoiDetail() {
     const { id } = useParams();
@@ -47,9 +56,10 @@ export default function DoiTraPhoiLoiDetail() {
     const [actionDialog, setActionDialog] = useState(null);
     const [actionNote, setActionNote] = useState('');
     const [responsibleDepartment, setResponsibleDepartment] = useState(null);
-    const [departments, setDepartments] = useState([]);
+    const [responsibleDepartments, setResponsibleDepartments] = useState([]);
     const [actionLoading, setActionLoading] = useState(false);
     const [deleting, setDeleting] = useState(false);
+    const [kphData, setKphData] = useState(null);
 
     const load = useCallback(async ({ background = false } = {}) => {
         try {
@@ -107,10 +117,20 @@ export default function DoiTraPhoiLoiDetail() {
         setActionDialog(action);
         setActionNote('');
         setResponsibleDepartment(null);
-        if (['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(action.ActionCode) && !departments.length) {
+        if (['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(action.ActionCode)) {
             try {
-                const response = await getDoiTraTraceabilityLookups();
-                setDepartments(response.data?.departments || []);
+                let options = responsibleDepartments;
+                if (!options.length) {
+                    const response = await getDoiTraTraceabilityLookups();
+                    options = response.data?.responsibleDepartments || [];
+                    setResponsibleDepartments(options);
+                }
+                const currentSource = data.phieu?.BoPhanGayLoiSource
+                    || (data.phieu?.BoPhanGayLoiId ? 'NOI_BO' : null);
+                const currentSourceId = data.phieu?.BoPhanGayLoiSourceId
+                    || data.phieu?.BoPhanGayLoiId;
+                setResponsibleDepartment(options.find((item) => item.source === currentSource
+                    && Number(item.sourceId) === Number(currentSourceId)) || null);
             } catch (error) {
                 setActionDialog(null);
                 window.alert(error.response?.data?.message || 'Không tải được danh sách bộ phận.');
@@ -128,7 +148,10 @@ export default function DoiTraPhoiLoiDetail() {
             await executeDoiTraAction(id, actionDialog.ActionCode, {
                 rowVersion: data.phieu.RowVersion,
                 ghiChu: actionNote.trim() || null,
-                boPhanGayLoiId: responsibleDepartment?.Id || null
+                boPhanGayLoi: responsibleDepartment ? {
+                    source: responsibleDepartment.source,
+                    sourceId: responsibleDepartment.sourceId
+                } : null
             });
             setActionDialog(null);
             await load({ background: true });
@@ -147,12 +170,12 @@ export default function DoiTraPhoiLoiDetail() {
     const status = doiTraStatusMeta(phieu.TrangThai);
     const workflowSteps = workflow.steps || [];
     const configuredStepIndex = workflowSteps.findIndex((step) => step.IsCurrent);
-    const activeStep = phieu.TrangThai === 'HOAN_TAT_DINH_MUC'
+    const activeStep = phieu.TrangThai === 'HOAN_TAT'
         ? workflowSteps.length
         : (configuredStepIndex >= 0 ? configuredStepIndex : Math.min(status.step, Math.max(workflowSteps.length - 1, 0)));
     const availableActions = workflow.availableActions || [];
     const regularActions = availableActions.filter((action) => action.ActionCode !== 'B7_CONFIRM');
-    const canB7Confirm = availableActions.some((action) => action.ActionCode === 'B7_CONFIRM');
+    const canB7Confirm = Boolean(capabilities.canConfirmDinhMuc);
     const summaryData = {
         tickets: [{ ...plan, ...phieu }],
         phoiItems,
@@ -192,6 +215,9 @@ export default function DoiTraPhoiLoiDetail() {
                         <Step key={label}><StepLabel>{label}</StepLabel></Step>
                     ))}
                 </Stepper>
+                <Alert severity={phieu.DinhMucTrangThai === 'DA_XAC_NHAN' ? 'success' : phieu.DinhMucTrangThai === 'CAN_XAC_NHAN_LAI' ? 'warning' : 'info'} sx={{ mt: 2 }}>
+                    <strong>Nhánh B7:</strong> {{ CHUA_NHAP: 'Chưa nhập định mức', DANG_NHAP: 'Đang nhập định mức', DA_XAC_NHAN: 'Đã xác nhận định mức', CAN_XAC_NHAN_LAI: 'Dữ liệu vật tư/số bộ lỗi đã đổi — cần B7 xác nhận lại' }[phieu.DinhMucTrangThai] || 'Chưa khởi tạo'}
+                </Alert>
                 {phieu.TrangThai === 'TRA_LAI_KCS' && <Alert severity="warning" sx={{ mt: 2 }}><strong>Lý do trả lại:</strong> {phieu.LyDoTraLai || 'Chưa ghi rõ lý do'}</Alert>}
                 {phoiDirty && <Alert severity="warning" sx={{ mt: 2 }}>Bạn đang có thay đổi phôi/lỗi chưa lưu. Hãy lưu nháp trước khi hoàn tất KCS.</Alert>}
                 {regularActions.length > 0 && <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 2 }}>
@@ -215,7 +241,11 @@ export default function DoiTraPhoiLoiDetail() {
                                 <Info label="Ngày lập" value={formatDoiTraDate(phieu.NgayLap)} />
                                 <Info label="Người lập" value={phieu.TenNguoiLap} />
                                 <Info label="Bộ phận KCS" value={[phieu.MaBoPhanKcs, phieu.TenBoPhanKcs].filter(Boolean).join(' - ')} />
-                                <Info label="Bộ phận gây lỗi" value={[phieu.MaBoPhanGayLoiSnapshot, phieu.TenBoPhanGayLoiSnapshot].filter(Boolean).join(' - ')} />
+                                <Info label="Bộ phận gây lỗi" value={[
+                                    phieu.MaBoPhanGayLoiSnapshot,
+                                    phieu.TenBoPhanGayLoiSnapshot,
+                                    phieu.TenDonViGayLoiSnapshot
+                                ].filter(Boolean).join(' — ')} />
                                 <Info label="Thời gian tạo" value={formatDoiTraDate(phieu.CreatedAt, true)} />
                             </Stack>
                         </CardContent>
@@ -258,7 +288,7 @@ export default function DoiTraPhoiLoiDetail() {
                 />
             </Paper>
 
-            {['CHO_B7_NHAP_DINH_MUC', 'HOAN_TAT_DINH_MUC'].includes(phieu.TrangThai) && <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+            {phoiItems.length > 0 && phieu.TrangThai !== 'DA_HUY' && <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
                 <Typography variant="subtitle1" fontWeight={800} sx={{ mb: 1.5 }}>Định mức đổi trả</Typography>
                 <DoiTraDinhMucEditor
                     phieu={phieu}
@@ -268,6 +298,11 @@ export default function DoiTraPhoiLoiDetail() {
                     canConfirm={canB7Confirm}
                     onChanged={() => load({ background: true })}
                 />
+            </Paper>}
+
+            {['CHO_THIET_LAP_KPH', 'CHO_Y_KIEN_KPH', 'CHO_XAC_NHAN_CUOI_KPH', 'CHO_BGD_XAC_NHAN', 'CHO_THEO_DOI', 'KPH_HOAN_TAT_CHO_B7', 'HOAN_TAT', 'TRA_LAI_KCS'].includes(phieu.TrangThai) && <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+                <Typography variant="subtitle1" fontWeight={800} sx={{ mb: 1.5 }}>Xử lý không phù hợp</Typography>
+                <DoiTraKphWorkflow phieu={phieu} onChanged={() => load({ background: true })} onData={setKphData} />
             </Paper>}
 
             {(phieu.KcsCompletedAt || phieu.TbpKcsConfirmedAt || phieu.B7ConfirmedAt) && <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
@@ -307,9 +342,11 @@ export default function DoiTraPhoiLoiDetail() {
                 <DialogContent dividers>
                     <Stack spacing={2} sx={{ pt: 0.5 }}>
                         {['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(actionDialog?.ActionCode) && <Autocomplete
-                            options={departments}
+                            options={responsibleDepartments}
                             value={responsibleDepartment}
-                            getOptionLabel={(item) => [item.MaBoPhan, item.TenBoPhan].filter(Boolean).join(' — ')}
+                            isOptionEqualToValue={(option, value) => option.key === value.key}
+                            getOptionLabel={responsibleDepartmentLabel}
+                            filterOptions={filterResponsibleDepartments}
                             onChange={(_, value) => setResponsibleDepartment(value)}
                             renderInput={(params) => <TextField {...params} required label="Bộ phận gây lỗi" />}
                         />}
@@ -337,7 +374,7 @@ export default function DoiTraPhoiLoiDetail() {
                 </Tabs>
                 <DialogContent dividers sx={{ bgcolor: '#e5e7eb', p: 2, overflow: 'auto' }}>
                     <Box sx={{ display: printTab === 'kph' ? 'flex' : 'none', justifyContent: 'center' }}>
-                        <DoiTraPhoiLoiPrintTemplate ref={printRef} data={data} />
+                        <DoiTraPhoiLoiPrintTemplate ref={printRef} data={{ ...data, kph: kphData }} />
                     </Box>
                     <Box sx={{ display: printTab === 'summary' ? 'block' : 'none', minWidth: '297mm' }}>
                         <DoiTraPhoiLoiSummaryPrintTemplate ref={summaryPrintRef} data={summaryData} />

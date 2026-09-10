@@ -119,6 +119,7 @@ export const exportWorkCenterCsv = (items) => {
 
 export const RECORD_TYPE_LABELS = {
     KPH_V01: "KPH V01",
+    DTP_KPH: "Đổi trả phôi lỗi",
     BIEN_BAN_V00: "Biên bản",
     SXBT: "SXBT"
 };

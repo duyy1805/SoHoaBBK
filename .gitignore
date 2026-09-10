@@ -11,5 +11,9 @@ build/
 *.sql
 !server/sql/migrations/20260904_sxbt_level_c_remove_b7.sql
 !server/sql/migrations/20260904_sxbt_level_c_remove_b7.rollback.sql
+!server/sql/migrations/20260907_doi_tra_phoi_loi_kph_parallel.sql
+!server/sql/migrations/20260907_doi_tra_phoi_loi_kph_parallel.rollback.sql
+!server/sql/migrations/20260908_doi_tra_phoi_loi_external_responsible_department.sql
+!server/sql/migrations/20260908_doi_tra_phoi_loi_external_responsible_department.rollback.sql
 
 *.xlsx

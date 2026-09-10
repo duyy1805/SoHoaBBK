@@ -8,6 +8,12 @@ const DoiTraPhoiLoiPrintTemplate = forwardRef(function DoiTraPhoiLoiPrintTemplat
     const phieu = data?.phieu || {};
     const plan = data?.plans?.[0] || {};
     const phoiItems = data?.phoiItems || [];
+    const kph = data?.kph || {};
+    const responsibleDepartment = [
+        phieu.MaBoPhanGayLoiSnapshot,
+        phieu.TenBoPhanGayLoiSnapshot,
+        phieu.TenDonViGayLoiSnapshot
+    ].filter(Boolean).join(' — ');
     const printDefects = phoiItems.flatMap((item) => {
         const objectName = [
             item.TenLoaiPhoi,
@@ -61,12 +67,18 @@ const DoiTraPhoiLoiPrintTemplate = forwardRef(function DoiTraPhoiLoiPrintTemplat
         MaLoai: 'DOI_TRA_PHOI_LOI',
         MauPhieuVersion: 'V01',
         MoTaChung: phoiItems.length
-            ? `Đổi trả ${phoiItems.length} loại phôi lỗi theo kế hoạch ${plan.PlanNo || plan.PlanID || ''}.`
+            ? [
+                `Đổi trả ${phoiItems.length} loại phôi lỗi theo kế hoạch ${plan.PlanNo || plan.PlanID || ''}.`,
+                responsibleDepartment ? `Bộ phận gây lỗi: ${responsibleDepartment}.` : ''
+            ].filter(Boolean).join(' ')
             : 'Chưa cập nhật danh sách phôi lỗi.',
         PhieuKiemTbpXacNhanAt: phieu.TbpKcsConfirmedAt,
         PhieuKiemTbpXacNhanId: phieu.TbpKcsConfirmedBy,
         PhieuKiemTbpXacNhanName: phieu.TenTbpKcsXacNhan,
-        PhieuKiemTbpSignatureDataUrl: phieu.TbpKcsSignatureDataUrl
+        PhieuKiemTbpSignatureDataUrl: phieu.TbpKcsSignatureDataUrl,
+        CreatorSignatureDataUrl: kph.creatorSignatureDataUrl || null,
+        CreatorConfirmedByName: kph.creatorConfirmedByName || null,
+        ExecutiveApprovalSignatureDataUrl: [...(kph.executiveApprovals || [])].reverse().find((item) => item.Decision === 'APPROVED')?.SignatureDataUrl || null
     };
 
     const dynamicFields = [
@@ -84,15 +96,15 @@ const DoiTraPhoiLoiPrintTemplate = forwardRef(function DoiTraPhoiLoiPrintTemplat
             ref={ref}
             info={info}
             defects={printDefects}
-            xuLy={[]}
-            chiPhi={[]}
-            hanhDong={[]}
+            xuLy={kph.xuLy || []}
+            chiPhi={kph.chiPhi || []}
+            hanhDong={kph.hanhDong || []}
             xacNhan={[]}
             phieuKiemXacNhan={[]}
             assigns={[]}
             dynamicFields={dynamicFields}
-            specialistOpinions={[]}
-            followUpEvaluation={null}
+            specialistOpinions={kph.opinions || []}
+            followUpEvaluation={kph.evaluation || null}
         />
     );
 });

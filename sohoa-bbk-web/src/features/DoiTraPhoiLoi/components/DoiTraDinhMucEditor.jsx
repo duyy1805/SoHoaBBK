@@ -5,7 +5,7 @@ import {
 } from '@mui/material';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
 import TaskAltOutlinedIcon from '@mui/icons-material/TaskAltOutlined';
-import { executeDoiTraAction, saveDoiTraDinhMuc } from '../../../api/doiTraPhoiLoi.api';
+import { confirmDoiTraDinhMuc, saveDoiTraDinhMuc } from '../../../api/doiTraPhoiLoi.api';
 import { formatDoiTraQuantity } from '../doiTraPhoiLoi.utils';
 
 const titleOf = (item) => [item.TenLoaiPhoi, item.SoPhoi && `Số phôi ${item.SoPhoi}`, item.KyHieu]
@@ -84,10 +84,10 @@ export default function DoiTraDinhMucEditor({
     const confirm = async () => {
         if (dirty) return window.alert('Vui lòng lưu nháp định mức trước khi xác nhận.');
         if (!complete) return window.alert('Vui lòng nhập định mức cho tất cả vật tư.');
-        if (!window.confirm('Xác nhận định mức và hoàn tất bước B7? Sau bước này dữ liệu sẽ bị khóa.')) return;
+        if (!window.confirm('Xác nhận định mức đổi trả? Nếu KCS thay đổi vật tư hoặc số bộ lỗi, hệ thống sẽ yêu cầu B7 xác nhận lại.')) return;
         try {
             setConfirming(true);
-            await executeDoiTraAction(phieu.Id, 'B7_CONFIRM', { rowVersion: phieu.RowVersion, ghiChu: null });
+            await confirmDoiTraDinhMuc(phieu.Id, phieu.RowVersion);
             await onChanged?.();
         } catch (error) {
             window.alert(error.response?.data?.message || 'Không xác nhận được định mức.');

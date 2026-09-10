@@ -13,7 +13,10 @@ import { useNavigate } from 'react-router-dom';
 import { useReactToPrint } from 'react-to-print';
 import { deleteDoiTraPhoiLoi, getDoiTraPhoiLoiList, previewDoiTraSummary } from '../../../api/doiTraPhoiLoi.api';
 import { getCurrentUser } from '../../../utils/auth';
-import { DOI_TRA_STATUS_META, doiTraStatusMeta, formatDoiTraDate, formatDoiTraQuantity } from '../doiTraPhoiLoi.utils';
+import {
+    DOI_TRA_STATUS_META, doiTraDinhMucStatusMeta, doiTraStatusMeta,
+    formatDoiTraDate, formatDoiTraQuantity
+} from '../doiTraPhoiLoi.utils';
 import DoiTraPhoiLoiSummaryPrintTemplate from '../components/DoiTraPhoiLoiSummaryPrintTemplate';
 
 export default function DoiTraPhoiLoiList() {
@@ -145,12 +148,14 @@ export default function DoiTraPhoiLoiList() {
                                     <TableCell align="right">Số lượng KH</TableCell>
                                     <TableCell>Người lập</TableCell>
                                     <TableCell>Trạng thái</TableCell>
+                                    <TableCell>Định mức B7</TableCell>
                                     <TableCell align="center">Thao tác</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
                                 {rows.map((row) => {
                                     const status = doiTraStatusMeta(row.TrangThai);
+                                    const dinhMucStatus = doiTraDinhMucStatusMeta(row.DinhMucTrangThai);
                                     return (
                                         <TableRow key={row.Id} hover>
                                             <TableCell padding="checkbox"><Checkbox disabled={row.TrangThai === 'DA_HUY'} checked={selectedIds.includes(row.Id)} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, row.Id] : current.filter((id) => id !== row.Id))} /></TableCell>
@@ -162,6 +167,12 @@ export default function DoiTraPhoiLoiList() {
                                             <TableCell align="right">{formatDoiTraQuantity(row.PlanQty)}</TableCell>
                                             <TableCell>{row.TenNguoiLap || '---'}</TableCell>
                                             <TableCell><Chip size="small" color={status.color} label={status.label} /></TableCell>
+                                            <TableCell>
+                                                <Chip size="small" variant="outlined" color={dinhMucStatus.color} label={dinhMucStatus.label} />
+                                                {row.DinhMucTrangThai === 'DA_XAC_NHAN' && <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                                                    {[row.TenB7XacNhan, formatDoiTraDate(row.B7ConfirmedAt, true)].filter((value) => value && value !== '---').join(' — ')}
+                                                </Typography>}
+                                            </TableCell>
                                             <TableCell align="center">
                                                 <Stack direction="row" spacing={0.5} justifyContent="center">
                                                     <Button size="small" startIcon={<VisibilityOutlinedIcon />} onClick={() => navigate(`/doi-tra-phoi-loi/${row.Id}`)}>Xem</Button>
