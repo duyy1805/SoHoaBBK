@@ -147,7 +147,11 @@ export default function KphV01WorkflowSections({
                     {Boolean(info.OpinionDepartmentsConfirmed) && !info.CreatorConfirmedAt && (
                         <Alert severity="info" sx={{ mb: 1.5, py: 0.25, alignItems: "center" }}>
                             <Typography variant="body2">
-                                <strong>Quy trình:</strong> Nhân viên lưu ý kiến chung, sau đó TBP xác nhận hoặc trả lại.
+                                <strong>Đã gửi xin ý kiến:</strong>{" "}
+                                {info.OpinionDepartmentsConfirmedAt
+                                    ? new Date(info.OpinionDepartmentsConfirmedAt).toLocaleString("vi-VN")
+                                    : "Chưa xác định thời điểm"}
+                                {" — "}Nhân viên lưu ý kiến chung, sau đó TBP xác nhận hoặc trả lại.
                             </Typography>
                         </Alert>
                     )}

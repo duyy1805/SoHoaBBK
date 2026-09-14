@@ -21,11 +21,32 @@ export const getRecordTimeMeta = (item = {}) => {
             color: "warning.dark"
         };
     }
+    if (status === "CHO_BGD_XAC_NHAN" && (item.FollowUpReadyAt || item.CreatorConfirmedAt)) {
+        return {
+            label: "Chờ BGD từ",
+            value: item.FollowUpReadyAt || item.CreatorConfirmedAt,
+            color: "warning.dark"
+        };
+    }
+    if (item.OpinionDepartmentsConfirmedAt && !item.CreatorConfirmedAt && !item.FollowUpReadyAt) {
+        return {
+            label: "Gửi xin ý kiến",
+            value: item.OpinionDepartmentsConfirmedAt,
+            color: "info.dark"
+        };
+    }
     return {
         label: "Ngày lập",
         value: item.CreatedAt || item.ListSortAt,
         color: "text.secondary"
     };
+};
+
+export const getRecordCreatedDate = (item = {}) => {
+    const value = item.CreatedAt || item.NgayLap || item.NgayTao || item.ListSortAt;
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
 };
 
 export const getRecordReferenceDate = (item = {}) => {

@@ -169,6 +169,8 @@ router.get("/", authenticateToken, async (req, res) => {
             .input('ManagedIds', sql.NVarChar(sql.MAX), managedDepartmentIds.join(','))
             .input('CanViewAll', sql.Bit, hasGlobalKphVisibility(req.user))
             .query(`SELECT p.Id,p.SoPhieu,p.TrangThai,p.DinhMucTrangThai,p.CreatedAt,p.UpdatedAt,p.NguoiLapId,
+                p.OpinionDepartmentsConfirmedAt,p.CreatorConfirmedAt,
+                p.CreatorConfirmedAt AS FollowUpReadyAt,
                 planRow.ProductCode,planRow.ProductName,planRow.OrderCode,planRow.PlanNo,
                 CAST(CASE WHEN p.NguoiLapId=@UserId OR EXISTS(SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_KPH_Y_KIEN y
                     WHERE y.PhieuId=p.Id AND y.IsActive=1 AND y.BoPhanId IN(SELECT TRY_CONVERT(INT,value) FROM STRING_SPLIT(@ManagedIds,',')))

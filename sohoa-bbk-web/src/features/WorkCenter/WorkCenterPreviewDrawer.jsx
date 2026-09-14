@@ -17,6 +17,7 @@ import {
     getReadableStatus, getWaitingPriority, PROGRESS_META, RECORD_TYPE_LABELS
 } from "./workCenter.utils";
 import { MUC_DO_LABELS, PHAT_HIEN_TU_LABELS } from "../BienBan/components/listRecordSummary.constants";
+import ListRecordTime from "../BienBan/components/ListRecordTime";
 
 const isImage = (attachment) => String(attachment.mimeType || "").startsWith("image/") ||
     /\.(jpe?g|png|gif|webp)$/i.test(attachment.originalName || "");
@@ -149,6 +150,7 @@ export default function WorkCenterPreviewDrawer({ record, now, docked = false, o
                 ) : detail ? (
                     <Stack spacing={1.4} divider={<Divider flexItem />}>
                         <Stack spacing={0.6}>
+                            <ListRecordTime item={record} />
                             <Typography variant="caption" color="text.secondary" noWrap>
                                 {[record?.MaSanPham, record?.TenSanPham, record?.DonHang ? `ĐH ${record.DonHang}` : null, record?.Lot ? `Lot ${record.Lot}` : null].filter(Boolean).join(" · ") || "Chưa có thông tin sản phẩm"}
                             </Typography>

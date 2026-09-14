@@ -130,7 +130,13 @@ export default function DoiTraKphWorkflow({ phieu, onChanged, onData }) {
 
         <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}><CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
             <Typography variant="h6" sx={{ mb: 1.5 }}>Ý kiến phòng ban chuyên môn</Typography>
-            {opinions.length > 0 && <Alert severity="info" sx={{ mb: 1.5, py: 0.25 }}><strong>Quy trình:</strong> Nhân viên lưu ý kiến chung, sau đó TBP xác nhận hoặc trả lại KCS.</Alert>}
+            {opinions.length > 0 && <Alert severity="info" sx={{ mb: 1.5, py: 0.25 }}>
+                <strong>Đã gửi xin ý kiến:</strong>{' '}
+                {phieu.OpinionDepartmentsConfirmedAt
+                    ? new Date(phieu.OpinionDepartmentsConfirmedAt).toLocaleString('vi-VN')
+                    : 'Chưa xác định thời điểm'}
+                {' — '}Nhân viên lưu ý kiến chung, sau đó TBP xác nhận hoặc trả lại KCS.
+            </Alert>}
             <ResponsiveDataList rows={opinions} emptyText="Bộ phận tạo phiếu chưa gửi danh sách cần lấy ý kiến." getRowKey={(row) => row.Id} columns={[
                 { key: 'department', label: 'Bộ phận', cellSx: { width: 170, verticalAlign: 'top' }, render: (row) => <Stack><Typography variant="body2" fontWeight={800}>{row.TenBoPhan || row.MaBoPhan}</Typography><Typography variant="caption" color="text.secondary">{row.MaBoPhan}</Typography></Stack> },
                 { key: 'opinion', label: 'Nội dung ý kiến', cellSx: { minWidth: 260, verticalAlign: 'top' }, render: (row) => row.CanSaveOpinion ? <TextField fullWidth multiline minRows={2} size="small" placeholder="Nếu không có góp ý, nhập “Không có ý kiến”" value={opinionDrafts[row.Id] || ''} onChange={(e) => setOpinionDrafts((p) => ({ ...p, [row.Id]: e.target.value }))} /> : <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{row.NoiDung || '—'}</Typography> },

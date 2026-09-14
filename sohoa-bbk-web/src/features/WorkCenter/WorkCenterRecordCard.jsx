@@ -4,6 +4,7 @@ import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
 import { MUC_DO_LABELS, PHAT_HIEN_TU_LABELS } from "../BienBan/components/listRecordSummary.constants";
+import ListRecordTime from "../BienBan/components/ListRecordTime";
 import {
     formatWaitingTime, getReadableStatus, getWaitingPriority, isRepeated,
     PROGRESS_META, RECORD_TYPE_LABELS
@@ -81,6 +82,7 @@ export default function WorkCenterRecordCard({ item, now, selected = false, comp
                     <Typography variant="caption" color="text.secondary" noWrap title={[item.MaSanPham, item.TenSanPham, item.DonHang, item.Lot].filter(Boolean).join(" · ")}>
                         {[item.MaSanPham, item.TenSanPham, item.DonHang ? `ĐH ${item.DonHang}` : null, item.Lot ? `Lot ${item.Lot}` : null].filter(Boolean).join(" · ") || "Chưa có thông tin sản phẩm"}
                     </Typography>
+                    <ListRecordTime item={item} />
                     <Typography variant="body2" fontWeight={850} sx={{ lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                         {item.MoTaChung || "Chưa nhập mô tả không phù hợp"}
                     </Typography>

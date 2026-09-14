@@ -15,5 +15,6 @@ build/
 !server/sql/migrations/20260907_doi_tra_phoi_loi_kph_parallel.rollback.sql
 !server/sql/migrations/20260908_doi_tra_phoi_loi_external_responsible_department.sql
 !server/sql/migrations/20260908_doi_tra_phoi_loi_external_responsible_department.rollback.sql
+!server/sql/reports/phieu_kiem_bien_ban_loi_nam_moc.sql
 
 *.xlsx

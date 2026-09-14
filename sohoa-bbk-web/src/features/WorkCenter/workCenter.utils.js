@@ -33,7 +33,17 @@ export const getWorkBucket = getUnifiedWorkBucket;
 export const isRepeated = (item) => String(item.MucDo || "").toUpperCase() === "LOILAPLAI";
 
 export const recordDateValue = (item) => {
-    const value = item.CurrentStageStartedAt || item.CreatedAt || item.NgayLap || item.NgayTao || item.ListSortAt;
+    const status = String(item.TrangThai || "").trim().toUpperCase();
+    const isDone = ["HOAN_TAT", "HOAN_THANH", "DA_XAC_NHAN", "BB_SXBT_HOAN_TAT"].includes(status);
+    const isOpinionStage = status === "CHO_XAC_NHAN" || status === "CHO_Y_KIEN_KPH";
+    const value = isDone
+        ? (item.CompletedAt || item.ListSortAt || item.FollowUpReadyAt || item.CreatedAt)
+        : status === "CHO_THEO_DOI"
+            ? (item.FollowUpReadyAt || item.ListSortAt || item.CreatedAt)
+            : status === "CHO_BGD_XAC_NHAN"
+                ? (item.CurrentStageStartedAt || item.FollowUpReadyAt || item.CreatorConfirmedAt || item.CreatedAt)
+                : (item.CurrentStageStartedAt || (isOpinionStage ? item.OpinionDepartmentsConfirmedAt : null) ||
+                item.CreatedAt || item.NgayLap || item.NgayTao || item.ListSortAt);
     const timestamp = value ? new Date(value).getTime() : 0;
     return Number.isFinite(timestamp) ? timestamp : 0;
 };
