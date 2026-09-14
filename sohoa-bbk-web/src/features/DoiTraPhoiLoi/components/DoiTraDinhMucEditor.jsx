@@ -44,7 +44,7 @@ const createDraft = (phoiItems, savedItems) => {
 };
 
 export default function DoiTraDinhMucEditor({
-    phieu, phoiItems = [], dinhMucItems = [], canEdit, canConfirm, onChanged
+    phieu, phoiItems = [], dinhMucItems = [], canEdit, canConfirm, onChanged, onDirtyChange
 }) {
     const [draft, setDraft] = useState(() => createDraft(phoiItems, dinhMucItems));
     const [dirty, setDirty] = useState(false);
@@ -55,6 +55,8 @@ export default function DoiTraDinhMucEditor({
         setDraft(createDraft(phoiItems, dinhMucItems));
         setDirty(false);
     }, [dinhMucItems, phoiItems]);
+    useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+    useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
     const complete = useMemo(() => draft.length > 0 && draft.every((item) => Number(item.dinhMuc) > 0), [draft]);
     const patch = (index, values) => {
@@ -133,10 +135,10 @@ export default function DoiTraDinhMucEditor({
                     })}</TableBody>
                 </Table>
             </TableContainer>
-            {canEdit && <Stack direction="row" spacing={1} justifyContent="flex-end">
+            {canEdit && <Paper elevation={3} sx={{ position: 'sticky', bottom: 8, zIndex: 3, p: 1, borderRadius: 2 }}><Stack direction="row" spacing={1} justifyContent="flex-end">
                 <Button variant="outlined" startIcon={saving ? <CircularProgress size={18} /> : <SaveOutlinedIcon />} disabled={saving || confirming} onClick={save}>Lưu nháp định mức</Button>
                 {canConfirm && <Button variant="contained" color="success" startIcon={confirming ? <CircularProgress size={18} /> : <TaskAltOutlinedIcon />} disabled={saving || confirming || dirty || !complete} onClick={confirm}>Xác nhận định mức</Button>}
-            </Stack>}
+            </Stack></Paper>}
         </Stack>
     );
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-    Alert, Box, Button, CircularProgress, Paper, Stack, Table, TableBody,
+    Alert, Box, Button, Chip, CircularProgress, Grid, Paper, Stack, Table, TableBody,
     TableCell, TableContainer, TableHead, TableRow, TextField, Typography
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -43,7 +43,7 @@ export default function DoiTraPhoiLoiCreate() {
         try {
             setCreating(true);
             const response = await createDoiTraPhoiLoi(selected.PlanSelectKey);
-            navigate(`/doi-tra-phoi-loi/${response.data.Id}`, { replace: true });
+            navigate(`/doi-tra-phoi-loi/${response.data.Id}?tab=phoi`, { replace: true });
         } catch (error) {
             window.alert(error.response?.data?.message || 'Không tạo được phiếu đổi trả phôi lỗi.');
         } finally {
@@ -59,15 +59,13 @@ export default function DoiTraPhoiLoiCreate() {
             <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1.5} sx={{ mb: 2 }}>
                 <Box>
                     <Typography variant="h5" fontWeight={800}>Tạo phiếu đổi trả phôi lỗi</Typography>
-                    <Typography color="text.secondary">Chọn một kế hoạch sản xuất từ nguồn ERP của BCPS</Typography>
+                    <Typography color="text.secondary">Chọn kế hoạch sản xuất để bắt đầu nhập phôi và kết quả KCS</Typography>
                 </Box>
-                <Button variant="contained" startIcon={creating ? <CircularProgress size={18} color="inherit" /> : <AddTaskIcon />}
-                    disabled={!selected || creating} onClick={create}>
-                    Tạo phiếu nháp
-                </Button>
+                <Chip color="primary" variant="outlined" label="Bước 1 · Chọn kế hoạch" sx={{ alignSelf: { xs: 'flex-start', md: 'center' } }} />
             </Stack>
 
-            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 2 }}>
+            <Paper variant="outlined" sx={{ p: { xs: 1.5, md: 2 }, borderRadius: 2, mb: 2 }}>
+                <Typography fontWeight={800} sx={{ mb: 1.5 }}>1. Tìm kế hoạch sản xuất</Typography>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                     <TextField fullWidth size="small" value={keyword}
                         onChange={(event) => setKeyword(event.target.value)}
@@ -80,11 +78,20 @@ export default function DoiTraPhoiLoiCreate() {
                 </Stack>
             </Paper>
 
-            {selected && (
-                <Alert severity="success" icon={<CheckCircleIcon />} sx={{ mb: 2 }}>
-                    Đã chọn <b>{selected.PlanNo || selected.PlanID}</b> — {selected.ProductCode} {selected.ProductName}
-                </Alert>
-            )}
+            {selected && <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2, borderColor: 'primary.light', bgcolor: '#f5f7ff' }}>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+                    <CheckCircleIcon color="success" /><Typography fontWeight={800}>Kế hoạch đã chọn</Typography>
+                </Stack>
+                <Grid container spacing={1.5}>
+                    <Grid size={{ xs: 12, sm: 4 }}><Typography variant="caption" color="text.secondary">Kế hoạch</Typography><Typography fontWeight={800}>{selected.PlanNo || selected.PlanID}</Typography></Grid>
+                    <Grid size={{ xs: 12, sm: 4 }}><Typography variant="caption" color="text.secondary">Sản phẩm</Typography><Typography variant="body2" fontWeight={700}>{[selected.ProductCode, selected.ProductName].filter(Boolean).join(' — ')}</Typography></Grid>
+                    <Grid size={{ xs: 6, sm: 2 }}><Typography variant="caption" color="text.secondary">Đơn hàng</Typography><Typography variant="body2" fontWeight={700}>{selected.OrderCode || '---'}</Typography></Grid>
+                    <Grid size={{ xs: 6, sm: 2 }}><Typography variant="caption" color="text.secondary">Số lượng</Typography><Typography variant="body2" fontWeight={700}>{formatDoiTraQuantity(selected.PlanQty)}</Typography></Grid>
+                    <Grid size={{ xs: 12, sm: 4 }}><Typography variant="caption" color="text.secondary">Công đoạn</Typography><Typography variant="body2">{selected.OperationName || selected.OperationCode || '---'}</Typography></Grid>
+                    <Grid size={{ xs: 12, sm: 4 }}><Typography variant="caption" color="text.secondary">Đơn vị thực hiện</Typography><Typography variant="body2">{[selected.DepartmentName, selected.UnitName].filter(Boolean).join(' — ') || '---'}</Typography></Grid>
+                    <Grid size={{ xs: 12, sm: 4 }}><Typography variant="caption" color="text.secondary">Ngày kế hoạch</Typography><Typography variant="body2">{formatDoiTraDate(selected.PlanDate)}</Typography></Grid>
+                </Grid>
+            </Paper>}
 
             <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
                 {searching ? (
@@ -132,6 +139,18 @@ export default function DoiTraPhoiLoiCreate() {
                         </Table>
                     </TableContainer>
                 )}
+            </Paper>
+
+            <Paper elevation={4} sx={{ position: 'sticky', bottom: 12, zIndex: 5, mt: 2, p: 1.25, borderRadius: 2 }}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1}>
+                    <Typography variant="body2" color="text.secondary">
+                        {selected ? `Đã chọn ${selected.PlanNo || selected.PlanID}` : 'Chọn một kế hoạch để tiếp tục'}
+                    </Typography>
+                    <Button variant="contained" startIcon={creating ? <CircularProgress size={18} color="inherit" /> : <AddTaskIcon />}
+                        disabled={!selected || creating} onClick={create}>
+                        Tạo phiếu và nhập phôi
+                    </Button>
+                </Stack>
             </Paper>
         </Box>
     );
