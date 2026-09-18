@@ -159,6 +159,13 @@ export default function PhieuKiemList() {
         const name = item.TenBoPhanTao || item.TenBoPhanNguoiKiem || item.TenBoPhan || "";
         return [code, name].filter(Boolean).join(" - ");
     };
+    const getSxbtProductionUnitLabel = (item) => {
+        if (Number(item.LoaiKiemId) !== 4) return "";
+        return [item.SxbtMaDonVi, item.SxbtTenDonVi]
+            .map((value) => String(value || "").trim())
+            .filter((value, index, values) => value && values.indexOf(value) === index)
+            .join(" - ");
+    };
 
     const includesFilter = (value, filter) => {
         const normalizedFilter = normalizeFilterText(filter);
@@ -191,8 +198,9 @@ export default function PhieuKiemList() {
                 const matchNguoiKiem = item.TenNguoiKiem?.toLowerCase().includes(searchLower);
                 const matchSanPham = item.TenSanPham?.toLowerCase().includes(searchLower); // Đã thêm lọc theo sản phẩm
                 const matchBoPhan = getDepartmentLabel(item).toLowerCase().includes(searchLower);
+                const matchDonViSxbt = getSxbtProductionUnitLabel(item).toLowerCase().includes(searchLower);
 
-                if (!matchSoPhieu && !matchLot && !matchNguoiKiem && !matchSanPham && !matchBoPhan) {
+                if (!matchSoPhieu && !matchLot && !matchNguoiKiem && !matchSanPham && !matchBoPhan && !matchDonViSxbt) {
                     return false;
                 }
             }
@@ -474,6 +482,11 @@ export default function PhieuKiemList() {
                                             <Typography color="primary" fontWeight={800}>{item.SoPhieu}</Typography>
                                             <Typography fontWeight={700}>{item.TenSanPham || "—"}</Typography>
                                             <Typography variant="caption" color="text.secondary">{item.MaSanPham || ""}</Typography>
+                                            {getSxbtProductionUnitLabel(item) && (
+                                                <Typography variant="caption" color="primary.main" display="block" fontWeight={700}>
+                                                    {getSxbtProductionUnitLabel(item)}
+                                                </Typography>
+                                            )}
                                         </Box>
                                         {renderTrangThaiChip(item.TrangThai)}
                                     </Stack>
@@ -631,6 +644,19 @@ export default function PhieuKiemList() {
                                                 <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11.5 }}>
                                                     {item.MaSanPham || ""}
                                                 </Typography>
+                                                {getSxbtProductionUnitLabel(item) && (
+                                                    <Tooltip title={`Đơn vị sản xuất: ${getSxbtProductionUnitLabel(item)}`} placement="top-start">
+                                                        <Typography
+                                                            variant="caption"
+                                                            color="primary.main"
+                                                            display="block"
+                                                            fontWeight={700}
+                                                            sx={{ fontSize: 11.5, mt: 0.25 }}
+                                                        >
+                                                            {getSxbtProductionUnitLabel(item)}
+                                                        </Typography>
+                                                    </Tooltip>
+                                                )}
                                             </TableCell>
                                             <TableCell>
                                                 <Typography variant="body2" noWrap sx={{ fontSize: 12.5 }}>

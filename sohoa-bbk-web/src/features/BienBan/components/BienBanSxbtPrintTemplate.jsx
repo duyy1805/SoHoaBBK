@@ -241,8 +241,8 @@ export const BienBanSxbtPrintTemplate = React.forwardRef(({
                                         {info.SxbtSourceCount > 1
                                             ? `${info.SxbtSourceCount} kế hoạch nhập (${(info.SxbtSources || []).map((source) => `#${source.KeHoachNhapId}/KHSX #${source.ID_KeHoachSanXuat}`).join(", ")})`
                                             : info.SxbtSourceType === "KE_HOACH_NHAP"
-                                            ? `Kế hoạch nhập #${info.KeHoachNhapId || ""}`
-                                            : (info.So_PhieuNhapBTP || `Phiếu nhập #${info.PhieuNhapBtpId || ""}`)}
+                                                ? `Kế hoạch nhập #${info.KeHoachNhapId || ""}`
+                                                : (info.So_PhieuNhapBTP || `Phiếu nhập #${info.PhieuNhapBtpId || ""}`)}
                                     </div>
                                     <div style={styles.text}>
                                         <strong>Mức độ không phù hợp:</strong>
@@ -290,7 +290,7 @@ export const BienBanSxbtPrintTemplate = React.forwardRef(({
                                     {mucDo === "B" ? (
                                         <>
                                             <div style={{ ...styles.text, marginBottom: "6px" }}>
-                                                <strong>1. Mức chất lượng B:</strong> Chấp nhận đưa vào sản xuất giảm trừ 10% chi phí gia công lô hàng
+                                                <strong>1. Mức chất lượng B:</strong>
                                             </div>
                                             <table style={styles.table}>
                                                 <thead>

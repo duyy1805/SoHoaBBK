@@ -4,6 +4,7 @@ import {
     Box,
     Button,
     Checkbox,
+    Chip,
     DialogActions,
     DialogContent,
     DialogTitle,
@@ -31,6 +32,9 @@ const mapSavedDefect = (defect) => ({
     defectId: Number(defect.DefectId ?? defect.defectId),
     maLoi: defect.MaLoi || "",
     tenLoi: defect.TenLoi || "",
+    moTa: defect.MoTa || "",
+    ghiChuDanhMuc: defect.GhiChu || "",
+    defectType: defect.DefectType || "",
     soLuong: Number(defect.SoLuong ?? defect.soLuong ?? 1),
     savedUrls: Array.isArray(defect.ImageUrls)
         ? defect.ImageUrls
@@ -77,6 +81,9 @@ export default function CheckItemEditor({
             defectId: Number(defect.Id),
             maLoi: defect.MaLoi || "",
             tenLoi: defect.TenLoi || "",
+            moTa: defect.MoTa || "",
+            ghiChuDanhMuc: defect.GhiChu || "",
+            defectType: defect.DefectType || "",
             soLuong: 1,
             savedUrls: [],
             files: []
@@ -161,6 +168,10 @@ export default function CheckItemEditor({
                     <Box>
                         <Typography variant="caption" color="text.secondary">Tham chiếu</Typography>
                         <Typography>{item?.ThamChieu || "—"}</Typography>
+                    </Box>
+                    <Box>
+                        <Typography variant="caption" color="text.secondary">Phương pháp kiểm</Typography>
+                        <Typography>{item?.PhuongPhapKiem || "—"}</Typography>
                     </Box>
                     <Box>
                         <Typography variant="caption" color="text.secondary">Tiêu chuẩn kỹ thuật</Typography>
@@ -250,6 +261,11 @@ export default function CheckItemEditor({
                                             <Box>
                                                 <Typography fontWeight={700}>{row.maLoi || `Lỗi #${row.defectId}`}</Typography>
                                                 <Typography variant="body2">{row.tenLoi}</Typography>
+                                                {row.defectType && (
+                                                    <Chip label={row.defectType} size="small" color="warning" variant="outlined" sx={{ mt: 0.75 }} />
+                                                )}
+                                                {row.moTa && <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>{row.moTa}</Typography>}
+                                                {row.ghiChuDanhMuc && <Alert severity="info" sx={{ mt: 1, py: 0 }}>{row.ghiChuDanhMuc}</Alert>}
                                             </Box>
                                             <IconButton color="error" onClick={() => setRows((current) => current.filter((_, rowIndex) => rowIndex !== index))}>
                                                 <DeleteOutlineIcon />

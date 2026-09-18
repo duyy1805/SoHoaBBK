@@ -106,6 +106,10 @@ export const createAllSection = (data) => {
     return axiosClient.post("/phieu-kiem/section", data);
 };
 
+export const updateLot = (data) => {
+    return axiosClient.post("/phieu-kiem/update-lot", data);
+};
+
 // Lưu kết quả check item
 export const saveCheckItem = (data) => {
     return axiosClient.post("/phieu-kiem/check-item", data);

@@ -61,6 +61,7 @@ sharp.cache(false);
 const { Expo } = require('expo-server-sdk');
 let expo = new Expo();
 const CUOI_CHUYEN_LOAI_KIEM_ID = 3;
+const DONG_CONT_LOAI_KIEM_ID = 5;
 const TREN_CHUYEN_LOAI_KIEM_ID = 6;
 const CUOI_CHUYEN_APPROVE_BOPHAN_FIELD = 'CuoiChuyen_ApproveBoPhanId';
 const CUOI_CHUYEN_COMPLETED_BY_FIELD = 'CuoiChuyen_CompletedByUserId';
@@ -793,6 +794,10 @@ const attachListQuantities = async (pool, rows = []) => {
                 , inspector.BoPhanId AS BoPhanNguoiKiemId
                 , inspectorDepartment.MaBoPhan AS MaBoPhanNguoiKiem
                 , inspectorDepartment.TenBoPhan AS TenBoPhanNguoiKiem
+                , CASE WHEN pk.LoaiKiemId = 4
+                    THEN COALESCE(sxbtPlanUnit.MaDonVi, sxbtLegacyUnit.MaDonVi) END AS SxbtMaDonVi
+                , CASE WHEN pk.LoaiKiemId = 4
+                    THEN COALESCE(sxbtPlanUnit.TenDonVi, sxbtLegacyUnit.TenDonVi, NULLIF(pk.DoiTuong, N'')) END AS SxbtTenDonVi
             FROM dbo.PHIEU_KIEM pk
             LEFT JOIN dbo.USERS creator ON creator.Id = pk.NguoiLapId
             LEFT JOIN dbo.DM_BO_PHAN creatorDepartment ON creatorDepartment.Id = creator.BoPhanId
@@ -806,6 +811,52 @@ const attachListQuantities = async (pool, rows = []) => {
                 FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN planRow
                 WHERE planRow.PhieuKiemId = pk.Id
             ) planTotals
+            OUTER APPLY (
+                SELECT TOP (1)
+                    contractor.Ma_NhaThau AS MaDonVi,
+                    departmentRow.Ten_BoPhan AS TenDonVi
+                FROM (
+                    SELECT link.KeHoachNhapId, link.IsPrimary, link.SortOrder, link.Id
+                    FROM dbo.PHIEU_KIEM_SXBT_PLAN link
+                    WHERE link.PhieuKiemId = pk.Id
+                      AND pk.LoaiKiemId = 4
+
+                    UNION ALL
+
+                    SELECT pk.SxbtKeHoachNhapId, 1, 1, 0
+                    WHERE pk.LoaiKiemId = 4
+                      AND pk.SxbtKeHoachNhapId IS NOT NULL
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM dbo.PHIEU_KIEM_SXBT_PLAN existingLink
+                          WHERE existingLink.PhieuKiemId = pk.Id
+                      )
+                ) selectedPlan
+                INNER JOIN TAG_QLSX.dbo.KeHoachSanXuat_NhaThau_ThamChieu_Nhap sourceRow
+                    ON sourceRow.ID_TuTang = selectedPlan.KeHoachNhapId
+                INNER JOIN TAG_QLSX.dbo.KeHoachSanXuat productionPlan
+                    ON productionPlan.ID_KeHoachSanXuat = sourceRow.ID_KeHoachSanXuat
+                LEFT JOIN TAG_System.dbo.DM_BoPhan departmentRow
+                    ON departmentRow.ID_BoPhan = productionPlan.ID_BoPhan
+                LEFT JOIN TAG_QTKD.dbo.DM_NhaThau contractor
+                    ON contractor.ID_BoPhan = productionPlan.ID_BoPhan
+                ORDER BY selectedPlan.IsPrimary DESC, selectedPlan.SortOrder, selectedPlan.Id
+            ) sxbtPlanUnit
+            OUTER APPLY (
+                SELECT TOP (1)
+                    contractor.Ma_NhaThau AS MaDonVi,
+                    departmentRow.Ten_BoPhan AS TenDonVi
+                FROM TAG_QTKD.dbo.PhieuNhapBTP receipt
+                LEFT JOIN TAG_System.dbo.DM_BoPhan departmentRow
+                    ON departmentRow.ID_BoPhan = receipt.ID_BoPhan
+                LEFT JOIN TAG_QTKD.dbo.DM_NhaThau contractor
+                    ON contractor.ID_BoPhan = receipt.ID_BoPhan
+                WHERE pk.LoaiKiemId = 4
+                  AND receipt.ID_PhieuNhapBTP = COALESCE(
+                    pk.SxbtPhieuNhapBtpId,
+                    CASE WHEN pk.SxbtKeHoachNhapId IS NULL THEN pk.SourceId END
+                )
+            ) sxbtLegacyUnit
             WHERE pk.Id IN (SELECT TRY_CONVERT(int, [value]) FROM OPENJSON(@IdsJson))
         `);
     const quantitiesById = new Map(result.recordset.map((row) => [Number(row.Id), row]));
@@ -2348,7 +2399,7 @@ router.post(
             const result = await pool.request()
                 .input('SanPhamId', sql.Int, sanPhamId)
                 .input('LoaiKiemId', sql.Int, loaiKiemId)
-                .input('Lot', sql.NVarChar, lot)
+                .input('Lot', sql.NVarChar(sql.MAX), lot)
                 .input('DoiTuong', sql.NVarChar, doiTuong)
                 .input('NguoiKiemId', sql.Int, nguoiKiemId)
                 .input('SoLuong', sql.Int, soLuong)
@@ -4495,7 +4546,7 @@ router.post(
 
             await pool.request()
                 .input("PhieuKiemId", sql.Int, phieuKiemId)
-                .input("Lot", sql.NVarChar, lot)
+                .input("Lot", sql.NVarChar(sql.MAX), lot)
                 .execute("sp_PhieuKiem_UpdateLot");
 
             res.json({ success: true });
@@ -4713,15 +4764,20 @@ router.post(
             const quantityValidation = await pool.request()
                 .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
                 .query(`
-                    SELECT COALESCE(pk.SoLuongThucTe, pk.SoLuong, 0) AS SoLuongHieuLuc,
+                    SELECT pk.LoaiKiemId,
+                        COALESCE(pk.SoLuongThucTe, pk.SoLuong, 0) AS SoLuongHieuLuc,
                         ISNULL(MAX(sectionRow.SoLuongKiem), 0) AS SoLuongMauLonNhat
                     FROM dbo.PHIEU_KIEM pk
                     LEFT JOIN dbo.PHIEU_KIEM_SECTION sectionRow ON sectionRow.PhieuKiemId = pk.Id
                     WHERE pk.Id = @PhieuKiemId
-                    GROUP BY pk.SoLuongThucTe, pk.SoLuong
+                    GROUP BY pk.LoaiKiemId, pk.SoLuongThucTe, pk.SoLuong
                 `);
             const quantityInfo = quantityValidation.recordset[0];
-            if (quantityInfo && Number(quantityInfo.SoLuongMauLonNhat || 0) > Number(quantityInfo.SoLuongHieuLuc || 0)) {
+            if (
+                quantityInfo
+                && Number(quantityInfo.LoaiKiemId) !== DONG_CONT_LOAI_KIEM_ID
+                && Number(quantityInfo.SoLuongMauLonNhat || 0) > Number(quantityInfo.SoLuongHieuLuc || 0)
+            ) {
                 return res.status(409).json({
                     message: 'Cỡ mẫu hiện tại vượt số lượng hiệu lực. Hãy cấu hình lại cỡ mẫu trước khi hoàn tất.'
                 });

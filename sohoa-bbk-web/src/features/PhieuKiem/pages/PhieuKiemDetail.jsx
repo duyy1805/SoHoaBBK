@@ -1,6 +1,6 @@
 // src/features/phieuKiem/pages/PhieuKiemDetail.jsx
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     Box,
     Typography,
@@ -37,7 +37,6 @@ import { PhieuGiamDinhPrintTemplate } from "../components/PhieuGiamDinhPrintTemp
 import PrintIcon from "@mui/icons-material/Print";
 import { useReactToPrint } from "react-to-print";
 import { Dialog, DialogTitle, DialogContent, DialogActions } from "@mui/material";
-import { useRef } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -50,7 +49,9 @@ import ReplayIcon from "@mui/icons-material/Replay";
 import {
     getPhieuKiemDetail,
     createAllSection,
+    calculateAQL,
     saveCustomFields,
+    updateLot,
     getThongSoKq,
     completePhieuKiem,
     confirmPX,
@@ -65,6 +66,15 @@ import { getSanPhamNhomKiem, getInspectionLevels, updateSanPhamImage, uploadSanP
 import { hasPermission } from "../../../utils/auth";
 import CheckItemEditor from "../components/CheckItemEditor";
 import MeasurementEditor from "../components/MeasurementEditor";
+
+const toLocalDateInput = (value = new Date()) => {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+};
 
 export default function PhieuKiemDetail() {
 
@@ -91,6 +101,7 @@ export default function PhieuKiemDetail() {
 
     const [loading, setLoading] = useState(true);
     const [creatingSection, setCreatingSection] = useState(false);
+    const [confirmingSectionId, setConfirmingSectionId] = useState(null);
     const [loadingAction, setLoadingAction] = useState(false);
     const [actionNotice, setActionNotice] = useState(null);
     const [actualQuantity, setActualQuantity] = useState("");
@@ -104,6 +115,13 @@ export default function PhieuKiemDetail() {
     const [printTab, setPrintTab] = useState("official");
     const [editingItem, setEditingItem] = useState(null);
     const [measurementOpen, setMeasurementOpen] = useState(false);
+    const [lotDraft, setLotDraft] = useState("");
+    const [orderDraft, setOrderDraft] = useState("");
+    const [versionDraft, setVersionDraft] = useState("");
+    const [standardReferenceDraft, setStandardReferenceDraft] = useState("");
+    const [testEffectiveDateDraft, setTestEffectiveDateDraft] = useState("");
+    const [savingDongContInfo, setSavingDongContInfo] = useState(false);
+    const sectionsRef = useRef(null);
 
     // Đổi tên hàm của thư viện thành triggerPrint
     const triggerPrint = useReactToPrint({
@@ -177,10 +195,23 @@ export default function PhieuKiemDetail() {
             }
             setPhieu(data.phieu);
             setActualQuantity(data.phieu?.SoLuongThucTe == null ? "" : String(data.phieu.SoLuongThucTe));
-            setSections(data.sections);
-            setCheckItems(data.checkItems);
-            setDefects(data.defects);
-            setDynamicFields(data.dynamicFields);
+            const loadedDynamicFields = data.dynamicFields || [];
+            const getLoadedField = (fieldName) => loadedDynamicFields
+                .find((field) => field?.FieldName === fieldName)?.FieldValue || "";
+            setSections(data.sections || []);
+            setCheckItems(data.checkItems || []);
+            setDefects(data.defects || []);
+            setDynamicFields(loadedDynamicFields);
+            setLotDraft(data.phieu?.Lot || "");
+            setOrderDraft(getLoadedField("SoDonHang") || data.phieu?.SoDonHang || data.phieu?.MaDonHang || "");
+            setVersionDraft(getLoadedField("PhienBan") || data.phieu?.PhienBan || "");
+            setStandardReferenceDraft(
+                getLoadedField("ThamChieuTieuChuan")
+                || data.phieu?.ThamChieuTieuChuan
+                || (Number(data.phieu?.LoaiKiemId) === 5 ? "PDOC, TCKT, TCBG" : "")
+            );
+            const rawEffectiveDate = getLoadedField("HieuLucTest");
+            setTestEffectiveDateDraft(rawEffectiveDate ? toLocalDateInput(rawEffectiveDate) : toLocalDateInput());
             setInputInspectionMode(String(
                 (data.dynamicFields || []).find((field) => field?.FieldName === "LoaiKiemTra")?.FieldValue || ""
             ).toUpperCase());
@@ -294,23 +325,33 @@ export default function PhieuKiemDetail() {
 
 
     const updateConfig = (index, field, value) => {
-
-        const newConfigs = [...nhomConfigs];
-        newConfigs[index][field] = value;
-        setNhomConfigs(newConfigs);
-
+        setNhomConfigs((current) => current.map((config, configIndex) => {
+            if (field === "inspectionLevel" && index === 0) {
+                return { ...config, inspectionLevel: value };
+            }
+            return configIndex === index ? { ...config, [field]: value } : config;
+        }));
     };
 
     const handleCreateSection = async () => {
-
+        if (!nhomConfigs.length) {
+            setActionNotice({ type: "error", message: "Sản phẩm chưa được cấu hình nhóm kiểm." });
+            return;
+        }
+        const invalidConfig = nhomConfigs.find((config) =>
+            !Number.isInteger(Number(config.lotSize))
+            || Number(config.lotSize) <= 0
+            || !config.inspectionLevel
+        );
+        if (invalidConfig) {
+            setActionNotice({ type: "error", message: `Nhóm ${invalidConfig.tenNhom} có Lot Size hoặc mức kiểm chưa hợp lệ.` });
+            return;
+        }
         try {
-
             setCreatingSection(true);
-
+            setActionNotice(null);
             const payload = {
-
                 phieuKiemId: id,
-
                 sections: nhomConfigs.map(n => ({
                     nhomKiemId: n.nhomKiemId,
                     lotSize: Number(n.lotSize),
@@ -320,19 +361,64 @@ export default function PhieuKiemDetail() {
             };
 
             await createAllSection(payload);
-
             await loadData({ background: true });
-
+            setActionNotice({ type: "success", message: "Đã tạo các nhóm kiểm và cỡ mẫu AQL." });
+            window.requestAnimationFrame(() => sectionsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
         } catch (err) {
-
             console.error(err);
-
+            setActionNotice({
+                type: "error",
+                message: err?.response?.data?.message || "Không thể tạo các nhóm kiểm."
+            });
         } finally {
-
             setCreatingSection(false);
-
         }
+    };
 
+    const handleCalculateAQL = async (section) => {
+        if (!window.confirm(`Xác nhận kết quả nhóm “${section.TenNhom}”? Các mục chưa kiểm sẽ được tự động đánh dấu Đạt.`)) return;
+        try {
+            setConfirmingSectionId(section.Id);
+            setActionNotice(null);
+            await calculateAQL(section.Id);
+            await loadData({ background: true });
+            setActionNotice({ type: "success", message: `Đã xác nhận kết quả nhóm ${section.TenNhom}.` });
+        } catch (err) {
+            setActionNotice({
+                type: "error",
+                message: err?.response?.data?.message || `Không thể xác nhận nhóm ${section.TenNhom}.`
+            });
+        } finally {
+            setConfirmingSectionId(null);
+        }
+    };
+
+    const handleSaveDongContInfo = async () => {
+        try {
+            setSavingDongContInfo(true);
+            setActionNotice(null);
+            await Promise.all([
+                updateLot({ phieuKiemId: Number(id), lot: lotDraft.trim() }),
+                saveCustomFields({
+                    phieuKiemId: Number(id),
+                    fields: {
+                        SoDonHang: orderDraft.trim(),
+                        PhienBan: versionDraft.trim(),
+                        ThamChieuTieuChuan: standardReferenceDraft.trim(),
+                        HieuLucTest: testEffectiveDateDraft || ""
+                    }
+                })
+            ]);
+            await loadData({ background: true });
+            setActionNotice({ type: "success", message: "Đã lưu thông tin kiểm cuối đóng cont." });
+        } catch (err) {
+            setActionNotice({
+                type: "error",
+                message: err?.response?.data?.message || "Không thể lưu thông tin kiểm cuối đóng cont."
+            });
+        } finally {
+            setSavingDongContInfo(false);
+        }
     };
 
     if (loading) {
@@ -378,8 +464,7 @@ export default function PhieuKiemDetail() {
     };
 
     const isKCS = hasPermission("THUC_HIEN_KIEM");
-    const isLeader = hasPermission("PHAN_BO_KIEM");
-    const canEditInspection = capabilities.canEdit ?? (isKCS || isLeader);
+    const canEditInspection = capabilities.canEdit ?? isKCS;
     const isPX = hasPermission("XAC_NHAN_PX");
     const canDeletePhieu = hasPermission("XOA_HO_SO_KCS");
     const isAllConfirmed = sections.length > 0 && sections.every(s => s.KetLuan);
@@ -394,6 +479,19 @@ export default function PhieuKiemDetail() {
         const max = chuan + Number(ts.DungSaiDuong || 0);
         return num < min || num > max;
     });
+    const hasSavedSpecialResults = thongSoKqList.some((result) =>
+        result?.GiaTriDo !== null
+        && result?.GiaTriDo !== undefined
+        && String(result.GiaTriDo).trim() !== ""
+    );
+    const isDongCont = Number(phieu?.LoaiKiemId) === 5;
+    const isInspectionOpen = ["TAO_MOI", "DA_TAO_SECTION", "DANG_KIEM"].includes(phieu?.TrangThai);
+    const canEditDongContInfo = isDongCont && isInspectionOpen && canEditInspection;
+    const checkedItemCount = checkItems.filter((item) => Boolean(item.KetQua)).length;
+    const acceptedSectionCount = sections.filter((section) => section.KetLuan === "ACCEPT").length;
+    const rejectedSectionCount = sections.filter((section) => section.KetLuan === "REJECT").length;
+    const confirmedSectionCount = acceptedSectionCount + rejectedSectionCount;
+    const pendingSectionNames = sections.filter((section) => !section.KetLuan).map((section) => section.TenNhom);
     const finalResult = (hasReject || hasSpecialReject) ? "KHONG_DAT" : "DAT";
     const getDynamicFieldValue = (fieldName) =>
         (dynamicFields || []).find((field) => field?.FieldName === fieldName)?.FieldValue || "";
@@ -404,6 +502,20 @@ export default function PhieuKiemDetail() {
         || (Number(phieu?.LoaiKiemId) === 1 ? phieu?.DoiTuong : "");
 
     const handleComplete = async () => {
+        if (pendingSectionNames.length > 0) {
+            setActionNotice({
+                type: "warning",
+                message: `Còn nhóm chưa xác nhận: ${pendingSectionNames.join(", ")}.`
+            });
+            return;
+        }
+        if (thongSoList.length > 0 && !hasSavedSpecialResults) {
+            setActionNotice({
+                type: "warning",
+                message: "Phiếu có kiểm tra cấp độ đặc biệt nhưng chưa lưu kết quả."
+            });
+            return;
+        }
         try {
             setLoadingAction(true);
             setActionNotice(null);
@@ -634,7 +746,7 @@ export default function PhieuKiemDetail() {
                             </Grid>
                             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                 <Typography variant="subtitle2">Số lượng thực tế</Typography>
-                                {hasPermission("THUC_HIEN_KIEM") && !["HOAN_TAT", "DA_DUYET"].includes(phieu?.TrangThai) ? (
+                                {canEditInspection && isInspectionOpen ? (
                                     <Stack direction="row" spacing={1} alignItems="center">
                                         <TextField
                                             size="small"
@@ -720,16 +832,88 @@ export default function PhieuKiemDetail() {
                     </CardContent>
                 </Card>
 
+                {isDongCont && (
+                    <Card variant="outlined" sx={{ mb: 2.5, borderRadius: 2 }}>
+                        <CardContent>
+                            <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={2} sx={{ mb: 2 }}>
+                                <Box>
+                                    <Typography variant="h6" fontWeight={800}>Thông tin kiểm cuối đóng cont</Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        Các thông tin này được dùng lại trên bản in phiếu kiểm.
+                                    </Typography>
+                                </Box>
+                                {canEditDongContInfo && (
+                                    <Button variant="contained" onClick={handleSaveDongContInfo} disabled={savingDongContInfo}>
+                                        {savingDongContInfo ? "Đang lưu..." : "Lưu thông tin"}
+                                    </Button>
+                                )}
+                            </Stack>
+                            <Grid container spacing={2}>
+                                <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+                                    <TextField fullWidth size="small" label="LOT" value={lotDraft}
+                                        disabled={!canEditDongContInfo}
+                                        onChange={(event) => setLotDraft(event.target.value)} />
+                                </Grid>
+                                <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+                                    <TextField fullWidth size="small" label="Số đơn hàng" value={orderDraft}
+                                        disabled={!canEditDongContInfo}
+                                        onChange={(event) => setOrderDraft(event.target.value)} />
+                                </Grid>
+                                <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+                                    <TextField fullWidth size="small" label="Phiên bản" value={versionDraft}
+                                        disabled={!canEditDongContInfo}
+                                        onChange={(event) => setVersionDraft(event.target.value)} />
+                                </Grid>
+                                <Grid size={{ xs: 12, md: 8 }}>
+                                    <TextField fullWidth size="small" label="Tham chiếu tiêu chuẩn"
+                                        value={standardReferenceDraft}
+                                        disabled={!canEditDongContInfo}
+                                        onChange={(event) => setStandardReferenceDraft(event.target.value)} />
+                                </Grid>
+                                <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+                                    <TextField fullWidth size="small" type="date" label="Hiệu lực test"
+                                        value={testEffectiveDateDraft}
+                                        disabled={!canEditDongContInfo}
+                                        slotProps={{ inputLabel: { shrink: true } }}
+                                        onChange={(event) => setTestEffectiveDateDraft(event.target.value)} />
+                                </Grid>
+                            </Grid>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {isDongCont && sections.length > 0 && (
+                    <Paper variant="outlined" sx={{ mb: 2.5, p: 2, borderRadius: 2 }}>
+                        <Typography fontWeight={800} sx={{ mb: 1.5 }}>Tiến độ thực hiện kiểm</Typography>
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} flexWrap="wrap" useFlexGap>
+                            <Chip label={`Mục đã kiểm: ${checkedItemCount}/${checkItems.length}`} color={checkedItemCount === checkItems.length ? "success" : "default"} />
+                            <Chip label={`Nhóm đã xác nhận: ${confirmedSectionCount}/${sections.length}`} color={confirmedSectionCount === sections.length ? "success" : "warning"} />
+                            <Chip label={`Nhóm đạt: ${acceptedSectionCount}`} color="success" variant="outlined" />
+                            <Chip label={`Nhóm không đạt: ${rejectedSectionCount}`} color={rejectedSectionCount > 0 ? "error" : "default"} variant="outlined" />
+                            {thongSoList.length > 0 && (
+                                <Chip label={hasSavedSpecialResults ? "Thông số đặc biệt: Đã nhập" : "Thông số đặc biệt: Chưa nhập"}
+                                    color={hasSavedSpecialResults ? "success" : "warning"} variant="outlined" />
+                            )}
+                        </Stack>
+                    </Paper>
+                )}
+
                 {/* CẤU HÌNH AQL */}
 
                 {phieu?.TrangThai === "TAO_MOI" &&
-                    hasPermission("PHAN_BO_KIEM") && (
+                    canEditInspection && (
 
                         <Card sx={{ mb: 2.5, p: 2 }}>
 
                             <Typography variant="h6" sx={{ mb: 2 }}>
                                 Cấu hình AQL theo nhóm kiểm
                             </Typography>
+
+                            {nhomConfigs.length === 0 && (
+                                <Alert severity="warning" sx={{ mb: 2 }}>
+                                    Sản phẩm chưa được cấu hình nhóm kiểm nên chưa thể bắt đầu kiểm.
+                                </Alert>
+                            )}
 
                             {nhomConfigs.map((n, index) => (
 
@@ -747,6 +931,7 @@ export default function PhieuKiemDetail() {
                                             type="number"
                                             fullWidth
                                             value={n.lotSize}
+                                            inputProps={{ min: 1, step: 1 }}
                                             onChange={(e) =>
                                                 updateConfig(index, "lotSize", e.target.value)
                                             }
@@ -772,6 +957,11 @@ export default function PhieuKiemDetail() {
                                                 </MenuItem>
                                             ))}
                                         </TextField>
+                                        {index === 0 && nhomConfigs.length > 1 && (
+                                            <Typography variant="caption" color="text.secondary">
+                                                Đổi mức của nhóm đầu tiên sẽ áp dụng cho tất cả nhóm.
+                                            </Typography>
+                                        )}
                                     </Grid>
 
                                 </Grid>
@@ -781,9 +971,9 @@ export default function PhieuKiemDetail() {
                             <Button
                                 variant="contained"
                                 onClick={handleCreateSection}
-                                disabled={creatingSection}
+                                disabled={creatingSection || nhomConfigs.length === 0}
                             >
-                                {creatingSection ? "Đang tạo..." : "Tạo Section"}
+                                {creatingSection ? "Đang tạo..." : "Tạo các nhóm kiểm"}
                             </Button>
 
                         </Card>
@@ -791,6 +981,8 @@ export default function PhieuKiemDetail() {
                     )}
 
                 {/* SECTION */}
+
+                <Box ref={sectionsRef} />
 
                 {sections.map(section => {
 
@@ -814,6 +1006,20 @@ export default function PhieuKiemDetail() {
 
                                     <Chip
                                         label={`Mẫu: ${section.SoLuongKiem}`}
+                                        size="small"
+                                    />
+
+                                    <Chip
+                                        label={section.KetLuan === "ACCEPT"
+                                            ? "Đạt"
+                                            : section.KetLuan === "REJECT"
+                                                ? "Không đạt"
+                                                : "Chưa xác nhận"}
+                                        color={section.KetLuan === "ACCEPT"
+                                            ? "success"
+                                            : section.KetLuan === "REJECT"
+                                                ? "error"
+                                                : "default"}
                                         size="small"
                                     />
 
@@ -951,6 +1157,54 @@ export default function PhieuKiemDetail() {
 
                                 })}
 
+                                <Paper variant="outlined" sx={{ mt: 2, p: 2, borderRadius: 2, bgcolor: "grey.50" }}>
+                                    <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={2}>
+                                        <Box>
+                                            <Typography variant="subtitle2" fontWeight={800}>
+                                                Kết quả AQL — Level {section.InspectionLevel || "—"}, mẫu {section.SoLuongKiem || 0}
+                                            </Typography>
+                                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                                                {[
+                                                    ["Critical", section.TotalCritical, section.Ac_Critical],
+                                                    ["Major", section.TotalMajor, section.Ac_Major],
+                                                    ["Minor", section.TotalMinor, section.Ac_Minor]
+                                                ].map(([label, total, accepted]) => {
+                                                    const failed = Number(total || 0) > Number(accepted || 0);
+                                                    return (
+                                                        <Chip
+                                                            key={label}
+                                                            label={`${label}: ${Number(total || 0)} / Ac ${Number(accepted || 0)}`}
+                                                            color={failed ? "error" : "success"}
+                                                            variant={failed ? "filled" : "outlined"}
+                                                            size="small"
+                                                        />
+                                                    );
+                                                })}
+                                            </Stack>
+                                        </Box>
+
+                                        {!section.KetLuan
+                                            && canEditInspection
+                                            && ["DA_TAO_SECTION", "DANG_KIEM"].includes(phieu?.TrangThai) && (
+                                                <Button
+                                                    variant="contained"
+                                                    onClick={() => handleCalculateAQL(section)}
+                                                    disabled={confirmingSectionId !== null || Boolean(editingItem)}
+                                                    sx={{ alignSelf: { xs: "stretch", md: "center" }, minWidth: 190 }}
+                                                >
+                                                    {Number(confirmingSectionId) === Number(section.Id)
+                                                        ? "Đang xác nhận..."
+                                                        : "Xác nhận kết quả nhóm"}
+                                                </Button>
+                                            )}
+                                    </Stack>
+                                    {section.KetLuan && (
+                                        <Alert severity={section.KetLuan === "ACCEPT" ? "success" : "error"} sx={{ mt: 1.5 }}>
+                                            Nhóm đã được xác nhận: {section.KetLuan === "ACCEPT" ? "Đạt" : "Không đạt"}. Các mục kiểm đã được khóa.
+                                        </Alert>
+                                    )}
+                                </Paper>
+
                             </AccordionDetails>
 
                         </Accordion>
@@ -959,18 +1213,32 @@ export default function PhieuKiemDetail() {
 
                 })}
 
-                {isAllConfirmed && (phieu?.TrangThai === "DANG_KIEM" || phieu?.TrangThai === "DA_TAO_SECTION") && (isKCS || isLeader) && (
+                {!isAllConfirmed && sections.length > 0 && isInspectionOpen && canEditInspection && (
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                        Hãy xác nhận kết quả từng nhóm trước khi hoàn tất phiếu. Còn lại: {pendingSectionNames.join(", ")}.
+                    </Alert>
+                )}
+
+                {isAllConfirmed && (phieu?.TrangThai === "DANG_KIEM" || phieu?.TrangThai === "DA_TAO_SECTION") && canEditInspection && (
                     <Paper sx={{ position: "sticky", bottom: 0, zIndex: 9, mt: 2, p: 2, borderTop: "1px solid #e0e0e0" }}>
-                        <Stack direction="row" justifyContent="flex-end">
+                        <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }} spacing={1}>
+                            <Typography variant="body2" color="text.secondary">
+                                Kết luận dự kiến: <strong>{finalResult === "DAT" ? "Đạt" : "Không đạt"}</strong>
+                            </Typography>
                             <Button
                                 variant="contained"
                                 color={(hasReject || hasSpecialReject) ? "error" : "success"}
                                 onClick={handleComplete}
-                                disabled={loadingAction}
+                                disabled={loadingAction || (thongSoList.length > 0 && !hasSavedSpecialResults)}
                             >
                                 {loadingAction ? "Đang xử lý..." : `Xác nhận - ${finalResult}`}
                             </Button>
                         </Stack>
+                        {thongSoList.length > 0 && !hasSavedSpecialResults && (
+                            <Alert severity="warning" sx={{ mt: 1.5 }}>
+                                Cần lưu kết quả kiểm tra cấp độ đặc biệt trước khi hoàn tất phiếu.
+                            </Alert>
+                        )}
                     </Paper>
                 )}
 
