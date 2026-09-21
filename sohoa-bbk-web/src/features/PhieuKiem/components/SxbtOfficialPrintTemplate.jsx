@@ -227,19 +227,11 @@ export const SxbtOfficialPrintTemplate = React.forwardRef(({
                     const value = row.lot.SoLuongNhap ?? row.item.SoLuongNhap ?? row.item.SoLuong;
                     return sum + (Number(value) || 0);
                 }, 0);
-                const confirmedValues = rows.map((row) => row.lot.SoLuongKhoXacNhan);
-                const hasConfirmedAllLots = confirmedValues.length > 0 && confirmedValues.every((value) =>
-                    value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value))
-                );
-                const confirmedQuantity = hasConfirmedAllLots
-                    ? confirmedValues.reduce((sum, value) => sum + Number(value), 0)
-                    : null;
                 const ticketActualQuantity = Number(phieu.SoLuongThucTe);
-                const effectiveQuantity = confirmedQuantity ?? (
-                    Number.isFinite(ticketActualQuantity) && ticketActualQuantity >= 0
-                        ? ticketActualQuantity
-                        : totalPlanQuantity
-                );
+                // Kho xác nhận là bước sau; tỷ lệ kiểm luôn dùng số lượng thực tế KCS đã nhập.
+                const effectiveQuantity = Number.isFinite(ticketActualQuantity) && ticketActualQuantity >= 0
+                    ? ticketActualQuantity
+                    : totalPlanQuantity;
                 const inspectionRate = effectiveQuantity > 0
                     ? (sampleQuantity * 100) / effectiveQuantity
                     : null;
@@ -297,7 +289,7 @@ export const SxbtOfficialPrintTemplate = React.forwardRef(({
                             <div>Mã KH: <span style={styles.dotted}>{productionUnitCodes}</span></div>
                             <div>Ngày nhập: <span style={styles.dotted}>{entryDates}</span></div>
                             <div>Số phiếu: <span style={styles.dotted}>{phieu.SoPhieu || ""}</span></div>
-                            <div style={{ gridColumn: "span 2" }}>Số lượng nhập (KH): <span style={{ ...styles.dotted, minWidth: 150 }}>{formatQuantity(totalPlanQuantity)}</span></div>
+                            <div style={{ gridColumn: "span 2" }}>Số lượng thực tế: <span style={{ ...styles.dotted, minWidth: 150 }}>{formatQuantity(effectiveQuantity)}</span></div>
                             <div>Số đơn hàng: <span style={styles.dotted}>{orderCodes}</span></div>
                         </div>
 
@@ -343,7 +335,11 @@ export const SxbtOfficialPrintTemplate = React.forwardRef(({
                                         <td style={styles.center}>{lot.ThuTu || ""}</td>
                                         <td style={styles.center}>{lot.LxvtLot || ""}</td>
                                         <td style={styles.center}>{lot.SoLotSX || item.SoLotSX || ""}</td>
-                                        <td style={styles.center}>{formatQuantity(lot.SoLuongNhap ?? item.SoLuongNhap ?? item.SoLuong)}</td>
+                                        <td style={styles.center}>{formatQuantity(
+                                            Number.isFinite(ticketActualQuantity) && ticketActualQuantity >= 0
+                                                ? ticketActualQuantity
+                                                : (lot.SoLuongNhap ?? item.SoLuongNhap ?? item.SoLuong)
+                                        )}</td>
                                         <td style={styles.center}>{formatQuantity(lot.SoLuongKhoXacNhan)}</td>
                                     </tr>
                                 ))}

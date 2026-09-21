@@ -70,20 +70,15 @@ export const SxbtPrintTemplate = React.forwardRef(({
     const btpPrintRows = btpItems.flatMap(item =>
         getLotRows(item).map((lotRow, lotIndex) => ({ item, lotRow, lotIndex }))
     );
+    const actualQuantity = Number(phieu.SoLuongThucTe);
+    const displayedQuantity = Number.isFinite(actualQuantity) && actualQuantity >= 0
+        ? actualQuantity
+        : null;
 
-    // Khi Kho đã xác nhận đủ các lot, đây là số lượng thực tế cuối cùng của phiếu.
-    // Không dùng tỷ lệ đã lưu vì tỷ lệ đó có thể được lập trước khi Kho xác nhận.
+    // Số lượng thực tế do KCS nhập là nguồn tính tỷ lệ của phiếu SXBT.
+    // Kho xác nhận diễn ra sau nên không được dùng để thay thế giá trị này khi in.
     const getEffectiveQuantity = (rows = btpPrintRows) => {
-        const confirmedValues = rows.map(({ lotRow }) => lotRow.SoLuongKhoXacNhan);
-        const hasConfirmedAllLots = confirmedValues.length > 0 && confirmedValues.every(value =>
-            value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value))
-        );
-        if (hasConfirmedAllLots) {
-            return confirmedValues.reduce((sum, value) => sum + Number(value), 0);
-        }
-
-        const ticketActual = Number(phieu.SoLuongThucTe);
-        if (Number.isFinite(ticketActual) && ticketActual >= 0) return ticketActual;
+        if (displayedQuantity !== null) return displayedQuantity;
 
         return rows.reduce((sum, { item, lotRow }) =>
             sum + (Number(lotRow.SoLuongNhap ?? item.SoLuong) || 0), 0
@@ -524,7 +519,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
                         )}
                         <tr>
                             <td style={{ border: 'none', padding: '1px 0' }}>
-                                {phieu.SxbtSourceCount > 1 ? 'Số kế hoạch' : 'Số lượng nhập (KH)'}:&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '50px' }}>{phieu.SxbtSourceCount > 1 ? phieu.SxbtSourceCount : (phieu.SoLuong ?? '')}</span>
+                                {phieu.SxbtSourceCount > 1 ? 'Số kế hoạch' : 'Số lượng thực tế'}:&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '50px' }}>{phieu.SxbtSourceCount > 1 ? phieu.SxbtSourceCount : formatQuantity(displayedQuantity ?? phieu.SoLuong)}</span>
                             </td>
                             <td style={{ border: 'none', padding: '1px 4px' }}>
                                 Mã đơn hàng:&nbsp;<span style={{ borderBottom: '1px dotted #000', display: 'inline-block', minWidth: '70px' }}>{phieu.MaDonHang || '—'}</span>
@@ -605,7 +600,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
                                                 {item.TenSanPham}
                                             </td>
                                         )}
-                                        <td style={s.tdc}>{lotRow.SoLuongNhap != null && lotRow.SoLuongNhap !== '' ? Number(lotRow.SoLuongNhap).toLocaleString('vi-VN') : ''}</td>
+                                        <td style={s.tdc}>{formatQuantity(displayedQuantity ?? lotRow.SoLuongNhap)}</td>
                                         <td style={s.tdc}>{lotRow.DauTuanGS1 || ''}</td>
                                         <td style={s.tdc}>{lotRow.ThuTu || ''}</td>
                                         <td style={s.tdc}>{lotRow.LxvtLot || ''}</td>
@@ -1034,7 +1029,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
                                             <td style={s.tdc}>{item.KeHoachNhapId || ''}</td>
                                             <td style={s.tdc}>{item.SourceID_KeHoachSanXuat || ''}</td>
                                             <td style={{ ...s.td, fontWeight: 600 }}>{item.TenSanPham || group.tenSanPham}</td>
-                                            <td style={s.tdc}>{lotRow.SoLuongNhap != null && lotRow.SoLuongNhap !== '' ? Number(lotRow.SoLuongNhap).toLocaleString('vi-VN') : ''}</td>
+                                            <td style={s.tdc}>{formatQuantity(displayedQuantity ?? lotRow.SoLuongNhap)}</td>
                                             <td style={s.tdc}>{lotRow.DauTuanGS1 || ''}</td>
                                             <td style={s.tdc}>{lotRow.ThuTu || ''}</td>
                                             <td style={s.tdc}>{lotRow.LxvtLot || ''}</td>
