@@ -227,6 +227,22 @@ export const SxbtOfficialPrintTemplate = React.forwardRef(({
                     const value = row.lot.SoLuongNhap ?? row.item.SoLuongNhap ?? row.item.SoLuong;
                     return sum + (Number(value) || 0);
                 }, 0);
+                const confirmedValues = rows.map((row) => row.lot.SoLuongKhoXacNhan);
+                const hasConfirmedAllLots = confirmedValues.length > 0 && confirmedValues.every((value) =>
+                    value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value))
+                );
+                const confirmedQuantity = hasConfirmedAllLots
+                    ? confirmedValues.reduce((sum, value) => sum + Number(value), 0)
+                    : null;
+                const ticketActualQuantity = Number(phieu.SoLuongThucTe);
+                const effectiveQuantity = confirmedQuantity ?? (
+                    Number.isFinite(ticketActualQuantity) && ticketActualQuantity >= 0
+                        ? ticketActualQuantity
+                        : totalPlanQuantity
+                );
+                const inspectionRate = effectiveQuantity > 0
+                    ? (sampleQuantity * 100) / effectiveQuantity
+                    : null;
                 const productionUnitCodes = uniqueText([
                     ...group.items.map((item) => item.MaDonVi || item.Ma_NhaThau),
                     phieu.MaDonVi || phieu.Ma_NhaThau
@@ -364,7 +380,7 @@ export const SxbtOfficialPrintTemplate = React.forwardRef(({
                             <tbody>
                                 <tr>
                                     <td style={styles.center}>{formatQuantity(summary?.SoLuongMau)}</td>
-                                    <td style={styles.center}>{formatRate(summary?.TyLe)}</td>
+                                    <td style={styles.center}>{formatRate(inspectionRate ?? summary?.TyLe)}</td>
                                     <td style={styles.center}>{formatRate(summary?.TyLeDat)}</td>
                                     <td style={styles.center}>{formatRate(summary?.TyLeLoiNghiemTrong)}</td>
                                     <td style={styles.center}>{formatRate(summary?.TyLeLoiNangNhe)}</td>

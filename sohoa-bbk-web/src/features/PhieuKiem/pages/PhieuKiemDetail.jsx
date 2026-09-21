@@ -57,6 +57,8 @@ import {
     confirmPX,
     deletePhieuKiem,
     createDongContRetest,
+    createPhieuKiemRetest,
+    getKCSLookup,
     updatePhieuKiemActualQuantity,
     updateInputInspectionMode
 } from "../../../api/phieuKiem.api";
@@ -76,6 +78,11 @@ const toLocalDateInput = (value = new Date()) => {
     return `${year}-${month}-${day}`;
 };
 
+const formatRetestQuantity = (value) => new Intl.NumberFormat("vi-VN", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+}).format(Number(value || 0));
+
 export default function PhieuKiemDetail() {
 
     const { id } = useParams();
@@ -94,6 +101,15 @@ export default function PhieuKiemDetail() {
     const [levels, setLevels] = useState([]);
     const [capabilities, setCapabilities] = useState({});
     const [retestInfo, setRetestInfo] = useState(null);
+    const [incomingRetestDialogOpen, setIncomingRetestDialogOpen] = useState(false);
+    const [incomingRetestKcs, setIncomingRetestKcs] = useState([]);
+    const [incomingRetestForm, setIncomingRetestForm] = useState({
+        nguoiKiemId: "",
+        ngayTaiNhap: toLocalDateInput(),
+        soLuongTaiNhap: "",
+        ghiChu: ""
+    });
+    const [incomingRetestError, setIncomingRetestError] = useState("");
 
     // Thêm state cho thông số KQ đặc biệt
     const [thongSoList, setThongSoList] = useState([]);
@@ -237,7 +253,7 @@ export default function PhieuKiemDetail() {
                 const configs = nhomRes.data.map(n => ({
                     nhomKiemId: n.NhomKiemId,
                     tenNhom: n.TenNhom,
-                    lotSize: data.phieu.SoLuongHieuLuc ?? data.phieu.SoLuong,
+                    lotSize: Math.ceil(Number(data.phieu.SoLuongHieuLuc ?? data.phieu.SoLuong ?? 0)),
                     inspectionLevel: "II"
                 }));
                 setNhomConfigs(configs);
@@ -485,6 +501,7 @@ export default function PhieuKiemDetail() {
         && String(result.GiaTriDo).trim() !== ""
     );
     const isDongCont = Number(phieu?.LoaiKiemId) === 5;
+    const isIncomingRetest = Boolean(retestInfo?.IsIncomingRetest);
     const isInspectionOpen = ["TAO_MOI", "DA_TAO_SECTION", "DANG_KIEM"].includes(phieu?.TrangThai);
     const canEditDongContInfo = isDongCont && isInspectionOpen && canEditInspection;
     const checkedItemCount = checkItems.filter((item) => Boolean(item.KetQua)).length;
@@ -569,6 +586,34 @@ export default function PhieuKiemDetail() {
     };
 
     const handleCreateRetest = async () => {
+        if (retestInfo?.RetestType === "DAU_VAO_TAI_NHAP") {
+            try {
+                setLoadingAction(true);
+                setIncomingRetestError("");
+                const response = await getKCSLookup({ loaiKiemId: 1 });
+                const options = response.data || [];
+                setIncomingRetestKcs(options);
+                const defaultInspectorId = options.some((item) => Number(item.Id) === Number(phieu?.NguoiKiemId))
+                    ? String(phieu.NguoiKiemId)
+                    : String(options[0]?.Id || "");
+                setIncomingRetestForm({
+                    nguoiKiemId: defaultInspectorId,
+                    ngayTaiNhap: toLocalDateInput(),
+                    soLuongTaiNhap: "",
+                    ghiChu: ""
+                });
+                setIncomingRetestDialogOpen(true);
+            } catch (err) {
+                setActionNotice({
+                    type: "error",
+                    message: err?.response?.data?.message || "Không tải được danh sách KCS"
+                });
+            } finally {
+                setLoadingAction(false);
+            }
+            return;
+        }
+
         const confirmed = window.confirm(
             "Phiếu kiểm lại sẽ giữ nguyên lịch đóng cont và KCS phụ trách, nhưng không sao chép AQL, checklist, kết quả, lỗi, ảnh, chữ ký hoặc biên bản. Phiếu cũ vẫn được giữ nguyên. Bạn muốn tiếp tục?"
         );
@@ -586,6 +631,35 @@ export default function PhieuKiemDetail() {
                 type: "error",
                 message: err?.response?.data?.message || "Không thể tạo phiếu kiểm lại"
             });
+        } finally {
+            setLoadingAction(false);
+        }
+    };
+
+    const handleSubmitIncomingRetest = async () => {
+        const quantityText = String(incomingRetestForm.soLuongTaiNhap || "").trim().replace(",", ".");
+        if (!incomingRetestForm.nguoiKiemId || !incomingRetestForm.ngayTaiNhap
+            || !/^\d+(?:\.\d{1,2})?$/.test(quantityText) || Number(quantityText) <= 0
+            || !incomingRetestForm.ghiChu.trim()) {
+            setIncomingRetestError("Vui lòng nhập đủ KCS, ngày, số lượng dương tối đa 2 số lẻ và ghi chú.");
+            return;
+        }
+
+        try {
+            setLoadingAction(true);
+            setIncomingRetestError("");
+            const response = await createPhieuKiemRetest(id, {
+                nguoiKiemId: Number(incomingRetestForm.nguoiKiemId),
+                ngayTaiNhap: incomingRetestForm.ngayTaiNhap,
+                soLuongTaiNhap: quantityText,
+                ghiChu: incomingRetestForm.ghiChu.trim()
+            });
+            const newId = response.data?.phieuKiemId;
+            if (!newId) throw new Error("RETEST_ID_MISSING");
+            setIncomingRetestDialogOpen(false);
+            navigate(`/phieu-kiem/${newId}`, { state: { returnTo } });
+        } catch (err) {
+            setIncomingRetestError(err?.response?.data?.message || "Không thể tạo phiếu kiểm lại");
         } finally {
             setLoadingAction(false);
         }
@@ -690,6 +764,29 @@ export default function PhieuKiemDetail() {
                         {`Kiểm lại lần ${retestInfo.LanKiemLai} từ ${retestInfo.PhieuKiemTruocSoPhieu || "phiếu trước"}`}
                     </Alert>
                 )}
+                {isIncomingRetest && (
+                    <Alert
+                        severity="info"
+                        icon={<ReplayIcon />}
+                        sx={{ mb: 2.5 }}
+                        action={retestInfo?.PhieuKiemGocId ? (
+                            <Button
+                                color="inherit"
+                                size="small"
+                                onClick={() => navigate(`/phieu-kiem/${retestInfo.PhieuKiemGocId}`, { state: { returnTo } })}
+                            >
+                                Xem phiếu gốc
+                            </Button>
+                        ) : null}
+                    >
+                        <Typography fontWeight={700}>
+                            {`Kiểm lại đầu vào – đợt ${retestInfo.DotTaiNhap}`}
+                        </Typography>
+                        <Typography variant="body2">
+                            {`Ngày tái nhập: ${retestInfo.NgayTaiNhap || "---"} · Số lượng: ${formatRetestQuantity(retestInfo.SoLuongTaiNhap)} · ${retestInfo.GhiChu || ""}`}
+                        </Typography>
+                    </Alert>
+                )}
                 {/* THÔNG TIN PHIẾU */}
 
                 <Card sx={{ mb: 2.5, borderRadius: 2 }}>
@@ -742,11 +839,13 @@ export default function PhieuKiemDetail() {
 
                             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                 <Typography variant="subtitle2">Số lượng kế hoạch</Typography>
-                                <Typography fontWeight={600}>{phieu?.SoLuong}</Typography>
+                                <Typography fontWeight={600}>
+                                    {isIncomingRetest ? formatRetestQuantity(retestInfo.SoLuongTaiNhap) : phieu?.SoLuong}
+                                </Typography>
                             </Grid>
                             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                 <Typography variant="subtitle2">Số lượng thực tế</Typography>
-                                {canEditInspection && isInspectionOpen ? (
+                                {canEditInspection && isInspectionOpen && !isIncomingRetest ? (
                                     <Stack direction="row" spacing={1} alignItems="center">
                                         <TextField
                                             size="small"
@@ -791,7 +890,7 @@ export default function PhieuKiemDetail() {
                                 <Grid size={{ xs: 12 }}>
                                     <FormControl
                                         component="fieldset"
-                                        disabled={!canEditInspection || savingInputInspectionMode}
+                                        disabled={!canEditInspection || savingInputInspectionMode || isIncomingRetest}
                                         sx={{ width: "100%" }}
                                     >
                                         <FormLabel component="legend" sx={{ fontWeight: 700, color: "text.primary" }}>
@@ -831,6 +930,48 @@ export default function PhieuKiemDetail() {
 
                     </CardContent>
                 </Card>
+
+                {retestInfo?.RetestType === "DAU_VAO_TAI_NHAP" && retestInfo.RetestBatches?.length > 0 && (
+                    <Card variant="outlined" sx={{ mb: 2.5, borderRadius: 2 }}>
+                        <CardContent>
+                            <Typography variant="h6" fontWeight={800} sx={{ mb: 1.5 }}>
+                                Các đợt tái nhập
+                            </Typography>
+                            <Stack spacing={1}>
+                                {retestInfo.RetestBatches.map((batch) => (
+                                    <Paper key={batch.PhieuKiemId} variant="outlined" sx={{ p: 1.5 }}>
+                                        <Stack
+                                            direction={{ xs: "column", md: "row" }}
+                                            justifyContent="space-between"
+                                            alignItems={{ xs: "flex-start", md: "center" }}
+                                            spacing={1}
+                                        >
+                                            <Box>
+                                                <Typography fontWeight={700}>
+                                                    {`Đợt ${batch.DotTaiNhap} · ${batch.SoPhieu}`}
+                                                </Typography>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    {`${batch.NgayTaiNhap} · ${formatRetestQuantity(batch.SoLuongTaiNhap)} · ${batch.TenNguoiKiem || "Chưa phân công"}`}
+                                                </Typography>
+                                                <Typography variant="body2">{batch.GhiChu}</Typography>
+                                            </Box>
+                                            <Stack direction="row" spacing={1} alignItems="center">
+                                                {renderTrangThaiChip(batch.TrangThai)}
+                                                {renderKetLuanChip(batch.KetLuan)}
+                                                <Button
+                                                    size="small"
+                                                    onClick={() => navigate(`/phieu-kiem/${batch.PhieuKiemId}`, { state: { returnTo } })}
+                                                >
+                                                    Mở phiếu
+                                                </Button>
+                                            </Stack>
+                                        </Stack>
+                                    </Paper>
+                                ))}
+                            </Stack>
+                        </CardContent>
+                    </Card>
+                )}
 
                 {isDongCont && (
                     <Card variant="outlined" sx={{ mb: 2.5, borderRadius: 2 }}>
@@ -1255,6 +1396,83 @@ export default function PhieuKiemDetail() {
                         </Stack>
                     </Paper>
                 )}
+
+                <Dialog
+                    open={incomingRetestDialogOpen}
+                    onClose={() => !loadingAction && setIncomingRetestDialogOpen(false)}
+                    maxWidth="sm"
+                    fullWidth
+                >
+                    <DialogTitle>Tạo phiếu kiểm lại đầu vào</DialogTitle>
+                    <DialogContent dividers>
+                        <Stack spacing={2} sx={{ mt: 0.5 }}>
+                            <Alert severity="info">
+                                Phiếu mới dùng lại chứng từ nhập của {phieu?.SoPhieu}, bắt buộc kiểm CĐ2 và không sao chép kết quả kiểm cũ.
+                            </Alert>
+                            {incomingRetestError && <Alert severity="error">{incomingRetestError}</Alert>}
+                            <TextField
+                                select
+                                required
+                                fullWidth
+                                label="KCS phụ trách"
+                                value={incomingRetestForm.nguoiKiemId}
+                                onChange={(event) => setIncomingRetestForm((current) => ({
+                                    ...current,
+                                    nguoiKiemId: event.target.value
+                                }))}
+                            >
+                                {incomingRetestKcs.map((item) => (
+                                    <MenuItem key={item.Id} value={String(item.Id)}>{item.FullName}</MenuItem>
+                                ))}
+                            </TextField>
+                            <TextField
+                                required
+                                fullWidth
+                                type="date"
+                                label="Ngày tái nhập"
+                                value={incomingRetestForm.ngayTaiNhap}
+                                inputProps={{ max: toLocalDateInput() }}
+                                InputLabelProps={{ shrink: true }}
+                                onChange={(event) => setIncomingRetestForm((current) => ({
+                                    ...current,
+                                    ngayTaiNhap: event.target.value
+                                }))}
+                            />
+                            <TextField
+                                required
+                                fullWidth
+                                type="number"
+                                label="Số lượng tái nhập"
+                                value={incomingRetestForm.soLuongTaiNhap}
+                                inputProps={{ min: 0.01, step: 0.01 }}
+                                onChange={(event) => setIncomingRetestForm((current) => ({
+                                    ...current,
+                                    soLuongTaiNhap: event.target.value
+                                }))}
+                                helperText="Hỗ trợ tối đa 2 số lẻ; AQL sẽ làm tròn lên để xác định cỡ lô."
+                            />
+                            <TextField
+                                required
+                                fullWidth
+                                multiline
+                                minRows={3}
+                                label="Ghi chú tái nhập"
+                                value={incomingRetestForm.ghiChu}
+                                inputProps={{ maxLength: 1000 }}
+                                onChange={(event) => setIncomingRetestForm((current) => ({
+                                    ...current,
+                                    ghiChu: event.target.value
+                                }))}
+                            />
+                        </Stack>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setIncomingRetestDialogOpen(false)} disabled={loadingAction}>Hủy</Button>
+                        <Button variant="contained" onClick={handleSubmitIncomingRetest} disabled={loadingAction}>
+                            {loadingAction ? "Đang tạo..." : "Tạo phiếu kiểm lại"}
+                        </Button>
+                    </DialogActions>
+                </Dialog>
 
                 {/* Print Preview Modal */}
                 <Dialog open={openPrintModal} onClose={() => setOpenPrintModal(false)} maxWidth="lg" fullWidth>

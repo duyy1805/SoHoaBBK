@@ -71,6 +71,25 @@ export const SxbtPrintTemplate = React.forwardRef(({
         getLotRows(item).map((lotRow, lotIndex) => ({ item, lotRow, lotIndex }))
     );
 
+    // Khi Kho đã xác nhận đủ các lot, đây là số lượng thực tế cuối cùng của phiếu.
+    // Không dùng tỷ lệ đã lưu vì tỷ lệ đó có thể được lập trước khi Kho xác nhận.
+    const getEffectiveQuantity = (rows = btpPrintRows) => {
+        const confirmedValues = rows.map(({ lotRow }) => lotRow.SoLuongKhoXacNhan);
+        const hasConfirmedAllLots = confirmedValues.length > 0 && confirmedValues.every(value =>
+            value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value))
+        );
+        if (hasConfirmedAllLots) {
+            return confirmedValues.reduce((sum, value) => sum + Number(value), 0);
+        }
+
+        const ticketActual = Number(phieu.SoLuongThucTe);
+        if (Number.isFinite(ticketActual) && ticketActual >= 0) return ticketActual;
+
+        return rows.reduce((sum, { item, lotRow }) =>
+            sum + (Number(lotRow.SoLuongNhap ?? item.SoLuong) || 0), 0
+        );
+    };
+
     const formatQuantity = (value) =>
         value !== undefined && value !== null && value !== ''
             ? Number(value).toLocaleString('vi-VN')
@@ -117,6 +136,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
 
     const getRatioRows = () => {
         const totalSample = toNumber(soMau);
+        const effectiveQuantity = getEffectiveQuantity();
         const totalCritical = criticalDefects.reduce((sum, d) => sum + toNumber(d.SoLuong), 0);
         const totalMajorMinor = majorMinorDefects.reduce((sum, d) => sum + toNumber(d.SoLuong), 0);
 
@@ -124,7 +144,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
             key: 'summary-total',
             label: 'Tổng phiếu',
             sampleQty: soMau || '',
-            sampleRate: tyLe ? `${tyLe}%` : '',
+            sampleRate: effectiveQuantity > 0 ? formatPercent((totalSample / effectiveQuantity) * 100) : (tyLe ? `${tyLe}%` : ''),
             passRate: tyLeDat ? `${tyLeDat}%` : '',
             criticalRate: tyLeCrit ? `${tyLeCrit}%` : formatPercent(totalSample > 0 ? (totalCritical / totalSample) * 100 : NaN),
             majorMinorRate: tyLeMajor ? `${tyLeMajor}%` : formatPercent(totalSample > 0 ? (totalMajorMinor / totalSample) * 100 : NaN),

@@ -124,6 +124,10 @@ flowchart TD
 - Có ít nhất một section có kết luận `REJECT`; hoặc
 - Có kết quả kiểm đặc biệt nằm ngoài khoảng dung sai.
 
+### Kiểm lại đầu vào khi dùng lại chứng từ cũ
+
+Khi phiếu đầu vào đã hoàn tất với kết luận không đạt và hàng quay lại mà không có chứng từ mới, tổ trưởng tạo **phiếu kiểm lại** từ phiếu không đạt gốc. Mỗi đợt tái nhập có ngày, số lượng, ghi chú và KCS riêng; nhiều đợt có thể cùng tham chiếu một chứng từ. Phiếu mới tự dùng mức `KT lại`, chế độ `CĐ2` và checklist mới; kết quả, lỗi, ảnh, chữ ký và biên bản của phiếu cũ vẫn được giữ nguyên.
+
 ### Dữ liệu bị khóa khi nào?
 
 - Mục kiểm đã được chốt kết luận thì không sửa như mục đang mở.

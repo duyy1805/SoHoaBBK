@@ -616,6 +616,15 @@ export default function PhieuKiemList() {
                                                 >
                                                     {item.SoPhieu}
                                                 </Typography>
+                                                {item.IsIncomingRetest ? (
+                                                    <Chip
+                                                        label={`Tái nhập đợt ${item.DotTaiNhap}`}
+                                                        size="small"
+                                                        color="info"
+                                                        variant="outlined"
+                                                        sx={{ mt: 0.5 }}
+                                                    />
+                                                ) : null}
                                             </TableCell>
                                             <TableCell>
                                                 <Chip

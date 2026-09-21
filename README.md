@@ -154,6 +154,8 @@ Phiếu đầu vào đang dùng luồng chung `PhieuDetailScreen`:
    - API: `POST /phieu-kiem/xac-nhan-px`.
 8. Kết thúc: `HOAN_TAT`.
 
+Phiếu đầu vào đã `HOAN_TAT` với kết luận `KHONG_DAT` có thể tạo nhiều đợt kiểm lại khi hàng quay lại nhưng vẫn dùng chứng từ cũ. Tổ trưởng tạo phiếu từ chi tiết phiếu gốc, chọn KCS, ngày tái nhập, số lượng và ghi chú. Mỗi đợt là một phiếu mới, tự đặt `KT lại`/`CD2`, chỉ dùng lại nguồn chứng từ và thông tin sản phẩm; kết quả, lỗi, ảnh, chữ ký và biên bản cũ không được sao chép.
+
 ### 5) Luồng phiếu kiểm cuối (final inspection)
 
 Hiện tại kiểm cuối cũng chạy trên `PhieuDetailScreen` + `CheckItemScreen`, khác ở dữ liệu hiển thị và nghiệp vụ sản phẩm đầu ra:

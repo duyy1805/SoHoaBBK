@@ -17,6 +17,8 @@ build/
 !server/sql/migrations/20260908_doi_tra_phoi_loi_external_responsible_department.rollback.sql
 !server/sql/migrations/20260916_dong_cont_unlimited_lot.sql
 !server/sql/migrations/20260916_dong_cont_unlimited_lot.rollback.sql
+!server/sql/migrations/20260921_incoming_retest_flow.sql
+!server/sql/migrations/20260921_incoming_retest_flow.rollback.sql
 !server/sql/reports/phieu_kiem_bien_ban_loi_nam_moc.sql
 
 *.xlsx

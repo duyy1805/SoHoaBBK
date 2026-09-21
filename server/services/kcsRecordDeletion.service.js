@@ -147,6 +147,13 @@ const deletePhieuKiemData = async (transaction, phieuKiemId, deletedBy) => {
             IF NOT EXISTS(SELECT 1 FROM #TargetPhieu)
                 THROW 51040,N'Không tìm thấy phiếu kiểm',1;
 
+            IF OBJECT_ID(N'dbo.PHIEU_KIEM_DAU_VAO_TAI_NHAP',N'U') IS NOT NULL
+               AND EXISTS(
+                    SELECT 1 FROM dbo.PHIEU_KIEM_DAU_VAO_TAI_NHAP
+                    WHERE PhieuKiemGocId=@PhieuKiemId AND PhieuKiemId<>@PhieuKiemId
+               )
+                THROW 51041,N'Phiếu có các đợt tái nhập; hãy xóa các phiếu kiểm lại trước.',1;
+
             INSERT dbo.KCS_RECORD_DELETE_AUDIT(EntityType,EntityId,RecordNumber,DeletedBy,SnapshotJson)
             SELECT N'PHIEU_KIEM',Id,SoPhieu,@DeletedBy,
                 (SELECT target.* FOR JSON PATH,WITHOUT_ARRAY_WRAPPER)
@@ -195,6 +202,8 @@ const deletePhieuKiemData = async (transaction, phieuKiemId, deletedBy) => {
             DELETE FROM dbo.PHIEU_KIEM_XAC_NHAN WHERE PhieuKiemId=@PhieuKiemId;
             DELETE FROM dbo.PhieuKiem_CustomFields WHERE PhieuKiemId=@PhieuKiemId;
             DELETE FROM dbo.NOTIFICATIONS WHERE Type=N'NEW_PHIEU' AND ReferenceId=@PhieuKiemId;
+            IF OBJECT_ID(N'dbo.PHIEU_KIEM_DAU_VAO_TAI_NHAP',N'U') IS NOT NULL
+                DELETE FROM dbo.PHIEU_KIEM_DAU_VAO_TAI_NHAP WHERE PhieuKiemId=@PhieuKiemId;
             UPDATE dbo.PHIEU_KIEM SET PhieuKiemTruocId=NULL WHERE PhieuKiemTruocId=@PhieuKiemId;
             UPDATE dbo.PHIEU_KIEM SET PhieuKiemGocId=NULL WHERE PhieuKiemGocId=@PhieuKiemId;
             DELETE FROM dbo.PHIEU_KIEM WHERE Id=@PhieuKiemId;

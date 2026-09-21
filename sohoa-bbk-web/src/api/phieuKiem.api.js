@@ -19,8 +19,8 @@ export const getLoaiKiemLookup = () => {
 };
 
 // Lấy danh sách KCS
-export const getKCSLookup = () => {
-    return axiosClient.get("/lookup/kcs");
+export const getKCSLookup = (params) => {
+    return axiosClient.get("/lookup/kcs", { params });
 };
 /* =========================================================
    DANH SÁCH & CHI TIẾT
@@ -44,9 +44,11 @@ export const deletePhieuKiem = (id) => {
     return axiosClient.delete(`/phieu-kiem/${id}`);
 };
 
-export const createDongContRetest = (id) => {
-    return axiosClient.post(`/phieu-kiem/${id}/retest`);
+export const createPhieuKiemRetest = (id, data = {}) => {
+    return axiosClient.post(`/phieu-kiem/${id}/retest`, data);
 };
+
+export const createDongContRetest = (id) => createPhieuKiemRetest(id);
 
 const normalizeCreatePayload = (data = {}) => ({
     ...data,

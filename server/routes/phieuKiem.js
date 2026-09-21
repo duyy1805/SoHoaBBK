@@ -60,6 +60,7 @@ sharp.cache(false);
 
 const { Expo } = require('expo-server-sdk');
 let expo = new Expo();
+const DAU_VAO_LOAI_KIEM_ID = 1;
 const CUOI_CHUYEN_LOAI_KIEM_ID = 3;
 const DONG_CONT_LOAI_KIEM_ID = 5;
 const TREN_CHUYEN_LOAI_KIEM_ID = 6;
@@ -112,6 +113,14 @@ const normalizeDateOnly = (value) => {
 
     return `${match[1]}-${match[2]}-${match[3]}`;
 };
+const normalizePositiveDecimal = (value, scale = 2) => {
+    if (value === null || value === undefined || value === '') return Number.NaN;
+    const normalized = String(value).trim().replace(',', '.');
+    const pattern = new RegExp(`^\\d+(?:\\.\\d{1,${scale}})?$`);
+    if (!pattern.test(normalized)) return Number.NaN;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : Number.NaN;
+};
 const serializeSqlDateOnly = (value) => {
     if (!(value instanceof Date)) return normalizeDateOnly(value);
 
@@ -136,6 +145,39 @@ const getUserDisplayName = async (pool, userId, fallback = '') => {
         `);
 
     return result.recordset?.[0]?.DisplayName || fallback || '';
+};
+const notifyAssignedInspection = async (pool, { userId, title, message, referenceId }) => {
+    await pool.request()
+        .input('UserId', sql.Int, Number(userId))
+        .input('Title', sql.NVarChar, title)
+        .input('Message', sql.NVarChar, message)
+        .input('Type', sql.VarChar, 'NEW_PHIEU')
+        .input('ReferenceId', sql.Int, Number(referenceId))
+        .query(`
+            INSERT dbo.NOTIFICATIONS (UserId, Title, Message, Type, ReferenceId)
+            VALUES (@UserId, @Title, @Message, @Type, @ReferenceId);
+
+            SELECT token.ExpoPushToken,
+                (SELECT COUNT(*) FROM dbo.NOTIFICATIONS WHERE UserId=@UserId AND IsRead=0) AS UnreadCount
+            FROM dbo.USER_PUSH_TOKENS token
+            WHERE token.UserId=@UserId;
+        `)
+        .then(async (result) => {
+            const rows = result.recordsets?.[0] || [];
+            const pushMessages = rows
+                .filter((row) => Expo.isExpoPushToken(row.ExpoPushToken))
+                .map((row) => ({
+                    to: row.ExpoPushToken,
+                    sound: 'default',
+                    title,
+                    body: message,
+                    badge: Number(row.UnreadCount || 0),
+                    data: { type: 'NEW_PHIEU', referenceId: Number(referenceId) }
+                }));
+            for (const chunk of expo.chunkPushNotifications(pushMessages)) {
+                await expo.sendPushNotificationsAsync(chunk).catch(console.error);
+            }
+        });
 };
 const canManageTrenChuyenAll = (permissions = []) =>
     Array.isArray(permissions) && (permissions.includes('PHAN_BO_KIEM') || permissions.includes('KET_LUAN') || permissions.includes('QUAN_TRI_DM'));
@@ -715,7 +757,86 @@ const getDongContRetestInfo = async (pool, phieuKiemId, req) => {
         || roles.some((role) => String(role || '').toUpperCase().includes('ADMIN'));
     info.CanRetest = (isAdmin || permissions.includes('PHAN_BO_KIEM'))
         && !info.PhieuKiemTiepTheoId;
+    info.RetestType = 'DONG_CONT';
     return info;
+};
+
+const getIncomingRetestInfo = async (pool, phieuKiemId, req) => {
+    const currentResult = await pool.request()
+        .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+        .query(`
+            SELECT
+                currentRow.Id,
+                currentRow.SoPhieu,
+                currentRow.TrangThai,
+                currentRow.KetLuan,
+                currentRow.NguoiKiemId,
+                currentBatch.PhieuKiemGocId,
+                currentBatch.DotTaiNhap,
+                currentBatch.NgayTaiNhap,
+                currentBatch.SoLuongTaiNhap,
+                currentBatch.GhiChu,
+                currentBatch.CreatedBy,
+                currentBatch.CreatedAt,
+                rootRow.SoPhieu AS PhieuKiemGocSoPhieu
+            FROM dbo.PHIEU_KIEM currentRow
+            LEFT JOIN dbo.PHIEU_KIEM_DAU_VAO_TAI_NHAP currentBatch
+                ON currentBatch.PhieuKiemId = currentRow.Id
+            LEFT JOIN dbo.PHIEU_KIEM rootRow
+                ON rootRow.Id = currentBatch.PhieuKiemGocId
+            WHERE currentRow.Id = @PhieuKiemId;
+        `);
+
+    const current = currentResult.recordset?.[0];
+    if (!current) return null;
+
+    const rootId = Number(current.PhieuKiemGocId || current.Id);
+    const batchesResult = await pool.request()
+        .input('PhieuKiemGocId', sql.Int, rootId)
+        .query(`
+            SELECT
+                batch.PhieuKiemId,
+                inspection.SoPhieu,
+                batch.PhieuKiemGocId,
+                batch.DotTaiNhap,
+                batch.NgayTaiNhap,
+                batch.SoLuongTaiNhap,
+                batch.GhiChu,
+                batch.CreatedBy,
+                batch.CreatedAt,
+                inspection.NguoiKiemId,
+                inspector.FullName AS TenNguoiKiem,
+                inspection.TrangThai,
+                inspection.KetLuan
+            FROM dbo.PHIEU_KIEM_DAU_VAO_TAI_NHAP batch
+            INNER JOIN dbo.PHIEU_KIEM inspection ON inspection.Id = batch.PhieuKiemId
+            LEFT JOIN dbo.USERS inspector ON inspector.Id = inspection.NguoiKiemId
+            WHERE batch.PhieuKiemGocId = @PhieuKiemGocId
+            ORDER BY batch.DotTaiNhap, batch.PhieuKiemId;
+        `);
+
+    const permissions = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+    const isAdmin = isAdminUser(req.user);
+    const isRoot = !current.PhieuKiemGocId;
+
+    return {
+        RetestType: 'DAU_VAO_TAI_NHAP',
+        IsIncomingRetest: !isRoot,
+        PhieuKiemGocId: rootId,
+        PhieuKiemGocSoPhieu: current.PhieuKiemGocSoPhieu || current.SoPhieu,
+        DotTaiNhap: current.DotTaiNhap || null,
+        NgayTaiNhap: serializeSqlDateOnly(current.NgayTaiNhap),
+        SoLuongTaiNhap: current.SoLuongTaiNhap,
+        GhiChu: current.GhiChu || null,
+        RetestBatches: (batchesResult.recordset || []).map((batch) => ({
+            ...batch,
+            NgayTaiNhap: serializeSqlDateOnly(batch.NgayTaiNhap)
+        })),
+        CanRetest: isRoot
+            && (isAdmin || permissions.includes('PHAN_BO_KIEM'))
+            && String(current.TrangThai || '').toUpperCase() === 'HOAN_TAT'
+            && String(current.KetLuan || '').toUpperCase() === 'KHONG_DAT'
+    };
 };
 
 const inspectionCapabilitiesForApprovalDepartment = async (pool, req, phieu, approveBoPhanId) => {
@@ -788,6 +909,10 @@ const attachListQuantities = async (pool, rows = []) => {
                     ELSE pk.SoLuongThucTe END AS SoLuongThucTe,
                 CASE WHEN pk.LoaiKiemId = @CuoiChuyenLoaiKiemId
                     THEN ISNULL(planTotals.TongHieuLuc, 0) ELSE COALESCE(pk.SoLuongThucTe, pk.SoLuong, 0) END AS SoLuongHieuLuc
+                , CASE WHEN incomingRetest.PhieuKiemId IS NULL THEN 0 ELSE 1 END AS IsIncomingRetest
+                , incomingRetest.DotTaiNhap
+                , incomingRetest.NgayTaiNhap
+                , incomingRetest.SoLuongTaiNhap
                 , creator.BoPhanId AS BoPhanTaoId
                 , creatorDepartment.MaBoPhan AS MaBoPhanTao
                 , creatorDepartment.TenBoPhan AS TenBoPhanTao
@@ -803,6 +928,8 @@ const attachListQuantities = async (pool, rows = []) => {
             LEFT JOIN dbo.DM_BO_PHAN creatorDepartment ON creatorDepartment.Id = creator.BoPhanId
             LEFT JOIN dbo.USERS inspector ON inspector.Id = pk.NguoiKiemId
             LEFT JOIN dbo.DM_BO_PHAN inspectorDepartment ON inspectorDepartment.Id = inspector.BoPhanId
+            LEFT JOIN dbo.PHIEU_KIEM_DAU_VAO_TAI_NHAP incomingRetest
+                ON incomingRetest.PhieuKiemId = pk.Id
             OUTER APPLY (
                 SELECT SUM(ISNULL(planRow.SoLuongKeHoach, 0)) AS TongKeHoach,
                     SUM(ISNULL(planRow.SoLuongThucTe, 0)) AS TongThucTe,
@@ -1509,9 +1636,12 @@ router.patch(
                 .input('PhieuKiemId', sql.Int, phieuKiemId)
                 .query(`
                     SELECT pk.Id, pk.SoLuong, pk.SoLuongThucTe, pk.TrangThai, pk.LoaiKiemId,
-                        CASE WHEN cd.PhieuKiemId IS NULL THEN 0 ELSE 1 END AS LaPhieuCongDoan
+                        CASE WHEN cd.PhieuKiemId IS NULL THEN 0 ELSE 1 END AS LaPhieuCongDoan,
+                        CASE WHEN incomingRetest.PhieuKiemId IS NULL THEN 0 ELSE 1 END AS LaPhieuTaiNhap
                     FROM dbo.PHIEU_KIEM pk
                     LEFT JOIN dbo.PHIEU_KIEM_CONG_DOAN_HEADER cd ON cd.PhieuKiemId = pk.Id
+                    LEFT JOIN dbo.PHIEU_KIEM_DAU_VAO_TAI_NHAP incomingRetest
+                        ON incomingRetest.PhieuKiemId = pk.Id
                     WHERE pk.Id = @PhieuKiemId
                 `);
             const phieu = result.recordset[0];
@@ -1524,6 +1654,11 @@ router.patch(
             }
             if (Number(phieu.LoaiKiemId) === 4) {
                 return res.status(400).json({ message: 'Phiếu SXBT sử dụng số lượng nhập theo từng dòng BTP/Lot' });
+            }
+            if (phieu.LaPhieuTaiNhap) {
+                return res.status(409).json({
+                    message: 'Số lượng phiếu kiểm lại được cố định theo đợt tái nhập và không thể sửa tại đây'
+                });
             }
 
             await pool.request()
@@ -1561,9 +1696,12 @@ router.patch(
             const result = await pool.request()
                 .input('PhieuKiemId', sql.Int, phieuKiemId)
                 .query(`
-                    SELECT pk.Id, pk.TrangThai, inspectionType.MaLoai
+                    SELECT pk.Id, pk.TrangThai, inspectionType.MaLoai,
+                        CASE WHEN incomingRetest.PhieuKiemId IS NULL THEN 0 ELSE 1 END AS LaPhieuTaiNhap
                     FROM dbo.PHIEU_KIEM pk
                     JOIN dbo.DM_LOAI_KIEM inspectionType ON inspectionType.Id = pk.LoaiKiemId
+                    LEFT JOIN dbo.PHIEU_KIEM_DAU_VAO_TAI_NHAP incomingRetest
+                        ON incomingRetest.PhieuKiemId = pk.Id
                     WHERE pk.Id = @PhieuKiemId
                 `);
             const phieu = result.recordset[0];
@@ -1573,6 +1711,9 @@ router.patch(
             }
             if (!['TAO_MOI', 'CHUA_KIEM', 'DA_TAO_SECTION', 'DANG_KIEM'].includes(String(phieu.TrangThai || '').toUpperCase())) {
                 return res.status(409).json({ message: 'Phiếu đã hoàn thành nên không thể đổi chế độ kiểm đầu vào' });
+            }
+            if (phieu.LaPhieuTaiNhap && loaiKiemTra !== 'CD2') {
+                return res.status(409).json({ message: 'Phiếu kiểm lại đầu vào bắt buộc sử dụng chế độ CĐ2' });
             }
 
             await upsertPhieuKiemCustomFields(pool, phieuKiemId, { LoaiKiemTra: loaiKiemTra });
@@ -1657,11 +1798,67 @@ router.post(
 
         try {
             const pool = await poolPromise;
-            const result = await pool.request()
-                .input('PhieuKiemTruocId', sql.Int, phieuKiemId)
-                .input('NguoiLapId', sql.Int, Number(req.user?.userId || req.user?.id))
-                .execute('sp_PhieuKiem_DongCont_CreateRetest');
+            const typeResult = await pool.request()
+                .input('PhieuKiemId', sql.Int, phieuKiemId)
+                .query(`
+                    SELECT inspectionType.MaLoai
+                    FROM dbo.PHIEU_KIEM inspection
+                    INNER JOIN dbo.DM_LOAI_KIEM inspectionType ON inspectionType.Id = inspection.LoaiKiemId
+                    WHERE inspection.Id = @PhieuKiemId
+                `);
+            const maLoai = String(typeResult.recordset?.[0]?.MaLoai || '').toUpperCase();
+            if (!maLoai) return res.status(404).json({ message: 'Không tìm thấy phiếu kiểm' });
+
+            let result;
+            if (maLoai === 'DAU_VAO') {
+                const nguoiKiemId = Number(req.body?.nguoiKiemId);
+                const ngayTaiNhap = normalizeDateOnly(req.body?.ngayTaiNhap);
+                const soLuongTaiNhap = normalizePositiveDecimal(req.body?.soLuongTaiNhap, 2);
+                const ghiChu = String(req.body?.ghiChu || '').trim();
+
+                if (!Number.isInteger(nguoiKiemId) || nguoiKiemId <= 0) {
+                    return res.status(400).json({ message: 'KCS phụ trách không hợp lệ' });
+                }
+                if (!ngayTaiNhap) {
+                    return res.status(400).json({ message: 'Ngày tái nhập không hợp lệ' });
+                }
+                if (Number.isNaN(soLuongTaiNhap)) {
+                    return res.status(400).json({ message: 'Số lượng tái nhập phải lớn hơn 0 và có tối đa 2 số lẻ' });
+                }
+                if (!ghiChu || ghiChu.length > 1000) {
+                    return res.status(400).json({ message: 'Ghi chú tái nhập là bắt buộc và không vượt quá 1000 ký tự' });
+                }
+
+                result = await pool.request()
+                    .input('PhieuKiemGocId', sql.Int, phieuKiemId)
+                    .input('NguoiKiemId', sql.Int, nguoiKiemId)
+                    .input('NgayTaiNhap', sql.Date, ngayTaiNhap)
+                    .input('SoLuongTaiNhap', sql.Decimal(18, 2), soLuongTaiNhap)
+                    .input('GhiChu', sql.NVarChar(1000), ghiChu)
+                    .input('NguoiLapId', sql.Int, Number(req.user?.userId || req.user?.id))
+                    .execute('sp_PhieuKiem_DauVao_CreateRetest');
+            } else if (maLoai === 'KIEM_DONG_CONT') {
+                result = await pool.request()
+                    .input('PhieuKiemTruocId', sql.Int, phieuKiemId)
+                    .input('NguoiLapId', sql.Int, Number(req.user?.userId || req.user?.id))
+                    .execute('sp_PhieuKiem_DongCont_CreateRetest');
+            } else {
+                return res.status(400).json({ message: 'Loại phiếu này không hỗ trợ kiểm lại' });
+            }
             const created = result.recordset?.[0];
+
+            if (maLoai === 'DAU_VAO') {
+                try {
+                    await notifyAssignedInspection(pool, {
+                        userId: req.body.nguoiKiemId,
+                        title: 'Bạn có phiếu kiểm lại đầu vào mới! 📋',
+                        message: `Bạn được phân công phiếu ${created.SoPhieu}, tái nhập đợt ${created.DotTaiNhap}.`,
+                        referenceId: created.Id
+                    });
+                } catch (notificationError) {
+                    console.error('Create incoming retest notification error:', notificationError);
+                }
+            }
 
             return res.status(201).json({
                 success: true,
@@ -1670,18 +1867,21 @@ router.post(
                 phieuKiemGocId: created.PhieuKiemGocId,
                 phieuKiemTruocId: created.PhieuKiemTruocId,
                 lanKiemLai: created.LanKiemLai,
+                dotTaiNhap: created.DotTaiNhap,
+                ngayTaiNhap: serializeSqlDateOnly(created.NgayTaiNhap),
+                soLuongTaiNhap: created.SoLuongTaiNhap,
                 message: 'Đã tạo phiếu kiểm lại'
             });
         } catch (err) {
             const errorNumber = Number(err?.number || err?.originalError?.info?.number);
-            const statusCode = errorNumber === 51302
+            const statusCode = [51302, 51505].includes(errorNumber)
                 ? 404
-                : [51304, 51306].includes(errorNumber)
+                : [51304, 51306, 51507, 51508].includes(errorNumber)
                     ? 409
-                    : [51303, 51305].includes(errorNumber)
+                    : [51303, 51305, 51501, 51502, 51503, 51506, 51509, 51510, 51512].includes(errorNumber)
                         ? 400
                         : 500;
-            console.error('Create dong cont retest error:', err);
+            console.error('Create inspection retest error:', err);
             return res.status(statusCode).json({
                 message: statusCode === 500
                     ? 'Không thể tạo phiếu kiểm lại'
@@ -2206,14 +2406,14 @@ router.get(
                     ORDER BY xn.ThoiGian, xn.Id
                 `);
             const xacNhans = await attachSignatureDataUrls(pool, confirmationResult.recordset || [], 'NguoiXacNhanId');
-            const retestInfo = Number(phieu?.LoaiKiemId) === 5
+            const retestInfo = Number(phieu?.LoaiKiemId) === DONG_CONT_LOAI_KIEM_ID
                 ? await getDongContRetestInfo(pool, Number(id), req)
-                : null;
+                : Number(phieu?.LoaiKiemId) === DAU_VAO_LOAI_KIEM_ID
+                    ? await getIncomingRetestInfo(pool, Number(id), req)
+                    : null;
             const capabilities = inspectionCapabilities(req, phieu);
             if (retestInfo) {
-                capabilities.canRetest = Boolean(retestInfo.CanRetest)
-                    && String(phieu?.TrangThai || '').toUpperCase() === 'HOAN_TAT'
-                    && String(phieu?.KetLuan || '').toUpperCase() === 'KHONG_DAT';
+                capabilities.canRetest = Boolean(retestInfo.CanRetest);
             }
             res.json({
                 phieu,

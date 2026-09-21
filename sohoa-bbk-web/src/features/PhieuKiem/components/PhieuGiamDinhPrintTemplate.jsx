@@ -177,9 +177,19 @@ export const PhieuGiamDinhPrintTemplate = React.forwardRef(({
     // Hàm render bảng kết quả đo nhỏ (grid)
     const renderMeasurementGrid = (val) => {
         if (!val) return <div style={{ height: '20px' }}></div>;
-        // Tách chuỗi bằng khoảng trắng, dấu phẩy hoặc xuống dòng
-        const values = val.split(/[\s,\n]+/).filter(v => v.trim() !== '');
+        const rawValue = String(val).trim();
+        // Chỉ tách ô khi toàn bộ giá trị là số; ghi chú/nội dung chữ phải giữ nguyên trong một ô.
+        const values = rawValue.split(/[\s,\n]+/).filter(v => v.trim() !== '');
         if (values.length === 0) return <div style={{ height: '20px' }}></div>;
+
+        const isNumericValue = (value) => /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(value);
+        if (!values.every(isNumericValue)) {
+            return (
+                <div style={{ minHeight: '20px', padding: '2px 4px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                    {rawValue}
+                </div>
+            );
+        }
 
         const cols = 5; // Cố định 5 cột
         const rows = [];

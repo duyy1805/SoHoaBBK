@@ -47,6 +47,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
     const [sections, setSections] = useState([]);
     const [checkItems, setCheckItems] = useState([]);
     const [dynamicFields, setDynamicFields] = useState([]);
+    const [retestInfo, setRetestInfo] = useState(null);
     const [permissions, setPermissions] = useState([]);
 
     const [loadingAQL, setLoadingAQL] = useState(null);
@@ -117,6 +118,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
         setSections(Array.isArray(res.data.sections) ? res.data.sections : []);
         setCheckItems(Array.isArray(res.data.checkItems) ? res.data.checkItems : []);
         setDynamicFields(res.data.dynamicFields || []);
+        setRetestInfo(res.data.retestInfo || null);
         setTrangThai(phieuData?.TrangThai);
         const parsedHieuLucTest = parseStoredDate((res.data.dynamicFields || []).find((field) => field?.FieldName === "HieuLucTest")?.FieldValue);
         setHieuLucTest(parsedHieuLucTest);
@@ -182,6 +184,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
     );
 
     const isCompleted = trangThai === "HOAN_TAT";
+    const isIncomingRetest = Boolean(retestInfo?.IsIncomingRetest);
 
     const renderStatus = (status) => {
         switch (status) {
@@ -437,6 +440,29 @@ export default function PhieuDetailScreen({ route, navigation }) {
                 contentContainerStyle={{ paddingBottom: 32 }}
             >
 
+                {isIncomingRetest && (
+                    <View style={styles.retestBanner}>
+                        <Text style={styles.retestTitle}>
+                            Kiểm lại đầu vào – đợt {retestInfo.DotTaiNhap}
+                        </Text>
+                        <Text style={styles.retestText}>
+                            Ngày tái nhập: {retestInfo.NgayTaiNhap || "---"}
+                        </Text>
+                        <Text style={styles.retestText}>
+                            Số lượng: {Number(retestInfo.SoLuongTaiNhap || 0).toLocaleString("vi-VN", { maximumFractionDigits: 2 })}
+                        </Text>
+                        <Text style={styles.retestText}>{retestInfo.GhiChu || ""}</Text>
+                        {retestInfo.PhieuKiemGocId ? (
+                            <TouchableOpacity
+                                style={styles.retestLink}
+                                onPress={() => navigation.push("PhieuDetail", { id: retestInfo.PhieuKiemGocId })}
+                            >
+                                <Text style={styles.retestLinkText}>Xem phiếu không đạt gốc</Text>
+                            </TouchableOpacity>
+                        ) : null}
+                    </View>
+                )}
+
                 <View style={styles.infoCard}>
 
                     <View style={styles.infoRow}>
@@ -492,7 +518,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
                     <View style={styles.infoRow}>
                         <View style={styles.infoItem}>
                             <Text style={styles.infoLabel}>Số lượng thực tế</Text>
-                            {isKCS && !isCompleted ? (
+                            {isKCS && !isCompleted && !isIncomingRetest ? (
                                 <View>
                                     <TextInput
                                         style={styles.inlineInput}
@@ -915,7 +941,7 @@ export default function PhieuDetailScreen({ route, navigation }) {
                 onClose={() => setIsConfigModalVisible(false)}
                 phieuId={id}
                 sanPhamId={phieu?.SanPhamId}
-                initialLotSize={phieu?.SoLuongHieuLuc ?? phieu?.SoLuong}
+                initialLotSize={Math.ceil(Number(phieu?.SoLuongHieuLuc ?? phieu?.SoLuong ?? 0))}
                 onSuccess={loadData}
             />
 
@@ -930,6 +956,34 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: "#f1f5f9",
         padding: 16
+    },
+    retestBanner: {
+        backgroundColor: "#eff6ff",
+        borderColor: "#93c5fd",
+        borderWidth: 1,
+        borderRadius: 12,
+        padding: 14,
+        marginBottom: 16
+    },
+    retestTitle: {
+        color: "#1d4ed8",
+        fontWeight: "800",
+        fontSize: 16,
+        marginBottom: 6
+    },
+    retestText: {
+        color: "#1e3a8a",
+        fontSize: 13,
+        marginBottom: 3
+    },
+    retestLink: {
+        alignSelf: "flex-start",
+        marginTop: 8,
+        paddingVertical: 6
+    },
+    retestLinkText: {
+        color: "#2563eb",
+        fontWeight: "700"
     },
     infoCard: {
         backgroundColor: "#fff",

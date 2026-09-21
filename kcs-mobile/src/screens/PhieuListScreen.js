@@ -208,7 +208,12 @@ export default function PhieuListScreen({ navigation }) {
                 }}
             >
                 <View style={styles.header}>
-                    <Text style={styles.soPhieu}>{item.SoPhieu}</Text>
+                    <View>
+                        <Text style={styles.soPhieu}>{item.SoPhieu}</Text>
+                        {item.IsIncomingRetest ? (
+                            <Text style={styles.retestBadgeText}>Tái nhập đợt {item.DotTaiNhap}</Text>
+                        ) : null}
+                    </View>
                     <View
                         style={[
                             styles.badge,
@@ -424,6 +429,18 @@ const styles = StyleSheet.create({
         fontWeight: "bold",
         fontSize: 17,
         color: "#0f172a"
+    },
+    retestBadgeText: {
+        alignSelf: "flex-start",
+        marginTop: 4,
+        color: "#1d4ed8",
+        backgroundColor: "#eff6ff",
+        borderRadius: 999,
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        overflow: "hidden",
+        fontSize: 11,
+        fontWeight: "700"
     },
     badge: {
         paddingHorizontal: 10,

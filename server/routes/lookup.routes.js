@@ -1775,13 +1775,22 @@ router.post(
 
 router.get('/kcs', authenticateToken, async (req, res) => {
   const pool = await poolPromise;
-  const result = await pool.request().query(`
+  const loaiKiemId = Number(req.query.loaiKiemId) || null;
+  const result = await pool.request()
+    .input('LoaiKiemId', sql.Int, loaiKiemId)
+    .query(`
       SELECT DISTINCT u.Id, u.FullName
       FROM USERS u
       JOIN USER_ROLE ur ON u.Id = ur.UserId
       JOIN ROLES r ON ur.RoleId = r.Id
-      WHERE r.RoleCode = 'KCS' or r.RoleCode = 'TO_TRUONG_KCS'
+      WHERE r.RoleCode IN ('KCS','TO_TRUONG_KCS')
         AND u.TrangThai = 1
+        AND (@LoaiKiemId IS NULL
+          OR NULLIF(LTRIM(RTRIM(u.AllowedLoaiKiemIds)),N'') IS NULL
+          OR EXISTS (
+            SELECT 1 FROM STRING_SPLIT(u.AllowedLoaiKiemIds,N',') allowed
+            WHERE TRY_CONVERT(INT,LTRIM(RTRIM(allowed.value)))=@LoaiKiemId
+          ))
   `);
   res.json(result.recordset);
 });
