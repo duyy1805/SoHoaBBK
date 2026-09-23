@@ -7,9 +7,11 @@ const JSZip = require('jszip');
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
+const { uploadRoot } = require('../config/storage');
+const { isPlpRequest, allowedInspectionTypeIds } = require('../config/tenant');
 sharp.cache(false);
 
-const { poolPromise } = require('../db');
+const { poolPromise } = require('../databaseContext');
 const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
 const authorizeCheckCatalogCrud = require('../middlewares/checkCatalogCrud.middleware');
@@ -63,11 +65,11 @@ const productImageUpload = multer({
   }
 });
 
-const defectUploadDir = path.join(__dirname, "..", "uploads", "defects");
+const defectUploadDir = path.join(uploadRoot, "defects");
 const publicDefectUploadDir = "/uploads/defects";
 const defectImportUploadDir = path.join(defectUploadDir, "import");
 const publicDefectImportUploadDir = `${publicDefectUploadDir}/import`;
-const productUploadDir = path.join(__dirname, "..", "uploads", "products");
+const productUploadDir = path.join(uploadRoot, "products");
 const publicProductUploadDir = "/uploads/products";
 const defectImportHeaders = [
   "MaLoi",
@@ -940,7 +942,8 @@ router.get('/loai-kiem', authenticateToken, async (req, res) => {
     const result = await pool.request()
       .execute("sp_DM_GetLoaiKiem");
 
-    res.json(result.recordset);
+    const rows = result.recordset || [];
+    res.json(isPlpRequest(req) ? rows.filter((row) => allowedInspectionTypeIds.has(Number(row.Id))) : rows);
 
   } catch (err) {
     console.error("Loai kiem error:", err);

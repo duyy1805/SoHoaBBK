@@ -1,5 +1,6 @@
 import React, { forwardRef, useMemo } from "react";
 import { PrintSignatureImage } from '../../../components/common/PrintSignature';
+import { getTenantBranding } from '../../../config/tenant';
 
 const FORM_META = {
     companyName: "CÔNG TY TNHH MTV 76",
@@ -354,7 +355,7 @@ const CuoiChuyenPrintTemplate = forwardRef(function CuoiChuyenPrintTemplate({
                             <img src="/logo.png" alt="Logo Z76" style={{ width: "74px", display: "block", margin: "0 auto" }} />
                         </td>
                         <td style={styles.metaCell}>
-                            <div style={styles.subTitle}>{FORM_META.companyName}</div>
+                            <div style={styles.subTitle}>{getTenantBranding().companyName}</div>
                             <div style={styles.title}>{FORM_META.title}</div>
                         </td>
                         <td style={{ ...styles.metaCell, width: "180px", fontSize: "12px", lineHeight: 1.35 }}>

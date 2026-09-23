@@ -1,10 +1,11 @@
 const express = require('express');
 const sql = require('mssql');
-const { poolPromise } = require('../db');
+const { poolPromise } = require('../databaseContext');
 const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
 const { attachSignatureDataUrls } = require('../utils/signatureImage');
 const { getManagedDepartmentIds } = require('../utils/managedDepartments');
+const { getTenantConfig } = require('../config/tenant');
 
 const router = express.Router();
 const OPEN_STATES = new Set(['TAO_MOI', 'DANG_KIEM', 'CHUA_KIEM']);
@@ -65,9 +66,13 @@ const dateKey = (value) => {
     return `${year}-${month}-${day}`;
 };
 const normalizeText = (value) => String(value || '').trim().toLocaleLowerCase('vi');
-const filterPlansForHeader = (plans, header) => (plans || []).filter((plan) =>
+const filterPlansForHeader = (plans, header, tenantConfig) => (plans || []).filter((plan) =>
     dateKey(plan.Ngay) === dateKey(header.NgayKiem)
-    && normalizeText(plan.Ten_DonVi) === normalizeText(header.PhanXuong)
+    && (tenantConfig.isPlp
+        ? (tenantConfig.unitId && plan.ID_DonVi !== undefined
+            ? Number(plan.ID_DonVi) === Number(tenantConfig.unitId)
+            : normalizeText(plan.Ten_DonVi) === normalizeText(tenantConfig.unitName))
+        : normalizeText(plan.Ten_DonVi) === normalizeText(header.PhanXuong))
 );
 const normalizePhieuDates = (phieu) => phieu ? {
     ...phieu,
@@ -170,7 +175,7 @@ router.get(
             }
             const result = await pool.request()
                 .execute('sp_KeHoachSanXuat_GetList_ChuaKiem_TrenChuyen');
-            res.json(filterPlansForHeader(result.recordset, header).map(normalizePlanDates));
+            res.json(filterPlansForHeader(result.recordset, header, getTenantConfig(req)).map(normalizePlanDates));
         } catch (error) {
             console.error('CongDoan plans error:', error);
             res.status(500).json({ message: errorMessage(error, 'Không tải được kế hoạch sản xuất') });
@@ -398,15 +403,25 @@ router.post(
 
             const available = await pool.request()
                 .execute('sp_KeHoachSanXuat_GetList_ChuaKiem_TrenChuyen');
+            const { isPlp, unitId, unitName } = getTenantConfig(req);
             const plan = (available.recordset || [])
                 .find((item) =>
                     Number(item.ID_KeHoachSanXuat) === sourceId
                     && dateKey(item.Ngay) === dateKey(header.recordset[0].NgayKiem)
-                    && normalizeText(item.Ten_DonVi) === normalizeText(header.recordset[0].PhanXuong)
+                    && (isPlp
+                        ? (unitId && item.ID_DonVi !== undefined
+                            ? Number(item.ID_DonVi) === Number(unitId)
+                            : normalizeText(item.Ten_DonVi) === normalizeText(unitName))
+                        : normalizeText(item.Ten_DonVi) === normalizeText(header.recordset[0].PhanXuong))
                 );
             if (!plan) {
                 return res.status(400).json({
                     message: 'Kế hoạch không còn trong danh sách hiện tại hoặc không thuộc phân xưởng của phiếu'
+                });
+            }
+            if (isPlp && !plan.SanPhamId) {
+                return res.status(409).json({
+                    message: 'ItemCode của kế hoạch chưa được đồng bộ vào danh mục sản phẩm PLP'
                 });
             }
 

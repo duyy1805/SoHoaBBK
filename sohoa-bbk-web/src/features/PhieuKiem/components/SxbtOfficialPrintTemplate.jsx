@@ -227,9 +227,12 @@ export const SxbtOfficialPrintTemplate = React.forwardRef(({
                     const value = row.lot.SoLuongNhap ?? row.item.SoLuongNhap ?? row.item.SoLuong;
                     return sum + (Number(value) || 0);
                 }, 0);
+                const hasTicketActualQuantity = phieu.SoLuongThucTe !== null &&
+                    phieu.SoLuongThucTe !== undefined &&
+                    phieu.SoLuongThucTe !== "";
                 const ticketActualQuantity = Number(phieu.SoLuongThucTe);
                 // Kho xác nhận là bước sau; tỷ lệ kiểm luôn dùng số lượng thực tế KCS đã nhập.
-                const effectiveQuantity = Number.isFinite(ticketActualQuantity) && ticketActualQuantity >= 0
+                const effectiveQuantity = hasTicketActualQuantity && Number.isFinite(ticketActualQuantity) && ticketActualQuantity >= 0
                     ? ticketActualQuantity
                     : totalPlanQuantity;
                 const inspectionRate = effectiveQuantity > 0
@@ -336,7 +339,7 @@ export const SxbtOfficialPrintTemplate = React.forwardRef(({
                                         <td style={styles.center}>{lot.LxvtLot || ""}</td>
                                         <td style={styles.center}>{lot.SoLotSX || item.SoLotSX || ""}</td>
                                         <td style={styles.center}>{formatQuantity(
-                                            Number.isFinite(ticketActualQuantity) && ticketActualQuantity >= 0
+                                            hasTicketActualQuantity && Number.isFinite(ticketActualQuantity) && ticketActualQuantity >= 0
                                                 ? ticketActualQuantity
                                                 : (lot.SoLuongNhap ?? item.SoLuongNhap ?? item.SoLuong)
                                         )}</td>

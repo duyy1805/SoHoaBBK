@@ -1,10 +1,8 @@
 import axiosClient from "./axiosClient";
+import { getAssetUrl as resolveAssetUrl } from '../config/tenant';
 
 export const getAssetUrl = (url) => {
-    if (!url) return "";
-    if (/^https?:\/\//i.test(url)) return url;
-    const apiBase = axiosClient.defaults.baseURL || "";
-    return `${apiBase.replace(/\/api\/?$/, "")}${url.startsWith("/") ? url : `/${url}`}`;
+    return resolveAssetUrl(url);
 };
 
 
@@ -31,8 +29,8 @@ export const getPhieuKiemList = (params) => {
     return axiosClient.get("/phieu-kiem/my", { params });
 };
 
-export const getPhieuKiem = () => {
-    return axiosClient.get("/phieu-kiem/my");
+export const getPhieuKiem = (params = {}) => {
+    return axiosClient.get("/phieu-kiem/my", { params });
 };
 
 // Chi tiết phiếu kiểm

@@ -37,7 +37,7 @@ const attachBtpLotRows = (btpItems = [], lotRows = []) => {
 };
 const sql = require('mssql');
 const fs = require('fs');
-const { poolPromise } = require('../db');
+const { poolPromise } = require('../databaseContext');
 const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
 const requireExactPermission = require('../middlewares/exactPermission.middleware');
@@ -56,6 +56,8 @@ const {
 const multer = require('multer');
 const path = require('path');
 const sharp = require('sharp');
+const { isPlpRequest, getTenantConfig } = require('../config/tenant');
+const { uploadRoot } = require('../config/storage');
 sharp.cache(false);
 
 const { Expo } = require('expo-server-sdk');
@@ -64,6 +66,18 @@ const DAU_VAO_LOAI_KIEM_ID = 1;
 const CUOI_CHUYEN_LOAI_KIEM_ID = 3;
 const DONG_CONT_LOAI_KIEM_ID = 5;
 const TREN_CHUYEN_LOAI_KIEM_ID = 6;
+
+router.use((req, res, next) => {
+    if (!isPlpRequest(req)) return next();
+    const unsupported = [
+        '/lich-dong-cont', '/chung-tu-nhap', '/phieu-nhap-btp', '/ke-hoach-nhap-btp',
+        '/source-checked', '/create-sxbt', '/sxbt', '/sxbt-', '/input-inspection-mode', '/retest', '/btp-items'
+    ];
+    if (unsupported.some((segment) => req.path.includes(segment))) {
+        return res.status(404).json({ message: 'Luồng nghiệp vụ này chưa được mở cho Phát Long Phước' });
+    }
+    next();
+});
 const CUOI_CHUYEN_APPROVE_BOPHAN_FIELD = 'CuoiChuyen_ApproveBoPhanId';
 const CUOI_CHUYEN_COMPLETED_BY_FIELD = 'CuoiChuyen_CompletedByUserId';
 const CUOI_CHUYEN_COMPLETED_BY_NAME_FIELD = 'CuoiChuyen_CompletedByName';
@@ -1216,7 +1230,7 @@ const normalizeCuoiChuyenTimeSlots = (slots = []) => slots.map((slot, slotIndex)
 // Cấu hình Multer để lưu file
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        cb(null, 'uploads/');
+        cb(null, uploadRoot);
     },
     filename: function (req, file, cb) {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -1238,7 +1252,7 @@ router.post(
             // Xử lý từng file ảnh: Convert sang JPEG để hỗ trợ hiển thị trên Web (đặc biệt là HEIC từ iPhone)
             const filePaths = await Promise.all(req.files.map(async (file) => {
                 const outputFilename = `v2-${Date.now()}-${Math.round(Math.random() * 1E9)}.jpg`;
-                const outputPath = path.join('uploads', outputFilename);
+                const outputPath = path.join(uploadRoot, outputFilename);
 
                 await sharp(file.path)
                     .rotate() // Tự động xoay ảnh theo EXIF (tránh bị ngược ảnh)
@@ -1539,6 +1553,14 @@ router.get(
                 Ngay: serializeSqlDateOnly(row.Ngay)
             }));
 
+            const { isPlp, unitId, unitName } = getTenantConfig(req);
+            if (isPlp) {
+                const normalizedUnitName = String(unitName || '').trim().toLocaleLowerCase('vi');
+                responseRows = responseRows.filter((row) => unitId
+                    ? Number(row.ID_DonVi) === Number(unitId)
+                    : String(row.Ten_DonVi || '').trim().toLocaleLowerCase('vi') === normalizedUnitName);
+            }
+
             if (isCuoiChuyenLoaiKiem(req.query.loaiKiemId) && planIds.length > 0) {
                 const checkedResult = await pool.request()
                     .input('LoaiKiemId', sql.Int, CUOI_CHUYEN_LOAI_KIEM_ID)
@@ -1582,6 +1604,14 @@ router.get(
     async (req, res) => {
 
         try {
+            const fromDate = normalizeDateOnly(req.query.from);
+            const toDate = normalizeDateOnly(req.query.to);
+            if ((req.query.from && !fromDate) || (req.query.to && !toDate)) {
+                return res.status(400).json({ message: 'Khoảng ngày lọc không hợp lệ' });
+            }
+            if (fromDate && toDate && fromDate > toDate) {
+                return res.status(400).json({ message: 'Từ ngày không được lớn hơn đến ngày' });
+            }
 
             const pool = await poolPromise;
 
@@ -1602,6 +1632,8 @@ router.get(
             const result = await pool.request()
                 .input('UserId', sql.Int, req.user.userId)
                 .input('Mode', sql.NVarChar, mode)
+                .input('FromDate', sql.Date, fromDate)
+                .input('ToDate', sql.Date, toDate)
                 .execute('SP_PhieuKiem_My');
 
             const visibleRows = await excludeCongDoanRows(pool, result.recordset);
@@ -2460,6 +2492,10 @@ router.post(
             cuoiChuyenPlans,
             ngayKiem
         } = req.body;
+        const { isPlp, allowedInspectionTypeIds } = getTenantConfig(req);
+        if (isPlp && !allowedInspectionTypeIds.has(Number(loaiKiemId))) {
+            return res.status(403).json({ message: 'PLP chỉ mở kiểm trên chuyền và kiểm cuối chuyền' });
+        }
         const normalizedCuoiChuyenPlans = isCuoiChuyenLoaiKiem(loaiKiemId)
             ? normalizeCuoiChuyenPlans(cuoiChuyenPlans || [])
             : [];
@@ -2515,6 +2551,12 @@ router.post(
                 TrenChuyen_NangSuatDuKien: soLuong
             }
             : null;
+
+        if (isPlp && sourceId && !sanPhamId) {
+            return res.status(409).json({
+                message: 'ItemCode của kế hoạch chưa được đồng bộ vào danh mục sản phẩm PLP'
+            });
+        }
 
         // Bắt buộc phải có 1 trong 2 loại source
         if (!sanPhamId || !loaiKiemId || !nguoiKiemId || !soLuong || (!sourceId && !sourceId_LCD)) {
@@ -4375,7 +4417,8 @@ router.post(
 );
 
 /* =========================================================
-   POST /phieu-kiem/sxbt/confirm-sxbt (SXBT xác nhận sau Kho)
+   POST /phieu-kiem/sxbt/confirm-sxbt
+   Phiếu đạt: SXBT xác nhận sau Kho. Phiếu không đạt: bỏ qua Kho với số lượng 0.
 ========================================================= */
 router.post(
     '/sxbt/confirm-sxbt',
@@ -4506,26 +4549,78 @@ router.post(
     authenticateToken,
     authorize('THUC_HIEN_KIEM'),
     async (req, res) => {
-        const { phieuKiemId, ketLuan } = req.body;
+        const { phieuKiemId } = req.body;
+        const ketLuan = String(req.body?.ketLuan || '').trim().toUpperCase();
         const userId = req.user.userId;
 
-        if (!phieuKiemId || !ketLuan) {
-            return res.status(400).json({ message: 'Thiếu phieuKiemId hoặc ketLuan' });
+        if (!phieuKiemId || !['DAT', 'KHONG_DAT'].includes(ketLuan)) {
+            return res.status(400).json({ message: 'Thiếu phieuKiemId hoặc kết luận không hợp lệ' });
         }
 
+        let transaction;
         try {
             const pool = await poolPromise;
-            await pool.request()
+            transaction = new sql.Transaction(pool);
+            await transaction.begin();
+
+            await new sql.Request(transaction)
                 .input('PhieuKiemId', sql.Int, phieuKiemId)
                 .input('KetLuan', sql.NVarChar(50), ketLuan)
                 .input('UserId', sql.Int, userId)
                 .execute('sp_PhieuKiem_SXBT_Complete');
 
-            res.json({ success: true, message: 'Hoàn tất phiếu kiểm SXBT thành công. Chờ Kho xác nhận số lượng.' });
+            if (ketLuan === 'KHONG_DAT') {
+                await new sql.Request(transaction)
+                    .input('PhieuKiemId', sql.Int, phieuKiemId)
+                    .input('UserId', sql.Int, userId)
+                    .query(`
+                        UPDATE lot
+                        SET lot.SoLuongKhoXacNhan=0,
+                            lot.KhoXacNhanBy=NULL,
+                            lot.KhoXacNhanAt=NULL
+                        FROM dbo.PHIEU_KIEM_BTP_ITEM_LOT lot
+                        JOIN dbo.PHIEU_KIEM_BTP_ITEM item ON item.Id=lot.BtpItemId
+                        WHERE item.PhieuKiemId=@PhieuKiemId;
+
+                        DECLARE @BypassedAt DATETIME2=SYSDATETIME();
+                        MERGE dbo.PhieuKiem_CustomFields AS target
+                        USING (
+                            SELECT @PhieuKiemId AS PhieuKiemId,N'SxbtKhoBypassed' AS FieldName,N'1' AS FieldValue
+                            UNION ALL
+                            SELECT @PhieuKiemId,N'SxbtKhoBypassedBy',CONVERT(NVARCHAR(50),@UserId)
+                            UNION ALL
+                            SELECT @PhieuKiemId,N'SxbtKhoBypassedAt',CONVERT(NVARCHAR(30),@BypassedAt,126)
+                        ) AS source
+                        ON target.PhieuKiemId=source.PhieuKiemId AND target.FieldName=source.FieldName
+                        WHEN MATCHED THEN UPDATE SET FieldValue=source.FieldValue
+                        WHEN NOT MATCHED THEN
+                            INSERT(PhieuKiemId,FieldName,FieldValue)
+                            VALUES(source.PhieuKiemId,source.FieldName,source.FieldValue);
+
+                        UPDATE dbo.PHIEU_KIEM
+                        SET TrangThai=N'CHO_SXBT_XAC_NHAN'
+                        WHERE Id=@PhieuKiemId AND LoaiKiemId=4 AND KetLuan=N'KHONG_DAT';
+                    `);
+            }
+
+            await transaction.commit();
+            transaction = null;
+
+            const rejected = ketLuan === 'KHONG_DAT';
+            res.json({
+                success: true,
+                nextStatus: rejected ? 'CHO_SXBT_XAC_NHAN' : 'CHO_KHO_XAC_NHAN',
+                message: rejected
+                    ? 'Hoàn tất phiếu SXBT không đạt. Phiếu đang chờ SXBT xác nhận; số lượng nhập Kho là 0.'
+                    : 'Hoàn tất phiếu kiểm SXBT thành công. Chờ Kho xác nhận số lượng.'
+            });
 
         } catch (err) {
+            if (transaction) {
+                try { await transaction.rollback(); } catch (_) { /* transaction có thể đã rollback trong stored procedure */ }
+            }
             console.error('SXBT Complete error:', err);
-            res.status(500).json({ message: 'Hoàn tất phiếu kiểm SXBT thất bại' });
+            res.status(500).json({ message: err.message || 'Hoàn tất phiếu kiểm SXBT thất bại' });
         }
     }
 );
@@ -4565,6 +4660,7 @@ router.post(
             await new sql.Request(transaction)
                 .input('OriginalPhieuKiemId', sql.Int, row.PassedPhieuKiemId || phieuKiemId)
                 .input('RejectedPhieuKiemId', sql.Int, row.RejectedPhieuKiemId)
+                .input('UserId', sql.Int, req.user.userId)
                 .query(`
                     UPDATE rejected
                     SET
@@ -4624,6 +4720,35 @@ router.post(
                         INNER JOIN matched_item
                             ON matched_item.BtpItemId = item.Id AND matched_item.rn = 1;
                     END;
+
+                    UPDATE lot
+                    SET lot.SoLuongKhoXacNhan=0,
+                        lot.KhoXacNhanBy=NULL,
+                        lot.KhoXacNhanAt=NULL
+                    FROM dbo.PHIEU_KIEM_BTP_ITEM_LOT lot
+                    JOIN dbo.PHIEU_KIEM_BTP_ITEM item ON item.Id=lot.BtpItemId
+                    WHERE item.PhieuKiemId=@RejectedPhieuKiemId;
+
+                    DECLARE @BypassedAt DATETIME2=SYSDATETIME();
+                    MERGE dbo.PhieuKiem_CustomFields AS target
+                    USING (
+                        SELECT @RejectedPhieuKiemId AS PhieuKiemId,N'SxbtKhoBypassed' AS FieldName,N'1' AS FieldValue
+                        UNION ALL
+                        SELECT @RejectedPhieuKiemId,N'SxbtKhoBypassedBy',CONVERT(NVARCHAR(50),@UserId)
+                        UNION ALL
+                        SELECT @RejectedPhieuKiemId,N'SxbtKhoBypassedAt',CONVERT(NVARCHAR(30),@BypassedAt,126)
+                    ) AS source
+                    ON target.PhieuKiemId=source.PhieuKiemId AND target.FieldName=source.FieldName
+                    WHEN MATCHED THEN UPDATE SET FieldValue=source.FieldValue
+                    WHEN NOT MATCHED THEN
+                        INSERT(PhieuKiemId,FieldName,FieldValue)
+                        VALUES(source.PhieuKiemId,source.FieldName,source.FieldValue);
+
+                    UPDATE dbo.PHIEU_KIEM
+                    SET TrangThai=N'CHO_SXBT_XAC_NHAN'
+                    WHERE Id=@RejectedPhieuKiemId
+                      AND LoaiKiemId=4
+                      AND KetLuan=N'KHONG_DAT';
                 `);
 
             await transaction.commit();

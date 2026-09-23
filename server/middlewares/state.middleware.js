@@ -1,5 +1,5 @@
 const sql = require('mssql');
-const { poolPromise } = require('../db');
+const { poolPromise } = require('../databaseContext');
 
 const checkState = ({ table, idField, stateField, allowedStates }) => {
     return async (req, res, next) => {

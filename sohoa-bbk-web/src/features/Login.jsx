@@ -14,7 +14,9 @@ import {
     FormControlLabel,
     Divider,
     Fade,
-    Grow
+    Grow,
+    ToggleButton,
+    ToggleButtonGroup
 } from '@mui/material';
 import {
     Visibility,
@@ -24,8 +26,9 @@ import {
     Login as LoginIcon,
     FactoryOutlined
 } from '@mui/icons-material';
-import { login } from '../utils/auth';
+import { isAuthenticated, login } from '../utils/auth';
 import { useNavigate } from 'react-router-dom';
+import { getTenant, setTenant, TENANTS } from '../config/tenant';
 
 export default function Login() {
     const navigate = useNavigate();
@@ -35,9 +38,14 @@ export default function Login() {
     const [rememberMe, setRememberMe] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [tenant, setSelectedTenant] = useState(getTenant());
 
     // Load saved credentials on mount
     useEffect(() => {
+        if (isAuthenticated()) {
+            navigate(getTenant() === TENANTS.PLP ? '/phat-long-phuoc' : '/phieu-kiem', { replace: true });
+            return;
+        }
         const savedUsername = localStorage.getItem('rememberedUsername');
         const savedPassword = localStorage.getItem('rememberedPassword');
         if (savedUsername) {
@@ -47,7 +55,7 @@ export default function Login() {
         if (savedPassword) {
             setPassword(savedPassword);
         }
-    }, []);
+    }, [navigate]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -64,8 +72,9 @@ export default function Login() {
                 localStorage.removeItem('rememberedPassword');
             }
 
-            await login(username, password, rememberMe);
-            navigate('/phieu-kiem');
+            setTenant(tenant, rememberMe);
+            await login(username, password, rememberMe, tenant);
+            navigate(tenant === TENANTS.PLP ? '/phat-long-phuoc' : '/phieu-kiem');
         } catch (err) {
             setError(
                 err.response?.data?.message || 'Tên đăng nhập hoặc mật khẩu không đúng'
@@ -216,6 +225,15 @@ export default function Login() {
                     </Fade>
 
                     <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
+                        <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>Đơn vị</Typography>
+                        <ToggleButtonGroup
+                            exclusive fullWidth value={tenant}
+                            onChange={(_event, value) => value && setSelectedTenant(value)}
+                            sx={{ mb: 2.5 }}
+                        >
+                            <ToggleButton value={TENANTS.Z76}>Z76</ToggleButton>
+                            <ToggleButton value={TENANTS.PLP}>Phát Long Phước</ToggleButton>
+                        </ToggleButtonGroup>
                         <TextField
                             label="Tên đăng nhập"
                             fullWidth

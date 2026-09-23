@@ -800,6 +800,7 @@ export default function TrenChuyenDetail() {
                     phieuId={id}
                     gioKiem={editingHour}
                     slots={slots}
+                    productName={productName === "---" ? "" : productName}
                     onClose={() => setSlotEditorOpen(false)}
                     onSaved={() => loadData({ background: true })}
                 />

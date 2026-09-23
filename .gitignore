@@ -1,6 +1,7 @@
 node_modules
 
 server/.env
+server/.env.plp
 server/db.js
 server/uploads
 server/private-uploads
@@ -9,16 +10,5 @@ dist/
 build/
 
 *.sql
-!server/sql/migrations/20260904_sxbt_level_c_remove_b7.sql
-!server/sql/migrations/20260904_sxbt_level_c_remove_b7.rollback.sql
-!server/sql/migrations/20260907_doi_tra_phoi_loi_kph_parallel.sql
-!server/sql/migrations/20260907_doi_tra_phoi_loi_kph_parallel.rollback.sql
-!server/sql/migrations/20260908_doi_tra_phoi_loi_external_responsible_department.sql
-!server/sql/migrations/20260908_doi_tra_phoi_loi_external_responsible_department.rollback.sql
-!server/sql/migrations/20260916_dong_cont_unlimited_lot.sql
-!server/sql/migrations/20260916_dong_cont_unlimited_lot.rollback.sql
-!server/sql/migrations/20260921_incoming_retest_flow.sql
-!server/sql/migrations/20260921_incoming_retest_flow.rollback.sql
-!server/sql/reports/phieu_kiem_bien_ban_loi_nam_moc.sql
 
 *.xlsx

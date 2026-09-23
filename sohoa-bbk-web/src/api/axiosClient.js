@@ -1,14 +1,17 @@
 import axios from 'axios';
 import { getToken, removeToken } from '../utils/auth';
+import { getApiBaseUrl, getTenant } from '../config/tenant';
+
 const axiosClient = axios.create({
-    baseURL: "https://z76api.z76.vn/api",
-    // baseURL: "http://localhost:5001/api",
     timeout: 15000
 });
 
 // Gắn token vào header
 axiosClient.interceptors.request.use(
     (config) => {
+        const tenant = getTenant();
+        config.baseURL = getApiBaseUrl(tenant);
+        config.headers['X-App-Tenant'] = tenant;
         const token = getToken();
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;

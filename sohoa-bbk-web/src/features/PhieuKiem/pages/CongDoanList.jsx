@@ -13,6 +13,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { createCongDoanPhieu, getCongDoanPhieuList } from "../../../api/phieuKiem.api";
 import { getBoPhan } from "../../../api/bienBan.api";
 import { getCurrentUser } from "../../../utils/auth";
+import { getTenant, isPlpTenant } from '../../../config/tenant';
 
 const today = () => {
     const date = new Date();
@@ -24,14 +25,14 @@ const statusMeta = {
     DANG_KIEM: ["Đang kiểm", "warning"], CHO_TBP_DUYET: ["Chờ TBP duyệt", "secondary"],
     HOAN_TAT: ["Hoàn tất", "success"]
 };
-const LIST_DATA_CACHE_KEY = "phieu-kiem-cong-doan:list-data";
+const listDataCacheKey = () => `phieu-kiem-cong-doan:list-data:${getTenant()}`;
 const readCachedRows = () => {
     try {
-        const value = sessionStorage.getItem(LIST_DATA_CACHE_KEY);
+        const value = sessionStorage.getItem(listDataCacheKey());
         const parsed = value ? JSON.parse(value) : null;
         return Array.isArray(parsed) ? parsed : null;
     } catch {
-        sessionStorage.removeItem(LIST_DATA_CACHE_KEY);
+        sessionStorage.removeItem(listDataCacheKey());
         return null;
     }
 };
@@ -78,7 +79,7 @@ export default function CongDoanList() {
             const response = await getCongDoanPhieuList();
             const nextRows = response.data || [];
             setRows(nextRows);
-            sessionStorage.setItem(LIST_DATA_CACHE_KEY, JSON.stringify(nextRows));
+            sessionStorage.setItem(listDataCacheKey(), JSON.stringify(nextRows));
         } catch (error) {
             window.alert(error.response?.data?.message || "Không tải được danh sách phiếu công đoạn.");
         } finally {
@@ -88,7 +89,7 @@ export default function CongDoanList() {
     useEffect(() => {
         load({ background: Boolean(cachedRows) });
         getBoPhan().then((response) => setDepartments(
-            (response.data || []).filter((item) =>
+            (response.data || []).filter((item) => isPlpTenant() ||
                 String(item.TenBoPhan || item.Ten_BoPhan || "").toLocaleLowerCase("vi").includes("phân xưởng")
             )
         )).catch(() => setDepartments([]));

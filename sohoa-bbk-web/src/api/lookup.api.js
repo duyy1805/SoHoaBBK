@@ -1,10 +1,8 @@
 import axiosClient from "./axiosClient";
+import { getAssetUrl as resolveAssetUrl } from '../config/tenant';
 
 export const getAssetUrl = (url) => {
-    if (!url) return "";
-    if (/^https?:\/\//i.test(url)) return url;
-    const apiBase = axiosClient.defaults.baseURL || "";
-    return `${apiBase.replace(/\/api\/?$/, "")}${url.startsWith("/") ? url : `/${url}`}`;
+    return resolveAssetUrl(url);
 };
 
 /* =====================================================

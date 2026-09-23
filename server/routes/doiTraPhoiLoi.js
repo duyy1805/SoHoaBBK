@@ -1,6 +1,6 @@
 const express = require('express');
 const sql = require('mssql');
-const { poolPromise } = require('../db');
+const { poolPromise } = require('../databaseContext');
 const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
 const requireExactPermission = require('../middlewares/exactPermission.middleware');

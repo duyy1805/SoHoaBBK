@@ -388,9 +388,14 @@ export default function SxbtDetail() {
         try {
             setLoadingAction(true);
             setActionNotice(null);
-            await completeSxbt(id, completionConclusion);
+            const response = await completeSxbt(id, completionConclusion);
             await loadData({ background: true });
-            setActionNotice({ type: "success", message: "Hoàn tất phiếu SXBT thành công. Phiếu đã chuyển sang bước Kho xác nhận số lượng." });
+            setActionNotice({
+                type: "success",
+                message: response.data?.message || (completionConclusion === "KHONG_DAT"
+                    ? "Phiếu đang chờ SXBT xác nhận; số lượng nhập Kho là 0."
+                    : "Phiếu đã chuyển sang bước Kho xác nhận số lượng.")
+            });
         } catch (err) {
             setActionNotice({
                 type: "error",
@@ -431,7 +436,10 @@ export default function SxbtDetail() {
     };
 
     const handleConfirmSxbt = async () => {
-        if (!window.confirm("Xác nhận hoàn tất phiếu SXBT sau khi Kho đã xác nhận số lượng?")) return;
+        const confirmMessage = phieu?.KetLuan === "KHONG_DAT"
+            ? "Xác nhận hoàn tất phiếu SXBT không đạt với số lượng nhập Kho bằng 0?"
+            : "Xác nhận hoàn tất phiếu SXBT sau khi Kho đã xác nhận số lượng?";
+        if (!window.confirm(confirmMessage)) return;
 
         try {
             setLoadingAction(true);

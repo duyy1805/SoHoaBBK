@@ -19,6 +19,7 @@ import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import AssignmentReturnIcon from '@mui/icons-material/AssignmentReturn';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { canManageUsers, getCurrentUser } from '../../utils/auth';
+import { isPlpTenant } from '../../config/tenant';
 
 export default function Sidebar({
     collapsed,
@@ -40,8 +41,12 @@ export default function Sidebar({
         || permissions.includes('QUAN_TRI_DM')
         || roles.some((role) => String(role || '').toUpperCase().includes('ADMIN'));
     const workCenterEnabled = import.meta.env.VITE_ENABLE_WORK_CENTER !== 'false';
+    const plp = isPlpTenant();
 
-    const menus = [
+    const menus = (plp ? [
+        { label: 'Phát Long Phước', icon: <AssignmentIcon />, path: '/phat-long-phuoc' },
+        { label: 'Quản lý người dùng', icon: <ManageAccountsIcon />, path: '/quan-ly-nguoi-dung', visible: showUserAdmin }
+    ] : [
         { label: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
         { label: 'Phiếu kiểm', icon: <AssignmentIcon />, path: '/phieu-kiem' },
         { label: 'Đổi trả phôi lỗi', icon: <AssignmentReturnIcon />, path: '/doi-tra-phoi-loi', visible: showDoiTraPhoiLoi },
@@ -50,7 +55,7 @@ export default function Sidebar({
         { label: 'Trung tâm xử lý', icon: <HubOutlinedIcon />, path: '/trung-tam-xu-ly', visible: workCenterEnabled },
         { label: 'Danh mục', icon: <FactoryIcon />, path: '/danh-muc' },
         { label: 'Quản lý người dùng', icon: <ManageAccountsIcon />, path: '/quan-ly-nguoi-dung', visible: showUserAdmin }
-    ].filter((menu) => menu.visible !== false);
+    ]).filter((menu) => menu.visible !== false);
 
     const renderContent = () => (
         <Box
@@ -87,7 +92,7 @@ export default function Sidebar({
                         flexShrink: 0,
                         cursor: 'pointer'
                     }}
-                    onClick={() => navigate('/dashboard')}
+                    onClick={() => navigate(plp ? '/phat-long-phuoc' : '/dashboard')}
                 >
                     <FactoryIcon sx={{ color: '#fff', fontSize: 20 }} />
                 </Box>
@@ -112,7 +117,7 @@ export default function Sidebar({
                                 lineHeight: 1.2
                             }}
                         >
-                            Số hoá BBK
+                            {plp ? 'Phát Long Phước' : 'Số hoá BBK'}
                         </Typography>
 
                         <Typography

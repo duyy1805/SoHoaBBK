@@ -9,7 +9,9 @@
   "scripts": {
     "test": "node --test",
     "server": "nodemon index.js",
-    "import:sxbt-defects": "node scripts/import-sxbt-defects.js"
+    "import:sxbt-defects": "node scripts/import-sxbt-defects.js",
+    "migrate": "node scripts/run-migrations.js",
+    "seed:plp-defects": "node scripts/seed-plp-defects.js"
   },
   "dependencies": {
     "argon2": "^0.44.0",

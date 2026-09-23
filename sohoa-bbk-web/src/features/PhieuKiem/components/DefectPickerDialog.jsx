@@ -10,6 +10,7 @@ import {
     DialogContent,
     DialogTitle,
     InputAdornment,
+    MenuItem,
     Stack,
     TextField,
     Typography
@@ -20,7 +21,22 @@ import WarningAmberOutlinedIcon from "@mui/icons-material/WarningAmberOutlined";
 import { getAssetUrl } from "../../../api/lookup.api";
 import ResponsiveInspectionDialog from "./ResponsiveInspectionDialog";
 
-const normalize = (value) => String(value || "").trim().toLocaleLowerCase("vi");
+const normalize = (value) => String(value || "")
+    .trim()
+    .toLocaleLowerCase("vi")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d");
+
+const distinctOptions = (defects, field) => {
+    const values = new Map();
+    defects.forEach((defect) => {
+        const value = String(defect?.[field] || "").trim();
+        const key = normalize(value);
+        if (key && !values.has(key)) values.set(key, value);
+    });
+    return [...values.values()].sort((left, right) => left.localeCompare(right, "vi"));
+};
 
 const defectColor = (type) => {
     const normalized = String(type || "").toUpperCase();
@@ -51,29 +67,54 @@ export default function DefectPickerDialog({
     disabled = false,
     buttonLabel = "Chọn lỗi",
     title = "Chọn lỗi",
-    fullWidth = false
+    fullWidth = false,
+    productName = ""
 }) {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState("");
+    const [selectedProduct, setSelectedProduct] = useState("");
+    const [selectedCategory, setSelectedCategory] = useState("");
+
+    const productOptions = useMemo(() => distinctOptions(defects, "TenSanPham"), [defects]);
+    const categoryOptions = useMemo(() => distinctOptions(defects, "ChungLoai"), [defects]);
+    const hasFilters = Boolean(search.trim() || selectedProduct || selectedCategory);
 
     const filteredDefects = useMemo(() => {
         const keyword = normalize(search);
-        if (!keyword) return defects;
-        return defects.filter((defect) => [
-            defect.MaLoi,
-            defect.TenLoi,
-            defect.MoTa,
-            defect.DefectType,
-            defect.TenSanPham,
-            defect.ChungLoai,
-            defect.PhamViApDung,
-            defect.GhiChu
-        ].some((value) => normalize(value).includes(keyword)));
-    }, [defects, search]);
+        return defects.filter((defect) => {
+            if (selectedProduct && normalize(defect.TenSanPham) !== normalize(selectedProduct)) return false;
+            if (selectedCategory && normalize(defect.ChungLoai) !== normalize(selectedCategory)) return false;
+            if (!keyword) return true;
+            return [
+                defect.MaLoi,
+                defect.TenLoi,
+                defect.MoTa,
+                defect.DefectType,
+                defect.TenSanPham,
+                defect.ChungLoai,
+                defect.PhamViApDung,
+                defect.GhiChu
+            ].some((value) => normalize(value).includes(keyword));
+        });
+    }, [defects, search, selectedCategory, selectedProduct]);
+
+    const resetFilters = () => {
+        setSearch("");
+        setSelectedProduct("");
+        setSelectedCategory("");
+    };
+
+    const handleOpen = () => {
+        const matchedProduct = productOptions.find((option) => normalize(option) === normalize(productName));
+        setSearch("");
+        setSelectedCategory("");
+        setSelectedProduct(matchedProduct || "");
+        setOpen(true);
+    };
 
     const handleClose = () => {
         setOpen(false);
-        setSearch("");
+        resetFilters();
     };
 
     const handleSelect = (defect) => {
@@ -88,7 +129,7 @@ export default function DefectPickerDialog({
                 startIcon={<AddCircleOutlineIcon />}
                 disabled={disabled}
                 fullWidth={fullWidth}
-                onClick={() => setOpen(true)}
+                onClick={handleOpen}
                 sx={{ minHeight: 44 }}
             >
                 {buttonLabel}
@@ -106,7 +147,7 @@ export default function DefectPickerDialog({
                         fullWidth
                         value={search}
                         onChange={(event) => setSearch(event.target.value)}
-                        placeholder="Tìm mã lỗi / tên lỗi..."
+                        placeholder="Tìm mã lỗi, tên lỗi, sản phẩm, chủng loại…"
                         slotProps={{
                             input: {
                                 startAdornment: (
@@ -118,6 +159,42 @@ export default function DefectPickerDialog({
                         }}
                         sx={{ mb: 2 }}
                     />
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} sx={{ mb: 1.5 }}>
+                        <TextField
+                            select
+                            fullWidth
+                            size="small"
+                            label="Sản phẩm"
+                            value={selectedProduct}
+                            onChange={(event) => setSelectedProduct(event.target.value)}
+                        >
+                            <MenuItem value="">Tất cả sản phẩm</MenuItem>
+                            {productOptions.map((option) => (
+                                <MenuItem key={option} value={option}>{option}</MenuItem>
+                            ))}
+                        </TextField>
+                        <TextField
+                            select
+                            fullWidth
+                            size="small"
+                            label="Chủng loại"
+                            value={selectedCategory}
+                            onChange={(event) => setSelectedCategory(event.target.value)}
+                        >
+                            <MenuItem value="">Tất cả chủng loại</MenuItem>
+                            {categoryOptions.map((option) => (
+                                <MenuItem key={option} value={option}>{option}</MenuItem>
+                            ))}
+                        </TextField>
+                    </Stack>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+                        <Typography variant="body2" color="text.secondary">
+                            {filteredDefects.length} kết quả
+                        </Typography>
+                        {hasFilters && (
+                            <Button size="small" onClick={resetFilters}>Xóa bộ lọc</Button>
+                        )}
+                    </Stack>
                     {filteredDefects.length === 0 ? (
                         <Box sx={{ py: 6, textAlign: "center", color: "text.secondary" }}>
                             <SearchIcon sx={{ fontSize: 44, color: "grey.400" }} />
@@ -156,9 +233,14 @@ export default function DefectPickerDialog({
                                                 </Typography>
                                             )}
                                             {(defect.TenSanPham || defect.ChungLoai) && (
-                                                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
-                                                    {[defect.TenSanPham, defect.ChungLoai].filter(Boolean).join(" - ")}
-                                                </Typography>
+                                                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                                                    {defect.TenSanPham && (
+                                                        <Chip size="small" variant="outlined" label={`Sản phẩm: ${defect.TenSanPham}`} />
+                                                    )}
+                                                    {defect.ChungLoai && (
+                                                        <Chip size="small" variant="outlined" color="secondary" label={`Chủng loại: ${defect.ChungLoai}`} />
+                                                    )}
+                                                </Stack>
                                             )}
                                         </CardContent>
                                         {images.length > 0 && (

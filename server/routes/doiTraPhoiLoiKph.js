@@ -1,6 +1,6 @@
 const express = require('express');
 const sql = require('mssql');
-const { poolPromise } = require('../db');
+const { poolPromise } = require('../databaseContext');
 const authenticateToken = require('../middlewares/auth.middleware');
 const { canLeadDepartment, getManagedDepartmentIds } = require('../utils/managedDepartments');
 const { canActAsExecutive, normalizeExecutiveDecision } = require('../utils/executiveApproval');

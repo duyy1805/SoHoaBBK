@@ -1,4 +1,5 @@
 import axiosClient from '../api/axiosClient';
+import { clearTenant, getTenant, setTenant } from '../config/tenant';
 
 /* ================================
    TOKEN STORAGE
@@ -30,7 +31,9 @@ export const removeToken = () => {
    LOGIN
    ================================ */
 
-export const login = async (username, password, rememberMe = true) => {
+export const login = async (username, password, rememberMe = true, tenant = getTenant()) => {
+    removeToken();
+    setTenant(tenant, rememberMe);
     const res = await axiosClient.post('/auth/login', {
         username,
         password
@@ -153,5 +156,6 @@ export const canManageCheckCatalog = (user = getCurrentUser()) => {
 
 export const logout = () => {
     removeToken();
+    clearTenant();
     window.location.href = '/login';
 };

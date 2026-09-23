@@ -36,12 +36,24 @@ import { deletePhieuKiem, getPhieuKiem } from "../../../api/phieuKiem.api";
 import { hasPermission } from "../../../utils/auth";
 
 const VALID_PAGE_SIZES = [5, 10, 25, 50];
+const formatDateInput = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+};
+const defaultToDate = formatDateInput(new Date());
+const defaultFromDate = (() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 29);
+    return formatDateInput(date);
+})();
 const parsePageParam = (value) => {
     const parsed = Number.parseInt(value, 10);
     return Number.isInteger(parsed) && parsed > 0 ? parsed - 1 : 0;
 };
 
-export default function PhieuKiemList() {
+export default function PhieuKiemList({ fixedTypeId = null, title = 'Danh sách Phiếu kiểm', createType = null }) {
     const [searchParams, setSearchParams] = useSearchParams();
     const location = useLocation();
     const [data, setData] = useState([]);
@@ -53,6 +65,8 @@ export default function PhieuKiemList() {
     const [filterLoaiKiem, setFilterLoaiKiem] = useState(() => searchParams.get("type") || "");
     const [filterNguoiKiem, setFilterNguoiKiem] = useState(() => searchParams.get("inspector") || "");
     const [filterKetLuan, setFilterKetLuan] = useState(() => searchParams.get("result") || "");
+    const [fromDate, setFromDate] = useState(() => searchParams.get("from") || defaultFromDate);
+    const [toDate, setToDate] = useState(() => searchParams.get("to") || defaultToDate);
     const [filterPopover, setFilterPopover] = useState({ field: "", anchorEl: null });
     const [searchText, setSearchText] = useState(() => searchParams.get("q") || "");
     const [page, setPage] = useState(() => parsePageParam(searchParams.get("page")));
@@ -79,10 +93,20 @@ export default function PhieuKiemList() {
     }, [setSearchParams]);
 
     useEffect(() => {
+        if (searchParams.has("from") && searchParams.has("to")) return;
+        updateQuery({
+            from: searchParams.get("from") || defaultFromDate,
+            to: searchParams.get("to") || defaultToDate
+        });
+    }, [searchParams, updateQuery]);
+
+    useEffect(() => {
         setFilterStatus(searchParams.get("status") || "");
         setFilterLoaiKiem(searchParams.get("type") || "");
         setFilterNguoiKiem(searchParams.get("inspector") || "");
         setFilterKetLuan(searchParams.get("result") || "");
+        setFromDate(searchParams.get("from") || defaultFromDate);
+        setToDate(searchParams.get("to") || defaultToDate);
         setSearchText(searchParams.get("q") || "");
         setPage(parsePageParam(searchParams.get("page")));
         const pageSize = Number(searchParams.get("pageSize"));
@@ -96,21 +120,21 @@ export default function PhieuKiemList() {
         return `/phieu-kiem/${item.Id}`;
     };
 
-    useEffect(() => {
-        loadData();
-    }, []);
-
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         try {
             setLoading(true);
-            const res = await getPhieuKiem();
+            const res = await getPhieuKiem({ from: fromDate, to: toDate });
             setData(res.data || []);
         } catch (err) {
             console.error(err);
         } finally {
             setLoading(false);
         }
-    };
+    }, [fromDate, toDate]);
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
 
     const renderKetLuanChip = (ketLuan) => {
         if (ketLuan === "DAT")
@@ -176,6 +200,7 @@ export default function PhieuKiemList() {
     // Xử lý bộ lọc đa trường bằng useMemo
     const filteredData = useMemo(() => {
         return data.filter((item) => {
+            if (fixedTypeId && Number(item.LoaiKiemId) !== Number(fixedTypeId)) return false;
             if (!includesFilter(getLoaiKiemLabel(item), filterLoaiKiem)) return false;
             if (!includesFilter(
                 `${item.TenNguoiKiem || ""} ${getDepartmentLabel(item)}`,
@@ -207,7 +232,7 @@ export default function PhieuKiemList() {
 
             return true;
         });
-    }, [data, filterLoaiKiem, filterNguoiKiem, filterKetLuan, filterStatus, searchText]);
+    }, [data, fixedTypeId, filterLoaiKiem, filterNguoiKiem, filterKetLuan, filterStatus, searchText]);
 
     // Xử lý dữ liệu phân trang
     const paginatedData = useMemo(() => {
@@ -252,6 +277,22 @@ export default function PhieuKiemList() {
         setter(value);
         setPage(0);
         updateQuery({ [queryKey]: value, page: 1 });
+    };
+
+    const updateFromDate = (value) => {
+        const nextToDate = value > toDate ? value : toDate;
+        setFromDate(value);
+        setToDate(nextToDate);
+        setPage(0);
+        updateQuery({ from: value, to: nextToDate, page: 1 });
+    };
+
+    const updateToDate = (value) => {
+        const nextFromDate = value < fromDate ? value : fromDate;
+        setFromDate(nextFromDate);
+        setToDate(value);
+        setPage(0);
+        updateQuery({ from: nextFromDate, to: value, page: 1 });
     };
 
     const openDetail = (item) => {
@@ -395,7 +436,7 @@ export default function PhieuKiemList() {
                             WebkitTextFillColor: "transparent"
                         }}
                     >
-                        Danh sách Phiếu kiểm
+                        {title}
                     </Typography>
 
                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -409,7 +450,7 @@ export default function PhieuKiemList() {
                                 size="small"
                                 variant="contained"
                                 startIcon={<AddIcon />}
-                                onClick={() => navigate("/phieu-kiem/create")}
+                                onClick={() => navigate(`/phieu-kiem/create${createType ? `?type=${createType}` : ''}`)}
                                 sx={{ boxShadow: "0 4px 14px rgba(99, 102, 241, 0.3)" }}
                             >
                                 Phân bổ kiểm
@@ -454,6 +495,24 @@ export default function PhieuKiemList() {
                         <MenuItem value="CHO_SXBT_XAC_NHAN">Chờ SXBT xác nhận</MenuItem>
                         <MenuItem value="HOAN_TAT">Hoàn tất</MenuItem>
                     </TextField>
+                    <TextField
+                        type="date"
+                        size="small"
+                        label="Từ ngày"
+                        value={fromDate}
+                        onChange={(event) => updateFromDate(event.target.value)}
+                        slotProps={{ inputLabel: { shrink: true }, htmlInput: { max: toDate } }}
+                        sx={{ width: { xs: "100%", sm: 165 }, bgcolor: "background.paper", borderRadius: 1 }}
+                    />
+                    <TextField
+                        type="date"
+                        size="small"
+                        label="Đến ngày"
+                        value={toDate}
+                        onChange={(event) => updateToDate(event.target.value)}
+                        slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: fromDate, max: defaultToDate } }}
+                        sx={{ width: { xs: "100%", sm: 165 }, bgcolor: "background.paper", borderRadius: 1 }}
+                    />
                 </Stack>
 
                 {/* Table Data Section */}
@@ -480,6 +539,9 @@ export default function PhieuKiemList() {
                                     <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
                                         <Box sx={{ minWidth: 0 }}>
                                             <Typography color="primary" fontWeight={800}>{item.SoPhieu}</Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                                {item.CreatedAt ? new Date(item.CreatedAt).toLocaleDateString("vi-VN") : ""}
+                                            </Typography>
                                             <Typography fontWeight={700}>{item.TenSanPham || "—"}</Typography>
                                             <Typography variant="caption" color="text.secondary">{item.MaSanPham || ""}</Typography>
                                             {getSxbtProductionUnitLabel(item) && (
@@ -615,6 +677,9 @@ export default function PhieuKiemList() {
                                                     sx={{ fontSize: 12.75, lineHeight: 1.35, overflowWrap: "anywhere" }}
                                                 >
                                                     {item.SoPhieu}
+                                                </Typography>
+                                                <Typography variant="caption" color="text.secondary" display="block">
+                                                    {item.CreatedAt ? new Date(item.CreatedAt).toLocaleDateString("vi-VN") : ""}
                                                 </Typography>
                                                 {item.IsIncomingRetest ? (
                                                     <Chip

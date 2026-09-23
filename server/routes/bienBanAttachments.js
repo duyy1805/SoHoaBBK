@@ -6,11 +6,12 @@ const multer = require("multer");
 const sql = require("mssql");
 const JSZip = require("jszip");
 
-const { poolPromise } = require("../db");
+const { poolPromise } = require("../databaseContext");
 const authenticateToken = require("../middlewares/auth.middleware");
+const { privateUploadRoot } = require('../config/storage');
 
 const router = express.Router();
-const attachmentDir = path.join(__dirname, "..", "private-uploads", "bien-ban");
+const attachmentDir = path.join(privateUploadRoot, "bien-ban");
 const maxFileSize = 20 * 1024 * 1024;
 const maxFilesPerRequest = 10;
 

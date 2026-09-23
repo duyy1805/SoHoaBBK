@@ -1,8 +1,9 @@
 const fs = require("fs/promises");
 const path = require("path");
 const sql = require("mssql");
+const { privateUploadRoot } = require('../config/storage');
 
-const signatureDirectory = path.join(__dirname, "..", "private-uploads", "signatures");
+const signatureDirectory = path.join(privateUploadRoot, "signatures");
 
 const detectImageMimeType = (buffer) => {
     if (!Buffer.isBuffer(buffer) || !buffer.length) return null;

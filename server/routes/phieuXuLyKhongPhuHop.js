@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const sql = require("mssql");
 
-const { poolPromise } = require("../db");
+const { poolPromise } = require("../databaseContext");
 const authenticateToken = require("../middlewares/auth.middleware");
 const requireExactPermission = require("../middlewares/exactPermission.middleware");
 const { getManagedDepartmentIds, canLeadDepartment } = require("../utils/managedDepartments");

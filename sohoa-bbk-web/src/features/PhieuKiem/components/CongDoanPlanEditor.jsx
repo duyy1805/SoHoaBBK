@@ -372,6 +372,7 @@ export default function CongDoanPlanEditor({ open, phieuId, sourcePlan, onClose,
                             && row.tenCongNhan.trim().toLocaleLowerCase("vi") === worker.trim().toLocaleLowerCase("vi")
                         ))}
                         onSelect={addDefect}
+                        productName={plan.TenSanPham || ""}
                         disabled={saving || (plan.lots.length > 0 && !selectedLotKey)}
                         buttonLabel={plan.lots.length > 0 && !selectedLotKey ? "Chọn Lot trước khi chọn lỗi" : "Chọn lỗi"}
                         fullWidth

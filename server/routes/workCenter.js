@@ -1,7 +1,7 @@
 const express = require("express");
 const sql = require("mssql");
 
-const { poolPromise } = require("../db");
+const { poolPromise } = require("../databaseContext");
 const authenticateToken = require("../middlewares/auth.middleware");
 const { getManagedDepartmentIds } = require("../utils/managedDepartments");
 const { loadBienBanListSummaries, mergeBienBanListSummary } = require("../utils/bienBanListSummary");

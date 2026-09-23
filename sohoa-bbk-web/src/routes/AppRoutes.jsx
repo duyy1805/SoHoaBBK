@@ -23,10 +23,13 @@ import WorkCenterPage from '../features/WorkCenter/WorkCenterPage';
 import DoiTraPhoiLoiList from '../features/DoiTraPhoiLoi/pages/DoiTraPhoiLoiList';
 import DoiTraPhoiLoiCreate from '../features/DoiTraPhoiLoi/pages/DoiTraPhoiLoiCreate';
 import DoiTraPhoiLoiDetail from '../features/DoiTraPhoiLoi/pages/DoiTraPhoiLoiDetail';
+import PhatLongPhuocWorkspace from '../features/PhieuKiem/pages/PhatLongPhuocWorkspace';
+import { isPlpTenant } from '../config/tenant';
 
 const workCenterEnabled = import.meta.env.VITE_ENABLE_WORK_CENTER !== 'false';
 
 export default function AppRoutes() {
+    const plp = isPlpTenant();
     return (
         <Routes>
             {/* Public */}
@@ -35,27 +38,28 @@ export default function AppRoutes() {
             {/* Protected */}
             <Route element={<ProtectedRoute />}>
                 <Route element={<AppLayout />}>
-                    <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/phieu-kiem" element={<PhieuKiemList />} />
+                    <Route path="/dashboard" element={plp ? <Navigate to="/phat-long-phuoc" replace /> : <Dashboard />} />
+                    <Route path="/phieu-kiem" element={plp ? <Navigate to="/phat-long-phuoc" replace /> : <PhieuKiemList />} />
+                    <Route path="/phat-long-phuoc" element={plp ? <PhatLongPhuocWorkspace /> : <Navigate to="/phieu-kiem" replace />} />
                     <Route path="/phieu-kiem/cong-doan" element={<CongDoanList />} />
                     <Route path="/phieu-kiem/cong-doan/:id" element={<CongDoanDetail />} />
-                    <Route path="/phieu-kiem/sxbt/:id" element={<SxbtDetail />} />
+                    <Route path="/phieu-kiem/sxbt/:id" element={plp ? <Navigate to="/phat-long-phuoc" replace /> : <SxbtDetail />} />
                     <Route path="/phieu-kiem/cuoi-chuyen/:id" element={<CuoiChuyenDetail />} />
                     <Route path="/phieu-kiem/tren-chuyen/:id" element={<TrenChuyenDetail />} />
                     <Route path="/phieu-kiem/:id" element={<PhieuKiemDetail />} />
                     <Route path="/phieu-kiem/create" element={<PhieuKiemCreate />} />
-                    <Route path="/doi-tra-phoi-loi" element={<DoiTraPhoiLoiList />} />
-                    <Route path="/doi-tra-phoi-loi/create" element={<DoiTraPhoiLoiCreate />} />
-                    <Route path="/doi-tra-phoi-loi/:id" element={<DoiTraPhoiLoiDetail />} />
-                    <Route path="/danh-muc" element={<DanhMucManager />} />
+                    <Route path="/doi-tra-phoi-loi" element={plp ? <Navigate to="/phat-long-phuoc" replace /> : <DoiTraPhoiLoiList />} />
+                    <Route path="/doi-tra-phoi-loi/create" element={plp ? <Navigate to="/phat-long-phuoc" replace /> : <DoiTraPhoiLoiCreate />} />
+                    <Route path="/doi-tra-phoi-loi/:id" element={plp ? <Navigate to="/phat-long-phuoc" replace /> : <DoiTraPhoiLoiDetail />} />
+                    <Route path="/danh-muc" element={plp ? <Navigate to="/phat-long-phuoc" replace /> : <DanhMucManager />} />
                     <Route path="/bien-ban" element={<BienBanList />} />
-                    <Route path="/bien-ban/sxbt/:id" element={<BienBanSxbtDetail />} />
+                    <Route path="/bien-ban/sxbt/:id" element={plp ? <Navigate to="/phat-long-phuoc" replace /> : <BienBanSxbtDetail />} />
                     <Route path="/bien-ban/:id" element={<BienBanDetail />} />
-                    <Route path="/phieu-xu-ly-khong-phu-hop" element={<PhieuXuLyKhongPhuHopList />} />
-                    <Route path="/phieu-xu-ly-khong-phu-hop/:id" element={<PhieuXuLyKhongPhuHopDetail />} />
+                    <Route path="/phieu-xu-ly-khong-phu-hop" element={plp ? <Navigate to="/phat-long-phuoc" replace /> : <PhieuXuLyKhongPhuHopList />} />
+                    <Route path="/phieu-xu-ly-khong-phu-hop/:id" element={plp ? <Navigate to="/phat-long-phuoc" replace /> : <PhieuXuLyKhongPhuHopDetail />} />
                     <Route
                         path="/trung-tam-xu-ly"
-                        element={workCenterEnabled ? <WorkCenterPage /> : <Navigate to="/bien-ban" replace />}
+                        element={!plp && workCenterEnabled ? <WorkCenterPage /> : <Navigate to={plp ? "/phat-long-phuoc" : "/bien-ban"} replace />}
                     />
                     <Route element={<UserAdminRoute />}>
                         <Route path="/quan-ly-nguoi-dung" element={<UserAdminPage />} />
@@ -63,7 +67,7 @@ export default function AppRoutes() {
                 </Route>
             </Route>
 
-            <Route path="*" element={<Navigate to="/dashboard" />} />
+            <Route path="*" element={<Navigate to={isPlpTenant() ? "/phat-long-phuoc" : "/dashboard"} />} />
         </Routes>
     );
 }

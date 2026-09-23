@@ -99,7 +99,7 @@ const validateEntry = (entry) => {
     return "";
 };
 
-export default function TrenChuyenSlotEditor({ open, phieuId, gioKiem, slots = [], onClose, onSaved }) {
+export default function TrenChuyenSlotEditor({ open, phieuId, gioKiem, slots = [], productName = "", onClose, onSaved }) {
     const user = useMemo(() => getCurrentUser(), []);
     const [allSlots, setAllSlots] = useState([]);
     const [slot, setSlot] = useState(null);
@@ -320,6 +320,7 @@ export default function TrenChuyenSlotEditor({ open, phieuId, gioKiem, slots = [
                                     <DefectPickerDialog
                                         defects={catalog.filter((defect) => !entry.defects.some((item) => item.defectId === Number(defect.Id)))}
                                         onSelect={(defect) => addDefect(entryIndex, defect)}
+                                        productName={productName}
                                         disabled={saving}
                                         fullWidth
                                     />

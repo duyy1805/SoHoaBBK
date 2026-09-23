@@ -1,5 +1,6 @@
 import React, { forwardRef, useMemo } from "react";
 import { PrintSignatureImage } from '../../../components/common/PrintSignature';
+import { getTenantBranding } from '../../../config/tenant';
 
 const border = "1px solid #000";
 const cell = {
@@ -169,7 +170,7 @@ const CongDoanPrintTemplate = forwardRef(function CongDoanPrintTemplate(
                             <img src="/logo.png" alt="Công ty 76" style={{ width: "90%", maxHeight: 62, objectFit: "contain" }} />
                         </td>
                         <td style={{ ...cell, borderBottom: "none", fontSize: 11 }}>
-                            CÔNG TY TNHH MỘT THÀNH VIÊN 76
+                            {getTenantBranding().companyName}
                         </td>
                         <td style={{ ...cell, width: "23%", textAlign: "left", paddingLeft: 6 }}>
                             Mã số: BM.03-QT.03-B8

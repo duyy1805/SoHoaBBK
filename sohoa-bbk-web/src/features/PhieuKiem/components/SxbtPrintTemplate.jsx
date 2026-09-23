@@ -70,8 +70,11 @@ export const SxbtPrintTemplate = React.forwardRef(({
     const btpPrintRows = btpItems.flatMap(item =>
         getLotRows(item).map((lotRow, lotIndex) => ({ item, lotRow, lotIndex }))
     );
+    const hasActualQuantity = phieu.SoLuongThucTe !== null &&
+        phieu.SoLuongThucTe !== undefined &&
+        phieu.SoLuongThucTe !== '';
     const actualQuantity = Number(phieu.SoLuongThucTe);
-    const displayedQuantity = Number.isFinite(actualQuantity) && actualQuantity >= 0
+    const displayedQuantity = hasActualQuantity && Number.isFinite(actualQuantity) && actualQuantity >= 0
         ? actualQuantity
         : null;
 

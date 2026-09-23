@@ -1,9 +1,10 @@
 const sql = require("mssql");
 const fs = require("fs");
 const path = require("path");
+const { uploadRoot, privateUploadRoot } = require('../config/storage');
 
-const attachmentDir = path.join(__dirname,"..","private-uploads","bien-ban");
-const uploadDir = path.join(__dirname,"..","uploads");
+const attachmentDir = path.join(privateUploadRoot,"bien-ban");
+const uploadDir = uploadRoot;
 
 const removeBienBanFiles = async (files = []) => {
     const targets=[];

@@ -31,7 +31,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "../../../components/common/ToastContext";
 import StaticSelect from "../../../components/common/StaticSelect";
 
@@ -92,6 +92,7 @@ const getPlanProcessFilterValue = (row = {}) =>
 
 export default function PhieuKiemCreate() {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const { showToast } = useToast();
 
     const [form, setForm] = useState({
@@ -203,6 +204,11 @@ export default function PhieuKiemCreate() {
             ]);
             setLoaiKiemList(lk.data);
             setKcsList(kcs.data);
+            const requestedType = searchParams.get('type');
+            const requestedOption = requestedType
+                ? (lk.data || []).find((item) => item.MaLoai === requestedType)
+                : null;
+            if (requestedOption) handleLoaiKiemSelect(requestedOption);
         } catch (err) {
             console.error(err);
         }

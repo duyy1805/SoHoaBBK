@@ -111,6 +111,10 @@ export default function SxbtDraftEditor({
             label: `${item.TenSanPham || "BTP"} · Lot ${row.SoLotSX || index + 1} · SL ${row.SoLuongNhap || 0}`
         }))
     ), [btpItems]);
+    const selectedLotTarget = useMemo(
+        () => lotTargets.find((item) => item.key === target) || null,
+        [lotTargets, target]
+    );
     const totalSamples = Number(sampleQuantity || 0);
     const effectiveQuantity = actualQuantity === ""
         ? Number(phieu?.SoLuong || 0)
@@ -315,6 +319,7 @@ export default function SxbtDraftEditor({
                         <DefectPickerDialog
                             defects={catalog}
                             onSelect={addDefect}
+                            productName={selectedLotTarget?.item?.TenSanPham || ""}
                             disabled={saving || !target}
                             buttonLabel={!target ? "Chọn BTP/Lot trước" : "Chọn lỗi"}
                             fullWidth

@@ -15,6 +15,10 @@ const authenticateToken = (req, res, next) => {
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
+        if (String(decoded.tenant || 'Z76').toUpperCase() !== req.tenant) {
+            return res.status(403).json({ message: 'Token khong thuoc tenant hien tai' });
+        }
+
         /*
             decoded = {
                 userId,

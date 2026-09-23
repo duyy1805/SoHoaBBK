@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Box } from '@mui/material';
 import { PrintSignatureImage } from '../../../components/common/PrintSignature';
+import { getTenantBranding } from '../../../config/tenant';
 
 export const BienBanPrintTemplate = React.forwardRef(({
     info = {},
@@ -407,7 +408,7 @@ export const BienBanPrintTemplate = React.forwardRef(({
                                                         <img src="/logo.png" alt="Logo Z76" style={{ height: '70px', display: 'block', margin: '0 auto' }} />
                                                     </td>
                                                     <td style={{ ...styles.headerTd, width: '50%', borderBottom: '1px solid #000' }}>
-                                                        <div style={{ fontSize: '14pt' }}>CÔNG TY TNHH MTV 76</div>
+                                                        <div style={{ fontSize: '14pt' }}>{getTenantBranding().companyName}</div>
                                                     </td>
                                                     <td rowSpan={2} style={{ ...styles.headerTd, width: '30%', textAlign: 'left', paddingLeft: '10px' }}>
                                                         <div style={{ fontSize: '11pt' }}>Mã số: BM.01-QT.02-B8</div>

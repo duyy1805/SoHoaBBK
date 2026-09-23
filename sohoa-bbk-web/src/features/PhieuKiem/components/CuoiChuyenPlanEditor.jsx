@@ -266,7 +266,13 @@ export default function CuoiChuyenPlanEditor({ open, phieuId, planId, plans = []
                         </Stack>
                         <TextField label="Ghi chú mốc giờ" multiline minRows={2} value={selectedSlot.ghiChu}
                             onChange={(event) => updateSelectedSlot({ ghiChu: event.target.value })} />
-                        <DefectPickerDialog defects={availableCatalog} onSelect={addDefect} disabled={saving} fullWidth />
+                        <DefectPickerDialog
+                            defects={availableCatalog}
+                            onSelect={addDefect}
+                            productName={plan.TenSanPham || ""}
+                            disabled={saving}
+                            fullWidth
+                        />
                         {selectedSlot.defects.map((row, index) => (
                             <Box key={row.localId} sx={{ border: "1px solid", borderColor: "divider", borderRadius: 2, p: 1.5 }}>
                                 <Stack spacing={1.5}>

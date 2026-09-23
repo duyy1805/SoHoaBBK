@@ -7,13 +7,14 @@ const multer = require("multer");
 const sharp = require("sharp");
 const authenticateToken = require("../middlewares/auth.middleware");
 const { requireUserAdministrator, USER_ADMIN_PERMISSION } = require("../middlewares/userAdmin.middleware");
-const { poolPromise } = require("../db");
+const { poolPromise } = require("../databaseContext");
 const {
     signatureDirectory,
     resolveSignaturePath,
     readSignatureDataUrl
 } = require("../utils/signatureImage");
 const { EXECUTIVE_APPROVAL_PERMISSION } = require("../utils/executiveApproval");
+const { isPlpRequest } = require('../config/tenant');
 
 const router = express.Router();
 router.use(authenticateToken, requireUserAdministrator);
@@ -523,6 +524,7 @@ router.get("/users/:id", async (req, res) => {
 });
 
 router.post("/users", async (req, res) => {
+    if (isPlpRequest(req)) return res.status(403).json({ message: "Tài khoản PLP phải được liên kết từ TAG_System khi đăng nhập" });
     const pool = await poolPromise;
     const transaction = new sql.Transaction(pool);
     try {
