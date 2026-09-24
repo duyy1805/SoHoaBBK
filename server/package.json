@@ -10,6 +10,7 @@
     "test": "node --test",
     "server": "nodemon index.js",
     "import:sxbt-defects": "node scripts/import-sxbt-defects.js",
+    "report:bien-ban-defects": "node scripts/list-bien-ban-defects.js",
     "migrate": "node scripts/run-migrations.js",
     "seed:plp-defects": "node scripts/seed-plp-defects.js"
   },

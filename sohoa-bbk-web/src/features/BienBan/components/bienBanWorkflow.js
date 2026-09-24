@@ -183,7 +183,7 @@ export function buildBienBanWorkflow({
         } : {
             eyebrow: "ĐANG CHỜ",
             title: "Chờ Ban giám đốc xác nhận",
-            description: "Hồ sơ đã được Trưởng bộ phận tạo phiếu xác nhận và đang chờ Ban giám đốc xử lý.",
+            description: "Hồ sơ đã được xác nhận cuối và đang chờ Ban giám đốc xử lý.",
             tone: "info"
         };
     } else if (status === "CHO_THEO_DOI") {

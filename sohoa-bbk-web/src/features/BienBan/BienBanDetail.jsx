@@ -382,9 +382,14 @@ export default function BienBanDetail({ standalone = false }) {
                 }
                 return acc;
             }, {});
+            const isInputInspection = Number(res.data.info?.LoaiKiemId) === 1;
             const nextHeaderFields = {
-                TenBoPhan: fieldsMap.TenBoPhan || res.data.info?.DonViTaoPhieu || res.data.info?.TenBoPhan || "",
-                MaBoPhan: fieldsMap.MaBoPhan || res.data.info?.MaDonViTaoPhieu || res.data.info?.MaBoPhan || "",
+                TenBoPhan: isInputInspection
+                    ? (res.data.info?.NhaCungCap || fieldsMap.NhaCungCap || "")
+                    : (fieldsMap.TenBoPhan || res.data.info?.DonViTaoPhieu || res.data.info?.TenBoPhan || ""),
+                MaBoPhan: isInputInspection
+                    ? ""
+                    : (fieldsMap.MaBoPhan || res.data.info?.MaDonViTaoPhieu || res.data.info?.MaBoPhan || ""),
                 TenSanPham: fieldsMap.TenSanPham || res.data.info?.TenSanPham || "",
                 MaSanPham: fieldsMap.MaSanPham || fieldsMap.MaItem || res.data.info?.MaSanPham || "",
                 MaTruyNguyen: fieldsMap.MaTruyNguyen || "",
@@ -764,7 +769,7 @@ export default function BienBanDetail({ standalone = false }) {
     const handleComplete = () => {
         setConfirmDialog({
             open: true,
-            title: info?.MauPhieuVersion === "V01" ? 'Xác nhận cuối của bộ phận tạo phiếu' : 'Hoàn thành biên bản',
+            title: info?.MauPhieuVersion === "V01" ? 'Xác nhận cuối phiếu KPH' : 'Hoàn thành biên bản',
             message: info?.MauPhieuVersion === "V01"
                 ? info?.RequiresExecutiveApproval
                     ? 'Sau khi xác nhận, nội dung sẽ bị khóa và hồ sơ được chuyển tới Ban giám đốc.'
@@ -847,6 +852,8 @@ export default function BienBanDetail({ standalone = false }) {
         setSpecialistOpinions(next);
         if (Object.prototype.hasOwnProperty.call(changes, "HasConfirmed")) {
             const canCreatorRole = currentUserRoles.some((role) => String(role || "").toUpperCase() === "ADMIN") ||
+                Number(info?.NguoiLapId) === Number(currentUserId) ||
+                currentUserPermissions.includes("KET_LUAN") ||
                 (currentUserManagedBoPhanIds.map(Number).includes(Number(info?.BoPhanTaoId)) &&
                     currentUserRoles.some((role) => String(role || "").toUpperCase().startsWith("TP_")));
             setInfo((currentInfo) => ({
@@ -1841,7 +1848,7 @@ export default function BienBanDetail({ standalone = false }) {
                                                 <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                                                     <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                                         <VerifiedIcon color={info.CreatorConfirmedAt ? "success" : "warning"} />
-                                                        Xác nhận của Trưởng bộ phận
+                                                        Xác nhận cuối
                                                     </Typography>
                                                     <Chip
                                                         size="small"
@@ -1851,12 +1858,12 @@ export default function BienBanDetail({ standalone = false }) {
                                                 </Stack>
                                                 {info.CreatorConfirmedAt ? (
                                                     <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                                                        Người xác nhận: <strong>{info.CreatorConfirmerName || "Trưởng bộ phận tạo phiếu"}</strong>
+                                                        Người xác nhận: <strong>{info.CreatorConfirmerName || "Người có thẩm quyền"}</strong>
                                                         {` · ${new Date(info.CreatorConfirmedAt).toLocaleString("vi-VN")}`}
                                                     </Typography>
                                                 ) : (
                                                     <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                                                        Sử dụng xác nhận cuối của Trưởng bộ phận tạo phiếu. Chữ ký này được hiển thị giữa mục 4 và mục 5 trên bản in.
+                                                        Người tạo phiếu, người có quyền kết luận hoặc Trưởng bộ phận tạo phiếu có thể xác nhận. Chữ ký này được hiển thị giữa mục 4 và mục 5 trên bản in.
                                                         Nút xác nhận sẽ xuất hiện khi các bộ phận đã xác nhận đầy đủ ý kiến.
                                                     </Typography>
                                                 )}

@@ -26,20 +26,23 @@ export const BienBanPrintTemplate = React.forwardRef(({
     }, {});
 
     const isV01 = info.MauPhieuVersion === 'V01';
+    const isInputInspection = Number(info.LoaiKiemId) === 1;
     const getDefectCode = (defect = {}) =>
         defect.MaLoi || defect.maLoi || defect.TenLoiTuNhap || defect.TenLoi || defect.DefectType || "";
 
-    const bienBanDonViSanXuat =
-        customData.TenBoPhan ||
-        customData.TrenChuyen_TenDonVi ||
-        customData.TrenChuyen_TenBoPhan ||
-        info.TenBoPhan ||
-        '';
-    const bienBanMaDonViSanXuat =
-        customData.MaBoPhan ||
-        customData.TrenChuyen_MaBoPhan ||
-        info.MaBoPhan ||
-        '';
+    const bienBanDonViSanXuat = isInputInspection
+        ? (info.NhaCungCap || customData.NhaCungCap || '')
+        : (customData.TenBoPhan ||
+            customData.TrenChuyen_TenDonVi ||
+            customData.TrenChuyen_TenBoPhan ||
+            info.TenBoPhan ||
+            '');
+    const bienBanMaDonViSanXuat = isInputInspection
+        ? ''
+        : (customData.MaBoPhan ||
+            customData.TrenChuyen_MaBoPhan ||
+            info.MaBoPhan ||
+            '');
     const bienBanSoLuongKhongPhuHop = [
         customData.SoLuongKPH,
         customData.TrenChuyen_NangSuatDuKien,

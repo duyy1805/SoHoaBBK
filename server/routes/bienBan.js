@@ -440,6 +440,7 @@ router.get(
             // thì chỉ xem biên bản liên quan đến cá nhân/bộ phận
             const isManager = req.user.permissions.includes("QUAN_TRI_DM") ||
                 req.user.permissions.includes("XAC_NHAN_NGUOI_XU_LY") ||
+                req.user.permissions.includes("KET_LUAN") ||
                 req.user.permissions.includes(EXECUTIVE_APPROVAL_PERMISSION) ||
                 hasLeadRole(req.user);
 
@@ -1103,7 +1104,10 @@ router.get(
                         !["TRA_LAI_CHINH_SUA", "CHO_THEO_DOI", "HOAN_TAT"].includes(v01Data.meta.TrangThai) &&
                         v01Data.specialistOpinions.length > 0 &&
                         v01Data.specialistOpinions.every((opinion) => Boolean(opinion.HasConfirmed)) &&
-                        (isAdmin(req.user) || await canLeadDepartment(pool, req.user, flowAccess.record.BoPhanTaoId)),
+                        (isAdmin(req.user) ||
+                            Number(flowAccess.record.NguoiLapId) === Number(req.user.userId) ||
+                            hasPermission(req.user, "KET_LUAN") ||
+                            await canLeadDepartment(pool, req.user, flowAccess.record.BoPhanTaoId)),
                     IsAdmin: isAdmin(req.user),
                     canEditKphCustomFields: customFieldAccess.canEdit
                 } : null,
@@ -2276,8 +2280,12 @@ router.post(
                 return res.status(409).json({ message: "Biên bản không sử dụng luồng KPH V01" });
             }
             const isCreatorDepartmentLead = await canLeadDepartment(pool, req.user, access.record.BoPhanTaoId);
-            if (!isAdmin(req.user) && !isCreatorDepartmentLead) {
-                return res.status(403).json({ message: "Chỉ Trưởng bộ phận tạo phiếu hoặc ADMIN được xác nhận cuối" });
+            const isCreator = Number(access.record.NguoiLapId) === Number(req.user.userId);
+            const canConclude = hasPermission(req.user, "KET_LUAN");
+            if (!isAdmin(req.user) && !isCreator && !canConclude && !isCreatorDepartmentLead) {
+                return res.status(403).json({
+                    message: "Chỉ người tạo phiếu, người có quyền kết luận, Trưởng bộ phận tạo phiếu hoặc ADMIN được xác nhận cuối"
+                });
             }
             if (!access.record.OpinionDepartmentsConfirmedAt) {
                 return res.status(409).json({ message: "Danh sách bộ phận cần ý kiến chưa được xác nhận" });
