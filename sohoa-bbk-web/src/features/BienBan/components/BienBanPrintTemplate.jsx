@@ -311,7 +311,16 @@ export const BienBanPrintTemplate = React.forwardRef(({
     const inspectionTbpSignature = (phieuKiemXacNhan || []).find((item) =>
         ['TBP_CONG_DOAN', 'TBP'].includes(String(item?.VaiTro || '').toUpperCase())
     );
-    const v01TbpSignature = (inspectionTbpSignature || info.PhieuKiemTbpXacNhanId) ? {
+    const creatorDepartmentOpinion = info.LoaiBienBan === 'STANDALONE'
+        ? (specialistOpinions || []).find((item) =>
+            Number(item?.BoPhanId) === Number(info.BoPhanTaoId) && Boolean(item?.ConfirmedAt)
+        )
+        : null;
+    const v01TbpSignature = creatorDepartmentOpinion ? {
+        ThoiGian: creatorDepartmentOpinion.ConfirmedAt,
+        FullName: creatorDepartmentOpinion.ConfirmedByName,
+        SignatureDataUrl: creatorDepartmentOpinion.SignatureDataUrl || null
+    } : (inspectionTbpSignature || info.PhieuKiemTbpXacNhanId) ? {
         ThoiGian: inspectionTbpSignature?.ThoiGian || info.PhieuKiemTbpXacNhanAt,
         FullName: inspectionTbpSignature?.TenNguoiXacNhan || inspectionTbpSignature?.FullName || info.PhieuKiemTbpXacNhanName,
         SignatureDataUrl: inspectionTbpSignature?.SignatureDataUrl || info.PhieuKiemTbpSignatureDataUrl || null

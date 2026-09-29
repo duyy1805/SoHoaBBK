@@ -440,7 +440,6 @@ router.get(
             // thì chỉ xem biên bản liên quan đến cá nhân/bộ phận
             const isManager = req.user.permissions.includes("QUAN_TRI_DM") ||
                 req.user.permissions.includes("XAC_NHAN_NGUOI_XU_LY") ||
-                req.user.permissions.includes("KET_LUAN") ||
                 req.user.permissions.includes(EXECUTIVE_APPROVAL_PERMISSION) ||
                 hasLeadRole(req.user);
 
@@ -1106,7 +1105,8 @@ router.get(
                         v01Data.specialistOpinions.every((opinion) => Boolean(opinion.HasConfirmed)) &&
                         (isAdmin(req.user) ||
                             Number(flowAccess.record.NguoiLapId) === Number(req.user.userId) ||
-                            hasPermission(req.user, "KET_LUAN") ||
+                            (flowAccess.record.LoaiBienBan === "STANDALONE" &&
+                                hasPermission(req.user, "KET_LUAN")) ||
                             await canLeadDepartment(pool, req.user, flowAccess.record.BoPhanTaoId)),
                     IsAdmin: isAdmin(req.user),
                     canEditKphCustomFields: customFieldAccess.canEdit
@@ -2139,7 +2139,7 @@ router.post(
     authenticateToken,
     async (req, res) => {
         const bienBanId = Number(req.params.id);
-        const boPhanIds = [...new Set((Array.isArray(req.body?.boPhanIds) ? req.body.boPhanIds : [])
+        let boPhanIds = [...new Set((Array.isArray(req.body?.boPhanIds) ? req.body.boPhanIds : [])
             .map(Number)
             .filter((id) => Number.isInteger(id) && id > 0))];
         if (boPhanIds.length === 0) {
@@ -2160,6 +2160,14 @@ router.post(
             }
             if (access.record.CreatorConfirmedAt || ["CHO_THEO_DOI", "HOAN_TAT"].includes(access.record.TrangThai)) {
                 return res.status(409).json({ message: "Biên bản đã được xác nhận và khóa nội dung" });
+            }
+
+            // Bộ phận tạo phiếu luôn phải tham gia vòng ý kiến để chữ ký mở
+            // mục 4 là chữ ký của Trưởng bộ phận, không phải chữ ký người lập.
+            const creatorDepartmentId = Number(access.record.BoPhanTaoId);
+            if (access.record.LoaiBienBan === "STANDALONE" &&
+                Number.isInteger(creatorDepartmentId) && creatorDepartmentId > 0) {
+                boPhanIds = [...new Set([...boPhanIds, creatorDepartmentId])];
             }
 
             const readiness = await getKphBasicReadiness(pool, bienBanId);
@@ -2282,9 +2290,12 @@ router.post(
             const isCreatorDepartmentLead = await canLeadDepartment(pool, req.user, access.record.BoPhanTaoId);
             const isCreator = Number(access.record.NguoiLapId) === Number(req.user.userId);
             const canConclude = hasPermission(req.user, "KET_LUAN");
-            if (!isAdmin(req.user) && !isCreator && !canConclude && !isCreatorDepartmentLead) {
+            const canCompleteByPermission = access.record.LoaiBienBan === "STANDALONE" && canConclude;
+            if (!isAdmin(req.user) && !isCreator && !canCompleteByPermission && !isCreatorDepartmentLead) {
                 return res.status(403).json({
-                    message: "Chỉ người tạo phiếu, người có quyền kết luận, Trưởng bộ phận tạo phiếu hoặc ADMIN được xác nhận cuối"
+                    message: access.record.LoaiBienBan === "STANDALONE"
+                        ? "Chỉ người tạo phiếu, người có quyền kết luận, Trưởng bộ phận tạo phiếu hoặc ADMIN được hoàn tất"
+                        : "Chỉ người tạo biên bản, Trưởng bộ phận tạo phiếu hoặc ADMIN được xác nhận cuối"
                 });
             }
             if (!access.record.OpinionDepartmentsConfirmedAt) {
