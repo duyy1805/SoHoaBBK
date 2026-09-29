@@ -25,20 +25,23 @@ export const BienBanPrintTemplate = React.forwardRef(({
     }, {});
 
     const isV01 = info.MauPhieuVersion === 'V01';
+    const isInputInspection = Number(info.LoaiKiemId) === 1;
     const getDefectCode = (defect = {}) =>
         defect.MaLoi || defect.maLoi || defect.TenLoiTuNhap || defect.TenLoi || defect.DefectType || "";
 
-    const bienBanDonViSanXuat =
-        customData.TenBoPhan ||
-        customData.TrenChuyen_TenDonVi ||
-        customData.TrenChuyen_TenBoPhan ||
-        info.TenBoPhan ||
-        '';
-    const bienBanMaDonViSanXuat =
-        customData.MaBoPhan ||
-        customData.TrenChuyen_MaBoPhan ||
-        info.MaBoPhan ||
-        '';
+    const bienBanDonViSanXuat = isInputInspection
+        ? (info.NhaCungCap || customData.NhaCungCap || '')
+        : (customData.TenBoPhan ||
+            customData.TrenChuyen_TenDonVi ||
+            customData.TrenChuyen_TenBoPhan ||
+            info.TenBoPhan ||
+            '');
+    const bienBanMaDonViSanXuat = isInputInspection
+        ? ''
+        : (customData.MaBoPhan ||
+            customData.TrenChuyen_MaBoPhan ||
+            info.MaBoPhan ||
+            '');
     const bienBanSoLuongKhongPhuHop = [
         customData.SoLuongKPH,
         customData.TrenChuyen_NangSuatDuKien,
@@ -240,30 +243,6 @@ export const BienBanPrintTemplate = React.forwardRef(({
             ))}
         </div>
     );
-    const renderInfoColumns = (columns) => (
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', ...styles.text }}>
-            {columns.map((column, columnIndex) => (
-                <div
-                    key={columnIndex}
-                    style={{ flex: column.grow || 1, minWidth: 0 }}
-                >
-                    {column.fields.map((field) => (
-                        <div
-                            key={field.name}
-                            style={{ display: 'flex', alignItems: 'flex-start', minWidth: 0, marginBottom: '8px' }}
-                        >
-                            <span style={{ whiteSpace: 'nowrap', marginRight: '6px' }}>{field.label}:</span>
-                            <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
-                                {canEditCustomFields ? (
-                                    <textarea name={field.name} className="custom-field" rows={getFieldRows(field.value)} defaultValue={field.value ?? ''} style={{ ...styles.inputField, cursor: 'text' }} />
-                                ) : (field.value ?? '')}
-                            </span>
-                        </div>
-                    ))}
-                </div>
-            ))}
-        </div>
-    );
     // Cập nhật Ô check cho phần 2 (Chỉ chọn 1 - Radio)
     const renderRadioRight = (label, value) => (
         <div
@@ -307,7 +286,16 @@ export const BienBanPrintTemplate = React.forwardRef(({
     const inspectionTbpSignature = (phieuKiemXacNhan || []).find((item) =>
         ['TBP_CONG_DOAN', 'TBP'].includes(String(item?.VaiTro || '').toUpperCase())
     );
-    const v01TbpSignature = (inspectionTbpSignature || info.PhieuKiemTbpXacNhanId) ? {
+    const creatorDepartmentOpinion = info.LoaiBienBan === 'STANDALONE'
+        ? (specialistOpinions || []).find((item) =>
+            Number(item?.BoPhanId) === Number(info.BoPhanTaoId) && Boolean(item?.ConfirmedAt)
+        )
+        : null;
+    const v01TbpSignature = creatorDepartmentOpinion ? {
+        ThoiGian: creatorDepartmentOpinion.ConfirmedAt,
+        FullName: creatorDepartmentOpinion.ConfirmedByName,
+        SignatureDataUrl: creatorDepartmentOpinion.SignatureDataUrl || null
+    } : (inspectionTbpSignature || info.PhieuKiemTbpXacNhanId) ? {
         ThoiGian: inspectionTbpSignature?.ThoiGian || info.PhieuKiemTbpXacNhanAt,
         FullName: inspectionTbpSignature?.TenNguoiXacNhan || inspectionTbpSignature?.FullName || info.PhieuKiemTbpXacNhanName,
         SignatureDataUrl: inspectionTbpSignature?.SignatureDataUrl || info.PhieuKiemTbpSignatureDataUrl || null

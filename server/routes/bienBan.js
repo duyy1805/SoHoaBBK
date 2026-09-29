@@ -19,6 +19,7 @@ const { sortKphListRows } = require("../utils/kphListSorting");
 const { loadKphSectionRows } = require("../utils/kphSectionRows");
 const { loadInputInspectionSource } = require("../utils/inputInspectionSource");
 const { canViewKphListItem } = require("../utils/kphListVisibility");
+const { canFinalizeKph } = require("../utils/kphCompletionAccess");
 const {
     normalizeRecipientDepartmentIds,
     getRecipientDepartments,
@@ -1103,7 +1104,13 @@ router.get(
                         !["TRA_LAI_CHINH_SUA", "CHO_THEO_DOI", "HOAN_TAT"].includes(v01Data.meta.TrangThai) &&
                         v01Data.specialistOpinions.length > 0 &&
                         v01Data.specialistOpinions.every((opinion) => Boolean(opinion.HasConfirmed)) &&
-                        (isAdmin(req.user) || await canLeadDepartment(pool, req.user, flowAccess.record.BoPhanTaoId)),
+                        canFinalizeKph({
+                            user: req.user,
+                            record: flowAccess.record,
+                            isCreatorDepartmentLead: await canLeadDepartment(
+                                pool, req.user, flowAccess.record.BoPhanTaoId
+                            )
+                        }),
                     IsAdmin: isAdmin(req.user),
                     canEditKphCustomFields: customFieldAccess.canEdit
                 } : null,
@@ -2135,7 +2142,7 @@ router.post(
     authenticateToken,
     async (req, res) => {
         const bienBanId = Number(req.params.id);
-        const boPhanIds = [...new Set((Array.isArray(req.body?.boPhanIds) ? req.body.boPhanIds : [])
+        let boPhanIds = [...new Set((Array.isArray(req.body?.boPhanIds) ? req.body.boPhanIds : [])
             .map(Number)
             .filter((id) => Number.isInteger(id) && id > 0))];
         if (boPhanIds.length === 0) {
@@ -2156,6 +2163,14 @@ router.post(
             }
             if (access.record.CreatorConfirmedAt || ["CHO_THEO_DOI", "HOAN_TAT"].includes(access.record.TrangThai)) {
                 return res.status(409).json({ message: "Biên bản đã được xác nhận và khóa nội dung" });
+            }
+
+            // Bộ phận tạo phiếu luôn phải tham gia vòng ý kiến để chữ ký mở
+            // mục 4 là chữ ký của Trưởng bộ phận, không phải chữ ký người lập.
+            const creatorDepartmentId = Number(access.record.BoPhanTaoId);
+            if (access.record.LoaiBienBan === "STANDALONE" &&
+                Number.isInteger(creatorDepartmentId) && creatorDepartmentId > 0) {
+                boPhanIds = [...new Set([...boPhanIds, creatorDepartmentId])];
             }
 
             const readiness = await getKphBasicReadiness(pool, bienBanId);
@@ -2276,8 +2291,16 @@ router.post(
                 return res.status(409).json({ message: "Biên bản không sử dụng luồng KPH V01" });
             }
             const isCreatorDepartmentLead = await canLeadDepartment(pool, req.user, access.record.BoPhanTaoId);
-            if (!isAdmin(req.user) && !isCreatorDepartmentLead) {
-                return res.status(403).json({ message: "Chỉ Trưởng bộ phận tạo phiếu hoặc ADMIN được xác nhận cuối" });
+            if (!canFinalizeKph({
+                user: req.user,
+                record: access.record,
+                isCreatorDepartmentLead
+            })) {
+                return res.status(403).json({
+                    message: access.record.LoaiBienBan === "STANDALONE"
+                        ? "Chỉ người tạo phiếu, người có quyền kết luận, Trưởng bộ phận tạo phiếu hoặc ADMIN được hoàn tất"
+                        : "Chỉ người tạo biên bản, Trưởng bộ phận tạo phiếu hoặc ADMIN được xác nhận cuối"
+                });
             }
             if (!access.record.OpinionDepartmentsConfirmedAt) {
                 return res.status(409).json({ message: "Danh sách bộ phận cần ý kiến chưa được xác nhận" });

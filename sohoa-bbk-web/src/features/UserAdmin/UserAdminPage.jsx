@@ -559,7 +559,7 @@ export default function UserAdminPage() {
                                 <Box>
                                     <Typography fontWeight={700}>Yêu cầu Ban giám đốc xác nhận</Typography>
                                     <Typography variant="body2" color="text.secondary">
-                                        Khi bật, hồ sơ mới phải được Ban giám đốc xác nhận sau Trưởng bộ phận tạo phiếu rồi mới chuyển sang theo dõi hiệu lực.
+                                        Khi bật, hồ sơ mới phải được Ban giám đốc xác nhận sau bước xác nhận cuối rồi mới chuyển sang theo dõi hiệu lực.
                                     </Typography>
                                 </Box>
                                 <Switch

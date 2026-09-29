@@ -213,9 +213,10 @@ export default function BienBanDetailScreen({ route, navigation }) {
 
             if (info?.MauPhieuVersion === "V01") {
                 const response = await confirmKphByCreatorDepartment(bienBanId);
+                const isStandaloneKph = info?.LoaiBienBan === "STANDALONE";
                 Alert.alert("Thành công", response.data?.nextStatus === "CHO_BGD_XAC_NHAN"
-                    ? "Đã xác nhận và chuyển Ban giám đốc duyệt"
-                    : "Đã xác nhận và chuyển biên bản sang theo dõi");
+                    ? (isStandaloneKph ? "Đã hoàn tất và chuyển Ban giám đốc duyệt" : "Đã xác nhận và chuyển Ban giám đốc duyệt")
+                    : (isStandaloneKph ? "Đã hoàn tất và chuyển phiếu sang theo dõi" : "Đã xác nhận và chuyển biên bản sang theo dõi"));
                 loadData();
             } else {
                 await completeBienBan(bienBanId);
@@ -822,7 +823,9 @@ export default function BienBanDetailScreen({ route, navigation }) {
                 >
                     <Text style={styles.btnText}>
                         {isV01
-                            ? info.RequiresExecutiveApproval ? "Xác nhận và trình Ban giám đốc" : "Xác nhận và chuyển theo dõi"
+                            ? info.RequiresExecutiveApproval
+                                ? (info?.LoaiBienBan === "STANDALONE" ? "Hoàn tất và trình Ban giám đốc" : "Xác nhận và trình Ban giám đốc")
+                                : (info?.LoaiBienBan === "STANDALONE" ? "Hoàn tất và chuyển theo dõi" : "Xác nhận và chuyển theo dõi")
                             : "Hoàn thành biên bản"}
                     </Text>
                 </TouchableOpacity>

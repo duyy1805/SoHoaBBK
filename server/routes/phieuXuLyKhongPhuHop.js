@@ -723,7 +723,10 @@ router.get("/:id", authenticateToken, async (req, res) => {
                 !printMeta.CreatorConfirmedAt &&
                 !["TRA_LAI_CHINH_SUA", "CHO_THEO_DOI", "HOAN_TAT"].includes(printMeta.TrangThai) &&
                 opinionRows.length > 0 && opinionRows.every((opinion) => Boolean(opinion.HasConfirmed)) &&
-                (isAdmin(req.user) || await canLeadDepartment(pool, req.user, info.BoPhanTaoId));
+                (isAdmin(req.user) ||
+                    Number(headerAccess.record?.NguoiLapId) === Number(req.user.userId) ||
+                    hasPermission(req.user, "KET_LUAN") ||
+                    await canLeadDepartment(pool, req.user, info.BoPhanTaoId));
         }
 
         const defectResult = await pool.request()
