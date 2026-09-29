@@ -70,8 +70,11 @@ export const SxbtPrintTemplate = React.forwardRef(({
     const btpPrintRows = btpItems.flatMap(item =>
         getLotRows(item).map((lotRow, lotIndex) => ({ item, lotRow, lotIndex }))
     );
+    const hasActualQuantity = phieu.SoLuongThucTe !== null &&
+        phieu.SoLuongThucTe !== undefined &&
+        phieu.SoLuongThucTe !== '';
     const actualQuantity = Number(phieu.SoLuongThucTe);
-    const displayedQuantity = Number.isFinite(actualQuantity) && actualQuantity >= 0
+    const displayedQuantity = hasActualQuantity && Number.isFinite(actualQuantity) && actualQuantity >= 0
         ? actualQuantity
         : null;
 
@@ -579,12 +582,12 @@ export const SxbtPrintTemplate = React.forwardRef(({
                             <th style={{ ...s.th, width: '9%' }}>ID KH nhập</th>
                             <th style={{ ...s.th, width: '9%' }}>ID KHSX</th>
                             <th style={{ ...s.th, width: '18%' }}>Tên vật tư, hàng hóa</th>
-                            <th style={{ ...s.th, width: '8%' }}>SL nhập</th>
+                            <th style={{ ...s.th, width: '8%' }}>Số lượng</th>
                             <th style={{ ...s.th, width: '12%' }}>Dấu tuần/ GS1</th>
                             <th style={{ ...s.th, width: '6%' }}>TT</th>
                             <th style={{ ...s.th, width: '12%' }}>LXVT/LOT</th>
                             <th style={{ ...s.th, width: '11%' }}>Số Lot SX</th>
-                            <th style={{ ...s.th, width: '15%' }}>Tổng cái (Kho xác nhận)</th>
+                            <th style={{ ...s.th, width: '15%' }}>Kho xác nhận</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -600,7 +603,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
                                                 {item.TenSanPham}
                                             </td>
                                         )}
-                                        <td style={s.tdc}>{formatQuantity(displayedQuantity ?? lotRow.SoLuongNhap)}</td>
+                                        <td style={s.tdc}>{formatQuantity(lotRow.SoLuongNhap)}</td>
                                         <td style={s.tdc}>{lotRow.DauTuanGS1 || ''}</td>
                                         <td style={s.tdc}>{lotRow.ThuTu || ''}</td>
                                         <td style={s.tdc}>{lotRow.LxvtLot || ''}</td>
@@ -1015,12 +1018,12 @@ export const SxbtPrintTemplate = React.forwardRef(({
                                         <th style={{ ...s.th, width: '9%' }}>ID KH nhập</th>
                                         <th style={{ ...s.th, width: '9%' }}>ID KHSX</th>
                                         <th style={{ ...s.th, width: '18%' }}>Tên vật tư, hàng hóa</th>
-                                        <th style={{ ...s.th, width: '8%' }}>SL nhập</th>
+                                        <th style={{ ...s.th, width: '8%' }}>Số lượng</th>
                                         <th style={{ ...s.th, width: '12%' }}>Dấu tuần/ GS1</th>
                                         <th style={{ ...s.th, width: '6%' }}>TT</th>
                                         <th style={{ ...s.th, width: '12%' }}>LXVT/LOT</th>
                                         <th style={{ ...s.th, width: '11%' }}>Số Lot SX</th>
-                                        <th style={{ ...s.th, width: '15%' }}>Tổng cái (Kho xác nhận)</th>
+                                        <th style={{ ...s.th, width: '15%' }}>Kho xác nhận</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1029,7 +1032,7 @@ export const SxbtPrintTemplate = React.forwardRef(({
                                             <td style={s.tdc}>{item.KeHoachNhapId || ''}</td>
                                             <td style={s.tdc}>{item.SourceID_KeHoachSanXuat || ''}</td>
                                             <td style={{ ...s.td, fontWeight: 600 }}>{item.TenSanPham || group.tenSanPham}</td>
-                                            <td style={s.tdc}>{formatQuantity(displayedQuantity ?? lotRow.SoLuongNhap)}</td>
+                                            <td style={s.tdc}>{formatQuantity(lotRow.SoLuongNhap)}</td>
                                             <td style={s.tdc}>{lotRow.DauTuanGS1 || ''}</td>
                                             <td style={s.tdc}>{lotRow.ThuTu || ''}</td>
                                             <td style={s.tdc}>{lotRow.LxvtLot || ''}</td>

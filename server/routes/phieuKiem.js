@@ -4237,7 +4237,7 @@ router.post(
                 });
             }
 
-            const activeDefects = Array.isArray(defects)
+            let activeDefects = Array.isArray(defects)
                 ? defects.filter((defect) => Number(defect?.SoLuong) > 0)
                 : [];
             const totalDefects = activeDefects.reduce((sum, defect) => sum + Number(defect.SoLuong || 0), 0);
@@ -4257,6 +4257,223 @@ router.post(
                     : 0
             } : null;
 
+            if (!Array.isArray(btpItems) || btpItems.length === 0) {
+                throw new Error('Cần gửi đủ danh sách BTP của phiếu');
+            }
+
+            {
+                const btpItemResult = await new sql.Request(transaction)
+                    .input('PhieuKiemId', sql.Int, normalizedPhieuKiemId)
+                    .query(`
+                        SELECT Id, SoLuong, SoLuongNhap
+                        FROM dbo.PHIEU_KIEM_BTP_ITEM WITH (UPDLOCK, HOLDLOCK)
+                        WHERE PhieuKiemId = @PhieuKiemId
+                    `);
+
+                const storedItems = new Map(btpItemResult.recordset.map((item) => [Number(item.Id), item]));
+                const submittedItemIds = new Set();
+                const submittedLotIds = new Set();
+                const submittedClientKeys = new Set();
+                const normalizedBtpItems = [];
+                let totalAllocatedQuantity = 0;
+                const normalizeText = (value, maxLength, label) => {
+                    const normalized = value === null || value === undefined ? '' : String(value).trim();
+                    if (normalized.length > maxLength) {
+                        throw new Error(`${label} không được vượt quá ${maxLength} ký tự`);
+                    }
+                    return normalized || null;
+                };
+                const normalizeSingleLotValue = (value, maxLength, label) => {
+                    const normalized = normalizeText(value, maxLength, label);
+                    if (normalized && /[,;\r\n]/.test(normalized)) {
+                        throw new Error(`${label} chỉ được nhập một giá trị trên mỗi dòng`);
+                    }
+                    return normalized;
+                };
+
+                for (const submittedItem of btpItems) {
+                    const itemId = Number(submittedItem?.Id);
+                    const storedItem = storedItems.get(itemId);
+                    if (!Number.isInteger(itemId) || !storedItem || submittedItemIds.has(itemId)) {
+                        throw new Error('Danh sách BTP không hợp lệ hoặc không thuộc phiếu');
+                    }
+                    submittedItemIds.add(itemId);
+
+                    if (!Array.isArray(submittedItem.LotRows) || submittedItem.LotRows.length === 0) {
+                        throw new Error(`BTP #${itemId} phải có ít nhất một dòng lot`);
+                    }
+
+                    let allocatedQuantity = 0;
+                    const lotRows = submittedItem.LotRows.map((row, index) => {
+                        const lotRowId = row?.Id === null || row?.Id === undefined || row?.Id === ''
+                            ? null
+                            : Number(row.Id);
+                        if (lotRowId !== null && (!Number.isInteger(lotRowId) || lotRowId <= 0 || submittedLotIds.has(lotRowId))) {
+                            throw new Error(`Dòng lot ${index + 1} của BTP #${itemId} không hợp lệ`);
+                        }
+                        if (lotRowId !== null) submittedLotIds.add(lotRowId);
+
+                        const clientKey = String(row?.ClientKey || (lotRowId ? `db-${lotRowId}` : '')).trim();
+                        if (!clientKey || clientKey.length > 100 || submittedClientKeys.has(clientKey)) {
+                            throw new Error(`Mã dòng lot ${index + 1} của BTP #${itemId} không hợp lệ`);
+                        }
+                        submittedClientKeys.add(clientKey);
+
+                        const quantityText = String(row?.SoLuongNhap ?? '').trim().replace(',', '.');
+                        if (!/^\d+(?:\.\d{1,2})?$/.test(quantityText) || Number(quantityText) <= 0) {
+                            throw new Error(`Số lượng dòng lot ${index + 1} của BTP #${itemId} phải lớn hơn 0 và tối đa 2 số lẻ`);
+                        }
+                        const quantity = Number(quantityText);
+                        allocatedQuantity += quantity;
+
+                        return {
+                            Id: lotRowId,
+                            ClientKey: clientKey,
+                            DauTuanGS1: normalizeSingleLotValue(row.DauTuanGS1, 100, 'Dấu tuần/GS1'),
+                            ThuTu: normalizeText(row.ThuTu, 50, 'Thứ tự'),
+                            LxvtLot: normalizeSingleLotValue(row.LxvtLot, 100, 'LXVT/LOT'),
+                            SoLotSX: normalizeText(row.SoLotSX, 100, 'Số lot sản xuất'),
+                            SoLuongNhap: quantity,
+                            SortOrder: index + 1
+                        };
+                    });
+                    totalAllocatedQuantity += allocatedQuantity;
+                    normalizedBtpItems.push({ Id: itemId, LotRows: lotRows });
+                }
+
+                if (submittedItemIds.size !== storedItems.size) {
+                    throw new Error('Cần gửi đủ danh sách BTP của phiếu');
+                }
+                if (Math.abs(totalAllocatedQuantity - soLuongHieuLuc) > 0.001) {
+                    throw new Error(`Tổng số lượng các dòng dấu tuần/LXVT phải bằng số lượng thực tế (${soLuongHieuLuc})`);
+                }
+
+                const lotResult = await new sql.Request(transaction)
+                    .input('PhieuKiemId', sql.Int, normalizedPhieuKiemId)
+                    .input('BtpItemsJson', sql.NVarChar(sql.MAX), JSON.stringify(normalizedBtpItems))
+                    .query(`
+                        SELECT Id, LotRows
+                        INTO #ManualBtpItems
+                        FROM OPENJSON(@BtpItemsJson)
+                        WITH (Id INT '$.Id', LotRows NVARCHAR(MAX) '$.LotRows' AS JSON);
+
+                        SELECT
+                            item.Id AS BtpItemId,
+                            lot.Id AS LotRowId,
+                            lot.ClientKey,
+                            lot.DauTuanGS1,
+                            lot.ThuTu,
+                            lot.LxvtLot,
+                            lot.SoLotSX,
+                            lot.SoLuongNhap,
+                            lot.SortOrder
+                        INTO #ManualLotRows
+                        FROM #ManualBtpItems item
+                        CROSS APPLY OPENJSON(item.LotRows)
+                        WITH (
+                            Id INT '$.Id',
+                            ClientKey NVARCHAR(100) '$.ClientKey',
+                            DauTuanGS1 NVARCHAR(100) '$.DauTuanGS1',
+                            ThuTu NVARCHAR(50) '$.ThuTu',
+                            LxvtLot NVARCHAR(100) '$.LxvtLot',
+                            SoLotSX NVARCHAR(100) '$.SoLotSX',
+                            SoLuongNhap DECIMAL(18,2) '$.SoLuongNhap',
+                            SortOrder INT '$.SortOrder'
+                        ) AS lot;
+
+                        IF EXISTS (
+                            SELECT 1
+                            FROM #ManualLotRows src
+                            LEFT JOIN dbo.PHIEU_KIEM_BTP_ITEM_LOT lot ON lot.Id = src.LotRowId
+                            LEFT JOIN dbo.PHIEU_KIEM_BTP_ITEM item ON item.Id = lot.BtpItemId
+                            WHERE src.LotRowId IS NOT NULL
+                              AND (lot.Id IS NULL OR lot.BtpItemId <> src.BtpItemId OR item.PhieuKiemId <> @PhieuKiemId)
+                        ) THROW 51020, N'Dòng lot không thuộc BTP của phiếu', 1;
+
+                        IF EXISTS (
+                            SELECT 1
+                            FROM dbo.PHIEU_KIEM_BTP_ITEM_LOT lot
+                            INNER JOIN #ManualBtpItems submitted ON submitted.Id = lot.BtpItemId
+                            WHERE NOT EXISTS (SELECT 1 FROM #ManualLotRows src WHERE src.LotRowId = lot.Id)
+                              AND (lot.SoLuongKhoXacNhan IS NOT NULL OR lot.KhoXacNhanBy IS NOT NULL OR lot.KhoXacNhanAt IS NOT NULL)
+                        ) THROW 51021, N'Không thể xóa dòng lot đã được Kho xác nhận', 1;
+
+                        IF EXISTS (
+                            SELECT 1
+                            FROM dbo.PHIEU_KIEM_DEFECT defect
+                            INNER JOIN dbo.PHIEU_KIEM_SECTION section ON section.Id = defect.SectionId
+                            INNER JOIN dbo.PHIEU_KIEM_BTP_ITEM_LOT lot ON lot.Id = defect.BtpLotRowId
+                            INNER JOIN #ManualBtpItems submitted ON submitted.Id = lot.BtpItemId
+                            WHERE section.PhieuKiemId = @PhieuKiemId
+                              AND NOT EXISTS (SELECT 1 FROM #ManualLotRows src WHERE src.LotRowId = lot.Id)
+                        ) THROW 51022, N'Không thể xóa dòng lot đang có lỗi được ghi nhận', 1;
+
+                        DELETE lot
+                        FROM dbo.PHIEU_KIEM_BTP_ITEM_LOT lot
+                        INNER JOIN #ManualBtpItems submitted ON submitted.Id = lot.BtpItemId
+                        WHERE NOT EXISTS (SELECT 1 FROM #ManualLotRows src WHERE src.LotRowId = lot.Id);
+
+                        UPDATE lot
+                        SET
+                            DauTuanGS1 = src.DauTuanGS1,
+                            ThuTu = src.ThuTu,
+                            LxvtLot = src.LxvtLot,
+                            SoLotSX = src.SoLotSX,
+                            SoLuongNhap = src.SoLuongNhap,
+                            SortOrder = src.SortOrder,
+                            UpdatedAt = SYSDATETIME()
+                        FROM dbo.PHIEU_KIEM_BTP_ITEM_LOT lot
+                        INNER JOIN #ManualLotRows src ON src.LotRowId = lot.Id;
+
+                        DECLARE @LotRowMap TABLE (ClientKey NVARCHAR(100), LotRowId INT, BtpItemId INT);
+                        INSERT INTO @LotRowMap (ClientKey, LotRowId, BtpItemId)
+                        SELECT ClientKey, LotRowId, BtpItemId
+                        FROM #ManualLotRows
+                        WHERE LotRowId IS NOT NULL;
+
+                        MERGE dbo.PHIEU_KIEM_BTP_ITEM_LOT AS target
+                        USING (SELECT * FROM #ManualLotRows WHERE LotRowId IS NULL) AS src
+                        ON 1 = 0
+                        WHEN NOT MATCHED THEN
+                            INSERT (BtpItemId, DauTuanGS1, ThuTu, LxvtLot, SoLotSX, SoLuongNhap, SortOrder, CreatedAt, UpdatedAt)
+                            VALUES (src.BtpItemId, src.DauTuanGS1, src.ThuTu, src.LxvtLot, src.SoLotSX, src.SoLuongNhap, src.SortOrder, SYSDATETIME(), SYSDATETIME())
+                        OUTPUT src.ClientKey, inserted.Id, inserted.BtpItemId
+                        INTO @LotRowMap (ClientKey, LotRowId, BtpItemId);
+
+                        ;WITH first_lot AS (
+                            SELECT lot.*,
+                                ROW_NUMBER() OVER (PARTITION BY lot.BtpItemId ORDER BY lot.SortOrder, lot.Id) AS rn
+                            FROM dbo.PHIEU_KIEM_BTP_ITEM_LOT lot
+                            INNER JOIN dbo.PHIEU_KIEM_BTP_ITEM item ON item.Id = lot.BtpItemId
+                            WHERE item.PhieuKiemId = @PhieuKiemId
+                        )
+                        UPDATE item
+                        SET
+                            DauTuanGS1 = first_lot.DauTuanGS1,
+                            ThuTu = first_lot.ThuTu,
+                            LxvtLot = first_lot.LxvtLot
+                        FROM dbo.PHIEU_KIEM_BTP_ITEM item
+                        INNER JOIN first_lot ON first_lot.BtpItemId = item.Id AND first_lot.rn = 1
+                        WHERE item.PhieuKiemId = @PhieuKiemId;
+
+                        SELECT ClientKey, LotRowId, BtpItemId FROM @LotRowMap;
+                    `);
+
+                const lotRowMap = new Map(lotResult.recordset.map((row) => [String(row.ClientKey), row]));
+                const persistedLotRowMap = new Map(lotResult.recordset.map((row) => [Number(row.LotRowId), row]));
+                activeDefects = activeDefects.map((defect) => {
+                    const clientKey = String(defect?.BtpLotClientKey || '').trim();
+                    const persistedLotRowId = Number(defect?.BtpLotRowId);
+                    const mappedRow = clientKey
+                        ? lotRowMap.get(clientKey)
+                        : persistedLotRowMap.get(persistedLotRowId);
+                    if (!mappedRow || Number(mappedRow.BtpItemId) !== Number(defect.BtpItemId)) {
+                        throw new Error('Dòng lot gắn với lỗi không hợp lệ');
+                    }
+                    return { ...defect, BtpLotRowId: Number(mappedRow.LotRowId) };
+                });
+            }
+
             const result = await new sql.Request(transaction)
                 .input('PhieuKiemId', sql.Int, normalizedPhieuKiemId)
                 .input('SoLuongThucTe', sql.Int, soLuongThucTe)
@@ -4267,87 +4484,6 @@ router.post(
                 .input('DefectsJson', sql.NVarChar(sql.MAX), defects ? JSON.stringify(activeDefects) : null)
                 .input('KetLuan', sql.NVarChar(50), null)
                 .execute('sp_PhieuKiem_SXBT_Save');
-
-            if (Array.isArray(btpItems) && btpItems.length > 0) {
-                await new sql.Request(transaction)
-                    .input('PhieuKiemId', sql.Int, normalizedPhieuKiemId)
-                    .input('BtpItemsJson', sql.NVarChar(sql.MAX), JSON.stringify(btpItems))
-                    .query(`
-                        IF @BtpItemsJson IS NOT NULL AND @BtpItemsJson != N'[]'
-                        BEGIN
-                            IF OBJECT_ID('tempdb..#ManualBtpItems') IS NOT NULL DROP TABLE #ManualBtpItems;
-                            IF OBJECT_ID('tempdb..#ManualLotRows') IS NOT NULL DROP TABLE #ManualLotRows;
-
-                            SELECT
-                                Id,
-                                LotRows
-                            INTO #ManualBtpItems
-                            FROM OPENJSON(@BtpItemsJson)
-                            WITH (
-                                Id INT '$.Id',
-                                LotRows NVARCHAR(MAX) '$.LotRows' AS JSON
-                            );
-
-                            SELECT
-                                item.Id AS BtpItemId,
-                                lot.Id AS LotRowId,
-                                lot.DauTuanGS1,
-                                lot.ThuTu,
-                                lot.LxvtLot,
-                                COALESCE(lot.SortOrder, TRY_CONVERT(INT, lotJson.[key]) + 1) AS SortOrder
-                            INTO #ManualLotRows
-                            FROM #ManualBtpItems item
-                            CROSS APPLY OPENJSON(item.LotRows) lotJson
-                            CROSS APPLY OPENJSON(lotJson.value)
-                            WITH (
-                                Id INT '$.Id',
-                                DauTuanGS1 NVARCHAR(100) '$.DauTuanGS1',
-                                ThuTu NVARCHAR(50) '$.ThuTu',
-                                LxvtLot NVARCHAR(100) '$.LxvtLot',
-                                SortOrder INT '$.SortOrder'
-                            ) AS lot
-                            WHERE item.LotRows IS NOT NULL
-                              AND lot.Id IS NOT NULL;
-
-                            UPDATE lot
-                            SET
-                                lot.DauTuanGS1 = NULLIF(LTRIM(RTRIM(src.DauTuanGS1)), N''),
-                                lot.ThuTu = NULLIF(LTRIM(RTRIM(src.ThuTu)), N''),
-                                lot.LxvtLot = NULLIF(LTRIM(RTRIM(src.LxvtLot)), N'')
-                            FROM dbo.PHIEU_KIEM_BTP_ITEM_LOT lot
-                            INNER JOIN dbo.PHIEU_KIEM_BTP_ITEM item ON item.Id = lot.BtpItemId
-                            INNER JOIN #ManualLotRows src ON src.LotRowId = lot.Id
-                            WHERE item.PhieuKiemId = @PhieuKiemId
-                              AND item.Id = src.BtpItemId
-                              AND EXISTS (
-                                  SELECT 1
-                                  FROM dbo.PHIEU_KIEM pk
-                                  WHERE pk.Id = @PhieuKiemId
-                                    AND pk.TrangThai NOT IN (N'HOAN_THANH', N'HOAN_TAT', N'CHO_SXBT_XAC_NHAN', N'CHO_KHO_XAC_NHAN')
-                              );
-
-                            ;WITH first_lot AS (
-                                SELECT
-                                    lot.BtpItemId,
-                                    lot.DauTuanGS1,
-                                    lot.ThuTu,
-                                    lot.LxvtLot,
-                                    ROW_NUMBER() OVER (PARTITION BY lot.BtpItemId ORDER BY lot.SortOrder, lot.Id) AS rn
-                                FROM dbo.PHIEU_KIEM_BTP_ITEM_LOT lot
-                                INNER JOIN dbo.PHIEU_KIEM_BTP_ITEM item ON item.Id = lot.BtpItemId
-                                WHERE item.PhieuKiemId = @PhieuKiemId
-                            )
-                            UPDATE item
-                            SET
-                                item.DauTuanGS1 = first_lot.DauTuanGS1,
-                                item.ThuTu = first_lot.ThuTu,
-                                item.LxvtLot = first_lot.LxvtLot
-                            FROM dbo.PHIEU_KIEM_BTP_ITEM item
-                            LEFT JOIN first_lot ON first_lot.BtpItemId = item.Id AND first_lot.rn = 1
-                            WHERE item.PhieuKiemId = @PhieuKiemId;
-                        END
-                    `);
-            }
 
             await transaction.commit();
             transaction = null;
@@ -4369,13 +4505,17 @@ router.post(
                 }
             }
             console.error('SXBT Save error:', err);
-            res.status(500).json({ message: err.message || 'Lỗi lưu dữ liệu Sản Xuất Bổ Trợ' });
+            const statusCode = err.number === 51021 || err.number === 51022
+                ? 409
+                : (err.number === 51020 || /không hợp lệ|phải có|phải bằng|phải lớn hơn|không được vượt quá|chỉ được/i.test(err.message || '') ? 400 : 500);
+            res.status(statusCode).json({ message: err.message || 'Lỗi lưu dữ liệu Sản Xuất Bổ Trợ' });
         }
     }
 );
 
 /* =========================================================
-   POST /phieu-kiem/sxbt/confirm-sxbt (SXBT xác nhận sau Kho)
+   POST /phieu-kiem/sxbt/confirm-sxbt
+   Phiếu đạt: SXBT xác nhận sau Kho. Phiếu không đạt: bỏ qua Kho với số lượng 0.
 ========================================================= */
 router.post(
     '/sxbt/confirm-sxbt',
@@ -4506,26 +4646,78 @@ router.post(
     authenticateToken,
     authorize('THUC_HIEN_KIEM'),
     async (req, res) => {
-        const { phieuKiemId, ketLuan } = req.body;
+        const { phieuKiemId } = req.body;
+        const ketLuan = String(req.body?.ketLuan || '').trim().toUpperCase();
         const userId = req.user.userId;
 
-        if (!phieuKiemId || !ketLuan) {
-            return res.status(400).json({ message: 'Thiếu phieuKiemId hoặc ketLuan' });
+        if (!phieuKiemId || !['DAT', 'KHONG_DAT'].includes(ketLuan)) {
+            return res.status(400).json({ message: 'Thiếu phieuKiemId hoặc kết luận không hợp lệ' });
         }
 
+        let transaction;
         try {
             const pool = await poolPromise;
-            await pool.request()
+            transaction = new sql.Transaction(pool);
+            await transaction.begin();
+
+            await new sql.Request(transaction)
                 .input('PhieuKiemId', sql.Int, phieuKiemId)
                 .input('KetLuan', sql.NVarChar(50), ketLuan)
                 .input('UserId', sql.Int, userId)
                 .execute('sp_PhieuKiem_SXBT_Complete');
 
-            res.json({ success: true, message: 'Hoàn tất phiếu kiểm SXBT thành công. Chờ Kho xác nhận số lượng.' });
+            if (ketLuan === 'KHONG_DAT') {
+                await new sql.Request(transaction)
+                    .input('PhieuKiemId', sql.Int, phieuKiemId)
+                    .input('UserId', sql.Int, userId)
+                    .query(`
+                        UPDATE lot
+                        SET lot.SoLuongKhoXacNhan=0,
+                            lot.KhoXacNhanBy=NULL,
+                            lot.KhoXacNhanAt=NULL
+                        FROM dbo.PHIEU_KIEM_BTP_ITEM_LOT lot
+                        JOIN dbo.PHIEU_KIEM_BTP_ITEM item ON item.Id=lot.BtpItemId
+                        WHERE item.PhieuKiemId=@PhieuKiemId;
+
+                        DECLARE @BypassedAt DATETIME2=SYSDATETIME();
+                        MERGE dbo.PhieuKiem_CustomFields AS target
+                        USING (
+                            SELECT @PhieuKiemId AS PhieuKiemId,N'SxbtKhoBypassed' AS FieldName,N'1' AS FieldValue
+                            UNION ALL
+                            SELECT @PhieuKiemId,N'SxbtKhoBypassedBy',CONVERT(NVARCHAR(50),@UserId)
+                            UNION ALL
+                            SELECT @PhieuKiemId,N'SxbtKhoBypassedAt',CONVERT(NVARCHAR(30),@BypassedAt,126)
+                        ) AS source
+                        ON target.PhieuKiemId=source.PhieuKiemId AND target.FieldName=source.FieldName
+                        WHEN MATCHED THEN UPDATE SET FieldValue=source.FieldValue
+                        WHEN NOT MATCHED THEN
+                            INSERT(PhieuKiemId,FieldName,FieldValue)
+                            VALUES(source.PhieuKiemId,source.FieldName,source.FieldValue);
+
+                        UPDATE dbo.PHIEU_KIEM
+                        SET TrangThai=N'CHO_SXBT_XAC_NHAN'
+                        WHERE Id=@PhieuKiemId AND LoaiKiemId=4 AND KetLuan=N'KHONG_DAT';
+                    `);
+            }
+
+            await transaction.commit();
+            transaction = null;
+
+            const rejected = ketLuan === 'KHONG_DAT';
+            res.json({
+                success: true,
+                nextStatus: rejected ? 'CHO_SXBT_XAC_NHAN' : 'CHO_KHO_XAC_NHAN',
+                message: rejected
+                    ? 'Hoàn tất phiếu SXBT không đạt. Phiếu đang chờ SXBT xác nhận; số lượng nhập Kho là 0.'
+                    : 'Hoàn tất phiếu kiểm SXBT thành công. Chờ Kho xác nhận số lượng.'
+            });
 
         } catch (err) {
+            if (transaction) {
+                try { await transaction.rollback(); } catch (_) { /* transaction có thể đã rollback trong stored procedure */ }
+            }
             console.error('SXBT Complete error:', err);
-            res.status(500).json({ message: 'Hoàn tất phiếu kiểm SXBT thất bại' });
+            res.status(500).json({ message: err.message || 'Hoàn tất phiếu kiểm SXBT thất bại' });
         }
     }
 );
@@ -4565,6 +4757,7 @@ router.post(
             await new sql.Request(transaction)
                 .input('OriginalPhieuKiemId', sql.Int, row.PassedPhieuKiemId || phieuKiemId)
                 .input('RejectedPhieuKiemId', sql.Int, row.RejectedPhieuKiemId)
+                .input('UserId', sql.Int, req.user.userId)
                 .query(`
                     UPDATE rejected
                     SET
@@ -4624,6 +4817,47 @@ router.post(
                         INNER JOIN matched_item
                             ON matched_item.BtpItemId = item.Id AND matched_item.rn = 1;
                     END;
+
+                    UPDATE lot
+                    SET lot.SoLuongKhoXacNhan=0,
+                        lot.KhoXacNhanBy=NULL,
+                        lot.KhoXacNhanAt=NULL
+                    FROM dbo.PHIEU_KIEM_BTP_ITEM_LOT lot
+                    JOIN dbo.PHIEU_KIEM_BTP_ITEM item ON item.Id=lot.BtpItemId
+                    WHERE item.PhieuKiemId=@RejectedPhieuKiemId;
+
+                    DECLARE @BypassedAt DATETIME2=SYSDATETIME();
+                    MERGE dbo.PhieuKiem_CustomFields AS target
+                    USING (
+                        SELECT @RejectedPhieuKiemId AS PhieuKiemId,N'SxbtKhoBypassed' AS FieldName,N'1' AS FieldValue
+                        UNION ALL
+                        SELECT @RejectedPhieuKiemId,N'SxbtKhoBypassedBy',CONVERT(NVARCHAR(50),@UserId)
+                        UNION ALL
+                        SELECT @RejectedPhieuKiemId,N'SxbtKhoBypassedAt',CONVERT(NVARCHAR(30),@BypassedAt,126)
+                    ) AS source
+                    ON target.PhieuKiemId=source.PhieuKiemId AND target.FieldName=source.FieldName
+                    WHEN MATCHED THEN UPDATE SET FieldValue=source.FieldValue
+                    WHEN NOT MATCHED THEN
+                        INSERT(PhieuKiemId,FieldName,FieldValue)
+                        VALUES(source.PhieuKiemId,source.FieldName,source.FieldValue);
+
+                    UPDATE dbo.PHIEU_KIEM
+                    SET TrangThai=N'CHO_SXBT_XAC_NHAN'
+                    WHERE Id=@RejectedPhieuKiemId
+                      AND LoaiKiemId=4
+                      AND KetLuan=N'KHONG_DAT';
+
+                    ;WITH quantity_by_phieu AS (
+                        SELECT item.PhieuKiemId, SUM(ISNULL(lot.SoLuongNhap, 0)) AS ActualQuantity
+                        FROM dbo.PHIEU_KIEM_BTP_ITEM item
+                        INNER JOIN dbo.PHIEU_KIEM_BTP_ITEM_LOT lot ON lot.BtpItemId = item.Id
+                        WHERE item.PhieuKiemId IN (@OriginalPhieuKiemId, @RejectedPhieuKiemId)
+                        GROUP BY item.PhieuKiemId
+                    )
+                    UPDATE phieu
+                    SET phieu.SoLuongThucTe = quantity.ActualQuantity
+                    FROM dbo.PHIEU_KIEM phieu
+                    INNER JOIN quantity_by_phieu quantity ON quantity.PhieuKiemId = phieu.Id;
                 `);
 
             await transaction.commit();

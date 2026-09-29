@@ -17,6 +17,7 @@ import {
     Typography
 } from "@mui/material";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import AddIcon from "@mui/icons-material/Add";
 import { getDefectList } from "../../../api/lookup.api";
 import { saveSxbtData } from "../../../api/phieuKiem.api";
 import ResponsiveInspectionDialog from "./ResponsiveInspectionDialog";
@@ -35,8 +36,9 @@ const normalizeRows = (item) => {
             SoLuongKhoXacNhan: item.SoLuongKhoXacNhan ?? "",
             SortOrder: 1
         }];
-    return source.map((row, index) => ({
+    const normalizedRows = source.map((row, index) => ({
         ...row,
+        ClientKey: row.ClientKey || (row.Id ? `db-${row.Id}` : `new-initial-${item.Id}-${index}`),
         BtpItemId: row.BtpItemId || item.Id,
         DauTuanGS1: row.DauTuanGS1 || "",
         ThuTu: row.ThuTu || "",
@@ -45,7 +47,39 @@ const normalizeRows = (item) => {
         SoLuongNhap: row.SoLuongNhap ?? "",
         SortOrder: row.SortOrder || index + 1
     }));
+    return normalizedRows.flatMap((row, rowIndex) => {
+        const weekMarks = splitValues(row.DauTuanGS1);
+        const materialLots = splitValues(row.LxvtLot);
+        const rowCount = Math.max(weekMarks.length, materialLots.length);
+        const cannotPair = weekMarks.length > 1
+            && materialLots.length > 1
+            && weekMarks.length !== materialLots.length;
+        if (rowCount <= 1 || cannotPair) return [row];
+
+        return Array.from({ length: rowCount }, (_, splitIndex) => ({
+            ...row,
+            Id: splitIndex === 0 ? row.Id : undefined,
+            ClientKey: splitIndex === 0
+                ? row.ClientKey
+                : `auto-${item.Id}-${row.Id || rowIndex}-${splitIndex}`,
+            DauTuanGS1: weekMarks.length > 1 ? weekMarks[splitIndex] : (weekMarks[0] || ""),
+            LxvtLot: materialLots.length > 1 ? materialLots[splitIndex] : (materialLots[0] || ""),
+            SoLuongNhap: "",
+            SortOrder: rowIndex + splitIndex + 1
+        }));
+    });
 };
+
+let nextLotRowSequence = 0;
+const createLotClientKey = (itemId) => `new-${itemId}-${Date.now()}-${nextLotRowSequence++}`;
+const splitValues = (value) => [...new Set(String(value || "")
+    .split(/[,;\n]+/)
+    .map((part) => part.trim())
+    .filter(Boolean))];
+const allocatedQuantity = (item) => item.LotRows.reduce(
+    (sum, row) => sum + (Number.isFinite(Number(row.SoLuongNhap)) ? Number(row.SoLuongNhap) : 0),
+    0
+);
 
 export default function SxbtDraftEditor({
     open,
@@ -93,6 +127,7 @@ export default function SxbtDraftEditor({
             IsLapLai: Boolean(defect.IsLapLai),
             BtpItemId: defect.BtpItemId || null,
             BtpLotRowId: defect.BtpLotRowId || null,
+            BtpLotClientKey: defect.BtpLotRowId ? `db-${defect.BtpLotRowId}` : null,
             BtpTenSanPham: defect.BtpTenSanPham || "",
             BtpSoLotSX: defect.BtpSoLotSX || "",
             SourceID_KeHoachSanXuat: defect.SourceID_KeHoachSanXuat || null
@@ -104,17 +139,22 @@ export default function SxbtDraftEditor({
     }, [dynamicFields, open, phieu, sourceBtpItems, sourceConclusion, sourceDefects, sourceSummary]);
 
     const lotTargets = useMemo(() => btpItems.flatMap((item) =>
-        item.LotRows.filter((row) => row.Id).map((row, index) => ({
-            key: `${item.Id}:${row.Id || index}`,
+        item.LotRows.map((row, index) => ({
+            key: row.ClientKey,
             item,
             row,
             label: `${item.TenSanPham || "BTP"} · Lot ${row.SoLotSX || index + 1} · SL ${row.SoLuongNhap || 0}`
         }))
     ), [btpItems]);
+    const selectedLotTarget = useMemo(
+        () => lotTargets.find((item) => item.key === target) || null,
+        [lotTargets, target]
+    );
     const totalSamples = Number(sampleQuantity || 0);
     const effectiveQuantity = actualQuantity === ""
         ? Number(phieu?.SoLuong || 0)
         : Number(actualQuantity);
+    const totalAllocatedQuantity = btpItems.reduce((sum, item) => sum + allocatedQuantity(item), 0);
     const totalDefects = defects.reduce((sum, defect) => sum + Number(defect.SoLuong || 0), 0);
     const criticalDefects = defects.filter((defect) => ["Nghiêm trọng", "CRITICAL"].includes(defect.DefectType))
         .reduce((sum, defect) => sum + Number(defect.SoLuong || 0), 0);
@@ -126,6 +166,13 @@ export default function SxbtDraftEditor({
         const normalized = value.replace(/\D/g, "");
         setActualQuantity(normalized);
         const nextEffectiveQuantity = normalized === "" ? Number(phieu?.SoLuong || 0) : Number(normalized);
+        const lotRowCount = btpItems.reduce((sum, item) => sum + item.LotRows.length, 0);
+        if (lotRowCount === 1) {
+            setBtpItems((current) => current.map((item) => ({
+                ...item,
+                LotRows: item.LotRows.map((row) => ({ ...row, SoLuongNhap: String(nextEffectiveQuantity) }))
+            })));
+        }
         if (nextEffectiveQuantity > 0 && sampleQuantity !== "") {
             setSampleRate(formatRate(Number(sampleQuantity || 0) * 100 / nextEffectiveQuantity));
         }
@@ -155,12 +202,54 @@ export default function SxbtDraftEditor({
         }
     ));
 
+    const addLotRow = (itemId) => setBtpItems((current) => current.map((item) => {
+        if (Number(item.Id) !== Number(itemId)) return item;
+        const previous = item.LotRows[item.LotRows.length - 1] || {};
+        return {
+            ...item,
+            LotRows: [...item.LotRows, {
+                ClientKey: createLotClientKey(item.Id),
+                BtpItemId: item.Id,
+                DauTuanGS1: "",
+                ThuTu: previous.ThuTu || "",
+                LxvtLot: "",
+                SoLotSX: previous.SoLotSX || "",
+                SoLuongNhap: "",
+                SortOrder: item.LotRows.length + 1
+            }]
+        };
+    }));
+
+    const removeLotRow = (itemId, rowIndex) => {
+        const item = btpItems.find((candidate) => Number(candidate.Id) === Number(itemId));
+        const row = item?.LotRows[rowIndex];
+        if (!item || !row) return;
+        if (item.LotRows.length === 1) {
+            setError("Mỗi BTP phải có ít nhất một dòng lot.");
+            return;
+        }
+        if (row.SoLuongKhoXacNhan !== null && row.SoLuongKhoXacNhan !== undefined && row.SoLuongKhoXacNhan !== ""
+            || row.KhoXacNhanBy || row.KhoXacNhanAt) {
+            setError("Không thể xóa dòng lot đã được Kho xác nhận.");
+            return;
+        }
+        if (defects.some((defect) => defect.BtpLotClientKey === row.ClientKey)) {
+            setError("Dòng lot đang có lỗi được ghi nhận. Hãy xóa lỗi hoặc chuyển lỗi sang dòng khác trước.");
+            return;
+        }
+        setBtpItems((current) => current.map((candidate) => Number(candidate.Id) !== Number(itemId)
+            ? candidate
+            : { ...candidate, LotRows: candidate.LotRows.filter((_, index) => index !== rowIndex) }));
+        if (target === row.ClientKey) setTarget("");
+        setError("");
+    };
+
     const addDefect = (defect) => {
         const selectedTarget = lotTargets.find((item) => item.key === target);
         if (!defect || !selectedTarget) return;
         const existingIndex = defects.findIndex((item) =>
             item.DefectId === Number(defect.Id)
-            && Number(item.BtpLotRowId) === Number(selectedTarget.row.Id)
+            && item.BtpLotClientKey === selectedTarget.row.ClientKey
         );
         if (existingIndex >= 0) {
             setDefects((current) => current.map((item, index) => index === existingIndex
@@ -176,6 +265,7 @@ export default function SxbtDraftEditor({
                 IsLapLai: false,
                 BtpItemId: selectedTarget.item.Id,
                 BtpLotRowId: selectedTarget.row.Id || null,
+                BtpLotClientKey: selectedTarget.row.ClientKey,
                 BtpTenSanPham: selectedTarget.item.TenSanPham || "",
                 BtpSoLotSX: selectedTarget.row.SoLotSX || "",
                 SourceID_KeHoachSanXuat: selectedTarget.item.SourceID_KeHoachSanXuat || null
@@ -198,6 +288,29 @@ export default function SxbtDraftEditor({
         }
         if (defects.some((defect) => !Number.isInteger(Number(defect.SoLuong)) || Number(defect.SoLuong) <= 0)) {
             setError("Số lượng lỗi phải là số nguyên dương.");
+            return;
+        }
+        for (const item of btpItems) {
+            if (!item.LotRows.length) {
+                setError(`BTP #${item.SourceID_KeHoachSanXuat || item.Id} phải có ít nhất một dòng lot.`);
+                return;
+            }
+            const invalidQuantity = item.LotRows.some((row) => {
+                const value = String(row.SoLuongNhap ?? "").trim().replace(',', '.');
+                return !/^\d+(?:\.\d{1,2})?$/.test(value) || Number(value) <= 0;
+            });
+            if (invalidQuantity) {
+                setError(`Số lượng từng dòng của KH #${item.SourceID_KeHoachSanXuat || item.Id} phải lớn hơn 0 và tối đa 2 số lẻ.`);
+                return;
+            }
+            if (item.LotRows.some((row) => /[,;\r\n]/.test(String(row.DauTuanGS1 || ""))
+                || /[,;\r\n]/.test(String(row.LxvtLot || "")))) {
+                setError(`Mỗi dòng của KH #${item.SourceID_KeHoachSanXuat || item.Id} chỉ được nhập một dấu tuần và một LXVT/LOT. Hãy bấm “Tách thêm dòng” trước khi nhập.`);
+                return;
+            }
+        }
+        if (Math.abs(totalAllocatedQuantity - effectiveQuantity) > 0.001) {
+            setError(`Tổng số lượng các dòng dấu tuần/LXVT phải bằng số lượng thực tế (${effectiveQuantity}). Hiện đã phân bổ ${totalAllocatedQuantity}.`);
             return;
         }
         try {
@@ -252,18 +365,40 @@ export default function SxbtDraftEditor({
                     <Condition label="Thùng/sàn xe" value={conditions.thung} onChange={(value) => setConditions((current) => ({ ...current, thung: value }))} />
                     <Condition label="Ngoại quan sản phẩm" value={conditions.ngoaiQuan} onChange={(value) => setConditions((current) => ({ ...current, ngoaiQuan: value }))} />
                     <Typography variant="h6">II. Chi tiết BTP/Lot</Typography>
+                    <Alert severity={Math.abs(totalAllocatedQuantity - effectiveQuantity) <= 0.001 ? "success" : "warning"}>
+                        Tổng đã phân bổ theo dấu tuần/LXVT: {totalAllocatedQuantity} / {effectiveQuantity} {btpItems[0]?.DonViTinh || ""}
+                    </Alert>
                     {btpItems.map((item) => (
                         <Box key={item.Id} sx={{ border: "1px solid", borderColor: "divider", borderRadius: 2, p: 1.5 }}>
-                            <Typography fontWeight={800}>{item.TenSanPham || "BTP"}</Typography>
-                            <Typography variant="body2" color="text.secondary">KH #{item.SourceID_KeHoachSanXuat || "—"} · {item.MaDonHang || "Không có đơn hàng"}</Typography>
+                            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={1}>
+                                <Box>
+                                    <Typography fontWeight={800}>{item.TenSanPham || "BTP"}</Typography>
+                                    <Typography variant="body2" color="text.secondary">KH #{item.SourceID_KeHoachSanXuat || "—"} · {item.MaDonHang || "Không có đơn hàng"}</Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        Đã phân bổ cho kế hoạch này: {allocatedQuantity(item)} {item.DonViTinh || ""}
+                                    </Typography>
+                                </Box>
+                                <Button startIcon={<AddIcon />} onClick={() => addLotRow(item.Id)} sx={{ alignSelf: { sm: "flex-start" } }}>
+                                    Tách thêm dòng
+                                </Button>
+                            </Stack>
                             <Stack spacing={1.5} sx={{ mt: 1.5 }}>
                                 {item.LotRows.map((row, rowIndex) => (
-                                    <Box key={row.Id || rowIndex} sx={{ bgcolor: "grey.50", p: 1.5, borderRadius: 2 }}>
-                                        <Typography variant="subtitle2">Dòng Lot {rowIndex + 1} · SL nhập {row.SoLuongNhap || 0} · Lot SX {row.SoLotSX || "—"}</Typography>
+                                    <Box key={row.ClientKey} sx={{ bgcolor: "grey.50", p: 1.5, borderRadius: 2 }}>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                            <Typography variant="subtitle2">Dòng Lot {rowIndex + 1}</Typography>
+                                            <Stack direction="row">
+                                                <IconButton color="error" aria-label={`Xóa dòng lot ${rowIndex + 1}`} onClick={() => removeLotRow(item.Id, rowIndex)}>
+                                                    <DeleteOutlineIcon />
+                                                </IconButton>
+                                            </Stack>
+                                        </Stack>
                                         <Stack direction={{ xs: "column", md: "row" }} spacing={1} sx={{ mt: 1 }}>
-                                            <TextField label="Dấu tuần/GS1" value={row.DauTuanGS1} onChange={(event) => updateLot(item.Id, rowIndex, { DauTuanGS1: event.target.value })} />
-                                            <TextField label="Thứ tự" value={row.ThuTu} onChange={(event) => updateLot(item.Id, rowIndex, { ThuTu: event.target.value })} />
-                                            <TextField label="LXVT/LOT" value={row.LxvtLot} onChange={(event) => updateLot(item.Id, rowIndex, { LxvtLot: event.target.value })} />
+                                            <TextField fullWidth label="Số lượng thực tế theo dòng" value={row.SoLuongNhap} onChange={(event) => updateLot(item.Id, rowIndex, { SoLuongNhap: event.target.value.replace(',', '.').replace(/[^0-9.]/g, "") })} inputProps={{ inputMode: "decimal" }} required />
+                                            <TextField fullWidth label="Lot SX" value={row.SoLotSX} onChange={(event) => updateLot(item.Id, rowIndex, { SoLotSX: event.target.value })} />
+                                            <TextField fullWidth label="Dấu tuần/GS1" value={row.DauTuanGS1} onChange={(event) => updateLot(item.Id, rowIndex, { DauTuanGS1: event.target.value })} />
+                                            <TextField fullWidth label="Thứ tự" value={row.ThuTu} onChange={(event) => updateLot(item.Id, rowIndex, { ThuTu: event.target.value })} />
+                                            <TextField fullWidth label="LXVT/LOT" value={row.LxvtLot} onChange={(event) => updateLot(item.Id, rowIndex, { LxvtLot: event.target.value })} />
                                         </Stack>
                                     </Box>
                                 ))}
@@ -315,6 +450,7 @@ export default function SxbtDraftEditor({
                         <DefectPickerDialog
                             defects={catalog}
                             onSelect={addDefect}
+                            productName={selectedLotTarget?.item?.TenSanPham || ""}
                             disabled={saving || !target}
                             buttonLabel={!target ? "Chọn BTP/Lot trước" : "Chọn lỗi"}
                             fullWidth

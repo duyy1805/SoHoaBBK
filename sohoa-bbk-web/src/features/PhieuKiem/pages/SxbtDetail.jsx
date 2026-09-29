@@ -388,9 +388,14 @@ export default function SxbtDetail() {
         try {
             setLoadingAction(true);
             setActionNotice(null);
-            await completeSxbt(id, completionConclusion);
+            const response = await completeSxbt(id, completionConclusion);
             await loadData({ background: true });
-            setActionNotice({ type: "success", message: "Hoàn tất phiếu SXBT thành công. Phiếu đã chuyển sang bước Kho xác nhận số lượng." });
+            setActionNotice({
+                type: "success",
+                message: response.data?.message || (completionConclusion === "KHONG_DAT"
+                    ? "Phiếu đang chờ SXBT xác nhận; số lượng nhập Kho là 0."
+                    : "Phiếu đã chuyển sang bước Kho xác nhận số lượng.")
+            });
         } catch (err) {
             setActionNotice({
                 type: "error",
@@ -431,7 +436,10 @@ export default function SxbtDetail() {
     };
 
     const handleConfirmSxbt = async () => {
-        if (!window.confirm("Xác nhận hoàn tất phiếu SXBT sau khi Kho đã xác nhận số lượng?")) return;
+        const confirmMessage = phieu?.KetLuan === "KHONG_DAT"
+            ? "Xác nhận hoàn tất phiếu SXBT không đạt với số lượng nhập Kho bằng 0?"
+            : "Xác nhận hoàn tất phiếu SXBT sau khi Kho đã xác nhận số lượng?";
+        if (!window.confirm(confirmMessage)) return;
 
         try {
             setLoadingAction(true);
@@ -669,8 +677,7 @@ export default function SxbtDetail() {
                                                 <TableCell sx={{ fontWeight: 700 }}>TT</TableCell>
                                                 <TableCell sx={{ fontWeight: 700 }}>LXVT/LOT</TableCell>
                                                 <TableCell sx={{ fontWeight: 700 }}>Số Lot SX</TableCell>
-                                                <TableCell align="right" sx={{ fontWeight: 700 }}>SL nhập</TableCell>
-                                                <TableCell align="right" sx={{ fontWeight: 700 }}>Tổng số Kho xác nhận</TableCell>
+                                                <TableCell align="right" sx={{ fontWeight: 700 }}>Kho xác nhận</TableCell>
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
@@ -680,17 +687,16 @@ export default function SxbtDetail() {
                                                         <TableCell>#{item.KeHoachNhapId || "—"}</TableCell>
                                                         <TableCell>#{item.SourceID_KeHoachSanXuat || "—"}</TableCell>
                                                         <TableCell sx={{ fontWeight: 600 }}>{item.TenSanPham}</TableCell>
-                                                        <TableCell align="right">{item.SoLuong?.toLocaleString("vi-VN")}</TableCell>
-                                                        <TableCell>{item.DonViTinh}</TableCell>
-                                                        <TableCell>{lotRow.DauTuanGS1 || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
-                                                        <TableCell>{lotRow.ThuTu || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
-                                                        <TableCell>{lotRow.LxvtLot || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
-                                                        <TableCell>{lotRow.SoLotSX || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
                                                         <TableCell align="right">
                                                             {lotRow.SoLuongNhap !== null && lotRow.SoLuongNhap !== undefined && lotRow.SoLuongNhap !== ""
                                                                 ? Number(lotRow.SoLuongNhap).toLocaleString("vi-VN")
                                                                 : <Typography variant="caption" color="text.disabled">—</Typography>}
                                                         </TableCell>
+                                                        <TableCell>{item.DonViTinh}</TableCell>
+                                                        <TableCell>{lotRow.DauTuanGS1 || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
+                                                        <TableCell>{lotRow.ThuTu || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
+                                                        <TableCell>{lotRow.LxvtLot || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
+                                                        <TableCell>{lotRow.SoLotSX || <Typography variant="caption" color="text.disabled">—</Typography>}</TableCell>
                                                         <TableCell align="right">
                                                             {canEditKhoQuantity ? (
                                                                 <TextField
