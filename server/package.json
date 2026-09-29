@@ -9,7 +9,8 @@
   "scripts": {
     "test": "node --test",
     "server": "nodemon index.js",
-    "import:sxbt-defects": "node scripts/import-sxbt-defects.js"
+    "import:sxbt-defects": "node scripts/import-sxbt-defects.js",
+    "report:bien-ban-defects": "node scripts/list-bien-ban-defects.js"
   },
   "dependencies": {
     "argon2": "^0.44.0",
