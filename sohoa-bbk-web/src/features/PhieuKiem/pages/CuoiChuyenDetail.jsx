@@ -436,9 +436,6 @@ export default function CuoiChuyenDetail() {
                                                             <Typography variant="body2" color="text.secondary">
                                                                 {defect.MoTa || defect.GhiChu || "---"}
                                                             </Typography>
-                                                            <Typography variant="body2" color="text.secondary">
-                                                                Công nhân: {defect.TenCongNhan || "---"}
-                                                            </Typography>
                                                         </Box>
                                                         <Chip label={defect.SoLuong} color="error" size="small" />
                                                     </Stack>

@@ -44,7 +44,6 @@ const mapDefect = (defect, slotId, index) => ({
     soLuong: defect.SoLuong == null ? "" : String(defect.SoLuong),
     soLuongDatSauSua: defect.SoLuongDatSauSua == null ? "" : String(defect.SoLuongDatSauSua),
     soLuongKhongDatSauSua: defect.SoLuongKhongDatSauSua == null ? "" : String(defect.SoLuongKhongDatSauSua),
-    tenCongNhan: defect.TenCongNhan || "",
     ghiChu: defect.GhiChu || "",
     savedUrls: parseImages(defect.ImageUrls),
     files: []
@@ -130,7 +129,6 @@ export default function CuoiChuyenPlanEditor({ open, phieuId, planId, plans = []
             soLuong: "1",
             soLuongDatSauSua: "",
             soLuongKhongDatSauSua: "",
-            tenCongNhan: "",
             ghiChu: "",
             savedUrls: [],
             files: []
@@ -151,7 +149,6 @@ export default function CuoiChuyenPlanEditor({ open, phieuId, planId, plans = []
                 + Number(slot.soLoiBuiBan || 0) + Number(slot.soLoiConTrung || 0);
             if (totalDefects > Number(slot.soLuongKiem)) return `Tổng lỗi tại ${slot.gioKiem} vượt số lượng kiểm.`;
             for (const row of slot.defects) {
-                if (!row.tenCongNhan.trim()) return `Lỗi ${row.maLoi || row.tenLoi} tại ${slot.gioKiem} chưa nhập công nhân.`;
                 if (!Number.isInteger(Number(row.soLuong)) || Number(row.soLuong) <= 0) return `Số lỗi tại ${slot.gioKiem} không hợp lệ.`;
                 if (Number(row.soLuongDatSauSua || 0) + Number(row.soLuongKhongDatSauSua || 0) > Number(row.soLuong)) {
                     return `Kết quả sửa ${row.maLoi || row.tenLoi} tại ${slot.gioKiem} vượt số lỗi.`;
@@ -200,7 +197,6 @@ export default function CuoiChuyenPlanEditor({ open, phieuId, planId, plans = []
                         soLuong: Number(row.soLuong),
                         soLuongDatSauSua: row.soLuongDatSauSua === "" ? null : Number(row.soLuongDatSauSua),
                         soLuongKhongDatSauSua: row.soLuongKhongDatSauSua === "" ? null : Number(row.soLuongKhongDatSauSua),
-                        tenCongNhan: row.tenCongNhan.trim(),
                         ghiChu: row.ghiChu.trim(),
                         imageUrls: row.savedUrls,
                         sortOrder: index + 1
@@ -280,7 +276,6 @@ export default function CuoiChuyenPlanEditor({ open, phieuId, planId, plans = []
                                         }))}><DeleteOutlineIcon /></IconButton>
                                     </Stack>
                                     <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                                        <TextField fullWidth label="Công nhân" value={row.tenCongNhan} onChange={(e) => updateDefect(index, { tenCongNhan: e.target.value })} />
                                         <TextField fullWidth label="Số lỗi" type="number" value={row.soLuong} onChange={(e) => updateDefect(index, { soLuong: e.target.value.replace(/\D/g, "") })} />
                                         <TextField fullWidth label="Sửa đạt" type="number" value={row.soLuongDatSauSua} onChange={(e) => updateDefect(index, { soLuongDatSauSua: e.target.value.replace(/\D/g, "") })} />
                                         <TextField fullWidth label="Sửa không đạt" type="number" value={row.soLuongKhongDatSauSua} onChange={(e) => updateDefect(index, { soLuongKhongDatSauSua: e.target.value.replace(/\D/g, "") })} />

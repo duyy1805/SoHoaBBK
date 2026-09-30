@@ -1182,7 +1182,6 @@ const normalizeCuoiChuyenPlans = (plans = []) => plans.map((plan, planIndex) => 
                 ? null
                 : Number(defect.soLuongKhongDatSauSua),
             ghiChu: String(defect?.ghiChu || defect?.GhiChu || '').trim(),
-            tenCongNhan: String(defect?.tenCongNhan || defect?.TenCongNhan || '').trim(),
             imageUrls: Array.isArray(defect?.imageUrls)
                 ? defect.imageUrls.filter((url) => typeof url === 'string' && url.trim() !== '')
                 : [],
@@ -1205,7 +1204,6 @@ const normalizeCuoiChuyenTimeSlots = (slots = []) => slots.map((slot, slotIndex)
             ? null : Number(defect.soLuongDatSauSua),
         soLuongKhongDatSauSua: defect?.soLuongKhongDatSauSua === '' || defect?.soLuongKhongDatSauSua == null
             ? null : Number(defect.soLuongKhongDatSauSua),
-        tenCongNhan: String(defect?.tenCongNhan || defect?.TenCongNhan || '').trim(),
         ghiChu: String(defect?.ghiChu || defect?.GhiChu || '').trim(),
         imageUrls: Array.isArray(defect?.imageUrls)
             ? defect.imageUrls.filter((url) => typeof url === 'string' && url.trim() !== '')
@@ -3147,7 +3145,7 @@ router.post(
                             .input('SoLuong', sql.Int, defect.soLuong)
                             .input('SoLuongDatSauSua', sql.Int, defect.soLuongDatSauSua)
                             .input('SoLuongKhongDatSauSua', sql.Int, defect.soLuongKhongDatSauSua)
-                            .input('TenCongNhan', sql.NVarChar(255), defect.tenCongNhan || null)
+                            .input('TenCongNhan', sql.NVarChar(255), null)
                             .input('GhiChu', sql.NVarChar(1000), defect.ghiChu || null)
                             .input('ImageUrls', sql.NVarChar(sql.MAX), JSON.stringify(defect.imageUrls || []))
                             .input('SortOrder', sql.Int, defect.sortOrder)
@@ -3285,17 +3283,6 @@ router.post(
                                 SoLoiConTrung = @SoLoiConTrung
                             WHERE Id = @PlanId AND PhieuKiemId = @PhieuKiemId
                         `);
-                    for (const defect of plan.defects) {
-                        await new sql.Request(transaction)
-                            .input('PlanId', sql.Int, plan.planId)
-                            .input('DefectId', sql.Int, defect.defectId)
-                            .input('TenCongNhan', sql.NVarChar(255), defect.tenCongNhan || null)
-                            .query(`
-                                UPDATE dbo.PHIEU_KIEM_CUOI_CHUYEN_DEFECT
-                                SET TenCongNhan = @TenCongNhan
-                                WHERE PlanId = @PlanId AND DefectId = @DefectId
-                            `);
-                    }
                 }
 
                 await new sql.Request(transaction)
@@ -3341,14 +3328,6 @@ router.post(
 
         try {
             const pool = await poolPromise;
-            const versionResult = await pool.request()
-                .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
-                .input('FieldName', sql.NVarChar(100), UNIFIED_PRINT_DATA_VERSION_FIELD)
-                .query(`
-                    SELECT TOP 1 FieldValue FROM dbo.PhieuKiem_CustomFields
-                    WHERE PhieuKiemId = @PhieuKiemId AND FieldName = @FieldName
-                `);
-            const isUnifiedPrintData = String(versionResult.recordset?.[0]?.FieldValue || '') === UNIFIED_PRINT_DATA_VERSION;
             const timeVersionResult = await pool.request()
                 .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
                 .input('FieldName', sql.NVarChar(100), CUOI_CHUYEN_TIME_DATA_VERSION_FIELD)
@@ -3360,22 +3339,18 @@ router.post(
                     .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
                     .query(`
                         SELECT planRow.Id,
-                            COUNT(DISTINCT slotRow.Id) SoMocGio,
-                            SUM(CASE WHEN defect.Id IS NOT NULL AND NULLIF(LTRIM(RTRIM(defect.TenCongNhan)), '') IS NULL THEN 1 ELSE 0 END) SoLoiThieuCongNhan
+                            COUNT(DISTINCT slotRow.Id) SoMocGio
                         FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN planRow
                         LEFT JOIN dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_SLOT slotRow ON slotRow.PlanId=planRow.Id
-                        LEFT JOIN dbo.PHIEU_KIEM_CUOI_CHUYEN_TIME_DEFECT defect ON defect.TimeSlotId=slotRow.Id
                         WHERE planRow.PhieuKiemId=@PhieuKiemId
                         GROUP BY planRow.Id
                     `);
                 const invalidTimePlan = timeValidation.recordset.find((plan) =>
-                    Number(plan.SoMocGio || 0) === 0 || Number(plan.SoLoiThieuCongNhan || 0) > 0
+                    Number(plan.SoMocGio || 0) === 0
                 );
                 if (invalidTimePlan) {
                     return res.status(409).json({
-                        message: Number(invalidTimePlan.SoMocGio || 0) === 0
-                            ? `Kế hoạch #${invalidTimePlan.Id} chưa có mốc giờ ghi nhận`
-                            : `Kế hoạch #${invalidTimePlan.Id} còn lỗi chưa nhập công nhân`
+                        message: `Kế hoạch #${invalidTimePlan.Id} chưa có mốc giờ ghi nhận`
                     });
                 }
             }
@@ -3386,8 +3361,7 @@ router.post(
                         COALESCE(planRow.SoLuongThucTe, planRow.SoLuongKeHoach, 0) AS SoLuongHieuLuc,
                         ISNULL(SUM(defect.SoLuong), 0)
                             + ISNULL(planRow.SoLoiBuiBan, 0)
-                            + ISNULL(planRow.SoLoiConTrung, 0) AS TongLoi,
-                        SUM(CASE WHEN defect.Id IS NOT NULL AND NULLIF(LTRIM(RTRIM(defect.TenCongNhan)), '') IS NULL THEN 1 ELSE 0 END) AS SoLoiThieuCongNhan
+                            + ISNULL(planRow.SoLoiConTrung, 0) AS TongLoi
                     FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN planRow
                     LEFT JOIN dbo.PHIEU_KIEM_CUOI_CHUYEN_DEFECT defect ON defect.PlanId = planRow.Id
                     WHERE planRow.PhieuKiemId = @PhieuKiemId
@@ -3396,13 +3370,10 @@ router.post(
                 `);
             const invalidPlan = quantityValidation.recordset.find((plan) =>
                 Number(plan.TongLoi || 0) > Number(plan.SoLuongHieuLuc || 0)
-                || (isUnifiedPrintData && Number(plan.SoLoiThieuCongNhan || 0) > 0)
             );
             if (invalidPlan) {
                 return res.status(409).json({
-                    message: Number(invalidPlan.SoLoiThieuCongNhan || 0) > 0
-                        ? `Kế hoạch #${invalidPlan.Id} còn lỗi chưa nhập công nhân`
-                        : `Kế hoạch #${invalidPlan.Id} có tổng lỗi vượt số lượng hiệu lực`
+                    message: `Kế hoạch #${invalidPlan.Id} có tổng lỗi vượt số lượng hiệu lực`
                 });
             }
             const completedByName = await getUserDisplayName(pool, userId, completedByNameFallback);
