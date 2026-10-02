@@ -175,11 +175,17 @@ export default function BienBanAttachments({ bienBanId }) {
         try {
             setPreviewLoadingId(attachment.id);
             setNotice(null);
-            const response = await downloadBienBanAttachment(bienBanId, attachment.id);
+            const response = await downloadBienBanAttachment(bienBanId, attachment.id, { inline: true });
             if (previewRequestRef.current !== requestId) return;
 
             revokePreviewUrl();
-            const objectUrl = URL.createObjectURL(response.data);
+            const mimeType = type === "pdf"
+                ? "application/pdf"
+                : String(attachment.mimeType || response.data?.type || "application/octet-stream");
+            const previewBlob = response.data instanceof Blob && response.data.type === mimeType
+                ? response.data
+                : new Blob([response.data], { type: mimeType });
+            const objectUrl = URL.createObjectURL(previewBlob);
             previewUrlRef.current = objectUrl;
             setPreview({ attachment, type, url: objectUrl });
         } catch (error) {
@@ -386,7 +392,10 @@ export default function BienBanAttachments({ bienBanId }) {
                             component="iframe"
                             src={preview.url}
                             title={preview.attachment.originalName || "Tài liệu PDF"}
-                            sx={{ display: "block", width: "100%", height: "100%", border: 0, bgcolor: "white" }}
+                            sx={{
+                                display: "block", width: "100%", height: "100%", flex: 1,
+                                alignSelf: "stretch", minHeight: 0, border: 0, bgcolor: "white"
+                            }}
                         />
                     )}
                 </DialogContent>

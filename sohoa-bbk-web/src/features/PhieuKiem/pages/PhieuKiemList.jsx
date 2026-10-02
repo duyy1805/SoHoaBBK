@@ -40,10 +40,21 @@ const parsePageParam = (value) => {
     const parsed = Number.parseInt(value, 10);
     return Number.isInteger(parsed) && parsed > 0 ? parsed - 1 : 0;
 };
+const formatDateOnly = (date) => {
+    const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+    return offsetDate.toISOString().slice(0, 10);
+};
+const getDefaultDateRange = () => {
+    const toDate = new Date();
+    const fromDate = new Date(toDate);
+    fromDate.setDate(fromDate.getDate() - 6);
+    return { fromDate: formatDateOnly(fromDate), toDate: formatDateOnly(toDate) };
+};
 
 export default function PhieuKiemList() {
     const [searchParams, setSearchParams] = useSearchParams();
     const location = useLocation();
+    const defaultDateRange = useMemo(() => getDefaultDateRange(), []);
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [deletingId, setDeletingId] = useState(null);
@@ -53,6 +64,8 @@ export default function PhieuKiemList() {
     const [filterLoaiKiem, setFilterLoaiKiem] = useState(() => searchParams.get("type") || "");
     const [filterNguoiKiem, setFilterNguoiKiem] = useState(() => searchParams.get("inspector") || "");
     const [filterKetLuan, setFilterKetLuan] = useState(() => searchParams.get("result") || "");
+    const [dateFrom, setDateFrom] = useState(() => searchParams.get("from") || defaultDateRange.fromDate);
+    const [dateTo, setDateTo] = useState(() => searchParams.get("to") || defaultDateRange.toDate);
     const [filterPopover, setFilterPopover] = useState({ field: "", anchorEl: null });
     const [searchText, setSearchText] = useState(() => searchParams.get("q") || "");
     const [page, setPage] = useState(() => parsePageParam(searchParams.get("page")));
@@ -83,11 +96,13 @@ export default function PhieuKiemList() {
         setFilterLoaiKiem(searchParams.get("type") || "");
         setFilterNguoiKiem(searchParams.get("inspector") || "");
         setFilterKetLuan(searchParams.get("result") || "");
+        setDateFrom(searchParams.get("from") || defaultDateRange.fromDate);
+        setDateTo(searchParams.get("to") || defaultDateRange.toDate);
         setSearchText(searchParams.get("q") || "");
         setPage(parsePageParam(searchParams.get("page")));
         const pageSize = Number(searchParams.get("pageSize"));
         setRowsPerPage(VALID_PAGE_SIZES.includes(pageSize) ? pageSize : 50);
-    }, [searchParams]);
+    }, [defaultDateRange, searchParams]);
 
     const getDetailPath = (item) => {
         if (item.LoaiKiemId === 3) return `/phieu-kiem/cuoi-chuyen/${item.Id}`;
@@ -96,21 +111,26 @@ export default function PhieuKiemList() {
         return `/phieu-kiem/${item.Id}`;
     };
 
-    useEffect(() => {
-        loadData();
-    }, []);
-
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         try {
             setLoading(true);
-            const res = await getPhieuKiem();
+            const res = await getPhieuKiem({ fromDate: dateFrom, toDate: dateTo });
             setData(res.data || []);
         } catch (err) {
             console.error(err);
         } finally {
             setLoading(false);
         }
-    };
+    }, [dateFrom, dateTo]);
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
+
+    useEffect(() => {
+        if (searchParams.get("from") && searchParams.get("to")) return;
+        updateQuery({ from: dateFrom, to: dateTo, page: 1 });
+    }, [dateFrom, dateTo, searchParams, updateQuery]);
 
     const renderKetLuanChip = (ketLuan) => {
         if (ketLuan === "DAT")
@@ -176,6 +196,12 @@ export default function PhieuKiemList() {
     // Xử lý bộ lọc đa trường bằng useMemo
     const filteredData = useMemo(() => {
         return data.filter((item) => {
+            const createdAt = item.CreatedAt ? new Date(item.CreatedAt) : null;
+            if (!createdAt || Number.isNaN(createdAt.getTime())) return false;
+            const createdDate = formatDateOnly(createdAt);
+            if (dateFrom && createdDate < dateFrom) return false;
+            if (dateTo && createdDate > dateTo) return false;
+
             if (!includesFilter(getLoaiKiemLabel(item), filterLoaiKiem)) return false;
             if (!includesFilter(
                 `${item.TenNguoiKiem || ""} ${getDepartmentLabel(item)}`,
@@ -207,7 +233,7 @@ export default function PhieuKiemList() {
 
             return true;
         });
-    }, [data, filterLoaiKiem, filterNguoiKiem, filterKetLuan, filterStatus, searchText]);
+    }, [data, dateFrom, dateTo, filterLoaiKiem, filterNguoiKiem, filterKetLuan, filterStatus, searchText]);
 
     // Xử lý dữ liệu phân trang
     const paginatedData = useMemo(() => {
@@ -252,6 +278,24 @@ export default function PhieuKiemList() {
         setter(value);
         setPage(0);
         updateQuery({ [queryKey]: value, page: 1 });
+    };
+
+    const updateDateFilter = (setter, queryKey, value) => {
+        setter(value);
+        setPage(0);
+        updateQuery({ [queryKey]: value, page: 1 });
+    };
+
+    const setQuickDateRange = (days) => {
+        const toDate = new Date();
+        const fromDate = new Date(toDate);
+        fromDate.setDate(fromDate.getDate() - (days - 1));
+        const nextFrom = formatDateOnly(fromDate);
+        const nextTo = formatDateOnly(toDate);
+        setDateFrom(nextFrom);
+        setDateTo(nextTo);
+        setPage(0);
+        updateQuery({ from: nextFrom, to: nextTo, page: 1 });
     };
 
     const openDetail = (item) => {
@@ -420,6 +464,28 @@ export default function PhieuKiemList() {
 
                 {/* Filters Section */}
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mb: 2 }}>
+                    <TextField
+                        size="small"
+                        type="date"
+                        label="Từ ngày"
+                        value={dateFrom}
+                        onChange={(e) => updateDateFilter(setDateFrom, "from", e.target.value)}
+                        slotProps={{ inputLabel: { shrink: true } }}
+                        sx={{ width: { xs: "100%", sm: 155 }, bgcolor: "background.paper", borderRadius: 1 }}
+                    />
+                    <TextField
+                        size="small"
+                        type="date"
+                        label="Đến ngày"
+                        value={dateTo}
+                        onChange={(e) => updateDateFilter(setDateTo, "to", e.target.value)}
+                        slotProps={{ inputLabel: { shrink: true } }}
+                        sx={{ width: { xs: "100%", sm: 155 }, bgcolor: "background.paper", borderRadius: 1 }}
+                    />
+                    <Stack direction="row" spacing={0.5} alignItems="center">
+                        <Button size="small" onClick={() => setQuickDateRange(7)}>7 ngày</Button>
+                        <Button size="small" onClick={() => setQuickDateRange(30)}>30 ngày</Button>
+                    </Stack>
                     <TextField
                         size="small"
                         placeholder="Tìm Số phiếu, Sản phẩm, Lot..."

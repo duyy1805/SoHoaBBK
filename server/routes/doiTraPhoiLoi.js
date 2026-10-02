@@ -410,6 +410,14 @@ router.post('/summary-preview', authorizeDoiTraAccess, async (req, res) => {
                     WHERE defectRow.NhomLoiId=groupRow.Id
                 )
                 ORDER BY groupRow.SortOrder,groupRow.Id;
+
+                SELECT quotaRow.PhieuId,quotaRow.SourceVatTuId,quotaRow.SoLuongBoLoiSnapshot,
+                    quotaRow.DinhMuc,quotaRow.SoLuongDoiTra,quotaRow.SourceDonViTinhId,
+                    quotaRow.TenDonViTinh
+                FROM #SelectedPhieu selected
+                JOIN dbo.DOI_TRA_PHOI_LOI_VAT_TU_DINH_MUC quotaRow
+                  ON quotaRow.PhieuId=selected.Id
+                ORDER BY quotaRow.PhieuId,quotaRow.MaVatTu,quotaRow.SourceVatTuId;
             `);
         const tickets = result.recordsets[0] || [];
         const defects = result.recordsets[2] || [];
@@ -417,7 +425,12 @@ router.post('/summary-preview', authorizeDoiTraAccess, async (req, res) => {
             ...item,
             defects: defects.filter((defect) => Number(defect.PhoiId) === Number(item.Id))
         }));
-        res.json(encodeBinary({ tickets, phoiItems, defectGroups: result.recordsets[3] || [], isDraft: true }));
+        res.json(encodeBinary({
+            tickets,
+            phoiItems,
+            defectGroups: result.recordsets[3] || [],
+            dinhMucItems: result.recordsets[4] || []
+        }));
     } catch (error) {
         console.error('DoiTraPhoiLoi summary preview error:', error);
         const number = Number(error?.number || error?.originalError?.info?.number);

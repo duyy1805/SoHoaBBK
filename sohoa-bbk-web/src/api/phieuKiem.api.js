@@ -31,8 +31,8 @@ export const getPhieuKiemList = (params) => {
     return axiosClient.get("/phieu-kiem/my", { params });
 };
 
-export const getPhieuKiem = () => {
-    return axiosClient.get("/phieu-kiem/my");
+export const getPhieuKiem = (params) => {
+    return axiosClient.get("/phieu-kiem/my", { params });
 };
 
 // Chi tiết phiếu kiểm

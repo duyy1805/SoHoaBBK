@@ -290,6 +290,18 @@ router.get("/:id/attachments/:attachmentId/download", authenticateToken, async (
 
         res.setHeader("X-Content-Type-Options", "nosniff");
         res.type(attachment.MimeType);
+        if (req.query.inline === "1") {
+            res.setHeader(
+                "Content-Disposition",
+                `inline; filename*=UTF-8''${encodeURIComponent(attachment.OriginalName)}`
+            );
+            return res.sendFile(absolutePath, (error) => {
+                if (error && !res.headersSent) {
+                    console.error("Preview attachment error:", error);
+                    res.status(500).json({ message: "Không xem trước được file đính kèm" });
+                }
+            });
+        }
         res.download(absolutePath, attachment.OriginalName, (error) => {
             if (error && !res.headersSent) {
                 console.error("Download attachment error:", error);

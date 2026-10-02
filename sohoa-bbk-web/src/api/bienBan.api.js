@@ -197,8 +197,9 @@ export const uploadBienBanAttachments = (bienBanId, files = []) => {
     });
 };
 
-export const downloadBienBanAttachment = (bienBanId, attachmentId) =>
+export const downloadBienBanAttachment = (bienBanId, attachmentId, { inline = false } = {}) =>
     axiosClient.get(`/bien-ban/${bienBanId}/attachments/${attachmentId}/download`, {
+        params: inline ? { inline: 1 } : undefined,
         responseType: "blob",
         timeout: 120000
     });

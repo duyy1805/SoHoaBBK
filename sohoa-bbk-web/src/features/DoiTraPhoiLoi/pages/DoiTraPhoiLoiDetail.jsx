@@ -227,8 +227,8 @@ export default function DoiTraPhoiLoiDetail() {
     const summaryData = {
         tickets: [{ ...plan, ...phieu }],
         phoiItems,
+        dinhMucItems,
         defectGroups,
-        isDraft: true
     };
 
     return (

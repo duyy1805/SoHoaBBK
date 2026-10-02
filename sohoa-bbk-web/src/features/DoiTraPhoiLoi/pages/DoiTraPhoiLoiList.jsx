@@ -40,7 +40,7 @@ export default function DoiTraPhoiLoiList() {
 
     const printSummary = useReactToPrint({
         contentRef: summaryPrintRef,
-        documentTitle: 'TongHopDoiTraPhoiLoi_BanNhap'
+        documentTitle: 'BangTongHopPhoiBtpLoiDoiTra'
     });
 
     const load = useCallback(async () => {
@@ -188,7 +188,7 @@ export default function DoiTraPhoiLoiList() {
                 )}
             </Paper>
             <Dialog open={summaryOpen} onClose={() => setSummaryOpen(false)} maxWidth="xl" fullWidth>
-                <DialogTitle>Xem trước phiếu tổng hợp VT/BTP/TP lỗi đổi trả</DialogTitle>
+                <DialogTitle>Xem trước bảng tổng hợp phôi, BTP lỗi đổi trả</DialogTitle>
                 <DialogContent dividers sx={{ bgcolor: '#e5e7eb', p: 2, overflow: 'auto' }}>
                     <Box sx={{ minWidth: '297mm' }}>
                         {summaryData && <DoiTraPhoiLoiSummaryPrintTemplate ref={summaryPrintRef} data={summaryData} />}

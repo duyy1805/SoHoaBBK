@@ -53,6 +53,10 @@ const {
     removeBienBanFiles
 } = require('../services/kcsRecordDeletion.service');
 
+const isDateOnly = (value) => typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && !Number.isNaN(new Date(`${value}T00:00:00`).getTime());
+
 const multer = require('multer');
 const path = require('path');
 const sharp = require('sharp');
@@ -1591,6 +1595,8 @@ router.get(
                 mode = 'KCS';
             if (permissions.includes('PHAN_BO_KIEM'))
                 mode = 'TO_TRUONG_KCS';   // ưu tiên cao hơn KCS
+            if (permissions.includes('XAC_NHAN_KHO_SXBT'))
+                mode = 'KHO_SXBT';
             if (permissions.includes('QUAN_TRI_DM'))
                 mode = 'VIEW';
             if ((req.user.roles || []).some(role =>
@@ -1600,6 +1606,8 @@ router.get(
             const result = await pool.request()
                 .input('UserId', sql.Int, req.user.userId)
                 .input('Mode', sql.NVarChar, mode)
+                .input('FromDate', sql.Date, isDateOnly(req.query.fromDate) ? req.query.fromDate : null)
+                .input('ToDate', sql.Date, isDateOnly(req.query.toDate) ? req.query.toDate : null)
                 .execute('SP_PhieuKiem_My');
 
             const visibleRows = await excludeCongDoanRows(pool, result.recordset);
