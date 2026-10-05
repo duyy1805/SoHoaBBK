@@ -5,6 +5,7 @@ import {
     Button,
     Card,
     CardContent,
+    Checkbox,
     Chip,
     CircularProgress,
     Container,
@@ -15,6 +16,7 @@ import {
     FormControl,
     Grid,
     InputLabel,
+    ListItemText,
     MenuItem,
     Paper,
     Select,
@@ -39,12 +41,14 @@ import ApartmentOutlinedIcon from "@mui/icons-material/ApartmentOutlined";
 import PersonOutlineOutlinedIcon from "@mui/icons-material/PersonOutlineOutlined";
 import AccessTimeOutlinedIcon from "@mui/icons-material/AccessTimeOutlined";
 import RuleFolderOutlinedIcon from "@mui/icons-material/RuleFolderOutlined";
+import GroupWorkOutlinedIcon from "@mui/icons-material/GroupWorkOutlined";
 import {
     addBienBanSxbtXuLyRow,
     confirmBienBanSxbtMucDo,
     confirmBienBanSxbtStep,
     getBienBanSxbtDetail,
     getBoPhan,
+    saveRecipientDepartments,
     saveBienBanCustomFields,
     saveBienBanSxbtDraft
 } from "../../api/bienBan.api";
@@ -54,6 +58,7 @@ import { useToast } from "../../components/common/ToastContext";
 import { useReactToPrint } from "react-to-print";
 import { BienBanSxbtPrintTemplate } from "./components/BienBanSxbtPrintTemplate";
 import BienBanAttachments from "./components/BienBanAttachments";
+import PrintableBienBanAttachments from "./components/PrintableBienBanAttachments";
 
 const LEVEL_OPTIONS = ["B", "C"];
 
@@ -157,12 +162,17 @@ export default function BienBanSxbtDetail() {
     const [xuLyRows, setXuLyRows] = useState([]);
     const [hanhDongRows, setHanhDongRows] = useState([]);
     const [dynamicFields, setDynamicFields] = useState([]);
+    const [recipientDepartments, setRecipientDepartments] = useState([]);
     const [moTaChung, setMoTaChung] = useState("");
     const [mucDo, setMucDo] = useState("B");
     const [openXuLy, setOpenXuLy] = useState(false);
     const [openHanhDong, setOpenHanhDong] = useState(false);
     const [openPrint, setOpenPrint] = useState(false);
     const [previewImage, setPreviewImage] = useState("");
+    const [openRecipientDepartments, setOpenRecipientDepartments] = useState(false);
+    const [attachmentPrintStatus, setAttachmentPrintStatus] = useState({
+        loading: false, unsupported: [], failed: [], printableCount: 0
+    });
 
     const returnToList = () => {
         if (location.state?.returnTo) {
@@ -188,6 +198,7 @@ export default function BienBanSxbtDetail() {
             setXuLyRows(data.xuLyRows || []);
             setHanhDongRows(data.hanhDong || []);
             setDynamicFields(data.dynamicFields || []);
+            setRecipientDepartments(data.recipientDepartments || []);
             setMoTaChung(infoData.MoTaChung || "");
             setMucDo(infoData.MucDoKhongPhuHop || "B");
         } catch (err) {
@@ -284,6 +295,13 @@ export default function BienBanSxbtDetail() {
     });
 
     const handlePrint = async () => {
+        const skippedAttachments = [
+            ...(attachmentPrintStatus.unsupported || []),
+            ...(attachmentPrintStatus.failed || [])
+        ];
+        if (skippedAttachments.length > 0) {
+            showToast(`Sẽ bỏ qua tệp không in được: ${skippedAttachments.join(", ")}`, "warning");
+        }
         try {
             const inputs = document.querySelectorAll(".custom-field");
             const fieldsData = {};
@@ -347,7 +365,10 @@ export default function BienBanSxbtDetail() {
                                     Xem phiếu kiểm
                                 </Button>
                             )}
-                            <Button variant="contained" startIcon={<PrintIcon />} onClick={() => setOpenPrint(true)} sx={{ bgcolor: "#172033" }}>
+                            <Button variant="contained" startIcon={<PrintIcon />} onClick={() => {
+                                setAttachmentPrintStatus({ loading: true, unsupported: [], failed: [], printableCount: 0 });
+                                setOpenPrint(true);
+                            }} sx={{ bgcolor: "#172033" }}>
                                 Xem in
                             </Button>
                         </Stack>
@@ -410,6 +431,36 @@ export default function BienBanSxbtDetail() {
                     </Card>
 
                     <BienBanAttachments bienBanId={bienBanId} />
+
+                    <Card sx={cardShellSx}>
+                        <CardContent sx={{ p: { xs: 2, md: 2.5 }, "&:last-child": { pb: { xs: 2, md: 2.5 } } }}>
+                            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}
+                                justifyContent="space-between" alignItems={{ sm: "center" }}>
+                                <Box>
+                                    <Stack direction="row" spacing={1} alignItems="center">
+                                        <GroupWorkOutlinedIcon sx={{ color: "#2563eb" }} />
+                                        <Typography sx={sectionTitleSx}>Bộ phận nhận</Typography>
+                                    </Stack>
+                                    <Typography variant="caption" color="text.secondary">
+                                        Thành viên các bộ phận này được quyền xem biên bản, không phát sinh trách nhiệm xử lý hoặc duyệt.
+                                    </Typography>
+                                </Box>
+                                {info?.CanManageRecipientDepartments && (
+                                    <Button variant="outlined" size="small" onClick={() => setOpenRecipientDepartments(true)}>
+                                        Chọn bộ phận nhận
+                                    </Button>
+                                )}
+                            </Stack>
+                            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
+                                {recipientDepartments.length > 0 ? recipientDepartments.map((department) => (
+                                    <Chip key={department.BoPhanId} size="small" variant="outlined"
+                                        label={[department.MaBoPhan, department.TenBoPhan].filter(Boolean).join(" - ")} />
+                                )) : (
+                                    <Typography variant="body2" color="text.secondary">Chưa chọn bộ phận nhận.</Typography>
+                                )}
+                            </Stack>
+                        </CardContent>
+                    </Card>
 
                     <Grid container spacing={2} alignItems="flex-start">
                         <Grid size={{ xs: 12, lg: 8.5 }}>
@@ -688,6 +739,14 @@ export default function BienBanSxbtDetail() {
             </Container>
 
             <SxbtXuLyDialog open={openXuLy} onClose={() => setOpenXuLy(false)} bienBanId={bienBanId} mucDo={mucDo} reload={loadData} />
+            <SxbtRecipientDepartmentDialog
+                open={openRecipientDepartments}
+                onClose={() => setOpenRecipientDepartments(false)}
+                bienBanId={bienBanId}
+                recipientIds={recipientDepartments.map((item) => Number(item.BoPhanId))}
+                reload={loadData}
+                showToast={showToast}
+            />
             <SxbtHanhDongDialog
                 open={openHanhDong}
                 onClose={() => setOpenHanhDong(false)}
@@ -704,21 +763,27 @@ export default function BienBanSxbtDetail() {
             <Dialog open={openPrint} onClose={() => setOpenPrint(false)} maxWidth="md" fullWidth>
                 <DialogTitle>Xem trước biên bản SXBT</DialogTitle>
                 <DialogContent dividers sx={{ bgcolor: "#e5e7eb", p: 2 }}>
-                    <BienBanSxbtPrintTemplate
-                        ref={printRef}
-                        info={info}
-                        moTaChung={moTaChung}
-                        defects={defects}
-                        xuLyRows={xuLyRows}
-                        hanhDongRows={hanhDongRows}
-                        dynamicFields={dynamicFields}
-                        confirmSteps={confirmSteps}
-                    />
+                    <Box ref={printRef}>
+                        <BienBanSxbtPrintTemplate
+                            info={info}
+                            moTaChung={moTaChung}
+                            defects={defects}
+                            xuLyRows={xuLyRows}
+                            hanhDongRows={hanhDongRows}
+                            dynamicFields={dynamicFields}
+                            confirmSteps={confirmSteps}
+                        />
+                        <PrintableBienBanAttachments
+                            bienBanId={info?.BienBanId || bienBanId}
+                            onStatusChange={setAttachmentPrintStatus}
+                        />
+                    </Box>
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setOpenPrint(false)}>Đóng</Button>
-                    <Button variant="contained" startIcon={<PrintIcon />} onClick={() => handlePrint()}>
-                        In / Lưu PDF
+                    <Button variant="contained" startIcon={<PrintIcon />} onClick={() => handlePrint()}
+                        disabled={attachmentPrintStatus.loading}>
+                        {attachmentPrintStatus.loading ? "Đang chuẩn bị tệp..." : "In / Lưu PDF"}
                     </Button>
                 </DialogActions>
             </Dialog>
@@ -762,6 +827,72 @@ function EmptyTableRow({ colSpan, label }) {
                 {label}
             </TableCell>
         </TableRow>
+    );
+}
+
+function SxbtRecipientDepartmentDialog({ open, onClose, bienBanId, recipientIds, reload, showToast }) {
+    const [departments, setDepartments] = useState([]);
+    const [selected, setSelected] = useState([]);
+    const [saving, setSaving] = useState(false);
+    const recipientIdsKey = (recipientIds || []).map(Number).sort((a, b) => a - b).join(",");
+
+    useEffect(() => {
+        if (!open) return;
+        setSelected(recipientIdsKey ? recipientIdsKey.split(",").map(Number) : []);
+        getBoPhan()
+            .then((response) => setDepartments(response.data || []))
+            .catch((error) => showToast(error?.response?.data?.message || "Không tải được danh sách bộ phận", "error"));
+    }, [open, recipientIdsKey, showToast]);
+
+    const handleSubmit = async () => {
+        if (saving) return;
+        try {
+            setSaving(true);
+            await saveRecipientDepartments(bienBanId, selected);
+            onClose();
+            await reload();
+            showToast("Đã cập nhật bộ phận nhận", "success");
+        } catch (error) {
+            showToast(error?.response?.data?.message || "Không thể lưu bộ phận nhận", "error");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <Dialog open={open} onClose={saving ? undefined : onClose} fullWidth maxWidth="sm">
+            <DialogTitle>Chọn bộ phận nhận</DialogTitle>
+            <DialogContent dividers>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                    Người thuộc bộ phận được chọn sẽ nhìn thấy biên bản SXBT này.
+                </Typography>
+                <FormControl fullWidth>
+                    <InputLabel>Danh sách bộ phận</InputLabel>
+                    <Select multiple label="Danh sách bộ phận" value={selected}
+                        onChange={(event) => setSelected(
+                            (typeof event.target.value === "string"
+                                ? event.target.value.split(",") : event.target.value).map(Number)
+                        )}
+                        renderValue={(values) => values.map((id) => {
+                            const department = departments.find((item) => Number(item.Id) === Number(id));
+                            return department?.TenBoPhan || department?.MaBoPhan || `#${id}`;
+                        }).join(", ")}>
+                        {departments.map((department) => (
+                            <MenuItem key={department.Id} value={Number(department.Id)}>
+                                <Checkbox checked={selected.includes(Number(department.Id))} />
+                                <ListItemText primary={department.TenBoPhan} secondary={department.MaBoPhan} />
+                            </MenuItem>
+                        ))}
+                    </Select>
+                </FormControl>
+            </DialogContent>
+            <DialogActions>
+                <Button color="inherit" disabled={saving} onClick={onClose}>Hủy</Button>
+                <Button variant="contained" disabled={saving} onClick={handleSubmit}>
+                    {saving ? "Đang lưu..." : "Lưu bộ phận nhận"}
+                </Button>
+            </DialogActions>
+        </Dialog>
     );
 }
 

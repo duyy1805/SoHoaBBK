@@ -6,6 +6,10 @@ const { poolPromise } = require("../db");
 const { loadSignatureDataUrlMap } = require("../utils/signatureImage");
 const authenticateToken = require("../middlewares/auth.middleware");
 const authorize = require("../middlewares/permission.middleware");
+const {
+    getRecipientDepartments,
+    getRecipientManageAccess
+} = require("../utils/recipientDepartments");
 
 const hasPermission = (user, permissionCode) =>
     Array.isArray(user?.permissions) && user.permissions.includes(permissionCode);
@@ -124,6 +128,8 @@ router.get("/:id", authenticateToken, async (req, res) => {
         const recordsets = result.recordsets || [];
         const baseInfo = recordsets[0]?.[0] || null;
         const extraInfo = extraInfoResult.recordset?.[0] || {};
+        const recipientDepartments = await getRecipientDepartments(pool, bienBanId);
+        const recipientAccess = await getRecipientManageAccess(pool, bienBanId, req.user);
         let sxbtSources = [];
         if (extraInfo.PhieuKiemId) {
             const sourcesResult = await pool.request()
@@ -183,7 +189,11 @@ router.get("/:id", authenticateToken, async (req, res) => {
         }
 
         res.json({
-            info: baseInfo ? { ...baseInfo, ...extraInfo } : null,
+            info: baseInfo ? {
+                ...baseInfo,
+                ...extraInfo,
+                CanManageRecipientDepartments: recipientAccess.canManage
+            } : null,
             defects: recordsets[1] || [],
             xuLyRows: recordsets[2] || [],
             hanhDong: recordsets[3] || [],
@@ -192,7 +202,8 @@ router.get("/:id", authenticateToken, async (req, res) => {
                 ...step,
                 TenNguoiXacNhan: step?.ConfirmedBy ? userNameMap.get(Number(step.ConfirmedBy)) || "" : "",
                 SignatureDataUrl: step?.ConfirmedBy ? signatureMap.get(Number(step.ConfirmedBy)) || null : null
-            }))
+            })),
+            recipientDepartments
         });
     } catch (err) {
         console.error("GetBienBanSxbtDetail error:", err);

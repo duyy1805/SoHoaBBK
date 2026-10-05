@@ -100,6 +100,7 @@ import BienBanWorkflowGuide from "./components/BienBanWorkflowGuide";
 import ResponsiveDataList from "./components/ResponsiveDataList";
 import DefectImageGalleryDialog from "./components/DefectImageGalleryDialog";
 import BienBanAttachments from "./components/BienBanAttachments";
+import PrintableBienBanAttachments from "./components/PrintableBienBanAttachments";
 import DefectPickerDialog from "../PhieuKiem/components/DefectPickerDialog";
 import {
     buildBienBanWorkflow,
@@ -197,6 +198,9 @@ export default function BienBanDetail({ standalone = false }) {
     const [editingChiPhiRow, setEditingChiPhiRow] = useState(null);
     const [editingHanhDongRow, setEditingHanhDongRow] = useState(null);
     const [openPrintModal, setOpenPrintModal] = useState(false);
+    const [attachmentPrintStatus, setAttachmentPrintStatus] = useState({
+        loading: false, unsupported: [], failed: [], printableCount: 0
+    });
     const [imagePreview, setImagePreview] = useState({ images: [], index: 0 });
 
     const [dynamicFields, setDynamicFields] = useState([]);
@@ -985,13 +989,23 @@ export default function BienBanDetail({ standalone = false }) {
         });
     };
 
-    const handlePrintPreview = () => setOpenPrintModal(true);
+    const handlePrintPreview = () => {
+        setAttachmentPrintStatus({ loading: true, unsupported: [], failed: [], printableCount: 0 });
+        setOpenPrintModal(true);
+    };
     const triggerPrint = useReactToPrint({
         contentRef: componentRef,
         documentTitle: info ? `BienBan_${info.SoPhieu}` : 'BienBan',
     });
     const handlePrint = async () => {
         try {
+            const skippedAttachments = [
+                ...(attachmentPrintStatus.unsupported || []),
+                ...(attachmentPrintStatus.failed || [])
+            ];
+            if (skippedAttachments.length > 0) {
+                showToast(`Sẽ bỏ qua tệp không in được: ${skippedAttachments.join(", ")}`, "warning");
+            }
             if (!canEditKphCustomFields) {
                 triggerPrint();
                 return;
@@ -2160,11 +2174,10 @@ export default function BienBanDetail({ standalone = false }) {
             <Dialog open={openPrintModal} onClose={() => setOpenPrintModal(false)} maxWidth="lg" fullWidth>
                 <DialogTitle>Xem trước bản in</DialogTitle>
                 <DialogContent dividers sx={{ bgcolor: '#525659', p: 3 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <Paper sx={{ width: '210mm', minHeight: '297mm', p: 0, boxShadow: 3 }}>
+                    <Box ref={componentRef}>
+                        <Paper sx={{ width: '210mm', minHeight: '297mm', p: 0, mx: 'auto', boxShadow: 3 }}>
                             {isStandaloneBienBan ? (
                                 <PhieuXuLyKhongPhuHopPrintTemplate
-                                    ref={componentRef}
                                     info={{ ...info, MoTaChung: moTaChung }}
                                     defects={defects}
                                     xuLy={xuLy}
@@ -2179,7 +2192,6 @@ export default function BienBanDetail({ standalone = false }) {
                                 />
                             ) : isTrenChuyenBienBan ? (
                                 <BienBanTrenChuyenPrintTemplate
-                                    ref={componentRef}
                                     info={{ ...info, MoTaChung: moTaChung }}
                                     defects={defects}
                                     xuLy={xuLy}
@@ -2195,7 +2207,6 @@ export default function BienBanDetail({ standalone = false }) {
                                 />
                             ) : (
                                 <BienBanPrintTemplate
-                                    ref={componentRef}
                                     info={{ ...info, MoTaChung: moTaChung }}
                                     defects={defects}
                                     xuLy={xuLy}
@@ -2211,12 +2222,17 @@ export default function BienBanDetail({ standalone = false }) {
                                 />
                             )}
                         </Paper>
+                        <PrintableBienBanAttachments
+                            bienBanId={info?.BienBanId || bienBanId}
+                            onStatusChange={setAttachmentPrintStatus}
+                        />
                     </Box>
                 </DialogContent>
                 <DialogActions sx={{ p: 2 }}>
                     <Button onClick={() => setOpenPrintModal(false)} color="inherit">Đóng</Button>
-                    <Button startIcon={<PrintIcon />} onClick={handlePrint} variant="contained" color="primary">
-                        Tiến hành In
+                    <Button startIcon={<PrintIcon />} onClick={handlePrint} variant="contained" color="primary"
+                        disabled={attachmentPrintStatus.loading}>
+                        {attachmentPrintStatus.loading ? "Đang chuẩn bị tệp..." : "Tiến hành In"}
                     </Button>
                 </DialogActions>
             </Dialog>
