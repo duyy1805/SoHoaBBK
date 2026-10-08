@@ -3,7 +3,7 @@ import {
     Alert, Autocomplete, Badge, Box, Button, Card, CardContent, Chip, CircularProgress, Collapse, Dialog,
     DialogActions, DialogContent, DialogTitle, Divider, Grid, Paper, Stack, Step,
     StepLabel, Stepper, Tab, Table, TableBody, TableCell, TableContainer,
-    TableHead, TableRow, Tabs, TextField, Typography, createFilterOptions
+    TableHead, TableRow, Tabs, TextField, Typography
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import PrintIcon from '@mui/icons-material/Print';
@@ -21,7 +21,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useReactToPrint } from 'react-to-print';
 import {
     cancelDoiTraPhoiLoi, deleteDoiTraPhoiLoi, executeDoiTraAction,
-    getDoiTraKph, getDoiTraPhoiLoiDetail, getDoiTraTraceabilityLookups
+    getDoiTraKph, getDoiTraPhoiLoiDetail
 } from '../../../api/doiTraPhoiLoi.api';
 import { hasPermission } from '../../../utils/auth';
 import DoiTraPhoiLoiPrintTemplate from '../components/DoiTraPhoiLoiPrintTemplate';
@@ -37,14 +37,6 @@ const Info = ({ label, value }) => (
         <Typography variant="body2" fontWeight={700}>{value || '---'}</Typography>
     </Box>
 );
-const responsibleDepartmentLabel = (item) => item?.source === 'TAG_SYSTEM'
-    ? [item.departmentName, item.unitName].filter(Boolean).join(' — ')
-    : [item?.departmentCode, item?.departmentName].filter(Boolean).join(' — ');
-const filterResponsibleDepartments = createFilterOptions({
-    stringify: (item) => [
-        item.departmentCode, item.departmentName, item.unitName, item.sourceId, item.source
-    ].filter(Boolean).join(' ')
-});
 const DETAIL_TABS = ['overview', 'phoi', 'inspection', 'kph', 'quota', 'history'];
 const KPH_STATUSES = ['CHO_THIET_LAP_KPH', 'CHO_Y_KIEN_KPH', 'CHO_XAC_NHAN_CUOI_KPH', 'CHO_BGD_XAC_NHAN', 'CHO_THEO_DOI', 'KPH_HOAN_TAT_CHO_B7', 'HOAN_TAT', 'TRA_LAI_KCS'];
 const chooseDefaultTab = (detail) => {
@@ -72,8 +64,6 @@ export default function DoiTraPhoiLoiDetail() {
     const [showDetails, setShowDetails] = useState(false);
     const [actionDialog, setActionDialog] = useState(null);
     const [actionNote, setActionNote] = useState('');
-    const [responsibleDepartment, setResponsibleDepartment] = useState(null);
-    const [responsibleDepartments, setResponsibleDepartments] = useState([]);
     const [actionLoading, setActionLoading] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [kphData, setKphData] = useState(null);
@@ -161,42 +151,16 @@ export default function DoiTraPhoiLoiDetail() {
         }
         setActionDialog(action);
         setActionNote('');
-        setResponsibleDepartment(null);
-        if (['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(action.ActionCode)) {
-            try {
-                let options = responsibleDepartments;
-                if (!options.length) {
-                    const response = await getDoiTraTraceabilityLookups();
-                    options = response.data?.responsibleDepartments || [];
-                    setResponsibleDepartments(options);
-                }
-                const currentSource = data.phieu?.BoPhanGayLoiSource
-                    || (data.phieu?.BoPhanGayLoiId ? 'NOI_BO' : null);
-                const currentSourceId = data.phieu?.BoPhanGayLoiSourceId
-                    || data.phieu?.BoPhanGayLoiId;
-                setResponsibleDepartment(options.find((item) => item.source === currentSource
-                    && Number(item.sourceId) === Number(currentSourceId)) || null);
-            } catch (error) {
-                setActionDialog(null);
-                window.alert(error.response?.data?.message || 'Không tải được danh sách bộ phận.');
-            }
-        }
     };
 
     const executeAction = async () => {
         if (!actionDialog) return;
-        const isKcs = ['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(actionDialog.ActionCode);
-        if (isKcs && !responsibleDepartment) return window.alert('Vui lòng chọn bộ phận gây lỗi.');
         if (actionDialog.ActionCode === 'TBP_RETURN' && !actionNote.trim()) return window.alert('Vui lòng nhập lý do trả lại.');
         try {
             setActionLoading(true);
             await executeDoiTraAction(id, actionDialog.ActionCode, {
                 rowVersion: data.phieu.RowVersion,
-                ghiChu: actionNote.trim() || null,
-                boPhanGayLoi: responsibleDepartment ? {
-                    source: responsibleDepartment.source,
-                    sourceId: responsibleDepartment.sourceId
-                } : null
+                ghiChu: actionNote.trim() || null
             });
             setActionDialog(null);
             await load({ background: true });
@@ -292,15 +256,6 @@ export default function DoiTraPhoiLoiDetail() {
                 <DialogTitle>{actionDialog?.ActionName}</DialogTitle>
                 <DialogContent dividers>
                     <Stack spacing={2} sx={{ pt: 0.5 }}>
-                        {['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(actionDialog?.ActionCode) && <Autocomplete
-                            options={responsibleDepartments}
-                            value={responsibleDepartment}
-                            isOptionEqualToValue={(option, value) => option.key === value.key}
-                            getOptionLabel={responsibleDepartmentLabel}
-                            filterOptions={filterResponsibleDepartments}
-                            onChange={(_, value) => setResponsibleDepartment(value)}
-                            renderInput={(params) => <TextField {...params} required label="Bộ phận gây lỗi" />}
-                        />}
                         <TextField
                             label={actionDialog?.ActionCode === 'TBP_RETURN' ? 'Lý do trả lại' : 'Ghi chú'}
                             required={actionDialog?.ActionCode === 'TBP_RETURN'}

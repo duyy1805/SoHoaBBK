@@ -46,6 +46,10 @@ const { getClosingScheduleCustomer } = require('../utils/closingScheduleCustomer
 const { attachInputInspectionSource } = require('../utils/inputInspectionSource');
 const { attachSignatureDataUrls, loadSignatureDataUrlMap } = require('../utils/signatureImage');
 const {
+    loadInspectionApprovalHistoryMap,
+    attachApprovalSummaries
+} = require('../utils/inspectionApprovalHistory');
+const {
     getBienBanFiles,
     getPhieuKiemFiles,
     deleteBienBanData,
@@ -923,6 +927,11 @@ const attachListQuantities = async (pool, rows = []) => {
                 , inspector.BoPhanId AS BoPhanNguoiKiemId
                 , inspectorDepartment.MaBoPhan AS MaBoPhanNguoiKiem
                 , inspectorDepartment.TenBoPhan AS TenBoPhanNguoiKiem
+                , CASE
+                    WHEN pk.LoaiKiemId = 3 THEN COALESCE(approvalTarget.CuoiChuyenBoPhanId, inspector.BoPhanId)
+                    WHEN pk.LoaiKiemId = 6 THEN COALESCE(approvalTarget.TrenChuyenBoPhanId, inspector.BoPhanId)
+                    ELSE inspector.BoPhanId
+                  END AS TbpApproveBoPhanId
                 , CASE WHEN pk.LoaiKiemId = 4
                     THEN COALESCE(sxbtPlanUnit.MaDonVi, sxbtLegacyUnit.MaDonVi) END AS SxbtMaDonVi
                 , CASE WHEN pk.LoaiKiemId = 4
@@ -934,6 +943,19 @@ const attachListQuantities = async (pool, rows = []) => {
             LEFT JOIN dbo.DM_BO_PHAN inspectorDepartment ON inspectorDepartment.Id = inspector.BoPhanId
             LEFT JOIN dbo.PHIEU_KIEM_DAU_VAO_TAI_NHAP incomingRetest
                 ON incomingRetest.PhieuKiemId = pk.Id
+            OUTER APPLY (
+                SELECT
+                    MAX(CASE WHEN customField.FieldName = N'CuoiChuyen_ApproveBoPhanId'
+                        THEN TRY_CONVERT(int, customField.FieldValue) END) AS CuoiChuyenBoPhanId,
+                    MAX(CASE WHEN customField.FieldName = N'TrenChuyen_ApproveBoPhanId'
+                        THEN TRY_CONVERT(int, customField.FieldValue) END) AS TrenChuyenBoPhanId
+                FROM dbo.PhieuKiem_CustomFields customField
+                WHERE customField.PhieuKiemId = pk.Id
+                  AND customField.FieldName IN (
+                      N'CuoiChuyen_ApproveBoPhanId',
+                      N'TrenChuyen_ApproveBoPhanId'
+                  )
+            ) approvalTarget
             OUTER APPLY (
                 SELECT SUM(ISNULL(planRow.SoLuongKeHoach, 0)) AS TongKeHoach,
                     SUM(ISNULL(planRow.SoLuongThucTe, 0)) AS TongThucTe,
@@ -1103,6 +1125,11 @@ const enrichInspectionSignatures = async (pool, dynamicFields = [], xacNhans = [
         dynamicFields: fields,
         xacNhans: await attachSignatureDataUrls(pool, xacNhans, 'NguoiXacNhanId')
     };
+};
+
+const approvalHistoryFor = async (pool, phieuKiemId) => {
+    const map = await loadInspectionApprovalHistoryMap(pool, [Number(phieuKiemId)]);
+    return map.get(Number(phieuKiemId)) || [];
 };
 
 const normalizeTrenChuyenSlots = (slots = []) => slots.map((slot, slotIndex) => ({
@@ -1287,7 +1314,8 @@ router.get(
 
             const visibleRows = await excludeCongDoanRows(pool, result.recordset);
             const rowsWithQuantities = await attachListQuantities(pool, visibleRows);
-            res.json(rowsWithQuantities.map((row) => applyClosingScheduleSnapshot(row, [])));
+            const rowsWithApprovals = await attachApprovalSummaries(pool, rowsWithQuantities);
+            res.json(rowsWithApprovals.map((row) => applyClosingScheduleSnapshot(row, [])));
         } catch (err) {
             console.error('GetPhieuKiem error:', err);
             res.status(500).json({ message: 'Lỗi tải danh sách phiếu kiểm' });
@@ -1611,7 +1639,33 @@ router.get(
                 .execute('SP_PhieuKiem_My');
 
             const visibleRows = await excludeCongDoanRows(pool, result.recordset);
-            res.json(await attachListQuantities(pool, visibleRows));
+            const rowsWithQuantities = await attachListQuantities(pool, visibleRows);
+            const managedDepartmentIds = await getManagedDepartmentIds(
+                pool,
+                req.user.userId,
+                req.user.boPhanId
+            );
+            const canApproveAllDepartments = isAdminUser(req.user);
+            const permissionSet = new Set(req.user.permissions || []);
+            const rowsWithApprovalAccess = rowsWithQuantities.map((row) => {
+                const status = String(row.TrangThai || '').toUpperCase();
+                const targetDepartmentId = Number(row.TbpApproveBoPhanId || 0);
+                const hasWorkflowPermission = status === 'CHO_TBP_DUYET'
+                    && [3, 6].includes(Number(row.LoaiKiemId))
+                    && permissionSet.has('PHAN_CONG_NGUOI_XU_LY');
+                const hasDepartmentPermission = status === 'CHO_XUONG_XAC_NHAN'
+                    && Number(row.LoaiKiemId) !== 4
+                    && permissionSet.has('XAC_NHAN_PX');
+                return {
+                    ...row,
+                    CanCurrentUserApprove: Boolean(
+                        (hasWorkflowPermission || hasDepartmentPermission)
+                        && targetDepartmentId
+                        && (canApproveAllDepartments || managedDepartmentIds.includes(targetDepartmentId))
+                    )
+                };
+            });
+            res.json(await attachApprovalSummaries(pool, rowsWithApprovalAccess));
 
         } catch (error) {
 
@@ -2007,6 +2061,7 @@ router.get(
                     sxbtSource,
                     sxbtSources,
                     phieuNhapBtpId: sxbtSource?.PhieuNhapBtpId || null,
+                    approvalHistory: await approvalHistoryFor(pool, id),
                     capabilities: inspectionCapabilities(req, phieu)
                 });
             }
@@ -2206,6 +2261,7 @@ router.get(
                     summary: { ...(summary || {}), ...quantitySummary },
                     dynamicFields,
                     xacNhans,
+                    approvalHistory: await approvalHistoryFor(pool, id),
                     capabilities: await inspectionCapabilitiesForApprovalDepartment(
                         pool,
                         req,
@@ -2341,6 +2397,7 @@ router.get(
                     summary,
                     dynamicFields,
                     xacNhans,
+                    approvalHistory: await approvalHistoryFor(pool, id),
                     capabilities: await inspectionCapabilitiesForApprovalDepartment(
                         pool,
                         req,
@@ -2428,6 +2485,7 @@ router.get(
                 defects,
                 dynamicFields,
                 xacNhans,
+                approvalHistory: await approvalHistoryFor(pool, id),
                 retestInfo,
                 capabilities
             });
@@ -5238,6 +5296,37 @@ router.post(
         try {
 
             const pool = await poolPromise;
+
+            const targetResult = await pool.request()
+                .input('PhieuKiemId', sql.Int, Number(phieuKiemId))
+                .query(`
+                    SELECT inspection.TrangThai, inspector.BoPhanId AS ApproveBoPhanId
+                    FROM dbo.PHIEU_KIEM inspection
+                    LEFT JOIN dbo.USERS inspector ON inspector.Id = inspection.NguoiKiemId
+                    WHERE inspection.Id = @PhieuKiemId
+                `);
+            const target = targetResult.recordset?.[0];
+            if (!target) {
+                return res.status(404).json({ message: 'Không tìm thấy phiếu kiểm' });
+            }
+            if (String(target.TrangThai || '').toUpperCase() !== 'CHO_XUONG_XAC_NHAN') {
+                return res.status(409).json({ message: 'Phiếu không ở trạng thái chờ Trưởng bộ phận xác nhận' });
+            }
+            if (!target.ApproveBoPhanId) {
+                return res.status(409).json({ message: 'Không xác định được bộ phận duyệt của phiếu' });
+            }
+            if (!isAdminUser(req.user)) {
+                const managedDepartmentIds = await getManagedDepartmentIds(
+                    pool,
+                    userId,
+                    req.user?.boPhanId
+                );
+                if (!managedDepartmentIds.includes(Number(target.ApproveBoPhanId))) {
+                    return res.status(403).json({
+                        message: 'Bạn không phải Trưởng bộ phận phụ trách bộ phận duyệt của phiếu'
+                    });
+                }
+            }
 
             await pool.request()
                 .input('PhieuKiemId', sql.Int, phieuKiemId)

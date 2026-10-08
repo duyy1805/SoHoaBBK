@@ -36,6 +36,7 @@ import { getBienBanSxbtDetail } from "../../../api/bienBan.api";
 import { hasPermission } from "../../../utils/auth";
 import SxbtDraftEditor from "../components/SxbtDraftEditor";
 import DeletePhieuKiemButton from "../components/DeletePhieuKiemButton";
+import InspectionApprovalHistory from "../components/InspectionApprovalHistory";
 
 // ============================================================
 // Helpers
@@ -154,6 +155,7 @@ export default function SxbtDetail() {
     const [summary, setSummary] = useState(null);
     const [defects, setDefects] = useState([]);
     const [dynamicFields, setDynamicFields] = useState([]);
+    const [approvalHistory, setApprovalHistory] = useState([]);
     const [capabilities, setCapabilities] = useState({});
     const [confirmSteps, setConfirmSteps] = useState([]);
     const [khoLotQuantities, setKhoLotQuantities] = useState({});
@@ -204,6 +206,7 @@ export default function SxbtDetail() {
             setSummary(data.summary || null);
             setDefects((data.defects || []).filter(d => d.SoLuong > 0));
             setDynamicFields(data.dynamicFields || []);
+            setApprovalHistory(data.approvalHistory || []);
             setCapabilities(data.capabilities || {});
             setSplitInfo(data.splitInfo || null);
 
@@ -658,6 +661,10 @@ export default function SxbtDetail() {
                             )}
                         </CardContent>
                     </Card>
+
+                    <Box sx={{ mb: 2 }}>
+                        <InspectionApprovalHistory history={approvalHistory} />
+                    </Box>
 
                     {/* ---- II. Chi tiết BTP ---- */}
                     {btpItems.length > 0 && (

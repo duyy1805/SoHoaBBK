@@ -68,6 +68,7 @@ import { getSanPhamNhomKiem, getInspectionLevels, updateSanPhamImage, uploadSanP
 import { hasPermission } from "../../../utils/auth";
 import CheckItemEditor from "../components/CheckItemEditor";
 import MeasurementEditor from "../components/MeasurementEditor";
+import InspectionApprovalHistory from "../components/InspectionApprovalHistory";
 
 const toLocalDateInput = (value = new Date()) => {
     const date = value instanceof Date ? value : new Date(value);
@@ -97,6 +98,7 @@ export default function PhieuKiemDetail() {
     const [defects, setDefects] = useState([]);
     const [dynamicFields, setDynamicFields] = useState([]);
     const [xacNhans, setXacNhans] = useState([]);
+    const [approvalHistory, setApprovalHistory] = useState([]);
     const [nhomConfigs, setNhomConfigs] = useState([]);
     const [levels, setLevels] = useState([]);
     const [capabilities, setCapabilities] = useState({});
@@ -232,6 +234,7 @@ export default function PhieuKiemDetail() {
                 (data.dynamicFields || []).find((field) => field?.FieldName === "LoaiKiemTra")?.FieldValue || ""
             ).toUpperCase());
             setXacNhans(data.xacNhans || []);
+            setApprovalHistory(data.approvalHistory || []);
             setCapabilities(data.capabilities || {});
             setRetestInfo(data.retestInfo || null);
 
@@ -930,6 +933,10 @@ export default function PhieuKiemDetail() {
 
                     </CardContent>
                 </Card>
+
+                <Box sx={{ mb: 2.5 }}>
+                    <InspectionApprovalHistory history={approvalHistory} />
+                </Box>
 
                 {retestInfo?.RetestType === "DAU_VAO_TAI_NHAP" && retestInfo.RetestBatches?.length > 0 && (
                     <Card variant="outlined" sx={{ mb: 2.5, borderRadius: 2 }}>

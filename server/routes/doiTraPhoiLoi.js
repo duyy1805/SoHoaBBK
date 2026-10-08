@@ -53,18 +53,6 @@ const normalizeDinhMucItems = (value) => (Array.isArray(value) ? value : []).map
         ghiChu: trimOrNull(item?.ghiChu ?? item?.GhiChu)
     };
 });
-const normalizeResponsibleDepartment = (body = {}) => {
-    const value = body?.boPhanGayLoi;
-    if (value && typeof value === 'object') {
-        return {
-            source: String(value.source || '').trim().toUpperCase(),
-            sourceId: positiveId(value.sourceId)
-        };
-    }
-    const legacyId = positiveId(body?.boPhanGayLoiId);
-    return legacyId ? { source: 'NOI_BO', sourceId: legacyId } : null;
-};
-
 const isB7Actor = async (executor, user) => {
     if (isAdmin(user)) return true;
     const userId = Number(user?.userId || user?.id || 0);
@@ -137,6 +125,8 @@ const normalizedPhoiItems = (value) => (Array.isArray(value) ? value : []).map((
         defectId: positiveId(defect?.defectId ?? defect?.DefectId),
         soLuongLoi: positiveId(defect?.soLuongLoi ?? defect?.SoLuongLoi),
         ghiChu: trimOrNull(defect?.ghiChu ?? defect?.GhiChu),
+        boPhanGayLoiSource: String(defect?.boPhanGayLoiSource ?? defect?.BoPhanGayLoiSource ?? '').trim().toUpperCase(),
+        boPhanGayLoiSourceId: positiveId(defect?.boPhanGayLoiSourceId ?? defect?.BoPhanGayLoiSourceId),
         sortOrder: defectIndex + 1
     }));
     return {
@@ -334,7 +324,7 @@ router.get('/traceability-lookups', authorize(VIEW_PERMISSIONS), async (_req, re
             FROM dbo.DM_BO_PHAN department
             WHERE ISNULL(department.TrangThai,1)=1
             UNION ALL
-            SELECT N'TAG_SYSTEM:' + CONVERT(NVARCHAR(20),externalDepartment.ID_BoPhan) AS [key],
+            SELECT DISTINCT N'TAG_SYSTEM:' + CONVERT(NVARCHAR(20),externalDepartment.ID_BoPhan) AS [key],
                 N'TAG_SYSTEM' AS [source],CONVERT(INT,externalDepartment.ID_BoPhan) AS sourceId,
                 CAST(NULL AS NVARCHAR(100)) AS departmentCode,
                 LTRIM(RTRIM(externalDepartment.Ten_BoPhan)) COLLATE DATABASE_DEFAULT AS departmentName,
@@ -344,12 +334,7 @@ router.get('/traceability-lookups', authorize(VIEW_PERMISSIONS), async (_req, re
             LEFT JOIN TAG_System.dbo.DM_DonVi externalUnit
               ON externalUnit.ID_DonVi=externalDepartment.ID_DonVi
             WHERE externalDepartment.SuDung=1 AND externalDepartment.TonTai=1
-              AND NOT EXISTS (
-                  SELECT 1 FROM dbo.DM_BO_PHAN localDepartment
-                  WHERE ISNULL(localDepartment.TrangThai,1)=1
-                    AND UPPER(LTRIM(RTRIM(localDepartment.TenBoPhan)))=
-                        UPPER(LTRIM(RTRIM(externalDepartment.Ten_BoPhan COLLATE DATABASE_DEFAULT)))
-              )
+              AND externalDepartment.ID_DonVi=32
             ORDER BY departmentName,unitName,departmentCode,sourceId;
         `);
         res.json({
@@ -687,13 +672,14 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
         || (item.dauTuan?.length || 0) > 100 || (item.toSanXuat?.length || 0) > 255
         || (item.congNhanSanXuat?.length || 0) > 1000
         || item.defects.some((defect) => !defect.nhomLoiId || !defect.defectId
-            || !defect.soLuongLoi));
+            || !defect.soLuongLoi || !defect.boPhanGayLoiSourceId
+            || !['NOI_BO', 'TAG_SYSTEM'].includes(defect.boPhanGayLoiSource)));
     if (!phieuId || !rowVersion || invalidItem) {
         return res.status(400).json({ message: 'Danh sách phôi, số lượng hoặc phiên bản dữ liệu không hợp lệ' });
     }
     const sourceIds = items.map((item) => item.sourceLoiPhoiId);
     if (new Set(sourceIds).size !== sourceIds.length
-        || items.some((item) => new Set(item.defects.map((defect) => defect.defectId)).size !== item.defects.length)) {
+        || items.some((item) => new Set(item.defects.map((defect) => `${defect.defectId}:${defect.boPhanGayLoiSource}:${defect.boPhanGayLoiSourceId}`)).size !== item.defects.length)) {
         return res.status(400).json({ message: 'Danh sách phôi hoặc lỗi đang bị trùng' });
     }
 
@@ -809,14 +795,18 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                 CREATE TABLE #InputDefect (
                     SourceLoiPhoiId INT NOT NULL, NhomLoiId INT NOT NULL, DefectId INT NOT NULL,
                     SoLuongLoi INT NOT NULL, GhiChu NVARCHAR(1000) NULL, SortOrder INT NOT NULL,
-                    PRIMARY KEY (SourceLoiPhoiId, DefectId)
+                    BoPhanGayLoiSource NVARCHAR(20) NOT NULL, BoPhanGayLoiSourceId INT NOT NULL,
+                    PRIMARY KEY (SourceLoiPhoiId, DefectId, BoPhanGayLoiSource, BoPhanGayLoiSourceId)
                 );
                 INSERT #InputDefect
-                SELECT SourceLoiPhoiId, NhomLoiId, DefectId, SoLuongLoi, NULLIF(GhiChu, N''), SortOrder
+                SELECT SourceLoiPhoiId, NhomLoiId, DefectId, SoLuongLoi, NULLIF(GhiChu, N''), SortOrder,
+                    BoPhanGayLoiSource, BoPhanGayLoiSourceId
                 FROM OPENJSON(@DefectsJson) WITH (
                     SourceLoiPhoiId INT '$.sourceLoiPhoiId', NhomLoiId INT '$.nhomLoiId',
                     DefectId INT '$.defectId', SoLuongLoi INT '$.soLuongLoi',
-                    GhiChu NVARCHAR(1000) '$.ghiChu', SortOrder INT '$.sortOrder'
+                    GhiChu NVARCHAR(1000) '$.ghiChu', SortOrder INT '$.sortOrder',
+                    BoPhanGayLoiSource NVARCHAR(20) '$.boPhanGayLoiSource',
+                    BoPhanGayLoiSourceId INT '$.boPhanGayLoiSourceId'
                 );
 
                 IF EXISTS (
@@ -827,7 +817,17 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                     LEFT JOIN #InputPhoi inputPhoi ON inputPhoi.SourceLoiPhoiId=inputDefect.SourceLoiPhoiId
                     WHERE groupRow.Id IS NULL OR defectRow.Id IS NULL OR inputPhoi.SourceLoiPhoiId IS NULL
                        OR inputDefect.SoLuongLoi <= 0 OR inputDefect.SoLuongLoi > inputPhoi.SoLuongPhoiLoi
+                       OR inputDefect.BoPhanGayLoiSource NOT IN (N'NOI_BO',N'TAG_SYSTEM')
                 ) THROW 52022, N'Nhóm lỗi, lỗi hoặc số lượng lỗi không hợp lệ.', 1;
+
+                IF EXISTS (SELECT 1 FROM #InputDefect d LEFT JOIN dbo.DM_BO_PHAN bp
+                    ON bp.Id=d.BoPhanGayLoiSourceId AND ISNULL(bp.TrangThai,1)=1
+                    WHERE d.BoPhanGayLoiSource=N'NOI_BO' AND bp.Id IS NULL)
+                    THROW 52025, N'Bộ phận gây lỗi không tồn tại hoặc đã ngừng hoạt động.', 1;
+                IF EXISTS (SELECT 1 FROM #InputDefect d LEFT JOIN TAG_System.dbo.DM_BoPhan bp
+                    ON bp.ID_BoPhan=d.BoPhanGayLoiSourceId AND bp.SuDung=1 AND bp.TonTai=1 AND bp.ID_DonVi=32
+                    WHERE d.BoPhanGayLoiSource=N'TAG_SYSTEM' AND bp.ID_BoPhan IS NULL)
+                    THROW 52025, N'Nhà thầu SXBT gây lỗi không tồn tại hoặc đã ngừng hoạt động.', 1;
 
                 DELETE FROM dbo.DOI_TRA_PHOI_LOI_PHOI WHERE PhieuId=@PhieuId;
 
@@ -856,16 +856,28 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
 
                 INSERT dbo.DOI_TRA_PHOI_LOI_PHOI_DEFECT (
                     PhoiId, NhomLoiId, DefectId, MaNhomLoi, TenNhomLoi,
-                    MaLoi, TenLoi, DefectType, MoTa, SoLuongLoi, GhiChu, SortOrder
+                    MaLoi, TenLoi, DefectType, MoTa, SoLuongLoi, GhiChu, SortOrder,
+                    BoPhanGayLoiSource,BoPhanGayLoiSourceId,BoPhanGayLoiId,MaBoPhanGayLoi,TenBoPhanGayLoi,
+                    DonViGayLoiSourceId,TenDonViGayLoi
                 )
                 SELECT savedPhoi.Id, groupRow.Id, defectRow.Id, groupRow.MaNhom, groupRow.TenNhom,
                        defectRow.MaLoi, defectRow.TenLoi, defectRow.DefectType, defectRow.MoTa,
-                       inputDefect.SoLuongLoi, inputDefect.GhiChu, inputDefect.SortOrder
+                       inputDefect.SoLuongLoi, inputDefect.GhiChu, inputDefect.SortOrder,
+                       inputDefect.BoPhanGayLoiSource,inputDefect.BoPhanGayLoiSourceId,
+                       CASE WHEN inputDefect.BoPhanGayLoiSource=N'NOI_BO' THEN localDepartment.Id END,
+                       localDepartment.MaBoPhan,
+                       COALESCE(localDepartment.TenBoPhan,LTRIM(RTRIM(externalDepartment.Ten_BoPhan)) COLLATE DATABASE_DEFAULT),
+                       externalDepartment.ID_DonVi,LTRIM(RTRIM(externalUnit.Ten_DonVi)) COLLATE DATABASE_DEFAULT
                 FROM #InputDefect inputDefect
                 INNER JOIN dbo.DOI_TRA_PHOI_LOI_PHOI savedPhoi
                     ON savedPhoi.PhieuId=@PhieuId AND savedPhoi.SourceLoiPhoiId=inputDefect.SourceLoiPhoiId
                 INNER JOIN dbo.DM_NHOM_LOI_DOI_TRA_PHOI groupRow ON groupRow.Id=inputDefect.NhomLoiId
-                INNER JOIN dbo.DM_DEFECT defectRow ON defectRow.Id=inputDefect.DefectId;
+                INNER JOIN dbo.DM_DEFECT defectRow ON defectRow.Id=inputDefect.DefectId
+                LEFT JOIN dbo.DM_BO_PHAN localDepartment ON localDepartment.Id=inputDefect.BoPhanGayLoiSourceId
+                    AND inputDefect.BoPhanGayLoiSource=N'NOI_BO'
+                LEFT JOIN TAG_System.dbo.DM_BoPhan externalDepartment ON externalDepartment.ID_BoPhan=inputDefect.BoPhanGayLoiSourceId
+                    AND inputDefect.BoPhanGayLoiSource=N'TAG_SYSTEM'
+                LEFT JOIN TAG_System.dbo.DM_DonVi externalUnit ON externalUnit.ID_DonVi=externalDepartment.ID_DonVi;
 
                 IF EXISTS(
                     SELECT SourceVatTuId,SoLuongBoLoi FROM #OldMaterialBasis
@@ -1041,13 +1053,10 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
     const rowVersion = rowVersionBuffer(req.body?.rowVersion);
     const actionCode = String(req.params.actionCode || '').trim().toUpperCase();
     const ghiChu = trimOrNull(req.body?.ghiChu);
-    const responsibleDepartmentRequest = normalizeResponsibleDepartment(req.body);
-    const isKcsAction = ['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(actionCode);
     const supportedActions = ['KCS_SUBMIT', 'KCS_RESUBMIT', 'TBP_CONFIRM', 'TBP_RETURN', 'B7_CONFIRM'];
     if (!phieuId || !rowVersion || !supportedActions.includes(actionCode)
         || (ghiChu?.length || 0) > 1000 || (actionCode === 'TBP_RETURN' && !ghiChu)
-        || (isKcsAction && (!responsibleDepartmentRequest?.sourceId
-            || !['NOI_BO', 'TAG_SYSTEM'].includes(responsibleDepartmentRequest.source)))) {
+    ) {
         return res.status(400).json({ message: 'Hành động, nội dung hoặc phiên bản dữ liệu không hợp lệ' });
     }
 
@@ -1089,34 +1098,6 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
             return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
         }
 
-        let responsibleDepartment = null;
-        if (isKcsAction && responsibleDepartmentRequest.source === 'NOI_BO') {
-            const lookup = await new sql.Request(transaction)
-                .input('SourceId', sql.Int, responsibleDepartmentRequest.sourceId)
-                .query(`SELECT TOP (1) Id AS SourceId,MaBoPhan AS DepartmentCode,
-                    TenBoPhan AS DepartmentName
-                    FROM dbo.DM_BO_PHAN
-                    WHERE Id=@SourceId AND ISNULL(TrangThai,1)=1;`);
-            responsibleDepartment = lookup.recordset?.[0] || null;
-        } else if (isKcsAction) {
-            const lookup = await new sql.Request(transaction)
-                .input('SourceId', sql.Int, responsibleDepartmentRequest.sourceId)
-                .query(`SELECT TOP (1) CONVERT(INT,department.ID_BoPhan) AS SourceId,
-                    LTRIM(RTRIM(department.Ten_BoPhan)) COLLATE DATABASE_DEFAULT AS DepartmentName,
-                    CONVERT(INT,department.ID_DonVi) AS UnitId,
-                    LTRIM(RTRIM(unitRow.Ten_DonVi)) COLLATE DATABASE_DEFAULT AS UnitName
-                    FROM TAG_System.dbo.DM_BoPhan department
-                    LEFT JOIN TAG_System.dbo.DM_DonVi unitRow ON unitRow.ID_DonVi=department.ID_DonVi
-                    WHERE department.ID_BoPhan=@SourceId
-                      AND department.SuDung=1 AND department.TonTai=1;`);
-            responsibleDepartment = lookup.recordset?.[0] || null;
-        }
-        if (isKcsAction && !responsibleDepartment) {
-            await transaction.rollback();
-            started = false;
-            return res.status(409).json({ message: 'Bộ phận gây lỗi không tồn tại hoặc đã ngừng sử dụng' });
-        }
-
         const result = await new sql.Request(transaction)
             .input('PhieuId', sql.Int, phieuId)
             .input('UserId', sql.Int, userIdOf(req))
@@ -1125,14 +1106,6 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
             .input('ToStatus', sql.NVarChar(80), workflowAction.ToStatusCode)
             .input('ToStepId', sql.Int, workflowAction.ToStepId)
             .input('GhiChu', sql.NVarChar(1000), ghiChu)
-            .input('BoPhanGayLoiSource', sql.NVarChar(20), responsibleDepartmentRequest?.source || null)
-            .input('BoPhanGayLoiSourceId', sql.Int, responsibleDepartment?.SourceId || null)
-            .input('BoPhanGayLoiId', sql.Int,
-                responsibleDepartmentRequest?.source === 'NOI_BO' ? responsibleDepartment?.SourceId : null)
-            .input('MaBoPhanGayLoi', sql.NVarChar(100), responsibleDepartment?.DepartmentCode || null)
-            .input('TenBoPhanGayLoi', sql.NVarChar(255), responsibleDepartment?.DepartmentName || null)
-            .input('DonViGayLoiSourceId', sql.Int, responsibleDepartment?.UnitId || null)
-            .input('TenDonViGayLoi', sql.NVarChar(255), responsibleDepartment?.UnitName || null)
             .query(`
                 IF @ActionCode IN (N'KCS_SUBMIT',N'KCS_RESUBMIT')
                 BEGIN
@@ -1175,15 +1148,16 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
                             OR defectRow.SoLuongLoi<=0 OR defectRow.SoLuongLoi>phoiRow.SoLuongPhoiLoi
                         )
                     ) THROW 52113, N'Phiếu có nhóm lỗi, lỗi hoặc số lượng lỗi không hợp lệ.', 1;
+                    IF EXISTS (
+                        SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI_DEFECT defectRow
+                        JOIN dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow ON phoiRow.Id=defectRow.PhoiId
+                        WHERE phoiRow.PhieuId=@PhieuId
+                          AND (defectRow.BoPhanGayLoiSource NOT IN (N'NOI_BO',N'TAG_SYSTEM')
+                               OR defectRow.BoPhanGayLoiSourceId IS NULL)
+                    ) THROW 52119, N'Mỗi lỗi phải có bộ phận hoặc nhà thầu gây lỗi hợp lệ.', 1;
                     UPDATE phieu SET
                         TrangThai=@ToStatus,CurrentStepId=@ToStepId,
-                        BoPhanGayLoiId=@BoPhanGayLoiId,
-                        BoPhanGayLoiSource=@BoPhanGayLoiSource,
-                        BoPhanGayLoiSourceId=@BoPhanGayLoiSourceId,
-                        MaBoPhanGayLoi=@MaBoPhanGayLoi,
-                        TenBoPhanGayLoi=@TenBoPhanGayLoi,
-                        DonViGayLoiSourceId=@DonViGayLoiSourceId,
-                        TenDonViGayLoi=@TenDonViGayLoi,KcsCompletedBy=@UserId,
+                        KcsCompletedBy=@UserId,
                         KcsCompletedAt=SYSDATETIME(),TbpKcsConfirmedBy=NULL,TbpKcsConfirmedAt=NULL,
                         LyDoTraLai=NULL,UpdatedAt=SYSDATETIME()
                     FROM dbo.DOI_TRA_PHOI_LOI phieu
@@ -1271,7 +1245,7 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
         }
         console.error('DoiTraPhoiLoi workflow action error:', error);
         const number = Number(error?.number || error?.originalError?.info?.number);
-        const status = number >= 52110 && number <= 52118 ? 422 : 409;
+        const status = number >= 52110 && number <= 52119 ? 422 : 409;
         res.status(status).json({ message: errorMessage(error, 'Không thực hiện được hành động workflow') });
     }
 });

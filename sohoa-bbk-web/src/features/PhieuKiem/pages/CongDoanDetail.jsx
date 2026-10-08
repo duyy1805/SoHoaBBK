@@ -33,6 +33,7 @@ import CongDoanPlanEditor from "../components/CongDoanPlanEditor";
 import ResponsiveInspectionDialog from "../components/ResponsiveInspectionDialog";
 import DefectImageGalleryDialog from "../../BienBan/components/DefectImageGalleryDialog";
 import DeletePhieuKiemButton from "../components/DeletePhieuKiemButton";
+import InspectionApprovalHistory from "../components/InspectionApprovalHistory";
 
 const formatDate = (value) => value ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString("vi-VN") : "---";
 const statusMeta = {
@@ -538,6 +539,10 @@ export default function CongDoanDetail() {
                     </Box>
                 ))}
             </Paper>
+
+            <Box sx={{ mb: 2 }}>
+                <InspectionApprovalHistory history={data.approvalHistory || []} />
+            </Box>
 
             {defectApproval.total > 0 && (
                 <Paper

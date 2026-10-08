@@ -22,7 +22,8 @@ import {
     TablePagination,
     IconButton,
     Tooltip,
-    Popover
+    Popover,
+    Checkbox
 } from "@mui/material";
 import {
     Add as AddIcon,
@@ -32,8 +33,15 @@ import {
     DeleteOutline as DeleteOutlineIcon
 } from "@mui/icons-material";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { deletePhieuKiem, getPhieuKiem } from "../../../api/phieuKiem.api";
+import {
+    approveCuoiChuyen,
+    approveTrenChuyen,
+    confirmPX,
+    deletePhieuKiem,
+    getPhieuKiem
+} from "../../../api/phieuKiem.api";
 import { hasPermission } from "../../../utils/auth";
+import { formatApprovalDateTime, latestApprovalSummary } from "../components/approvalHistory.utils";
 
 const VALID_PAGE_SIZES = [5, 10, 25, 50];
 const parsePageParam = (value) => {
@@ -58,6 +66,8 @@ export default function PhieuKiemList() {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [deletingId, setDeletingId] = useState(null);
+    const [selectedApprovalIds, setSelectedApprovalIds] = useState(() => new Set());
+    const [bulkApproving, setBulkApproving] = useState(false);
 
     // Filter & Pagination states
     const [filterStatus, setFilterStatus] = useState(() => searchParams.get("status") || "");
@@ -235,6 +245,32 @@ export default function PhieuKiemList() {
         });
     }, [data, dateFrom, dateTo, filterLoaiKiem, filterNguoiKiem, filterKetLuan, filterStatus, searchText]);
 
+    const canApproveWorkflow = hasPermission("PHAN_CONG_NGUOI_XU_LY");
+    const canConfirmDepartment = hasPermission("XAC_NHAN_PX");
+    const canBulkApprove = canApproveWorkflow || canConfirmDepartment;
+    const approvalCandidates = useMemo(
+        () => filteredData.filter((item) => item.CanCurrentUserApprove === true),
+        [filteredData]
+    );
+    const approvalCandidateIds = useMemo(
+        () => new Set(approvalCandidates.map((item) => Number(item.Id))),
+        [approvalCandidates]
+    );
+    const allApprovalCandidatesSelected = approvalCandidates.length > 0
+        && approvalCandidates.every((item) => selectedApprovalIds.has(Number(item.Id)));
+    const someApprovalCandidatesSelected = approvalCandidates.some((item) =>
+        selectedApprovalIds.has(Number(item.Id))
+    );
+
+    useEffect(() => {
+        const candidateIds = new Set(approvalCandidates.map((item) => Number(item.Id)));
+        setSelectedApprovalIds((current) => {
+            const next = new Set([...current].filter((id) => candidateIds.has(Number(id))));
+            if (next.size === current.size && [...next].every((id) => current.has(id))) return current;
+            return next;
+        });
+    }, [approvalCandidates]);
+
     // Xử lý dữ liệu phân trang
     const paginatedData = useMemo(() => {
         const start = page * rowsPerPage;
@@ -319,6 +355,72 @@ export default function PhieuKiemList() {
             window.alert(error?.response?.data?.message || "Không thể xóa phiếu kiểm");
         } finally {
             setDeletingId(null);
+        }
+    };
+
+    const toggleApprovalSelection = (itemId) => {
+        setSelectedApprovalIds((current) => {
+            const next = new Set(current);
+            const normalizedId = Number(itemId);
+            if (next.has(normalizedId)) next.delete(normalizedId);
+            else next.add(normalizedId);
+            return next;
+        });
+    };
+
+    const toggleAllApprovalCandidates = () => {
+        setSelectedApprovalIds(allApprovalCandidatesSelected
+            ? new Set()
+            : new Set(approvalCandidates.map((item) => Number(item.Id))));
+    };
+
+    const handleBulkApprove = async () => {
+        const selectedItems = approvalCandidates.filter((item) =>
+            selectedApprovalIds.has(Number(item.Id))
+        );
+        if (!selectedItems.length) return;
+        if (!window.confirm(`Duyệt ${selectedItems.length} phiếu đang chờ Trưởng bộ phận?`)) return;
+
+        setBulkApproving(true);
+        const succeeded = [];
+        const failed = [];
+        try {
+            const concurrency = 5;
+            for (let index = 0; index < selectedItems.length; index += concurrency) {
+                const batch = selectedItems.slice(index, index + concurrency);
+                const results = await Promise.all(batch.map(async (item) => {
+                    try {
+                        if (item.TrangThai === "CHO_XUONG_XAC_NHAN") await confirmPX(item.Id);
+                        else if (Number(item.LoaiKiemId) === 3) await approveCuoiChuyen(item.Id);
+                        else await approveTrenChuyen(item.Id);
+                        return { item, success: true };
+                    } catch (error) {
+                        return {
+                            item,
+                            success: false,
+                            message: error?.response?.data?.message || "Không thể duyệt phiếu"
+                        };
+                    }
+                }));
+                results.forEach((result) => {
+                    if (result.success) succeeded.push(result.item);
+                    else failed.push(result);
+                });
+            }
+
+            await loadData();
+            setSelectedApprovalIds(new Set(failed.map(({ item }) => Number(item.Id))));
+            if (failed.length) {
+                const details = failed.slice(0, 5)
+                    .map(({ item, message }) => `${item.SoPhieu || item.Id}: ${message}`)
+                    .join("\n");
+                const remaining = failed.length > 5 ? `\n…và ${failed.length - 5} phiếu khác.` : "";
+                window.alert(`Đã duyệt ${succeeded.length}/${selectedItems.length} phiếu.\n\nKhông duyệt được:\n${details}${remaining}`);
+            } else {
+                window.alert(`Đã duyệt thành công ${succeeded.length} phiếu.`);
+            }
+        } finally {
+            setBulkApproving(false);
         }
     };
 
@@ -522,6 +624,36 @@ export default function PhieuKiemList() {
                     </TextField>
                 </Stack>
 
+                {canBulkApprove && approvalCandidates.length > 0 && (
+                    <Stack
+                        direction={{ xs: "column", sm: "row" }}
+                        alignItems={{ xs: "stretch", sm: "center" }}
+                        justifyContent="space-between"
+                        spacing={1}
+                        sx={{ mb: 2, px: 1.5, py: 1, borderRadius: 2, bgcolor: "secondary.50", border: "1px solid", borderColor: "secondary.100" }}
+                    >
+                        <Stack direction="row" alignItems="center" spacing={0.5}>
+                            <Checkbox
+                                checked={allApprovalCandidatesSelected}
+                                indeterminate={someApprovalCandidatesSelected && !allApprovalCandidatesSelected}
+                                onChange={toggleAllApprovalCandidates}
+                                disabled={bulkApproving}
+                            />
+                            <Typography variant="body2" fontWeight={700}>
+                                Chọn tất cả {approvalCandidates.length} phiếu chờ TBP theo bộ lọc hiện tại
+                            </Typography>
+                        </Stack>
+                        <Button
+                            variant="contained"
+                            color="secondary"
+                            disabled={selectedApprovalIds.size === 0 || bulkApproving}
+                            onClick={handleBulkApprove}
+                        >
+                            {bulkApproving ? "Đang duyệt…" : `Duyệt ${selectedApprovalIds.size} phiếu`}
+                        </Button>
+                    </Stack>
+                )}
+
                 {/* Table Data Section */}
                 <Card
                     variant="outlined"
@@ -544,6 +676,16 @@ export default function PhieuKiemList() {
                             >
                                 <Stack spacing={1}>
                                     <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
+                                        {approvalCandidateIds.has(Number(item.Id)) && (
+                                            <Checkbox
+                                                checked={selectedApprovalIds.has(Number(item.Id))}
+                                                disabled={bulkApproving}
+                                                onClick={(event) => event.stopPropagation()}
+                                                onChange={() => toggleApprovalSelection(item.Id)}
+                                                sx={{ p: 0.25 }}
+                                                inputProps={{ "aria-label": `Chọn phiếu ${item.SoPhieu || item.Id}` }}
+                                            />
+                                        )}
                                         <Box sx={{ minWidth: 0 }}>
                                             <Typography color="primary" fontWeight={800}>{item.SoPhieu}</Typography>
                                             <Typography fontWeight={700}>{item.TenSanPham || "—"}</Typography>
@@ -566,6 +708,9 @@ export default function PhieuKiemList() {
                                     <Typography variant="body2">
                                         {item.TenNguoiKiem || "Chưa phân công"} · {getDepartmentLabel(item) || "Chưa có bộ phận"}
                                     </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        Duyệt/xác nhận gần nhất: {latestApprovalSummary(item)}
+                                    </Typography>
                                     <Button fullWidth variant="outlined" startIcon={<VisibilityIcon />} onClick={(event) => {
                                         event.stopPropagation();
                                         openDetail(item);
@@ -587,7 +732,7 @@ export default function PhieuKiemList() {
                             stickyHeader
                             size="small"
                             sx={{
-                                minWidth: 1180,
+                                minWidth: 1450,
                                 tableLayout: "fixed",
                                 "& .MuiTableCell-root": {
                                     px: 1.5,
@@ -616,7 +761,25 @@ export default function PhieuKiemList() {
                         >
                             <TableHead>
                                 <TableRow hover>
-                                    <TableCell sx={{ width: 132 }}>Số phiếu</TableCell>
+                                    {canBulkApprove && (
+                                        <TableCell
+                                            align="center"
+                                            sx={{ width: 56, minWidth: 56, px: "4px !important" }}
+                                        >
+                                            <Tooltip title={allApprovalCandidatesSelected ? "Bỏ chọn tất cả" : "Chọn tất cả phiếu có thể duyệt"}>
+                                                <Checkbox
+                                                    checked={allApprovalCandidatesSelected}
+                                                    indeterminate={someApprovalCandidatesSelected && !allApprovalCandidatesSelected}
+                                                    disabled={approvalCandidates.length === 0 || bulkApproving}
+                                                    onChange={toggleAllApprovalCandidates}
+                                                    size="small"
+                                                    sx={{ p: 0.75 }}
+                                                    inputProps={{ "aria-label": "Chọn tất cả phiếu có thể duyệt" }}
+                                                />
+                                            </Tooltip>
+                                        </TableCell>
+                                    )}
+                                    <TableCell sx={{ width: 175, whiteSpace: "nowrap" }}>Số phiếu</TableCell>
                                     <TableCell sx={{ width: 135 }}>
                                         {renderFilterHeader({
                                             field: "loaiKiem",
@@ -653,13 +816,14 @@ export default function PhieuKiemList() {
                                         })}
                                     </TableCell>
                                     <TableCell sx={{ width: 135 }} align="center">Trạng thái</TableCell>
+                                    <TableCell sx={{ width: 210 }}>Duyệt/xác nhận gần nhất</TableCell>
                                     <TableCell sx={{ width: hasPermission("XOA_HO_SO_KCS") ? 100 : 65 }} align="center">Thao tác</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
                                 {paginatedData.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={9} align="center" sx={{ py: 6 }}>
+                                        <TableCell colSpan={canBulkApprove ? 11 : 10} align="center" sx={{ py: 6 }}>
                                             <Typography color="text.secondary">
                                                 Không tìm thấy phiếu kiểm nào.
                                             </Typography>
@@ -673,12 +837,31 @@ export default function PhieuKiemList() {
                                             onClick={() => openDetail(item)}
                                             sx={{ cursor: "pointer", transition: "background-color 0.15s ease" }}
                                         >
+                                            {canBulkApprove && (
+                                                <TableCell
+                                                    align="center"
+                                                    onClick={(event) => event.stopPropagation()}
+                                                    sx={{ width: 56, minWidth: 56, px: "4px !important" }}
+                                                >
+                                                    {approvalCandidateIds.has(Number(item.Id)) ? (
+                                                        <Checkbox
+                                                            checked={selectedApprovalIds.has(Number(item.Id))}
+                                                            disabled={bulkApproving}
+                                                            onChange={() => toggleApprovalSelection(item.Id)}
+                                                            size="small"
+                                                            sx={{ p: 0.75 }}
+                                                            inputProps={{ "aria-label": `Chọn phiếu ${item.SoPhieu || item.Id}` }}
+                                                        />
+                                                    ) : null}
+                                                </TableCell>
+                                            )}
                                             <TableCell sx={{ color: 'primary.main' }}>
                                                 <Typography
                                                     variant="body2"
                                                     fontWeight={800}
                                                     color="primary.main"
-                                                    sx={{ fontSize: 12.75, lineHeight: 1.35, overflowWrap: "anywhere" }}
+                                                    noWrap
+                                                    sx={{ fontSize: 12.75, lineHeight: 1.35 }}
                                                 >
                                                     {item.SoPhieu}
                                                 </Typography>
@@ -768,6 +951,19 @@ export default function PhieuKiemList() {
                                             </TableCell>
                                             <TableCell align="center">
                                                 {renderTrangThaiChip(item.TrangThai)}
+                                            </TableCell>
+                                            <TableCell>
+                                                <Tooltip title={latestApprovalSummary(item)} placement="top-start">
+                                                    <Typography variant="body2" sx={{ fontSize: 12, lineHeight: 1.35 }}>
+                                                        {item.LatestApprovalAt ? (
+                                                            <>
+                                                                <b>{item.LatestApprovalLabel || "Xác nhận"}</b><br />
+                                                                {item.LatestApprovalBy || "Không rõ người"}<br />
+                                                                {formatApprovalDateTime(item.LatestApprovalAt)}
+                                                            </>
+                                                        ) : "—"}
+                                                    </Typography>
+                                                </Tooltip>
                                             </TableCell>
                                             <TableCell align="center">
                                                 <Stack direction="row" spacing={0.25} justifyContent="center">

@@ -5,6 +5,10 @@ const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
 const { attachSignatureDataUrls } = require('../utils/signatureImage');
 const { getManagedDepartmentIds } = require('../utils/managedDepartments');
+const {
+    loadInspectionApprovalHistoryMap,
+    attachApprovalSummaries
+} = require('../utils/inspectionApprovalHistory');
 
 const router = express.Router();
 const OPEN_STATES = new Set(['TAO_MOI', 'DANG_KIEM', 'CHUA_KIEM']);
@@ -219,7 +223,7 @@ router.get(
                     `);
                 totalsById = new Map(totals.recordset.map((item) => [Number(item.PhieuKiemId), item]));
             }
-            res.json(encodeRows(result.recordset.map((item) => {
+            const rows = result.recordset.map((item) => {
                 const totals = totalsById.get(Number(item.Id)) || {};
                 return normalizePhieuDates({
                     ...item,
@@ -228,7 +232,8 @@ router.get(
                         ? Number(totals.TongSoLuongHieuLuc || 0) - Number(totals.TongSoLuongKeHoach || 0)
                         : null
                 });
-            })));
+            });
+            res.json(encodeRows(await attachApprovalSummaries(pool, rows)));
         } catch (error) {
             console.error('CongDoan list error:', error);
             res.status(500).json({ message: errorMessage(error, 'Không tải được danh sách phiếu công đoạn') });
@@ -354,6 +359,7 @@ router.get(
                 ? totals.TongSoLuongHieuLuc - totals.TongSoLuongKeHoach
                 : null;
             const xacNhans = await attachSignatureDataUrls(pool, result.recordsets[3] || [], 'NguoiXacNhanId');
+            const approvalHistoryMap = await loadInspectionApprovalHistoryMap(pool, [Number(req.params.id)]);
             const capabilities = inspectionCapabilities(req, phieu);
             if (String(phieu.TrangThai || '').toUpperCase() === 'CHO_TBP_DUYET') {
                 if (isAdmin(req.user)) {
@@ -373,6 +379,7 @@ router.get(
                 phieu: { ...normalizePhieuDates(phieu), ...totals },
                 plans,
                 xacNhans,
+                approvalHistory: approvalHistoryMap.get(Number(req.params.id)) || [],
                 readOnly: !OPEN_STATES.has(phieu.TrangThai),
                 capabilities
             }));

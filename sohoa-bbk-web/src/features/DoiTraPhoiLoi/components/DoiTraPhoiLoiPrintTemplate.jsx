@@ -9,11 +9,6 @@ const DoiTraPhoiLoiPrintTemplate = forwardRef(function DoiTraPhoiLoiPrintTemplat
     const plan = data?.plans?.[0] || {};
     const phoiItems = data?.phoiItems || [];
     const kph = data?.kph || {};
-    const responsibleDepartment = [
-        phieu.MaBoPhanGayLoiSnapshot,
-        phieu.TenBoPhanGayLoiSnapshot,
-        phieu.TenDonViGayLoiSnapshot
-    ].filter(Boolean).join(' — ');
     const printDefects = phoiItems.flatMap((item) => {
         const objectName = [
             item.TenLoaiPhoi,
@@ -44,6 +39,7 @@ const DoiTraPhoiLoiPrintTemplate = forwardRef(function DoiTraPhoiLoiPrintTemplat
                 defect.TenNhomLoi ? `Nhóm lỗi: ${defect.TenNhomLoi}` : '',
                 item.QuyCachVatTu,
                 item.GhiChu,
+                defect.TenBoPhanGayLoi ? `Bộ phận/nhà thầu gây lỗi: ${[defect.MaBoPhanGayLoi, defect.TenBoPhanGayLoi, defect.TenDonViGayLoi].filter(Boolean).join(' — ')}` : '',
                 defect.GhiChu
             ].filter(Boolean).join(' - ')
         }));
@@ -68,8 +64,7 @@ const DoiTraPhoiLoiPrintTemplate = forwardRef(function DoiTraPhoiLoiPrintTemplat
         MauPhieuVersion: 'V01',
         MoTaChung: phoiItems.length
             ? [
-                `Đổi trả ${phoiItems.length} loại phôi lỗi theo kế hoạch ${plan.PlanNo || plan.PlanID || ''}.`,
-                responsibleDepartment ? `Bộ phận gây lỗi: ${responsibleDepartment}.` : ''
+                `Đổi trả ${phoiItems.length} loại phôi lỗi theo kế hoạch ${plan.PlanNo || plan.PlanID || ''}.`
             ].filter(Boolean).join(' ')
             : 'Chưa cập nhật danh sách phôi lỗi.',
         PhieuKiemTbpXacNhanAt: phieu.TbpKcsConfirmedAt,

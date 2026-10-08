@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import {
+    Autocomplete,
     Box,
     Button,
     Card,
@@ -10,6 +11,7 @@ import {
     DialogContent,
     DialogTitle,
     InputAdornment,
+    MenuItem,
     Stack,
     TextField,
     Typography
@@ -55,25 +57,57 @@ export default function DefectPickerDialog({
 }) {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState("");
+    const [productFilter, setProductFilter] = useState(null);
+    const [typeFilter, setTypeFilter] = useState("");
+
+    const productOptions = useMemo(() => {
+        const unique = new Map();
+        defects.forEach((defect) => {
+            const productName = String(defect.TenSanPham || "").trim();
+            const category = String(defect.ChungLoai || "").trim();
+            if (!productName && !category) return;
+            const key = `${normalize(productName)}|${normalize(category)}`;
+            if (!unique.has(key)) {
+                unique.set(key, {
+                    key,
+                    label: [productName, category].filter(Boolean).join(" — ")
+                });
+            }
+        });
+        return [...unique.values()].sort((left, right) =>
+            left.label.localeCompare(right.label, "vi", { sensitivity: "base" })
+        );
+    }, [defects]);
+
+    const typeOptions = useMemo(() => [...new Set(defects
+        .map((defect) => String(defect.DefectType || "").trim())
+        .filter(Boolean))].sort((left, right) => left.localeCompare(right, "vi")), [defects]);
 
     const filteredDefects = useMemo(() => {
         const keyword = normalize(search);
-        if (!keyword) return defects;
-        return defects.filter((defect) => [
-            defect.MaLoi,
-            defect.TenLoi,
-            defect.MoTa,
-            defect.DefectType,
-            defect.TenSanPham,
-            defect.ChungLoai,
-            defect.PhamViApDung,
-            defect.GhiChu
-        ].some((value) => normalize(value).includes(keyword)));
-    }, [defects, search]);
+        return defects.filter((defect) => {
+            const productKey = `${normalize(defect.TenSanPham)}|${normalize(defect.ChungLoai)}`;
+            if (productFilter && productKey !== productFilter.key) return false;
+            if (typeFilter && normalize(defect.DefectType) !== normalize(typeFilter)) return false;
+            if (!keyword) return true;
+            return [
+                defect.MaLoi,
+                defect.TenLoi,
+                defect.MoTa,
+                defect.DefectType,
+                defect.TenSanPham,
+                defect.ChungLoai,
+                defect.PhamViApDung,
+                defect.GhiChu
+            ].some((value) => normalize(value).includes(keyword));
+        });
+    }, [defects, productFilter, search, typeFilter]);
 
     const handleClose = () => {
         setOpen(false);
         setSearch("");
+        setProductFilter(null);
+        setTypeFilter("");
     };
 
     const handleSelect = (defect) => {
@@ -106,7 +140,7 @@ export default function DefectPickerDialog({
                         fullWidth
                         value={search}
                         onChange={(event) => setSearch(event.target.value)}
-                        placeholder="Tìm mã lỗi / tên lỗi..."
+                        placeholder="Tìm mã lỗi, tên lỗi, tên sản phẩm..."
                         slotProps={{
                             input: {
                                 startAdornment: (
@@ -118,6 +152,41 @@ export default function DefectPickerDialog({
                         }}
                         sx={{ mb: 2 }}
                     />
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mb: 1.5 }}>
+                        <Autocomplete
+                            fullWidth
+                            size="small"
+                            options={productOptions}
+                            value={productFilter}
+                            onChange={(_event, value) => setProductFilter(value)}
+                            isOptionEqualToValue={(option, value) => option.key === value.key}
+                            getOptionLabel={(option) => option.label}
+                            noOptionsText="Không có sản phẩm phù hợp"
+                            renderInput={(params) => (
+                                <TextField
+                                    {...params}
+                                    label="Tên sản phẩm / chủng loại"
+                                    placeholder="Tất cả sản phẩm"
+                                />
+                            )}
+                        />
+                        <TextField
+                            select
+                            fullWidth
+                            size="small"
+                            label="Loại lỗi"
+                            value={typeFilter}
+                            onChange={(event) => setTypeFilter(event.target.value)}
+                        >
+                            <MenuItem value="">Tất cả loại lỗi</MenuItem>
+                            {typeOptions.map((type) => (
+                                <MenuItem key={type} value={type}>{type}</MenuItem>
+                            ))}
+                        </TextField>
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
+                        Hiển thị {filteredDefects.length}/{defects.length} lỗi
+                    </Typography>
                     {filteredDefects.length === 0 ? (
                         <Box sx={{ py: 6, textAlign: "center", color: "text.secondary" }}>
                             <SearchIcon sx={{ fontSize: 44, color: "grey.400" }} />

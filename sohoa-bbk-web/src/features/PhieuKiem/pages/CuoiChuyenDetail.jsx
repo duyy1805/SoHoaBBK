@@ -41,6 +41,7 @@ import InspectionPrintCompareDialog from "../components/InspectionPrintCompareDi
 import UnifiedInspectionPrintTemplate from "../components/UnifiedInspectionPrintTemplate";
 import CuoiChuyenPlanEditor from "../components/CuoiChuyenPlanEditor";
 import DeletePhieuKiemButton from "../components/DeletePhieuKiemButton";
+import InspectionApprovalHistory from "../components/InspectionApprovalHistory";
 
 const getFieldValue = (dynamicFields = [], name) =>
     dynamicFields.find((field) => field?.FieldName === name)?.FieldValue ?? "";
@@ -118,6 +119,7 @@ export default function CuoiChuyenDetail() {
     const [summary, setSummary] = useState(null);
     const [dynamicFields, setDynamicFields] = useState([]);
     const [xacNhans, setXacNhans] = useState([]);
+    const [approvalHistory, setApprovalHistory] = useState([]);
     const [capabilities, setCapabilities] = useState({});
     const [openPrint, setOpenPrint] = useState(false);
     const [editingPlanId, setEditingPlanId] = useState(null);
@@ -152,6 +154,7 @@ export default function CuoiChuyenDetail() {
             setSummary(data.summary || null);
             setDynamicFields(data.dynamicFields || []);
             setXacNhans(Array.isArray(data.xacNhans) ? data.xacNhans : []);
+            setApprovalHistory(Array.isArray(data.approvalHistory) ? data.approvalHistory : []);
             setCapabilities(data.capabilities || {});
         } catch (error) {
             console.error(error);
@@ -345,6 +348,10 @@ export default function CuoiChuyenDetail() {
                     </Grid>
                 </Grid>
             </Paper>
+
+            <Box sx={{ mb: 3 }}>
+                <InspectionApprovalHistory history={approvalHistory} />
+            </Box>
 
             <Stack spacing={2}>
                 {plans.length === 0 ? (

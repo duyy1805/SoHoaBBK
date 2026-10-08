@@ -41,6 +41,7 @@ import UnifiedInspectionPrintTemplate from "../components/UnifiedInspectionPrint
 import TrenChuyenSignaturePrintTemplate from "../components/TrenChuyenSignaturePrintTemplate";
 import TrenChuyenSlotEditor from "../components/TrenChuyenSlotEditor";
 import DeletePhieuKiemButton from "../components/DeletePhieuKiemButton";
+import InspectionApprovalHistory from "../components/InspectionApprovalHistory";
 
 const getFieldValue = (dynamicFields = [], name) =>
     dynamicFields.find((field) => field?.FieldName === name)?.FieldValue ?? "";
@@ -135,6 +136,7 @@ export default function TrenChuyenDetail() {
     const [summary, setSummary] = useState(null);
     const [dynamicFields, setDynamicFields] = useState([]);
     const [xacNhans, setXacNhans] = useState([]);
+    const [approvalHistory, setApprovalHistory] = useState([]);
     const [capabilities, setCapabilities] = useState({});
     const [openPrint, setOpenPrint] = useState(false);
     const [approving, setApproving] = useState(false);
@@ -182,6 +184,7 @@ export default function TrenChuyenDetail() {
                 lenhXuatVatTu: getFieldValue(data.dynamicFields, "TrenChuyen_LenhXuatVatTu")
             });
             setXacNhans(data.xacNhans || []);
+            setApprovalHistory(data.approvalHistory || []);
             setCapabilities(data.capabilities || {});
         } catch (error) {
             console.error(error);
@@ -280,7 +283,6 @@ export default function TrenChuyenDetail() {
         (entryTotal, entry) => entryTotal + Number(entry.SoLoiBuiBan || 0) + Number(entry.SoLoiConTrung || 0),
         0
     ), 0);
-    const latestTbpApproval = (xacNhans || []).find((item) => String(item?.VaiTro || "").toUpperCase() === "TBP");
 
     const handleApprove = async () => {
         try {
@@ -469,18 +471,7 @@ export default function TrenChuyenDetail() {
                                         </Grid>
                                     </Grid>
 
-                                    {latestTbpApproval ? (
-                                        <Alert severity="success" variant="outlined" sx={{ borderRadius: 2.5 }}>
-                                            <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                                                TBP đã xác nhận: {latestTbpApproval.TenNguoiXacNhan || "Không rõ người xác nhận"}
-                                            </Typography>
-                                            {latestTbpApproval.ThoiGian ? (
-                                                <Typography variant="body2" sx={{ mt: 0.5 }}>
-                                                    {new Date(latestTbpApproval.ThoiGian).toLocaleString("vi-VN")}
-                                                </Typography>
-                                            ) : null}
-                                        </Alert>
-                                    ) : null}
+                                    <InspectionApprovalHistory history={approvalHistory} />
                                 </Stack>
                             </CardContent>
                         </Card>

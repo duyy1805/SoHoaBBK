@@ -13,6 +13,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { createCongDoanPhieu, getCongDoanPhieuList } from "../../../api/phieuKiem.api";
 import { getBoPhan } from "../../../api/bienBan.api";
 import { getCurrentUser } from "../../../utils/auth";
+import { formatApprovalDateTime, latestApprovalSummary } from "../components/approvalHistory.utils";
 
 const today = () => {
     const date = new Date();
@@ -298,6 +299,9 @@ export default function CongDoanList() {
                                         <Typography variant="body2" color="text.secondary">
                                             {item.SoKeHoach || 0} kế hoạch · HL {item.TongSoLuongHieuLuc || 0} · {item.TongSoLuongLoi || 0} lỗi
                                         </Typography>
+                                        <Typography variant="body2" color="text.secondary">
+                                            Duyệt/xác nhận gần nhất: {latestApprovalSummary(item)}
+                                        </Typography>
                                         <Button fullWidth variant="outlined" startIcon={<VisibilityIcon />} onClick={() => openDetail(item.Id)}>Mở phiếu</Button>
                                     </Stack>
                                 </Paper>
@@ -323,7 +327,7 @@ export default function CongDoanList() {
                                         })}
                                     </TableCell>
                                     <TableCell align="right">Kế hoạch</TableCell><TableCell align="right">KH / TT / Hiệu lực</TableCell><TableCell align="right">Số lỗi</TableCell>
-                                    <TableCell>Trạng thái</TableCell><TableCell width={64} />
+                                    <TableCell>Trạng thái</TableCell><TableCell sx={{ minWidth: 210 }}>Duyệt/xác nhận gần nhất</TableCell><TableCell width={64} />
                                 </TableRow>
                             </TableHead>
                             <TableBody>
@@ -339,11 +343,20 @@ export default function CongDoanList() {
                                             <TableCell align="right">{item.TongSoLuongKeHoach || 0} / {item.SoKeHoachDaNhapThucTe ? item.TongSoLuongThucTe : "Chưa nhập"} / {item.TongSoLuongHieuLuc || 0}</TableCell>
                                             <TableCell align="right">{item.TongSoLuongLoi || 0}</TableCell>
                                             <TableCell><Chip size="small" label={meta[0]} color={meta[1]} /></TableCell>
+                                            <TableCell>
+                                                {item.LatestApprovalAt ? (
+                                                    <Typography variant="body2" sx={{ fontSize: 12, lineHeight: 1.35 }}>
+                                                        <b>{item.LatestApprovalLabel || "Xác nhận"}</b><br />
+                                                        {item.LatestApprovalBy || "Không rõ người"}<br />
+                                                        {formatApprovalDateTime(item.LatestApprovalAt)}
+                                                    </Typography>
+                                                ) : "—"}
+                                            </TableCell>
                                             <TableCell><Button title="Xem chi tiết" onClick={() => openDetail(item.Id)}><VisibilityIcon /></Button></TableCell>
                                         </TableRow>
                                     );
                                 })}
-                                {!filteredRows.length && <TableRow><TableCell colSpan={9} align="center" sx={{ py: 7, color: "text.secondary" }}>Chưa có phiếu phù hợp.</TableCell></TableRow>}
+                                {!filteredRows.length && <TableRow><TableCell colSpan={10} align="center" sx={{ py: 7, color: "text.secondary" }}>Chưa có phiếu phù hợp.</TableCell></TableRow>}
                             </TableBody>
                         </Table>
                     </TableContainer>
