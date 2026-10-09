@@ -17,6 +17,7 @@ const { getManagedDepartmentIds, canLeadDepartment } = require("../utils/managed
 const { loadBienBanListSummaries, mergeBienBanListSummary } = require("../utils/bienBanListSummary");
 const { sortKphListRows } = require("../utils/kphListSorting");
 const { loadKphSectionRows } = require("../utils/kphSectionRows");
+const { enrichDefectsWithCatalog } = require("../utils/defectCatalogDetails");
 const { loadInputInspectionSource } = require("../utils/inputInspectionSource");
 const { canViewKphListItem } = require("../utils/kphListVisibility");
 const { canFinalizeKph } = require("../utils/kphCompletionAccess");
@@ -1047,6 +1048,8 @@ router.get(
                 SignatureDataUrl: signatureMap.get(Number(item?.[userIdField])) || null
             });
 
+            const enrichedDefects = await enrichDefectsWithCatalog(pool, detailDefects);
+
             res.json({
                 info: info ? {
                     ...info,
@@ -1114,7 +1117,7 @@ router.get(
                     IsAdmin: isAdmin(req.user),
                     canEditKphCustomFields: customFieldAccess.canEdit
                 } : null,
-                defects: detailDefects,
+                defects: enrichedDefects,
                 assigns: mergedAssigns,
                 recipientDepartments,
                 xuLy: proposalResult.recordset || [],

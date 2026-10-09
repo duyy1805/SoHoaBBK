@@ -99,6 +99,10 @@ import BienBanDetailToolbar from "./components/BienBanDetailToolbar";
 import BienBanWorkflowGuide from "./components/BienBanWorkflowGuide";
 import ResponsiveDataList from "./components/ResponsiveDataList";
 import DefectImageGalleryDialog from "./components/DefectImageGalleryDialog";
+import DefectCatalogDetailDialog, {
+    DefectDetailTrigger,
+    DefectTreatmentSuggestion
+} from "./components/DefectCatalogDetailDialog";
 import BienBanAttachments from "./components/BienBanAttachments";
 import PrintableBienBanAttachments from "./components/PrintableBienBanAttachments";
 import DefectPickerDialog from "../PhieuKiem/components/DefectPickerDialog";
@@ -161,6 +165,7 @@ export default function BienBanDetail({ standalone = false }) {
     const [moTaConfirmed, setMoTaConfirmed] = useState(false);
 
     const [defects, setDefects] = useState([]);
+    const [selectedDefectDetail, setSelectedDefectDetail] = useState(null);
     const [assigns, setAssigns] = useState([]);
     const [xuLy, setXuLy] = useState([]);
     const [chiPhi, setChiPhi] = useState([]);
@@ -637,7 +642,8 @@ export default function BienBanDetail({ standalone = false }) {
             TenLoi: selected?.TenLoi || "",
             DefectType: selected?.DefectType || "MINOR",
             MoTa: selected?.MoTa || "",
-            TenLoiTuNhap: ""
+            TenLoiTuNhap: "",
+            CatalogDetail: selected || null
         });
     };
 
@@ -1190,10 +1196,11 @@ export default function BienBanDetail({ standalone = false }) {
             : { label: "Đã đồng bộ", color: "success.main" };
     const renderDefectDetails = (defect, index) => (
         <Box>
-            <Typography variant="body2" fontWeight="bold" color="primary">
-                {defect.TenLoi || defect.TenLoiTuNhap || defect.MaLoi || `Dòng lỗi ${index + 1}`}
-            </Typography>
+            <DefectDetailTrigger defect={defect} onOpen={setSelectedDefectDetail}>
+                {[defect.MaLoi, defect.TenLoi || defect.TenLoiTuNhap].filter(Boolean).join(" – ") || `Dòng lỗi ${index + 1}`}
+            </DefectDetailTrigger>
             {defect.MoTa && <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>{defect.MoTa}</Typography>}
+            <DefectTreatmentSuggestion defect={defect} compact />
             {Array.isArray(defect.ImageUrls) && defect.ImageUrls.length > 0 && (
                 <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: "wrap", gap: 1 }}>
                     {defect.ImageUrls.map((url, imageIndex) => (
@@ -1698,9 +1705,9 @@ export default function BienBanDetail({ standalone = false }) {
                                                                     alignItems={{ xs: "flex-start", md: "center" }}
                                                                 >
                                                                     <Box sx={{ minWidth: 0, flex: 1 }}>
-                                                                        <Typography variant="body2" fontWeight={700}>
-                                                                            {title}
-                                                                        </Typography>
+                                                                        <DefectDetailTrigger defect={d} onOpen={setSelectedDefectDetail}>
+                                                                            {[d.MaLoi, title].filter(Boolean).join(" – ")}
+                                                                        </DefectDetailTrigger>
                                                                         {d.MoTa && (
                                                                             <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5, whiteSpace: "pre-wrap" }}>
                                                                                 {d.MoTa}
@@ -1711,6 +1718,7 @@ export default function BienBanDetail({ standalone = false }) {
                                                                                 Ghi chú: {d.GhiChu}
                                                                             </Typography>
                                                                         )}
+                                                                        <DefectTreatmentSuggestion defect={d} compact />
                                                                     </Box>
                                                                     <Stack direction="row" spacing={1} flexWrap="wrap">
                                                                         <Chip size="small" variant="outlined" label={d.DefectType || "MINOR"} />
@@ -1771,6 +1779,7 @@ export default function BienBanDetail({ standalone = false }) {
                                                                 <Typography variant="caption" color="text.secondary" sx={{ px: 0.5, whiteSpace: "pre-wrap" }}>
                                                                     {selectedOption?.MoTa || "Chưa chọn lỗi từ ngân hàng lỗi"}
                                                                 </Typography>
+                                                                <DefectTreatmentSuggestion defect={{ ...d, CatalogDetail: selectedOption || d.CatalogDetail }} compact />
                                                                 <Grid container spacing={1}>
                                                                     <Grid size={{ xs: 6, md: 2 }}>
                                                                         <TextField
@@ -2244,6 +2253,11 @@ export default function BienBanDetail({ standalone = false }) {
                 reload={refreshData}
                 assignedIds={workflowDepartments.map(a => a.BoPhanId)}
                 isOpinionFlow={isV01}
+            />
+            <DefectCatalogDetailDialog
+                defect={selectedDefectDetail}
+                open={Boolean(selectedDefectDetail)}
+                onClose={() => setSelectedDefectDetail(null)}
             />
             <RecipientDepartmentDialog
                 open={openRecipientModal}

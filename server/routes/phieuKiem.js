@@ -4552,7 +4552,8 @@ router.post(
 
 /* =========================================================
    POST /phieu-kiem/sxbt/confirm-sxbt
-   Phiếu đạt: SXBT xác nhận sau Kho. Phiếu không đạt: bỏ qua Kho với số lượng 0.
+   Chỉ phiếu đạt cần SXBT xác nhận sau Kho. Phiếu không đạt hoàn thành ngay
+   sau bước KCS vì nội dung xử lý đã được chuyển sang biên bản SXBT.
 ========================================================= */
 router.post(
     '/sxbt/confirm-sxbt',
@@ -4732,7 +4733,7 @@ router.post(
                             VALUES(source.PhieuKiemId,source.FieldName,source.FieldValue);
 
                         UPDATE dbo.PHIEU_KIEM
-                        SET TrangThai=N'CHO_SXBT_XAC_NHAN'
+                        SET TrangThai=N'HOAN_THANH'
                         WHERE Id=@PhieuKiemId AND LoaiKiemId=4 AND KetLuan=N'KHONG_DAT';
                     `);
             }
@@ -4743,9 +4744,9 @@ router.post(
             const rejected = ketLuan === 'KHONG_DAT';
             res.json({
                 success: true,
-                nextStatus: rejected ? 'CHO_SXBT_XAC_NHAN' : 'CHO_KHO_XAC_NHAN',
+                nextStatus: rejected ? 'HOAN_THANH' : 'CHO_KHO_XAC_NHAN',
                 message: rejected
-                    ? 'Hoàn tất phiếu SXBT không đạt. Phiếu đang chờ SXBT xác nhận; số lượng nhập Kho là 0.'
+                    ? 'Phiếu SXBT không đạt đã hoàn thành; không cần Kho hoặc SXBT xác nhận. Số lượng nhập Kho là 0.'
                     : 'Hoàn tất phiếu kiểm SXBT thành công. Chờ Kho xác nhận số lượng.'
             });
 
@@ -4879,7 +4880,7 @@ router.post(
                         VALUES(source.PhieuKiemId,source.FieldName,source.FieldValue);
 
                     UPDATE dbo.PHIEU_KIEM
-                    SET TrangThai=N'CHO_SXBT_XAC_NHAN'
+                    SET TrangThai=N'HOAN_THANH'
                     WHERE Id=@RejectedPhieuKiemId
                       AND LoaiKiemId=4
                       AND KetLuan=N'KHONG_DAT';

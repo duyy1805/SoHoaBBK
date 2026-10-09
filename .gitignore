@@ -10,5 +10,6 @@ build/
 
 *.sql
 !server/sql/migrations/20260930_sxbt_warehouse_list_mode.sql
+!server/sql/migrations/20261008_sxbt_rejected_skip_sxbt_confirmation.sql
 
 *.xlsx

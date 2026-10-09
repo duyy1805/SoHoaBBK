@@ -10,6 +10,7 @@ const { loadBienBanListSummaries, mergeBienBanListSummary } = require("../utils/
 const { sortKphListRows } = require("../utils/kphListSorting");
 const { loadSignatureDataUrlMap } = require("../utils/signatureImage");
 const { loadKphSectionRows } = require("../utils/kphSectionRows");
+const { enrichDefectsWithCatalog } = require("../utils/defectCatalogDetails");
 const { canViewKphListItem } = require("../utils/kphListVisibility");
 const {
     getRecipientDepartments,
@@ -770,7 +771,10 @@ router.get("/:id", authenticateToken, async (req, res) => {
 
         res.json({
             info,
-            defects: await enrichDefectCodes(pool, defectResult.recordset || []),
+            defects: await enrichDefectsWithCatalog(
+                pool,
+                await enrichDefectCodes(pool, defectResult.recordset || [])
+            ),
             assigns: result.recordsets?.[2] || [],
             recipientDepartments,
             xuLy: proposalResult.recordset || [],

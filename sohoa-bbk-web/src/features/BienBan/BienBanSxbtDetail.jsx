@@ -59,6 +59,10 @@ import { useReactToPrint } from "react-to-print";
 import { BienBanSxbtPrintTemplate } from "./components/BienBanSxbtPrintTemplate";
 import BienBanAttachments from "./components/BienBanAttachments";
 import PrintableBienBanAttachments from "./components/PrintableBienBanAttachments";
+import DefectCatalogDetailDialog, {
+    DefectDetailTrigger,
+    DefectTreatmentSuggestion
+} from "./components/DefectCatalogDetailDialog";
 
 const LEVEL_OPTIONS = ["B", "C"];
 
@@ -169,6 +173,7 @@ export default function BienBanSxbtDetail() {
     const [openHanhDong, setOpenHanhDong] = useState(false);
     const [openPrint, setOpenPrint] = useState(false);
     const [previewImage, setPreviewImage] = useState("");
+    const [selectedDefectDetail, setSelectedDefectDetail] = useState(null);
     const [openRecipientDepartments, setOpenRecipientDepartments] = useState(false);
     const [attachmentPrintStatus, setAttachmentPrintStatus] = useState({
         loading: false, unsupported: [], failed: [], printableCount: 0
@@ -612,9 +617,20 @@ export default function BienBanSxbtDetail() {
                                                                         <Typography variant="body2" color="text.secondary">---</Typography>
                                                                     )}
                                                                 </TableCell>
-                                                                <TableCell sx={{ fontWeight: 800 }}>{item.MaLoi || "---"}</TableCell>
-                                                                <TableCell>{item.TenLoi || "---"}</TableCell>
-                                                                <TableCell>{item.MoTa || "---"}</TableCell>
+                                                                <TableCell>
+                                                                    <DefectDetailTrigger defect={item} onOpen={setSelectedDefectDetail}>
+                                                                        {item.MaLoi || "Xem chi tiết"}
+                                                                    </DefectDetailTrigger>
+                                                                </TableCell>
+                                                                <TableCell>
+                                                                    <DefectDetailTrigger defect={item} onOpen={setSelectedDefectDetail}>
+                                                                        {item.TenLoi || "Xem chi tiết lỗi"}
+                                                                    </DefectDetailTrigger>
+                                                                </TableCell>
+                                                                <TableCell>
+                                                                    <Typography variant="body2">{item.MoTa || "---"}</Typography>
+                                                                    <DefectTreatmentSuggestion defect={item} compact />
+                                                                </TableCell>
                                                                 <TableCell align="right">{item.SoLuong || 0}</TableCell>
                                                             </TableRow>
                                                         );
@@ -802,6 +818,11 @@ export default function BienBanSxbtDetail() {
                     <Button onClick={() => setPreviewImage("")}>Đóng</Button>
                 </DialogActions>
             </Dialog>
+            <DefectCatalogDetailDialog
+                defect={selectedDefectDetail}
+                open={Boolean(selectedDefectDetail)}
+                onClose={() => setSelectedDefectDetail(null)}
+            />
         </Box>
     );
 }

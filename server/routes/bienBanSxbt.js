@@ -4,6 +4,7 @@ const sql = require("mssql");
 
 const { poolPromise } = require("../db");
 const { loadSignatureDataUrlMap } = require("../utils/signatureImage");
+const { enrichDefectsWithCatalog } = require("../utils/defectCatalogDetails");
 const authenticateToken = require("../middlewares/auth.middleware");
 const authorize = require("../middlewares/permission.middleware");
 const {
@@ -188,13 +189,15 @@ router.get("/:id", authenticateToken, async (req, res) => {
             signatureMap = await loadSignatureDataUrlMap(pool, confirmedUserIds);
         }
 
+        const enrichedDefects = await enrichDefectsWithCatalog(pool, recordsets[1] || []);
+
         res.json({
             info: baseInfo ? {
                 ...baseInfo,
                 ...extraInfo,
                 CanManageRecipientDepartments: recipientAccess.canManage
             } : null,
-            defects: recordsets[1] || [],
+            defects: enrichedDefects,
             xuLyRows: recordsets[2] || [],
             hanhDong: recordsets[3] || [],
             dynamicFields,
