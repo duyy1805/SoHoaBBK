@@ -1066,6 +1066,23 @@ export default function BienBanDetail({ standalone = false }) {
     const canAddProposal = isV01
         ? Boolean(info?.CanContributeKphSections)
         : isAssigned;
+    const hasCreatorDepartmentProposal = xuLy.some((row) =>
+        Number(row?.BoPhanId) === Number(info?.BoPhanTaoId) &&
+        Boolean(String(row?.NoiDung || "").trim())
+    );
+    const canRequestSpecialistOpinions = Boolean(info?.OpinionDepartmentsConfirmedAt) ||
+        Boolean(info?.OpinionDepartmentsConfirmed) || hasCreatorDepartmentProposal;
+    const opinionRequestBlockedReason = canRequestSpecialistOpinions
+        ? ""
+        : "Bộ phận tạo biên bản phải nhập Ý kiến / Đề xuất xử lý trước khi xin ý kiến chuyên môn.";
+    const handleManageOpinionDepartments = () => {
+        if (!canRequestSpecialistOpinions) {
+            showToast(opinionRequestBlockedReason, "warning");
+            scrollToSection("bien-ban-phuong-an", { focus: true });
+            return;
+        }
+        setOpenAssignModal(true);
+    };
     const hasXuLy = xuLy.some(x => currentUserDepartmentIds.has(Number(x.BoPhanId)));
     const isConfirmed = xacNhan.some(x => currentUserDepartmentIds.has(Number(x.BoPhanId)));
     const allConfirmed = assigns.length > 0 && assigns.every(a =>
@@ -1152,7 +1169,7 @@ export default function BienBanDetail({ standalone = false }) {
         canResubmit: Boolean(info?.CanResubmit),
         actions: {
             editInfo: () => scrollToSection("bien-ban-thong-tin", { focus: true }),
-            manageAssignments: () => setOpenAssignModal(true),
+            manageAssignments: isV01 ? handleManageOpinionDepartments : () => setOpenAssignModal(true),
             confirmAssignments: handleConfirmAssign,
             addProcessing: () => setOpenXuLyModal(true),
             openOpinions: () => scrollToSection("bien-ban-y-kien-chuyen-mon", { focus: true }),
@@ -1166,6 +1183,9 @@ export default function BienBanDetail({ standalone = false }) {
     const missingItems = info?.TrangThai === "TRA_LAI_CHINH_SUA" ? [] : [
         !moTaConfirmed ? "Mô tả sự không phù hợp" : null,
         defects.length === 0 ? "Ít nhất một dòng lỗi" : null,
+        isV01 && !info?.OpinionDepartmentsConfirmedAt && !hasCreatorDepartmentProposal
+            ? "Ý kiến / Đề xuất xử lý của bộ phận tạo"
+            : null,
         moTaConfirmed && workflowDepartments.length === 0 ? (isV01 ? "Bộ phận cần lấy ý kiến" : "Bộ phận phối hợp xử lý") : null,
         isV01 && specialistOpinions.some((item) => !item.HasConfirmed) ? "Ý kiến hoặc xác nhận của bộ phận" : null
     ].filter(Boolean);
@@ -2127,7 +2147,9 @@ export default function BienBanDetail({ standalone = false }) {
                                     onReturned={handleReviewReturned}
                                     reload={refreshData} showToast={showToast}
                                     canManageDepartments={Boolean(info.CanManageKphFlow && !info.CreatorConfirmedAt)}
-                                    onManageDepartments={() => setOpenAssignModal(true)}
+                                    canRequestOpinions={canRequestSpecialistOpinions}
+                                    opinionRequestBlockedReason={opinionRequestBlockedReason}
+                                    onManageDepartments={handleManageOpinionDepartments}
                                 />
                             </Box>
 
@@ -2253,6 +2275,7 @@ export default function BienBanDetail({ standalone = false }) {
                 reload={refreshData}
                 assignedIds={workflowDepartments.map(a => a.BoPhanId)}
                 isOpinionFlow={isV01}
+                submissionBlockedReason={isV01 ? opinionRequestBlockedReason : ""}
             />
             <DefectCatalogDetailDialog
                 defect={selectedDefectDetail}
@@ -2383,7 +2406,10 @@ function RecipientDepartmentDialog({ open, onClose, bienBanId, reload, recipient
     );
 }
 
-function AssignDepartmentDialog({ open, onClose, bienBanId, reload, assignedIds, isOpinionFlow = false }) {
+function AssignDepartmentDialog({
+    open, onClose, bienBanId, reload, assignedIds, isOpinionFlow = false,
+    submissionBlockedReason = ""
+}) {
     const [departments, setDepartments] = useState([]);
     const [saving, setSaving] = useState(false);
     // 1. Khởi tạo state với giá trị từ prop
@@ -2407,6 +2433,10 @@ function AssignDepartmentDialog({ open, onClose, bienBanId, reload, assignedIds,
 
     const handleSubmit = async () => {
         if (saving) return;
+        if (submissionBlockedReason) {
+            alert(submissionBlockedReason);
+            return;
+        }
         try {
             setSaving(true);
             if (isOpinionFlow) {
@@ -2432,6 +2462,11 @@ function AssignDepartmentDialog({ open, onClose, bienBanId, reload, assignedIds,
         <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
             <DialogTitle fontWeight="bold">{isOpinionFlow ? "Chọn bộ phận cần lấy ý kiến" : "Chọn bộ phận xử lý"}</DialogTitle>
             <DialogContent dividers>
+                {submissionBlockedReason && (
+                    <Typography color="warning.main" variant="body2" sx={{ mb: 1.5 }}>
+                        {submissionBlockedReason}
+                    </Typography>
+                )}
                 <FormControl fullWidth sx={{ mt: 1 }}>
                     <InputLabel>Danh sách bộ phận</InputLabel>
                     <Select
@@ -2452,7 +2487,7 @@ function AssignDepartmentDialog({ open, onClose, bienBanId, reload, assignedIds,
             </DialogContent>
             <DialogActions sx={{ p: 2 }}>
                 <Button onClick={onClose} color="inherit" disabled={saving}>Hủy</Button>
-                <Button onClick={handleSubmit} variant="contained" color="primary" disabled={saving}>
+                <Button onClick={handleSubmit} variant="contained" color="primary" disabled={saving || Boolean(submissionBlockedReason)}>
                     {saving ? "Đang lưu..." : (isOpinionFlow ? "Xác nhận danh sách" : "Lưu thay đổi")}
                 </Button>
             </DialogActions>

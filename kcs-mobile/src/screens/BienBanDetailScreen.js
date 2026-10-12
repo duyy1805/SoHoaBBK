@@ -292,6 +292,15 @@ export default function BienBanDetailScreen({ route, navigation }) {
     const workflowDepartments = isV01 ? specialistOpinions : assigns;
     const isAssigned = workflowDepartments.some(a => Number(a.BoPhanId) === Number(currentUserBoPhanId));
     const hasXuLy = xuLy.some(x => x.BoPhanId === currentUserBoPhanId);
+    const hasCreatorDepartmentProposal = xuLy.some((row) =>
+        Number(row?.BoPhanId) === Number(info?.BoPhanTaoId) &&
+        Boolean(String(row?.NoiDung || "").trim())
+    );
+    const canRequestSpecialistOpinions = Boolean(info?.OpinionDepartmentsConfirmedAt) ||
+        Boolean(info?.OpinionDepartmentsConfirmed) || hasCreatorDepartmentProposal;
+    const opinionRequestBlockedReason = canRequestSpecialistOpinions
+        ? ""
+        : "Bộ phận tạo biên bản phải nhập Ý kiến / Đề xuất xử lý trước khi xin ý kiến chuyên môn.";
     const hasChiPhi = chiPhi.some(c => c.BoPhanId === currentUserBoPhanId);
     const hasHanhDong = hanhDong.some(h => h.BoPhanId === currentUserBoPhanId);
     const isConfirmed = xacNhan.some(
@@ -525,13 +534,25 @@ export default function BienBanDetailScreen({ route, navigation }) {
             {isV01 && moTaConfirmed && info.CanManageKphFlow &&
                 !["CHO_THEO_DOI", "HOAN_TAT"].includes(info.TrangThai) && (
                 <TouchableOpacity
-                    style={styles.assignDeptBtn}
-                    onPress={() => setShowAssignDeptModal(true)}
+                    style={[styles.assignDeptBtn, !canRequestSpecialistOpinions && styles.disabledBtn]}
+                    onPress={() => {
+                        if (!canRequestSpecialistOpinions) {
+                            Alert.alert("Chưa thể xin ý kiến", opinionRequestBlockedReason);
+                            return;
+                        }
+                        setShowAssignDeptModal(true);
+                    }}
+                    disabled={!canRequestSpecialistOpinions}
                 >
                     <Text style={styles.btnText}>
                         {specialistOpinions.length ? "Bổ sung / cập nhật bộ phận" : "Chọn bộ phận cần ý kiến"}
                     </Text>
                 </TouchableOpacity>
+            )}
+            {isV01 && moTaConfirmed && info.CanManageKphFlow &&
+                !["CHO_THEO_DOI", "HOAN_TAT"].includes(info.TrangThai) &&
+                !canRequestSpecialistOpinions && (
+                <Text style={styles.blockedHint}>{opinionRequestBlockedReason}</Text>
             )}
 
             {!isV01 && !info.AssignConfirmed && moTaConfirmed && isManagerOrQA && (
@@ -839,6 +860,7 @@ export default function BienBanDetailScreen({ route, navigation }) {
                 bienBanId={bienBanId}
                 assignedDepartments={workflowDepartments}
                 opinionFlow={isV01}
+                submissionBlockedReason={isV01 ? opinionRequestBlockedReason : ""}
                 onClose={() => setShowAssignDeptModal(false)}
                 reload={loadData}
             />
@@ -1269,6 +1291,15 @@ const styles = StyleSheet.create({
         borderRadius: 10,
         alignItems: "center",
         marginTop: 10
+    },
+    disabledBtn: {
+        opacity: 0.45
+    },
+    blockedHint: {
+        color: "#b45309",
+        fontSize: 13,
+        lineHeight: 19,
+        marginTop: 8
     },
 
     confirmBtn: {

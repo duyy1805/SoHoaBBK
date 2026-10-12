@@ -25,7 +25,8 @@ export default function AssignDepartmentModal({
     assignedDepartments = [],
     onClose,
     reload,
-    opinionFlow = false
+    opinionFlow = false,
+    submissionBlockedReason = ""
 }) {
     const [departments, setDepartments] = useState([]);
     const [selected, setSelected] = useState([]);
@@ -56,6 +57,10 @@ export default function AssignDepartmentModal({
     };
 
     const handleSubmit = async () => {
+        if (submissionBlockedReason) {
+            Alert.alert("Chưa thể xin ý kiến", submissionBlockedReason);
+            return;
+        }
         if (selected.length === 0) {
             Alert.alert("Thông báo", "Vui lòng chọn ít nhất một bộ phận");
             return;
@@ -137,7 +142,11 @@ export default function AssignDepartmentModal({
 
                 {/* FOOTER */}
                 <View style={styles.footer}>
-                    <TouchableOpacity style={styles.btn} onPress={handleSubmit}>
+                    {Boolean(submissionBlockedReason) && (
+                        <Text style={styles.blockedHint}>{submissionBlockedReason}</Text>
+                    )}
+                    <TouchableOpacity style={[styles.btn, Boolean(submissionBlockedReason) && styles.disabledBtn]}
+                        onPress={handleSubmit} disabled={Boolean(submissionBlockedReason)}>
                         <Text style={styles.btnText}>{opinionFlow ? "Xác nhận danh sách" : "Xác nhận"}</Text>
                     </TouchableOpacity>
                 </View>
@@ -151,6 +160,15 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: "#fff"
+    },
+    disabledBtn: {
+        opacity: 0.45
+    },
+    blockedHint: {
+        color: "#b45309",
+        fontSize: 13,
+        lineHeight: 18,
+        marginBottom: 10
     },
     header: {
         flexDirection: "row",

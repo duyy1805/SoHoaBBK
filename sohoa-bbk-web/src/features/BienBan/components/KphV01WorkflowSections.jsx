@@ -24,6 +24,8 @@ export default function KphV01WorkflowSections({
     reload,
     showToast,
     canManageDepartments = false,
+    canRequestOpinions = true,
+    opinionRequestBlockedReason = "",
     onManageDepartments
 }) {
     const [responses, setResponses] = useState({});
@@ -139,11 +141,17 @@ export default function KphV01WorkflowSections({
                     <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }} spacing={1} sx={{ mb: 1.5 }}>
                         <Typography variant="h6">Ý kiến phòng ban chuyên môn</Typography>
                         {canManageDepartments && onManageDepartments && (
-                            <Button size="small" variant="outlined" onClick={onManageDepartments}>
+                            <Button size="small" variant="outlined" onClick={onManageDepartments}
+                                disabled={!canRequestOpinions}>
                                 {opinions.length ? "Bổ sung / cập nhật bộ phận" : "Chọn bộ phận"}
                             </Button>
                         )}
                     </Stack>
+                    {canManageDepartments && !canRequestOpinions && opinionRequestBlockedReason && (
+                        <Alert severity="warning" sx={{ mb: 1.5 }}>
+                            {opinionRequestBlockedReason}
+                        </Alert>
+                    )}
                     {Boolean(info.OpinionDepartmentsConfirmed) && !info.CreatorConfirmedAt && (
                         <Alert severity="info" sx={{ mb: 1.5, py: 0.25, alignItems: "center" }}>
                             <Typography variant="body2">
