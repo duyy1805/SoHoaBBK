@@ -11,5 +11,7 @@ build/
 *.sql
 !server/sql/migrations/20260930_sxbt_warehouse_list_mode.sql
 !server/sql/migrations/20261008_sxbt_rejected_skip_sxbt_confirmation.sql
+!server/sql/migrations/20261012_doi_tra_phoi_loi_direct_quantity_lxvt.sql
+!server/sql/migrations/20261021_doi_tra_phoi_loi_remove_kph_add_btp_receipt.sql
 
 *.xlsx

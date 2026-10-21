@@ -73,15 +73,28 @@ export default function BienBanSxbtDetailScreen({ route, navigation }) {
 
     const isMucDoConfirmed = info?.MucDoKhongPhuHopConfirmed === true || info?.MucDoKhongPhuHopConfirmed === 1;
 
-    const currentPendingStep = useMemo(
-        () => (confirmSteps || []).find(s => s.TrangThai !== "DA_XAC_NHAN"),
+    const pendingSteps = useMemo(
+        () => (confirmSteps || []).filter(s => s.TrangThai !== "DA_XAC_NHAN"),
         [confirmSteps]
     );
 
-    const canConfirmCurrentStep = useMemo(() => {
-        if (!currentPendingStep || !currentUser?.boPhanId) return false;
-        return Number(currentPendingStep.BoPhanId) === Number(currentUser.boPhanId);
-    }, [currentPendingStep, currentUser]);
+    const availableSteps = useMemo(() => {
+        const firstPendingOrder = Math.min(...pendingSteps.map(step => Number(step.StepOrder)));
+        return pendingSteps.filter(step => {
+            const departmentCode = String(step.MaBoPhan || "").trim().toUpperCase();
+            return ["B8", "SXBT"].includes(departmentCode) ||
+                Number(step.StepOrder) === firstPendingOrder;
+        });
+    }, [pendingSteps]);
+
+    const myPendingStep = useMemo(() => {
+        if (!currentUser?.boPhanId) return null;
+        return availableSteps.find(step =>
+            Number(step.BoPhanId) === Number(currentUser.boPhanId)
+        ) || null;
+    }, [availableSteps, currentUser]);
+
+    const canConfirmCurrentStep = !!myPendingStep;
 
     const isCompleted = info?.TrangThai === "BB_SXBT_HOAN_TAT";
     const canEditBeforeFlow = !isMucDoConfirmed && !isCompleted;
@@ -330,9 +343,11 @@ export default function BienBanSxbtDetailScreen({ route, navigation }) {
                     <Text style={styles.emptyText}>Chưa có chuỗi xác nhận</Text>
                 ) : (
                     <>
-                        {currentPendingStep && (
+                        {availableSteps.length > 0 && (
                             <Text style={styles.meta}>
-                                Đang chờ: {currentPendingStep.MaBoPhan || currentPendingStep.TenBoPhan || `BP ${currentPendingStep.BoPhanId}`}
+                                Đang chờ xác nhận: {availableSteps
+                                    .map(step => step.MaBoPhan || step.TenBoPhan || `BP ${step.BoPhanId}`)
+                                    .join(", ")}{availableSteps.length > 1 ? " (song song)" : ""}
                             </Text>
                         )}
                         {confirmSteps.map((step) => (
@@ -349,7 +364,7 @@ export default function BienBanSxbtDetailScreen({ route, navigation }) {
 
             {canConfirmCurrentStep && !isCompleted && (
                 <TouchableOpacity style={styles.primaryBtn} onPress={handleConfirmStep} disabled={saving}>
-                    {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Xác nhận bước hiện tại</Text>}
+                    {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Xác nhận ý kiến bộ phận</Text>}
                 </TouchableOpacity>
             )}
 

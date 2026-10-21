@@ -215,13 +215,26 @@ export default function BienBanSxbtDetail() {
 
     const isMucDoConfirmed = info?.MucDoKhongPhuHopConfirmed === true || info?.MucDoKhongPhuHopConfirmed === 1;
     const isCompleted = info?.TrangThai === "BB_SXBT_HOAN_TAT";
-    const currentPendingStep = useMemo(
-        () => confirmSteps.find((step) => step.TrangThai !== "DA_XAC_NHAN"),
+    const pendingSteps = useMemo(
+        () => confirmSteps.filter((step) => step.TrangThai !== "DA_XAC_NHAN"),
         [confirmSteps]
     );
+    const availableSteps = useMemo(() => {
+        const firstPendingOrder = Math.min(...pendingSteps.map((step) => Number(step.StepOrder)));
+        return pendingSteps.filter((step) => {
+            const departmentCode = String(step.MaBoPhan || "").trim().toUpperCase();
+            return ["B8", "SXBT"].includes(departmentCode) ||
+                Number(step.StepOrder) === firstPendingOrder;
+        });
+    }, [pendingSteps]);
+    const myPendingStep = useMemo(
+        () => availableSteps.find((step) =>
+            Number(step.BoPhanId) === Number(currentUser?.boPhanId)
+        ),
+        [availableSteps, currentUser?.boPhanId]
+    );
     const completedSteps = confirmSteps.filter((step) => step.TrangThai === "DA_XAC_NHAN").length;
-    const canConfirmCurrentStep = !!currentPendingStep &&
-        Number(currentPendingStep.BoPhanId) === Number(currentUser?.boPhanId);
+    const canConfirmCurrentStep = !!myPendingStep;
     const canEditBeforeFlow = !isMucDoConfirmed && !isCompleted;
     const canEditCurrentStep = isMucDoConfirmed && !isCompleted && canConfirmCurrentStep;
     const canEditContent = canEditBeforeFlow || canEditCurrentStep;
@@ -659,16 +672,20 @@ export default function BienBanSxbtDetail() {
                                             <Typography sx={sectionTitleSx}>Luồng hiện tại</Typography>
                                         </Stack>
 
-                                        {currentPendingStep && !isCompleted && (
+                                        {availableSteps.length > 0 && !isCompleted && (
                                             <Paper variant="outlined" sx={{ mb: 2, p: 1.5, borderRadius: 2, bgcolor: "#eff6ff", borderColor: "#bfdbfe" }}>
                                                 <Typography
                                                     variant="caption"
                                                     sx={{ color: "#1d4ed8", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0 }}
                                                 >
-                                                    Đang chờ
+                                                    Đang chờ xác nhận
                                                 </Typography>
                                                 <Typography variant="subtitle1" sx={{ mt: 0.5, fontWeight: 700, color: "#0f172a", lineHeight: 1.35 }}>
-                                                    {currentPendingStep.TenBoPhan || currentPendingStep.MaBoPhan || "---"}
+                                                    {availableSteps
+                                                        .map((step) => step.TenBoPhan || step.MaBoPhan)
+                                                        .filter(Boolean)
+                                                        .join(", ") || "---"}
+                                                    {availableSteps.length > 1 ? " (song song)" : ""}
                                                 </Typography>
                                             </Paper>
                                         )}
@@ -677,7 +694,9 @@ export default function BienBanSxbtDetail() {
                                             <Typography color="text.secondary">Chưa có chuỗi xác nhận</Typography>
                                         ) : confirmSteps.map((step, index) => {
                                             const done = step.TrangThai === "DA_XAC_NHAN";
-                                            const active = currentPendingStep?.Id === step.Id && !isCompleted;
+                                            const active = availableSteps.some((availableStep) =>
+                                                availableStep.Id === step.Id
+                                            ) && !isCompleted;
                                             return (
                                                 <Stack key={step.Id || index} direction="row" spacing={1.5} sx={{ pb: index === confirmSteps.length - 1 ? 0 : 2 }}>
                                                     <Stack alignItems="center" sx={{ minWidth: 30 }}>
@@ -715,7 +734,7 @@ export default function BienBanSxbtDetail() {
                                                             </Box>
                                                             <Chip
                                                                 size="small"
-                                                                label={done ? "Xong" : active ? "Hiện tại" : "Chờ"}
+                                                                label={done ? "Xong" : active ? "Có thể xác nhận" : "Chờ"}
                                                                 color={done ? "success" : active ? "primary" : "default"}
                                                                 variant={done || active ? "filled" : "outlined"}
                                                                 sx={{ borderRadius: 1.25, fontWeight: 700 }}
@@ -737,7 +756,7 @@ export default function BienBanSxbtDetail() {
                                         onClick={handleConfirmStep}
                                         sx={{ borderRadius: 1.5, py: 1.2, fontWeight: 700 }}
                                     >
-                                        Xác nhận bước hiện tại
+                                        Xác nhận ý kiến bộ phận
                                     </Button>
                                 )}
 

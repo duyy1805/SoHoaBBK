@@ -24,24 +24,36 @@ const getEditState = async (pool, bienBanId) => {
             FROM dbo.BIEN_BAN_KIEM
             WHERE Id = @BienBanId;
 
-            SELECT TOP 1
-                BoPhanId
-            FROM dbo.BIEN_BAN_SXBT_CONFIRM_STEP
-            WHERE BienBanId = @BienBanId
-              AND TrangThai <> 'DA_XAC_NHAN'
-            ORDER BY StepOrder;
+            SELECT pendingStep.BoPhanId
+            FROM dbo.BIEN_BAN_SXBT_CONFIRM_STEP pendingStep
+            LEFT JOIN dbo.DM_BO_PHAN department ON department.Id = pendingStep.BoPhanId
+            WHERE pendingStep.BienBanId = @BienBanId
+              AND pendingStep.TrangThai <> 'DA_XAC_NHAN'
+              AND (
+                  UPPER(LTRIM(RTRIM(ISNULL(department.MaBoPhan, '')))) IN ('B8', 'SXBT')
+                  OR NOT EXISTS (
+                      SELECT 1
+                      FROM dbo.BIEN_BAN_SXBT_CONFIRM_STEP earlierStep
+                      WHERE earlierStep.BienBanId = pendingStep.BienBanId
+                        AND earlierStep.TrangThai <> 'DA_XAC_NHAN'
+                        AND earlierStep.StepOrder < pendingStep.StepOrder
+                  )
+              )
+            ORDER BY pendingStep.StepOrder;
         `);
 
     return {
         isFlowStarted: result.recordsets?.[0]?.[0]?.MucDoKhongPhuHopConfirmed === true ||
             result.recordsets?.[0]?.[0]?.MucDoKhongPhuHopConfirmed === 1,
-        pendingBoPhanId: result.recordsets?.[1]?.[0]?.BoPhanId || null
+        pendingBoPhanIds: (result.recordsets?.[1] || [])
+            .map((step) => Number(step.BoPhanId))
+            .filter((departmentId) => Number.isInteger(departmentId) && departmentId > 0)
     };
 };
 
 const canEditCurrentFlow = (editState, user) =>
     !editState.isFlowStarted ||
-    Number(editState.pendingBoPhanId) === Number(user?.boPhanId);
+    editState.pendingBoPhanIds.includes(Number(user?.boPhanId));
 
 router.get("/:id", authenticateToken, async (req, res) => {
     try {

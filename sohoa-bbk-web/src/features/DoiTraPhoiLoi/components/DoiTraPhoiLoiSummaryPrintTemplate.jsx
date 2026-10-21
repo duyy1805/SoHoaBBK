@@ -50,6 +50,7 @@ const DoiTraPhoiLoiSummaryPrintTemplate = forwardRef(function DoiTraPhoiLoiSumma
     const tickets = data?.tickets || [];
     const phoiItems = data?.phoiItems || [];
     const dinhMucItems = data?.dinhMucItems || [];
+    const receiptItems = data?.phieuNhapBtpItems || [];
     const ticketById = new Map(tickets.map((item) => [Number(item.Id), item]));
     const quotaByMaterial = new Map(dinhMucItems.map((item) => [
         `${Number(item.PhieuId)}:${Number(item.SourceVatTuId)}`, item
@@ -81,6 +82,9 @@ const DoiTraPhoiLoiSummaryPrintTemplate = forwardRef(function DoiTraPhoiLoiSumma
             `}</style>
             {pages.map((pageRows, pageIndex) => {
                 const padded = [...pageRows];
+                const pageTicketIds = new Set(pageRows.map((row) => Number(row.ticket?.Id || row.PhieuId)));
+                const pageReceipts = receiptItems.filter((item) => item.TrangThai === 'ACTIVE'
+                    && pageTicketIds.has(Number(item.PhieuId)));
                 while (padded.length < ROWS_PER_PAGE) padded.push(null);
                 return (
                     <section
@@ -107,6 +111,17 @@ const DoiTraPhoiLoiSummaryPrintTemplate = forwardRef(function DoiTraPhoiLoiSumma
                         <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                             <tbody><tr><td style={{ border: 0, height: 24 }}></td><td style={{ ...cell, width: '20%', fontWeight: 700, fontStyle: 'italic', textAlign: 'center' }}>Số TT:</td></tr></tbody>
                         </table>
+                        {pageReceipts.length > 0 && <div style={{ border: '1px solid #000', borderBottom: 0, padding: '3px 5px', fontSize: '6.5pt', lineHeight: 1.25 }}>
+                            <strong>Phiếu nhập BTP lỗi: </strong>
+                            {pageReceipts.map((item) => [
+                                item.SoPhieuNhapBtp,
+                                [item.MaBtp, item.TenBtp].filter(Boolean).join(' - '),
+                                `SL ${formatQuantity(item.SoLuongBtpLoi)}`,
+                                item.TenQuyTrinhSanXuat,
+                                item.TenKhoNhap,
+                                item.ErpTrangThai === 0 ? 'Đang lập' : `ERP ${item.ErpTrangThai}`
+                            ].filter(Boolean).join(' · ')).join(' | ')}
+                        </div>}
                         <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '6.5pt' }}>
                             <colgroup>
                                 {[2, 5, 4, 8, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 5, 4, 5, 6, 5, 6].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}

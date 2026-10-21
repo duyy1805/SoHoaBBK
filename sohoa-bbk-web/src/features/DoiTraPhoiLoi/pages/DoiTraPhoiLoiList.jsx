@@ -93,7 +93,7 @@ export default function DoiTraPhoiLoiList() {
                 <Box>
                     <Typography variant="h5" fontWeight={800} color="#0f172a">Đổi trả phôi lỗi</Typography>
                     <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-                        Theo dõi phiếu từ bước KCS kiểm đến khi B7 nhập định mức đổi trả
+                        KCS nhập BTP lỗi, TBP KCS xác nhận và B7 tạo lệnh xuất vật tư đổi trả
                     </Typography>
                 </Box>
                 <Stack direction="row" spacing={1}>
@@ -148,7 +148,7 @@ export default function DoiTraPhoiLoiList() {
                                     <TableCell align="right">Số lượng KH</TableCell>
                                     <TableCell>Người lập</TableCell>
                                     <TableCell>Trạng thái</TableCell>
-                                    <TableCell>Định mức B7</TableCell>
+                                    <TableCell>Số lượng đổi trả B7</TableCell>
                                     <TableCell align="center">Thao tác</TableCell>
                                 </TableRow>
                             </TableHead>
