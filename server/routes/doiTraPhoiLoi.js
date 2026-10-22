@@ -941,10 +941,28 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                 END;
 
                 UPDATE dbo.DOI_TRA_PHOI_LOI SET UpdatedAt=SYSDATETIME() WHERE Id=@PhieuId;
-                INSERT dbo.DOI_TRA_PHOI_LOI_HISTORY
-                    (PhieuId, ActionCode, FromStatus, ToStatus, ActionBy, GhiChu)
-                VALUES (@PhieuId, N'SAVE_PHOI_DRAFT', @FromStatus, @FromStatus, @UserId,
-                        N'Lưu nháp danh sách phôi và lỗi');
+                IF EXISTS (
+                    SELECT 1
+                    FROM dbo.DOI_TRA_PHOI_LOI_HISTORY WITH (UPDLOCK, HOLDLOCK)
+                    WHERE PhieuId=@PhieuId AND ActionCode=N'SAVE_PHOI_DRAFT'
+                      AND ISNULL(FromStatus,N'')=ISNULL(@FromStatus,N'')
+                      AND ISNULL(ToStatus,N'')=ISNULL(@FromStatus,N'')
+                )
+                    UPDATE dbo.DOI_TRA_PHOI_LOI_HISTORY
+                    SET ActionBy=@UserId, GhiChu=N'Lưu nháp danh sách phôi và lỗi', CreatedAt=SYSDATETIME()
+                    WHERE Id=(
+                        SELECT TOP 1 Id
+                        FROM dbo.DOI_TRA_PHOI_LOI_HISTORY
+                        WHERE PhieuId=@PhieuId AND ActionCode=N'SAVE_PHOI_DRAFT'
+                          AND ISNULL(FromStatus,N'')=ISNULL(@FromStatus,N'')
+                          AND ISNULL(ToStatus,N'')=ISNULL(@FromStatus,N'')
+                        ORDER BY CreatedAt DESC, Id DESC
+                    );
+                ELSE
+                    INSERT dbo.DOI_TRA_PHOI_LOI_HISTORY
+                        (PhieuId, ActionCode, FromStatus, ToStatus, ActionBy, GhiChu)
+                    VALUES (@PhieuId, N'SAVE_PHOI_DRAFT', @FromStatus, @FromStatus, @UserId,
+                            N'Lưu nháp danh sách phôi và lỗi');
 
                 COMMIT TRANSACTION;
                 SELECT Id, SoPhieu, TrangThai, RowVersion FROM dbo.DOI_TRA_PHOI_LOI WHERE Id=@PhieuId;
@@ -1069,9 +1087,27 @@ const saveReturnQuantities = async (req, res) => {
                 );
 
                 UPDATE dbo.DOI_TRA_PHOI_LOI SET DinhMucTrangThai=N'DANG_NHAP',B7ConfirmedBy=NULL,B7ConfirmedAt=NULL,UpdatedAt=SYSDATETIME() WHERE Id=@PhieuId;
-                INSERT dbo.DOI_TRA_PHOI_LOI_HISTORY
-                    (PhieuId,ActionCode,FromStatus,ToStatus,ActionBy,GhiChu)
-                VALUES (@PhieuId,N'SAVE_RETURN_QUANTITY_DRAFT',@FromStatus,@FromStatus,@UserId,N'Lưu nháp số lượng đổi trả');
+                IF EXISTS (
+                    SELECT 1
+                    FROM dbo.DOI_TRA_PHOI_LOI_HISTORY WITH (UPDLOCK, HOLDLOCK)
+                    WHERE PhieuId=@PhieuId AND ActionCode=N'SAVE_RETURN_QUANTITY_DRAFT'
+                      AND ISNULL(FromStatus,N'')=ISNULL(@FromStatus,N'')
+                      AND ISNULL(ToStatus,N'')=ISNULL(@FromStatus,N'')
+                )
+                    UPDATE dbo.DOI_TRA_PHOI_LOI_HISTORY
+                    SET ActionBy=@UserId, GhiChu=N'Lưu nháp số lượng đổi trả', CreatedAt=SYSDATETIME()
+                    WHERE Id=(
+                        SELECT TOP 1 Id
+                        FROM dbo.DOI_TRA_PHOI_LOI_HISTORY
+                        WHERE PhieuId=@PhieuId AND ActionCode=N'SAVE_RETURN_QUANTITY_DRAFT'
+                          AND ISNULL(FromStatus,N'')=ISNULL(@FromStatus,N'')
+                          AND ISNULL(ToStatus,N'')=ISNULL(@FromStatus,N'')
+                        ORDER BY CreatedAt DESC, Id DESC
+                    );
+                ELSE
+                    INSERT dbo.DOI_TRA_PHOI_LOI_HISTORY
+                        (PhieuId,ActionCode,FromStatus,ToStatus,ActionBy,GhiChu)
+                    VALUES (@PhieuId,N'SAVE_RETURN_QUANTITY_DRAFT',@FromStatus,@FromStatus,@UserId,N'Lưu nháp số lượng đổi trả');
 
                 SELECT Id,SoPhieu,TrangThai,RowVersion FROM dbo.DOI_TRA_PHOI_LOI WHERE Id=@PhieuId;
             `);
@@ -1359,10 +1395,23 @@ router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
                 WHERE planRow.PhieuId=@PhieuId
                 ORDER BY planRow.Id;
 
-                SELECT history.*, COALESCE(NULLIF(actor.FullName, N''), actor.Username) AS TenNguoiThucHien
-                FROM dbo.DOI_TRA_PHOI_LOI_HISTORY history
+                ;WITH rankedHistory AS (
+                    SELECT history.*,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY history.ActionCode,
+                                ISNULL(history.FromStatus,N''), ISNULL(history.ToStatus,N'')
+                            ORDER BY history.CreatedAt DESC, history.Id DESC
+                        ) AS ActionRank
+                    FROM dbo.DOI_TRA_PHOI_LOI_HISTORY history
+                    WHERE history.PhieuId = @PhieuId
+                )
+                SELECT history.Id,history.PhieuId,history.ActionCode,history.FromStatus,
+                    history.ToStatus,history.ActionBy,history.GhiChu,history.CreatedAt,
+                    COALESCE(NULLIF(actor.FullName, N''), actor.Username) AS TenNguoiThucHien
+                FROM rankedHistory history
                 LEFT JOIN dbo.USERS actor ON actor.Id = history.ActionBy
-                WHERE history.PhieuId = @PhieuId
+                WHERE history.ActionCode NOT IN (N'SAVE_PHOI_DRAFT',N'SAVE_RETURN_QUANTITY_DRAFT')
+                   OR history.ActionRank = 1
                 ORDER BY history.CreatedAt, history.Id;
 
                 SELECT phoiRow.*,unitRow.ID_DonViTinh AS CurrentDonViTinhId,

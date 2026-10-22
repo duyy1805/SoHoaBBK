@@ -148,14 +148,14 @@ const createDoiTraDefectReceipt = async (executor, { phieuId, userId, soPhieu, q
         .input('ErpAccountId', sql.SmallInt, context.ErpAccountId)
         .input('Note', sql.NVarChar(255), `Tự động từ phiếu đổi trả ${soPhieu}`)
         .query(`
-            DECLARE @ReceiptId INT;
+            DECLARE @ReceiptId INT,@Now DATETIME=GETDATE();
             EXEC TAG_QTKD.dbo.pr_PhieuNhapBTP_Insert
-                @ID_HinhThucNhapBTP=10,@So_PhieuNhapBTP=@ReceiptNumber,@Ngay_NhapBTP=GETDATE(),
+                @ID_HinhThucNhapBTP=10,@So_PhieuNhapBTP=@ReceiptNumber,@Ngay_NhapBTP=@Now,
                 @ID_PhieuXuatBTP=NULL,@ID_QuyTrinhSanXuat=@ProcessId,@ID_KhoNhap=@WarehouseId,
                 @ID_KhoXuat=NULL,@ID_KhachHang=@CustomerId,@ID_DonVi=@UnitId,@ID_BoPhan=@DepartmentId,
                 @ID_NhaCungCap=NULL,@IsNhapKHSX=1,@NguoiGiaoHang=NULL,@GhiChu=@Note,
-                @TaiKhoan_Lap=@ErpAccountId,@Ngay_Lap=GETDATE(),@TaiKhoan_SuaCuoi=@ErpAccountId,
-                @Ngay_SuaCuoi=GETDATE(),@TaiKhoan_PheDuyet1=NULL,@Ngay_PheDuyet1=NULL,
+                @TaiKhoan_Lap=@ErpAccountId,@Ngay_Lap=@Now,@TaiKhoan_SuaCuoi=@ErpAccountId,
+                @Ngay_SuaCuoi=@Now,@TaiKhoan_PheDuyet1=NULL,@Ngay_PheDuyet1=NULL,
                 @TaiKhoan_PheDuyet2=NULL,@Ngay_PheDuyet2=NULL,@TaiKhoan_DuyetKy=NULL,
                 @Ngay_DuyetKy=NULL,@TrangThai=0,@TonTai=1,@ID_PhieuNhapBTP=@ReceiptId OUTPUT;
             SELECT @ReceiptId ReceiptId;

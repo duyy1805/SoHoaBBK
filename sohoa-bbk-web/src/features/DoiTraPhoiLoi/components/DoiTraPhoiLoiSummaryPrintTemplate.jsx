@@ -35,10 +35,10 @@ const errorColumn = (defect) => {
     return 'khac';
 };
 const chunkRows = (rows) => {
+    if (!rows.length) return [[]];
     const pages = [];
-    const source = rows.length ? rows : [{}];
-    for (let index = 0; index < source.length; index += ROWS_PER_PAGE) {
-        pages.push(source.slice(index, index + ROWS_PER_PAGE));
+    for (let index = 0; index < rows.length; index += ROWS_PER_PAGE) {
+        pages.push(rows.slice(index, index + ROWS_PER_PAGE));
     }
     return pages;
 };

@@ -265,7 +265,7 @@ flowchart TD
 
 ## 8. Luồng kiểm sản xuất bổ trợ (SXBT)
 
-SXBT là luồng riêng cho bán thành phẩm. Sau bước KCS, Kho xác nhận số lượng thực nhập trước khi phiếu kết thúc.
+SXBT là luồng riêng cho bán thành phẩm. Phiếu đạt đi qua bước Kho và SXBT xác nhận; phiếu không đạt hoàn thành ngay sau KCS và được xử lý tiếp trên biên bản SXBT sinh ra.
 
 ```mermaid
 flowchart TD
@@ -279,11 +279,15 @@ flowchart TD
     G -->|"Không"| H["KCS hoàn tất phiếu"]
     G -->|"Có"| I["Nhập số lượng KĐ theo từng LOT"]
     I --> J["Phiếu gốc Đạt và phiếu mới hậu tố -KĐ Không đạt"]
-    H --> K["Chờ Kho xác nhận số lượng"]
-    J --> K
+    H --> H1{"Kết luận?"}
+    H1 -->|"Đạt"| K["Chờ Kho xác nhận số lượng"]
+    H1 -->|"Không đạt"| N["Phiếu hoàn thành; xử lý trên biên bản SXBT"]
+    J -->|"Phiếu gốc Đạt"| K
+    J -->|"Phiếu -KĐ"| N
     K --> L{"Kho đã nhập đủ số lượng từng LOT?"}
     L -->|"Chưa"| K
-    L -->|"Đủ"| M["Kho xác nhận; phiếu hoàn thành"]
+    L -->|"Đủ"| M["Kho xác nhận"]
+    M --> O["SXBT xác nhận; phiếu hoàn thành"]
 ```
 
 ### Điều kiện dữ liệu theo bước
@@ -292,20 +296,21 @@ flowchart TD
 |---|---|---|---|---|
 | Tạo phiếu | Tổ trưởng KCS | Loại SXBT, KCS, kế hoạch nhập BTP | Kế hoạch hợp lệ, số lượng lớn hơn 0, chưa có phiếu; sản phẩm đã có trong danh mục | Phiếu SXBT mới |
 | Lưu kiểm | KCS | Điều kiện vận chuyển, BTP/LOT, tỷ lệ kiểm, lỗi, kết luận | Phiếu chưa khóa | Lưu nháp dữ liệu mới nhất |
-| Hoàn tất thường | KCS | Kết luận `Đạt` hoặc `Không đạt` | Đã lưu dữ liệu mới nhất | Chờ Kho xác nhận |
+| Hoàn tất thường | KCS | Kết luận `Đạt` hoặc `Không đạt` | Đã lưu dữ liệu mới nhất | Phiếu đạt chờ Kho xác nhận; phiếu không đạt hoàn thành ngay và xử lý tiếp trên biên bản SXBT |
 | Tách không đạt | KCS | Số lượng KĐ nguyên theo từng `lotRowId` | Có ít nhất một dòng KĐ; phiếu chỉ tách một lần; phần KĐ nhận ít nhất một lỗi | Phiếu gốc đạt và phiếu `-KĐ` không đạt |
-| Xác nhận Kho | Kho | Số lượng Kho xác nhận trên mọi dòng LOT | Đã nhập đủ số lượng cho cả nhóm phiếu liên quan | Phiếu hoàn thành |
+| Xác nhận Kho | Kho | Số lượng Kho xác nhận trên mọi dòng LOT | Đã nhập đủ số lượng cho phiếu đạt | Chờ SXBT xác nhận |
+| Xác nhận SXBT | SXBT | Kiểm tra phiếu đạt sau xác nhận Kho | Phiếu đang chờ SXBT xác nhận | Phiếu hoàn thành |
 
 ### Dữ liệu đi đâu khi tách?
 
 - Dòng LOT có số lượng KĐ lớn hơn `0` được phân tách sang phiếu `-KĐ`.
 - Lỗi gắn với dòng LOT có số lượng KĐ lớn hơn `0` chuyển sang phiếu `-KĐ`.
 - Lỗi ở dòng có số lượng KĐ bằng `0` hoặc lỗi chưa gắn LOT giữ ở phiếu gốc.
-- Cả phiếu gốc và phiếu `-KĐ` đều chờ Kho xác nhận.
+- Phiếu gốc đạt chờ Kho rồi SXBT xác nhận; phiếu `-KĐ` hoàn thành ngay, không cần Kho hoặc SXBT xác nhận.
 
 ### Khi nào bị khóa?
 
-Phần dữ liệu KCS bị khóa khi phiếu đã chuyển sang chờ Kho, các trạng thái xác nhận cũ, hoàn thành hoặc hoàn tất. Bước xác nhận SXBT điện tử cũ vẫn tồn tại ở backend nhưng hiện không hiển thị trong Web/Mobile; bộ phận SXBT ký trên bản cứng.
+Phần dữ liệu KCS bị khóa khi phiếu đã chuyển sang chờ Kho, chờ SXBT xác nhận, hoàn thành hoặc hoàn tất. Phiếu không đạt bỏ qua cả hai bước xác nhận; biên bản SXBT sinh ra tiếp tục theo luồng xử lý và ký riêng.
 
 ---
 
@@ -368,7 +373,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["Biên bản mới: thông tin và danh sách lỗi"] --> B["Bộ phận tạo chọn các bộ phận cần lấy ý kiến"]
+    A["Biên bản mới: thông tin và danh sách lỗi"] --> A1["Bộ phận tạo nhập Ý kiến / Đề xuất xử lý"]
+    A1 --> B["Bộ phận tạo chọn các bộ phận cần lấy ý kiến"]
     B --> C["Xác nhận danh sách lấy ý kiến"]
     C --> D["Bộ phận lập và các bộ phận được chọn bổ sung mục 5, 6, 7 nếu có"]
     D --> E["Nhân viên từng bộ phận lưu một ý kiến chung"]
@@ -390,8 +396,8 @@ flowchart TD
 | Bước | Ai làm | Dữ liệu cần có | Điều kiện đi tiếp | Kết quả |
 |---|---|---|---|---|
 | Hoàn thiện thông tin | Bộ phận tạo | Thông tin đầu phiếu, mô tả và ít nhất một lỗi | Biên bản chưa khóa; đúng bộ phận tạo hoặc admin theo quyền | Sẵn sàng phân công/lấy ý kiến |
-| Chọn bộ phận | Bộ phận tạo | Ít nhất một bộ phận cần lấy ý kiến | Chưa xác nhận cuối | Danh sách ý kiến được chốt |
-| Mục 5/6/7 | Bộ phận lập hoặc nhân viên thuộc bộ phận được xin ý kiến | Có thể để trống hoặc nhập nội dung phát sinh | Trong vòng xin ý kiến: các bộ phận được chọn đều được nhập; khi trả lại: chỉ bộ phận lập được chỉnh sửa; sau xác nhận cuối thì khóa | Không dùng làm điều kiện hoàn tất |
+| Chọn bộ phận | Bộ phận tạo | Ít nhất một Ý kiến / Đề xuất xử lý của bộ phận tạo và ít nhất một bộ phận cần lấy ý kiến | Chưa xác nhận cuối | Danh sách ý kiến được chốt |
+| Mục 5/6/7 | Bộ phận lập hoặc nhân viên thuộc bộ phận được xin ý kiến | Bộ phận lập phải nhập ít nhất một dòng mục 5 trước lần đầu gửi xin ý kiến; các nội dung phát sinh khác có thể để trống | Trong vòng xin ý kiến: các bộ phận được chọn đều được nhập; khi trả lại: chỉ bộ phận lập được chỉnh sửa; sau xác nhận cuối thì khóa | Ghi nhận nội dung xử lý |
 | Lưu ý kiến | Bất kỳ nhân viên đúng bộ phận | Một nội dung không rỗng; dùng “Không có ý kiến” nếu không góp ý | Đang ở vòng xin ý kiến hiện tại và chưa được TBP ký | Chờ TBP xác nhận |
 | Xác nhận/trả lại | TBP đúng bộ phận hoặc Admin | Phải có ý kiến; trả lại bắt buộc có lý do | Đúng vòng hiện tại | Ghi chữ ký hoặc mở lại phiếu cho bộ phận lập |
 | Gửi lại | Người lập, TBP bộ phận lập hoặc Admin | Thông tin cơ bản, ít nhất một lỗi và ít nhất một bộ phận | Phiếu đang ở `TRA_LAI_CHINH_SUA` | Tăng vòng và yêu cầu mọi bộ phận lưu/ký lại |
@@ -400,8 +406,9 @@ flowchart TD
 
 ### Quy tắc khóa quan trọng
 
+- Trước lần đầu gửi xin ý kiến, bộ phận tạo phải có ít nhất một dòng **Ý kiến / Đề xuất xử lý**; Web và Mobile khóa thao tác nếu còn thiếu.
 - Sau khi gửi xin ý kiến, thông tin đầu phiếu, lỗi và danh sách bộ phận bị khóa; mục 5/6/7 vẫn mở cho bộ phận lập và các bộ phận được xin ý kiến.
-- Mục 5/6/7 chỉ bị khóa sau xác nhận cuối của TBP bộ phận lập. Việc có hay không có nội dung ở ba mục này không chặn luồng.
+- Mục 5/6/7 chỉ bị khóa sau xác nhận cuối của TBP bộ phận lập. Ngoài dòng đề xuất bắt buộc của bộ phận tạo trước lần gửi đầu tiên, các nội dung còn lại không chặn luồng.
 - Trả lại làm mất hiệu lực toàn bộ chữ ký của vòng hiện tại nhưng giữ ý kiến cũ làm nháp/lịch sử.
 - Sau khi gửi lại, mọi bộ phận phải lưu ý kiến và được TBP xác nhận lại.
 - Với biên bản sinh từ phiếu kiểm, sửa danh sách lỗi tạo một bản hiệu chỉnh riêng cho biên bản; dữ liệu và ảnh trên phiếu kiểm nguồn không bị sửa ngược.
@@ -423,10 +430,10 @@ flowchart TD
     B --> C["Chọn mức độ B hoặc C"]
     C --> D["Xác nhận mức độ; mức độ bị khóa"]
     D --> E{"Mức độ"}
-    E -->|"B"| F["B8 xác nhận"]
-    F --> G["SXBT xác nhận"]
-    E -->|"C"| H["B8 xác nhận"]
-    H --> I["SXBT xác nhận"]
+    E -->|"B"| F["B8 và SXBT cùng xác nhận"]
+    E -->|"C"| H["B8 và SXBT cùng xác nhận"]
+    F --> G["Đủ hai bộ phận"]
+    H --> I["Đủ hai bộ phận"]
     I --> J["B7 xác nhận"]
     J --> K["Giám đốc xác nhận"]
     G --> L["Người có quyền kết luận hoàn tất"]
@@ -438,15 +445,15 @@ flowchart TD
 
 | Bước | Ai làm | Dữ liệu cần có | Điều kiện đi tiếp | Kết quả |
 |---|---|---|---|---|
-| Lưu nháp | TP B8 hoặc bộ phận đúng lượt | Mô tả, mức độ dự kiến, dòng xử lý, hành động | Trước khi bắt đầu luồng hoặc đúng bộ phận đang chờ | Cập nhật bản nháp |
+| Lưu nháp | TP B8 hoặc bộ phận đang chờ xác nhận | Mô tả, mức độ dự kiến, dòng xử lý, hành động | Trước khi bắt đầu luồng hoặc bộ phận có bước chưa xác nhận | Cập nhật bản nháp |
 | Xác nhận mức độ | Người có quyền phù hợp | Chỉ `B` hoặc `C` | Mức độ chưa được xác nhận | Khóa mức độ và tạo chuỗi bước |
-| Xác nhận từng bước | Bộ phận đang đến lượt | Nội dung đã được kiểm tra/cập nhật | Bộ phận tài khoản trùng bộ phận của bước đầu tiên chưa xác nhận | Chuyển sang bộ phận kế tiếp |
+| Xác nhận ý kiến | B8 và SXBT | Nội dung đã được kiểm tra/cập nhật | Bộ phận tài khoản có bước chưa xác nhận | Ghi nhận độc lập; hoàn tất khi cả hai bộ phận đã xác nhận |
 | Hoàn tất | Người có quyền kết luận | Các bước xác nhận đã hoàn thành theo stored procedure | Biên bản sẵn sàng kết thúc | Trạng thái hoàn tất |
 
 ### Chuỗi bộ phận
 
-- **Mức B:** B8 → SXBT.
-- **Mức C:** B8 → SXBT → B7 → Giám đốc.
+- **Mức B:** B8 và SXBT xác nhận song song.
+- **Mức C:** B8 và SXBT xác nhận song song; các bước bổ sung theo cấu hình chỉ tiếp tục khi các bộ phận liên quan đã xác nhận.
 - Sau khi xác nhận mức độ, không thể đổi từ B sang C hoặc ngược lại.
 - File đính kèm không phụ thuộc lượt xác nhận: mọi tài khoản đã đăng nhập đều có thể thêm, xem và tải file trên Web; chỉ chủ file hoặc Admin được xóa.
 

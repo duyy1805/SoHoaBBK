@@ -25,7 +25,10 @@ import { hasPermission } from '../../../utils/auth';
 import DoiTraPhoiLoiSummaryPrintTemplate from '../components/DoiTraPhoiLoiSummaryPrintTemplate';
 import DoiTraPhoiEditor from '../components/DoiTraPhoiEditor';
 import DoiTraDinhMucEditor from '../components/DoiTraDinhMucEditor';
-import { doiTraDinhMucStatusMeta, doiTraStatusMeta, formatDoiTraDate, formatDoiTraQuantity } from '../doiTraPhoiLoi.utils';
+import {
+    doiTraDinhMucStatusMeta, doiTraHistoryActionLabel, doiTraStatusMeta,
+    formatDoiTraDate, formatDoiTraQuantity
+} from '../doiTraPhoiLoi.utils';
 
 const Info = ({ label, value }) => (
     <Box>
@@ -245,7 +248,7 @@ export default function DoiTraPhoiLoiDetail() {
 
             {activeTab === 'quota' && <Paper variant="outlined" sx={{ p: { xs: 1.25, md: 2 }, borderRadius: 2 }}><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}><Typography fontWeight={900}>Số lượng đổi trả theo mã vật tư</Typography><Chip size="small" color={quotaStatus.color} label={quotaStatus.label} /></Stack>{lenhXuatVatTuItems.filter((item) => item.TrangThai === 'ACTIVE').length > 0 && <Alert severity="success" sx={{ mb: 1.5 }}>Lệnh xuất bổ sung: {lenhXuatVatTuItems.filter((item) => item.TrangThai === 'ACTIVE').map((item) => item.SoLenhXuatVT).join(', ')}</Alert>}{phoiItems.length && phieu.TrangThai !== 'DA_HUY' ? <DoiTraDinhMucEditor phieu={phieu} phoiItems={phoiItems} dinhMucItems={dinhMucItems} canEdit={capabilities.canEditDinhMuc} canConfirm={canB7Confirm} onChanged={() => load({ background: true })} onDirtyChange={setQuotaDirty} /> : <Alert severity="info">Phiếu chưa có loại phôi để nhập số lượng đổi trả.</Alert>}</Paper>}
 
-            {activeTab === 'history' && <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}><Stack direction="row" spacing={1} alignItems="center" sx={{ p: 2 }}><HistoryIcon color="action" /><Typography fontWeight={900}>Lịch sử phiếu</Typography></Stack><TableContainer><Table size="small"><TableHead><TableRow sx={{ bgcolor: '#f8fafc' }}><TableCell>Thời gian</TableCell><TableCell>Hành động</TableCell><TableCell>Trạng thái</TableCell><TableCell>Người thực hiện</TableCell><TableCell>Ghi chú</TableCell></TableRow></TableHead><TableBody>{history.map((item) => <TableRow key={item.Id}><TableCell>{formatDoiTraDate(item.CreatedAt, true)}</TableCell><TableCell>{item.ActionCode}</TableCell><TableCell>{doiTraStatusMeta(item.ToStatus).label}</TableCell><TableCell>{item.TenNguoiThucHien || '---'}</TableCell><TableCell>{item.GhiChu || '---'}</TableCell></TableRow>)}</TableBody></Table></TableContainer></Paper>}
+            {activeTab === 'history' && <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}><Stack direction="row" spacing={1} alignItems="center" sx={{ p: 2 }}><HistoryIcon color="action" /><Box><Typography fontWeight={900}>Lịch sử phiếu</Typography><Typography variant="caption" color="text.secondary">Các mốc tạo phiếu, lưu nháp gần nhất và trình duyệt</Typography></Box></Stack><TableContainer><Table size="small"><TableHead><TableRow sx={{ bgcolor: '#f8fafc' }}><TableCell>Thời gian</TableCell><TableCell>Hành động</TableCell><TableCell>Trạng thái</TableCell><TableCell>Người thực hiện</TableCell><TableCell>Ghi chú</TableCell></TableRow></TableHead><TableBody>{history.map((item) => <TableRow key={item.Id}><TableCell>{formatDoiTraDate(item.CreatedAt, true)}</TableCell><TableCell>{doiTraHistoryActionLabel(item.ActionCode)}</TableCell><TableCell>{doiTraStatusMeta(item.ToStatus).label}</TableCell><TableCell>{item.TenNguoiThucHien || '---'}</TableCell><TableCell>{item.GhiChu || '---'}</TableCell></TableRow>)}</TableBody></Table></TableContainer></Paper>}
 
             <Dialog open={Boolean(actionDialog)} onClose={() => !actionLoading && setActionDialog(null)} fullWidth maxWidth="sm">
                 <DialogTitle>{actionDialog?.ActionName}</DialogTitle>

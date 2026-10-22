@@ -22,6 +22,21 @@ export const doiTraDinhMucStatusMeta = (status) =>
     DOI_TRA_DINH_MUC_STATUS_META[status]
     || { label: status || 'B7 chưa nhập', color: 'default' };
 
+export const DOI_TRA_HISTORY_ACTION_LABELS = {
+    CREATE_DRAFT: 'Tạo phiếu',
+    SAVE_PHOI_DRAFT: 'Lưu nháp kết quả kiểm',
+    SAVE_RETURN_QUANTITY_DRAFT: 'Lưu nháp số lượng đổi trả',
+    KCS_SUBMIT: 'KCS trình duyệt',
+    KCS_RESUBMIT: 'KCS trình duyệt lại',
+    TBP_CONFIRM: 'TBP KCS duyệt',
+    TBP_RETURN: 'TBP KCS trả lại',
+    B7_CONFIRM: 'B7 xác nhận hoàn tất',
+    CANCEL_DRAFT: 'Hủy phiếu nháp'
+};
+
+export const doiTraHistoryActionLabel = (actionCode) =>
+    DOI_TRA_HISTORY_ACTION_LABELS[actionCode] || actionCode || '---';
+
 export const formatDoiTraDate = (value, includeTime = false) => {
     if (!value) return '---';
     const date = new Date(value);
