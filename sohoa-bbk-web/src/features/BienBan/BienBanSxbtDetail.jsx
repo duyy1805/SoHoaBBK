@@ -44,6 +44,7 @@ import RuleFolderOutlinedIcon from "@mui/icons-material/RuleFolderOutlined";
 import GroupWorkOutlinedIcon from "@mui/icons-material/GroupWorkOutlined";
 import {
     addBienBanSxbtXuLyRow,
+    completeBienBanSxbt,
     confirmBienBanSxbtMucDo,
     confirmBienBanSxbtStep,
     getBienBanSxbtDetail,
@@ -238,6 +239,9 @@ export default function BienBanSxbtDetail() {
     const canEditBeforeFlow = !isMucDoConfirmed && !isCompleted;
     const canEditCurrentStep = isMucDoConfirmed && !isCompleted && canConfirmCurrentStep;
     const canEditContent = canEditBeforeFlow || canEditCurrentStep;
+    const canShowCompleteAction = Boolean(info?.IsCurrentUserB8) &&
+        Array.isArray(currentUser?.permissions) && currentUser.permissions.includes("KET_LUAN") &&
+        isMucDoConfirmed && !isCompleted;
 
     const buildDraftPayload = (nextHanhDongRows = hanhDongRows) => ({
         moTaChung,
@@ -285,6 +289,27 @@ export default function BienBanSxbtDetail() {
             await loadData();
         } catch (err) {
             showToast(err?.response?.data?.message || "Không thể xác nhận bước", "error");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleComplete = async () => {
+        if (!info?.AllConfirmStepsCompleted) {
+            showToast("Chưa đủ xác nhận ý kiến của các bộ phận", "warning");
+            return;
+        }
+        if (mucDo === "C" && !info?.EvidenceRequirementMet) {
+            showToast("Mức C cần ít nhất một file được xác nhận là minh chứng", "warning");
+            return;
+        }
+        try {
+            setSaving(true);
+            await completeBienBanSxbt(bienBanId);
+            showToast("B8 đã xác nhận hoàn tất biên bản SXBT", "success");
+            await loadData();
+        } catch (err) {
+            showToast(err?.response?.data?.message || "Không thể hoàn tất biên bản SXBT", "error");
         } finally {
             setSaving(false);
         }
@@ -448,7 +473,13 @@ export default function BienBanSxbtDetail() {
                         </CardContent>
                     </Card>
 
-                    <BienBanAttachments bienBanId={bienBanId} />
+                    <BienBanAttachments
+                        bienBanId={bienBanId}
+                        enableEvidence
+                        evidenceRequired={mucDo === "C"}
+                        readOnly={isCompleted}
+                        onChange={loadData}
+                    />
 
                     <Card sx={cardShellSx}>
                         <CardContent sx={{ p: { xs: 2, md: 2.5 }, "&:last-child": { pb: { xs: 2, md: 2.5 } } }}>
@@ -758,6 +789,32 @@ export default function BienBanSxbtDetail() {
                                     >
                                         Xác nhận ý kiến bộ phận
                                     </Button>
+                                )}
+
+                                {canShowCompleteAction && (
+                                    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, borderColor: "#bfdbfe", bgcolor: "#eff6ff" }}>
+                                        <Typography fontWeight={700} color="#1e3a8a">
+                                            B8 xác nhận hoàn tất
+                                        </Typography>
+                                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1.5 }}>
+                                            {!info?.AllConfirmStepsCompleted
+                                                ? "Cần tất cả bộ phận xác nhận ý kiến trước."
+                                                : mucDo === "C" && !info?.EvidenceRequirementMet
+                                                    ? "Cần ít nhất một file được tích là minh chứng."
+                                                    : `Đã đủ ý kiến${mucDo === "C" ? " và minh chứng" : ""}; B8 có thể hoàn tất.`}
+                                        </Typography>
+                                        <Button
+                                            fullWidth
+                                            variant="contained"
+                                            color="success"
+                                            startIcon={<AssignmentTurnedInIcon />}
+                                            disabled={saving || !info?.AllConfirmStepsCompleted ||
+                                                (mucDo === "C" && !info?.EvidenceRequirementMet)}
+                                            onClick={handleComplete}
+                                        >
+                                            Xác nhận hoàn tất
+                                        </Button>
+                                    </Paper>
                                 )}
 
                                 {isCompleted && (

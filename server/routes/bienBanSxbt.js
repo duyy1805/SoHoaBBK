@@ -176,6 +176,23 @@ router.get("/:id", authenticateToken, async (req, res) => {
 
         delete extraInfo.DynamicFieldsJSON;
         const confirmSteps = recordsets[4] || [];
+        const evidenceResult = await pool.request()
+            .input("BienBanId", sql.Int, bienBanId)
+            .input("BoPhanId", sql.Int, req.user.boPhanId || null)
+            .query(`
+                SELECT COUNT_BIG(*) AS EvidenceAttachmentCount
+                FROM dbo.BIEN_BAN_DINH_KEM
+                WHERE BienBanId = @BienBanId AND IsDeleted = 0 AND IsEvidence = 1;
+
+                SELECT TOP 1 UPPER(LTRIM(RTRIM(ISNULL(MaBoPhan, N'')))) AS MaBoPhan
+                FROM dbo.DM_BO_PHAN
+                WHERE Id = @BoPhanId;
+            `);
+        const evidenceAttachmentCount = Number(evidenceResult.recordsets?.[0]?.[0]?.EvidenceAttachmentCount || 0);
+        const currentDepartmentCode = evidenceResult.recordsets?.[1]?.[0]?.MaBoPhan || "";
+        const allConfirmStepsCompleted = confirmSteps.length > 0 &&
+            confirmSteps.every((step) => step.TrangThai === "DA_XAC_NHAN");
+        const evidenceRequirementMet = baseInfo?.MucDoKhongPhuHop !== "C" || evidenceAttachmentCount > 0;
         const confirmedUserIds = [...new Set(
             confirmSteps
                 .map((step) => Number(step?.ConfirmedBy))
@@ -207,7 +224,13 @@ router.get("/:id", authenticateToken, async (req, res) => {
             info: baseInfo ? {
                 ...baseInfo,
                 ...extraInfo,
-                CanManageRecipientDepartments: recipientAccess.canManage
+                CanManageRecipientDepartments: recipientAccess.canManage,
+                EvidenceAttachmentCount: evidenceAttachmentCount,
+                EvidenceRequirementMet: evidenceRequirementMet,
+                AllConfirmStepsCompleted: allConfirmStepsCompleted,
+                IsCurrentUserB8: currentDepartmentCode === "B8",
+                CanCurrentUserComplete: currentDepartmentCode === "B8" &&
+                    hasPermission(req.user, "KET_LUAN") && allConfirmStepsCompleted && evidenceRequirementMet
             } : null,
             defects: enrichedDefects,
             xuLyRows: recordsets[2] || [],
@@ -629,6 +652,49 @@ router.post("/:id/complete", authenticateToken, authorize("KET_LUAN"), async (re
     try {
         const bienBanId = parseInt(req.params.id, 10);
         const pool = await poolPromise;
+        const eligibilityResult = await pool.request()
+            .input("BienBanId", sql.Int, bienBanId)
+            .input("BoPhanId", sql.Int, req.user.boPhanId || null)
+            .query(`
+                SELECT TOP 1 bienBan.MucDoKhongPhuHop, bienBan.TrangThai,
+                    UPPER(LTRIM(RTRIM(ISNULL(department.MaBoPhan, N'')))) AS CurrentDepartmentCode,
+                    (SELECT COUNT_BIG(*)
+                     FROM dbo.BIEN_BAN_SXBT_CONFIRM_STEP stepRow
+                     WHERE stepRow.BienBanId = bienBan.Id) AS ConfirmStepCount,
+                    (SELECT COUNT_BIG(*)
+                     FROM dbo.BIEN_BAN_SXBT_CONFIRM_STEP stepRow
+                     WHERE stepRow.BienBanId = bienBan.Id
+                       AND stepRow.TrangThai <> N'DA_XAC_NHAN') AS PendingStepCount,
+                    (SELECT COUNT_BIG(*)
+                     FROM dbo.BIEN_BAN_DINH_KEM attachment
+                     WHERE attachment.BienBanId = bienBan.Id
+                       AND attachment.IsDeleted = 0
+                       AND attachment.IsEvidence = 1) AS EvidenceAttachmentCount
+                FROM dbo.BIEN_BAN_KIEM bienBan
+                LEFT JOIN dbo.PHIEU_KIEM phieuKiem ON phieuKiem.Id = bienBan.PhieuKiemId
+                LEFT JOIN dbo.DM_BO_PHAN department ON department.Id = @BoPhanId
+                WHERE bienBan.Id = @BienBanId
+                  AND (
+                      bienBan.LoaiBienBan = N'SXBT'
+                      OR phieuKiem.LoaiKiemId = 4
+                      OR bienBan.TrangThai LIKE N'BB_SXBT%'
+                  )
+            `);
+        const eligibility = eligibilityResult.recordset?.[0];
+        if (!eligibility) {
+            return res.status(404).json({ message: "Không tìm thấy biên bản SXBT" });
+        }
+        if (eligibility.CurrentDepartmentCode !== "B8") {
+            return res.status(403).json({ message: "Chỉ bộ phận B8 được xác nhận hoàn tất biên bản SXBT" });
+        }
+        if (Number(eligibility.ConfirmStepCount) === 0 || Number(eligibility.PendingStepCount) > 0) {
+            return res.status(409).json({ message: "Chưa đủ xác nhận ý kiến của các bộ phận" });
+        }
+        if (eligibility.MucDoKhongPhuHop === "C" && Number(eligibility.EvidenceAttachmentCount) === 0) {
+            return res.status(409).json({
+                message: "Biên bản SXBT mức C cần ít nhất một file được xác nhận là minh chứng"
+            });
+        }
         await pool.request()
             .input("BienBanId", sql.Int, bienBanId)
             .input("UserId", sql.Int, req.user.userId)
@@ -637,7 +703,16 @@ router.post("/:id/complete", authenticateToken, authorize("KET_LUAN"), async (re
         res.json({ success: true });
     } catch (err) {
         console.error("CompleteBienBanSxbt error:", err);
-        res.status(500).json({ message: err.message || "Không thể hoàn tất biên bản SXBT" });
+        const statusByErrorNumber = {
+            51323: 403,
+            51324: 404,
+            51325: 409,
+            51326: 409,
+            51327: 409
+        };
+        res.status(statusByErrorNumber[err.number] || 500).json({
+            message: err.message || "Không thể hoàn tất biên bản SXBT"
+        });
     }
 });
 

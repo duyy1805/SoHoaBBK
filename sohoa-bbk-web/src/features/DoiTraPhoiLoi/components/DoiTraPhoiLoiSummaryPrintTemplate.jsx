@@ -23,6 +23,12 @@ const formatQuantity = (value) => {
     if (value === '' || value == null || !Number.isFinite(Number(value))) return '';
     return Number(value).toLocaleString('vi-VN', { maximumFractionDigits: 6 });
 };
+const materialLabel = (item) => {
+    const name = text(item?.TenLoaiPhoi);
+    const code = text(item?.MaVatTu);
+    if (name && code) return `${name} (${code})`;
+    return name || code;
+};
 const errorColumn = (defect) => {
     const value = normalize([
         defect.MaNhomLoi, defect.TenNhomLoi, defect.MaLoi, defect.TenLoi
@@ -124,7 +130,7 @@ const DoiTraPhoiLoiSummaryPrintTemplate = forwardRef(function DoiTraPhoiLoiSumma
                         </div>}
                         <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '6.5pt' }}>
                             <colgroup>
-                                {[2, 5, 4, 8, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 5, 4, 5, 6, 5, 6].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
+                                {[2, 5, 4, 7, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 5, 4, 5, 8, 9].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
                             </colgroup>
                             <thead>
                                 <tr style={{ height: 30 }}>
@@ -135,15 +141,18 @@ const DoiTraPhoiLoiSummaryPrintTemplate = forwardRef(function DoiTraPhoiLoiSumma
                                     <th rowSpan={2} style={{ ...headerCell, background: '#fff200' }}>Số lượng<br />(bộ)</th>
                                     <th rowSpan={2} style={headerCell}>Đơn vị<br />(cái, kg)<br />chi tiết</th>
                                     <th rowSpan={2} style={headerCell}>Số lượng</th>
+                                    <th rowSpan={2} style={headerCell}>LXVT</th>
+                                    <th rowSpan={2} style={headerCell}>Lot<br />sản xuất</th>
+                                    <th rowSpan={2} style={headerCell}>Dấu<br />tuần</th>
                                     <th colSpan={5} style={headerCell}>TEM TRUY NGUYÊN</th>
                                     <th colSpan={6} style={headerCell}>CÁC DẠNG LỖI</th>
                                     <th colSpan={3} style={headerCell}>KÝ XÁC NHẬN KHI KIỂM<br />ĐẦU VÀO XÁC NHẬN</th>
-                                    <th colSpan={3} style={headerCell}>KÝ XÁC KHI ĐỔI TRẢ<br /><em>(Ghi ngày đổi trả)</em></th>
+                                    <th colSpan={2} style={headerCell}>SỐ LƯỢNG<br />CẦN CẤP BỔ SUNG</th>
                                 </tr>
                                 <tr style={{ height: 54 }}>
                                     {['Đơn vị tạo phôi', 'Ngày tạo phôi', 'Tổ SX', 'Công nhân SX', 'KCS'].map((label) => <th key={label} style={headerCell}>{label}</th>)}
                                     {ERROR_COLUMNS.map((column) => <th key={column.key} style={headerCell}>{column.label}</th>)}
-                                    {['KCS', 'Kho', 'Đơn vị may', 'Kho BTP', 'Đơn vị tạo phôi', 'Đơn vị may'].map((label, index) => <th key={`${label}-${index}`} style={headerCell}>{label}</th>)}
+                                    {['KCS', 'Kho', 'Đơn vị may', 'Mã VT', 'Số mét'].map((label, index) => <th key={`${label}-${index}`} style={headerCell}>{label}</th>)}
                                 </tr>
                             </thead>
                             <tbody>
@@ -152,17 +161,22 @@ const DoiTraPhoiLoiSummaryPrintTemplate = forwardRef(function DoiTraPhoiLoiSumma
                                         <td style={{ ...cell, textAlign: 'center' }}>{row ? pageIndex * ROWS_PER_PAGE + rowIndex + 1 : ''}</td>
                                         <td style={cell}>{row ? row.ticket.DepartmentName || row.ticket.UnitName || '' : ''}</td>
                                         <td style={{ ...cell, textAlign: 'center' }}>{row ? formatDate(row.ticket.NgayLap) : ''}</td>
-                                        <td style={cell}>{row ? [row.TenLoaiPhoi, row.MaVatTu, row.QuyCachVatTu].filter(Boolean).join(' - ') : ''}</td>
+                                        <td style={cell}>{row ? materialLabel(row) : ''}</td>
                                         <td style={{ ...cell, textAlign: 'center' }}>{row ? formatQuantity(row.quota.SoLuongBoLoiSnapshot ?? row.SoLuongPhoiLoi) : ''}</td>
                                         <td style={{ ...cell, textAlign: 'center' }}>{row?.quota?.TenDonViTinh || ''}</td>
                                         <td style={{ ...cell, textAlign: 'center' }}>{row ? formatQuantity(row.quota.SoLuongDoiTra) : ''}</td>
+                                        <td style={cell}>{row?.LenhXuatVatTu || ''}</td>
+                                        <td style={{ ...cell, textAlign: 'center' }}>{row ? row.ticket.ExpectedProductionLot || row.LotSanXuat || '' : ''}</td>
+                                        <td style={{ ...cell, textAlign: 'center' }}>{row?.DauTuan || ''}</td>
                                         <td style={cell}>{row?.TenDonViTaoPhoi || ''}</td>
                                         <td style={{ ...cell, textAlign: 'center' }}>{formatDate(row?.NgayTaoPhoi)}</td>
                                         <td style={cell}>{row?.ToSanXuat || ''}</td>
                                         <td style={cell}>{row?.CongNhanSanXuat || ''}</td>
                                         <td style={cell}>{row?.TenKcs || ''}</td>
                                         {ERROR_COLUMNS.map((column) => <td key={column.key} style={{ ...cell, textAlign: 'center' }}>{row ? formatQuantity(row.errorQuantities.get(column.key) || '') : ''}</td>)}
-                                        {Array.from({ length: 6 }, (_, index) => <td key={index} style={cell}></td>)}
+                                        {Array.from({ length: 3 }, (_, index) => <td key={index} style={cell}></td>)}
+                                        <td style={{ ...cell, textAlign: 'center' }}>{row?.MaVatTu || ''}</td>
+                                        <td style={{ ...cell, textAlign: 'center' }}>{row ? formatQuantity(row.quota.SoLuongDoiTra) : ''}</td>
                                     </tr>
                                 ))}
                             </tbody>

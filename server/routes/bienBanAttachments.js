@@ -53,6 +53,9 @@ const normalizeOriginalName = (value) => {
 const isAdmin = (user) => Array.isArray(user?.roles) &&
     user.roles.some((role) => String(role || "").toUpperCase() === "ADMIN");
 
+const hasPermission = (user, permissionCode) =>
+    Array.isArray(user?.permissions) && user.permissions.includes(permissionCode);
+
 const storage = multer.diskStorage({
     destination: (_req, _file, callback) => callback(null, attachmentDir),
     filename: (_req, file, callback) => {
@@ -136,8 +139,13 @@ const mapAttachment = (row, user) => ({
     uploadedBy: row.UploadedBy,
     uploadedByName: row.UploadedByName || row.UploadedByUsername || "---",
     createdAt: row.CreatedAt,
+    isEvidence: row.IsEvidence === true || row.IsEvidence === 1,
+    evidenceMarkedBy: row.EvidenceMarkedBy || null,
+    evidenceMarkedAt: row.EvidenceMarkedAt || null,
     downloadUrl: `/bien-ban/${row.BienBanId}/attachments/${row.Id}/download`,
-    canDelete: Number(row.UploadedBy) === Number(user?.userId) || isAdmin(user)
+    canDelete: Number(row.UploadedBy) === Number(user?.userId) || isAdmin(user),
+    canMarkEvidence: Number(row.UploadedBy) === Number(user?.userId) ||
+        hasPermission(user, "KET_LUAN") || hasPermission(user, "QUAN_TRI_DM") || isAdmin(user)
 });
 
 const ensureBienBanExists = async (pool, bienBanId) => {
@@ -181,6 +189,7 @@ router.get("/:id/attachments", authenticateToken, async (req, res) => {
             .query(`
                 SELECT attachment.Id, attachment.BienBanId, attachment.OriginalName,
                     attachment.MimeType, attachment.SizeBytes, attachment.UploadedBy,
+                    attachment.IsEvidence, attachment.EvidenceMarkedBy, attachment.EvidenceMarkedAt,
                     attachment.CreatedAt, uploader.FullName AS UploadedByName,
                     uploader.Username AS UploadedByUsername
                 FROM dbo.BIEN_BAN_DINH_KEM attachment
@@ -232,7 +241,8 @@ router.post("/:id/attachments", authenticateToken, runUpload, async (req, res) =
                         (BienBanId, OriginalName, StoredName, MimeType, SizeBytes, UploadedBy)
                     OUTPUT INSERTED.Id, INSERTED.BienBanId, INSERTED.OriginalName,
                         INSERTED.MimeType, INSERTED.SizeBytes, INSERTED.UploadedBy,
-                        INSERTED.CreatedAt
+                        INSERTED.CreatedAt, INSERTED.IsEvidence,
+                        INSERTED.EvidenceMarkedBy, INSERTED.EvidenceMarkedAt
                     VALUES
                         (@BienBanId, @OriginalName, @StoredName, @MimeType, @SizeBytes, @UploadedBy)
                 `);
@@ -255,6 +265,67 @@ router.post("/:id/attachments", authenticateToken, runUpload, async (req, res) =
         res.status(isValidationError ? 400 : 500).json({
             message: isValidationError ? error.message : "Không lưu được file đính kèm"
         });
+    }
+});
+
+router.patch("/:id/attachments/:attachmentId/evidence", authenticateToken, async (req, res) => {
+    const bienBanId = Number(req.params.id);
+    const attachmentId = Number(req.params.attachmentId);
+    const isEvidence = req.body?.isEvidence;
+    if (!Number.isInteger(bienBanId) || !Number.isInteger(attachmentId) || typeof isEvidence !== "boolean") {
+        return res.status(400).json({ message: "Yêu cầu xác nhận minh chứng không hợp lệ" });
+    }
+
+    try {
+        const pool = await poolPromise;
+        const current = await pool.request()
+            .input("BienBanId", sql.Int, bienBanId)
+            .input("AttachmentId", sql.Int, attachmentId)
+            .query(`
+                SELECT TOP 1 attachment.Id, attachment.UploadedBy, bienBan.TrangThai
+                FROM dbo.BIEN_BAN_DINH_KEM attachment
+                INNER JOIN dbo.BIEN_BAN_KIEM bienBan ON bienBan.Id = attachment.BienBanId
+                WHERE attachment.Id = @AttachmentId
+                  AND attachment.BienBanId = @BienBanId
+                  AND attachment.IsDeleted = 0
+            `);
+        const attachment = current.recordset?.[0];
+        if (!attachment) return res.status(404).json({ message: "Không tìm thấy file đính kèm" });
+        if (attachment.TrangThai === "BB_SXBT_HOAN_TAT") {
+            return res.status(409).json({ message: "Biên bản đã hoàn tất, không thể đổi minh chứng" });
+        }
+
+        const canMark = Number(attachment.UploadedBy) === Number(req.user.userId) ||
+            hasPermission(req.user, "KET_LUAN") || hasPermission(req.user, "QUAN_TRI_DM") || isAdmin(req.user);
+        if (!canMark) {
+            return res.status(403).json({ message: "Bạn không có quyền xác nhận file minh chứng này" });
+        }
+
+        const result = await pool.request()
+            .input("BienBanId", sql.Int, bienBanId)
+            .input("AttachmentId", sql.Int, attachmentId)
+            .input("IsEvidence", sql.Bit, isEvidence)
+            .input("UserId", sql.Int, req.user.userId)
+            .query(`
+                UPDATE dbo.BIEN_BAN_DINH_KEM
+                SET IsEvidence = @IsEvidence,
+                    EvidenceMarkedBy = CASE WHEN @IsEvidence = 1 THEN @UserId ELSE NULL END,
+                    EvidenceMarkedAt = CASE WHEN @IsEvidence = 1 THEN SYSDATETIME() ELSE NULL END
+                OUTPUT INSERTED.Id, INSERTED.IsEvidence,
+                    INSERTED.EvidenceMarkedBy, INSERTED.EvidenceMarkedAt
+                WHERE Id = @AttachmentId AND BienBanId = @BienBanId AND IsDeleted = 0
+            `);
+
+        res.json({
+            success: true,
+            id: result.recordset[0].Id,
+            isEvidence: result.recordset[0].IsEvidence === true || result.recordset[0].IsEvidence === 1,
+            evidenceMarkedBy: result.recordset[0].EvidenceMarkedBy,
+            evidenceMarkedAt: result.recordset[0].EvidenceMarkedAt
+        });
+    } catch (error) {
+        console.error("Mark attachment evidence error:", error);
+        res.status(500).json({ message: "Không cập nhật được trạng thái minh chứng" });
     }
 });
 
@@ -327,12 +398,19 @@ router.delete("/:id/attachments/:attachmentId", authenticateToken, async (req, r
             .input("BienBanId", sql.Int, bienBanId)
             .input("AttachmentId", sql.Int, attachmentId)
             .query(`
-                SELECT TOP 1 Id, StoredName, UploadedBy
-                FROM dbo.BIEN_BAN_DINH_KEM
-                WHERE Id = @AttachmentId AND BienBanId = @BienBanId AND IsDeleted = 0
+                SELECT TOP 1 attachment.Id, attachment.StoredName, attachment.UploadedBy,
+                    bienBan.TrangThai
+                FROM dbo.BIEN_BAN_DINH_KEM attachment
+                INNER JOIN dbo.BIEN_BAN_KIEM bienBan ON bienBan.Id = attachment.BienBanId
+                WHERE attachment.Id = @AttachmentId
+                  AND attachment.BienBanId = @BienBanId
+                  AND attachment.IsDeleted = 0
             `);
         const attachment = current.recordset?.[0];
         if (!attachment) return res.status(404).json({ message: "Không tìm thấy file đính kèm" });
+        if (attachment.TrangThai === "BB_SXBT_HOAN_TAT") {
+            return res.status(409).json({ message: "Biên bản SXBT đã hoàn tất, không thể xóa tài liệu" });
+        }
         if (Number(attachment.UploadedBy) !== Number(req.user.userId) && !isAdmin(req.user)) {
             return res.status(403).json({ message: "Chỉ người tải lên hoặc Admin được xóa file" });
         }

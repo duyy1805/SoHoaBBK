@@ -207,6 +207,9 @@ export const downloadBienBanAttachment = (bienBanId, attachmentId, { inline = fa
 export const deleteBienBanAttachment = (bienBanId, attachmentId) =>
     axiosClient.delete(`/bien-ban/${bienBanId}/attachments/${attachmentId}`);
 
+export const setBienBanAttachmentEvidence = (bienBanId, attachmentId, isEvidence) =>
+    axiosClient.patch(`/bien-ban/${bienBanId}/attachments/${attachmentId}/evidence`, { isEvidence });
+
 /* ================================
    Biên bản SXBT
 ================================ */
@@ -230,4 +233,8 @@ export const confirmBienBanSxbtMucDo = (bienBanId, mucDoKhongPhuHop) => {
 
 export const confirmBienBanSxbtStep = (bienBanId) => {
     return axiosClient.post(`/bien-ban-sxbt/${bienBanId}/confirm-step`);
+};
+
+export const completeBienBanSxbt = (bienBanId) => {
+    return axiosClient.post(`/bien-ban-sxbt/${bienBanId}/complete`);
 };

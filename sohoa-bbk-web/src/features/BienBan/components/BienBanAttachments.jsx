@@ -5,6 +5,7 @@ import {
     Button,
     Card,
     CardContent,
+    Checkbox,
     Chip,
     CircularProgress,
     Dialog,
@@ -27,6 +28,7 @@ import {
     deleteBienBanAttachment,
     downloadBienBanAttachment,
     getBienBanAttachments,
+    setBienBanAttachmentEvidence,
     uploadBienBanAttachments
 } from "../../../api/bienBan.api";
 
@@ -59,7 +61,7 @@ const previewTypeOf = (attachment) => {
 
 const errorMessage = (error, fallback) => error?.response?.data?.message || error?.message || fallback;
 
-export default function BienBanAttachments({ bienBanId }) {
+export default function BienBanAttachments({ bienBanId, enableEvidence = false, evidenceRequired = false, readOnly = false, onChange }) {
     const inputRef = useRef(null);
     const [attachments, setAttachments] = useState([]);
     const [selectedFiles, setSelectedFiles] = useState([]);
@@ -69,6 +71,7 @@ export default function BienBanAttachments({ bienBanId }) {
     const [previewLoadingId, setPreviewLoadingId] = useState(null);
     const [preview, setPreview] = useState(null);
     const [deletingId, setDeletingId] = useState(null);
+    const [markingEvidenceId, setMarkingEvidenceId] = useState(null);
     const [notice, setNotice] = useState(null);
     const previewUrlRef = useRef("");
     const previewRequestRef = useRef(0);
@@ -131,6 +134,7 @@ export default function BienBanAttachments({ bienBanId }) {
             await uploadBienBanAttachments(bienBanId, selectedFiles);
             setSelectedFiles([]);
             await loadAttachments();
+            onChange?.();
             setNotice({ type: "success", message: "Đã tải file đính kèm lên biên bản." });
         } catch (error) {
             setNotice({ type: "error", message: errorMessage(error, "Không tải được file đính kèm") });
@@ -204,11 +208,32 @@ export default function BienBanAttachments({ bienBanId }) {
             setNotice(null);
             await deleteBienBanAttachment(bienBanId, attachment.id);
             setAttachments((current) => current.filter((item) => item.id !== attachment.id));
+            onChange?.();
             setNotice({ type: "success", message: "Đã xóa file đính kèm." });
         } catch (error) {
             setNotice({ type: "error", message: errorMessage(error, "Không xóa được file đính kèm") });
         } finally {
             setDeletingId(null);
+        }
+    };
+
+    const handleEvidenceChange = async (attachment, checked) => {
+        try {
+            setMarkingEvidenceId(attachment.id);
+            setNotice(null);
+            const response = await setBienBanAttachmentEvidence(bienBanId, attachment.id, checked);
+            setAttachments((current) => current.map((item) => item.id === attachment.id
+                ? { ...item, ...response.data }
+                : item));
+            setNotice({
+                type: "success",
+                message: checked ? "Đã xác nhận file là minh chứng." : "Đã bỏ xác nhận minh chứng."
+            });
+            onChange?.();
+        } catch (error) {
+            setNotice({ type: "error", message: errorMessage(error, "Không cập nhật được minh chứng") });
+        } finally {
+            setMarkingEvidenceId(null);
         }
     };
 
@@ -225,8 +250,13 @@ export default function BienBanAttachments({ bienBanId }) {
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                             Ảnh, PDF, Word, Excel hoặc PowerPoint; tối đa 20 MB mỗi file và 10 file mỗi lần.
                         </Typography>
+                        {evidenceRequired && (
+                            <Typography variant="body2" color="warning.dark" sx={{ mt: 0.5, fontWeight: 700 }}>
+                                Mức C cần ít nhất một file được tích “Minh chứng” trước khi B8 hoàn tất.
+                            </Typography>
+                        )}
                     </Box>
-                    <Button
+                    {!readOnly && <Button
                         variant="outlined"
                         startIcon={<CloudUploadOutlinedIcon />}
                         disabled={uploading}
@@ -234,7 +264,7 @@ export default function BienBanAttachments({ bienBanId }) {
                         sx={{ alignSelf: { xs: "stretch", sm: "center" }, whiteSpace: "nowrap" }}
                     >
                         Chọn file
-                    </Button>
+                    </Button>}
                     <input
                         ref={inputRef}
                         hidden
@@ -297,15 +327,30 @@ export default function BienBanAttachments({ bienBanId }) {
                                 <Stack direction="row" spacing={1.25} alignItems="center" sx={{ minWidth: 0 }}>
                                     <InsertDriveFileOutlinedIcon color="action" />
                                     <Box sx={{ minWidth: 0 }}>
-                                        <Typography variant="body2" fontWeight={700} sx={{ overflowWrap: "anywhere" }}>
-                                            {attachment.originalName}
-                                        </Typography>
+                                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                                            <Typography variant="body2" fontWeight={700} sx={{ overflowWrap: "anywhere" }}>
+                                                {attachment.originalName}
+                                            </Typography>
+                                            {attachment.isEvidence && <Chip size="small" color="success" label="Minh chứng" />}
+                                        </Stack>
                                         <Typography variant="caption" color="text.secondary">
                                             {formatBytes(attachment.sizeBytes)} · {attachment.uploadedByName} · {attachment.createdAt ? new Date(attachment.createdAt).toLocaleString("vi-VN") : "---"}
                                         </Typography>
                                     </Box>
                                 </Stack>
                                 <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                                    {enableEvidence && (
+                                        <Tooltip title={attachment.canMarkEvidence ? "Xác nhận file là minh chứng" : "Bạn không có quyền đổi trạng thái minh chứng"}>
+                                            <span>
+                                                <Checkbox
+                                                    checked={Boolean(attachment.isEvidence)}
+                                                    disabled={readOnly || !attachment.canMarkEvidence || markingEvidenceId === attachment.id}
+                                                    onChange={(event) => handleEvidenceChange(attachment, event.target.checked)}
+                                                    inputProps={{ "aria-label": `Xác nhận ${attachment.originalName} là minh chứng` }}
+                                                />
+                                            </span>
+                                        </Tooltip>
+                                    )}
                                     {previewTypeOf(attachment) && (
                                         <Tooltip title="Xem file">
                                             <span>
@@ -331,7 +376,7 @@ export default function BienBanAttachments({ bienBanId }) {
                                             </IconButton>
                                         </span>
                                     </Tooltip>
-                                    {attachment.canDelete && (
+                                    {!readOnly && attachment.canDelete && (
                                         <Tooltip title="Xóa file">
                                             <span>
                                                 <IconButton

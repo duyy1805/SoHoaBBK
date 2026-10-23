@@ -148,7 +148,7 @@ const normalizedPhoiItems = (value) => (Array.isArray(value) ? value : []).map((
             ? String(item?.ngayTaoPhoi ?? item?.NgayTaoPhoi) : null,
         toSanXuat: trimOrNull(item?.toSanXuat ?? item?.ToSanXuat),
         congNhanSanXuat: trimOrNull(item?.congNhanSanXuat ?? item?.CongNhanSanXuat),
-        kcsId: positiveId(item?.kcsId ?? item?.KcsId),
+        kcsId: null,
         sortOrder: index + 1,
         defects
     };
@@ -308,20 +308,6 @@ router.get('/traceability-lookups', authorize(VIEW_PERMISSIONS), async (_req, re
             WHERE ISNULL(TrangThai,1)=1
             ORDER BY TenBoPhan, MaBoPhan;
 
-            SELECT DISTINCT userRow.Id, userRow.Username, userRow.FullName, userRow.BoPhanId,
-                department.MaBoPhan, department.TenBoPhan
-            FROM dbo.USERS userRow
-            LEFT JOIN dbo.DM_BO_PHAN department ON department.Id=userRow.BoPhanId
-            WHERE ISNULL(userRow.TrangThai,0)=1
-              AND EXISTS (
-                SELECT 1
-                FROM dbo.USER_ROLE userRole
-                INNER JOIN dbo.ROLE_PERMISSION rolePermission ON rolePermission.RoleId=userRole.RoleId
-                INNER JOIN dbo.PERMISSIONS permissionRow ON permissionRow.Id=rolePermission.PermissionId
-                WHERE userRole.UserId=userRow.Id AND permissionRow.PermissionCode=N'THUC_HIEN_KIEM'
-              )
-            ORDER BY userRow.FullName, userRow.Username;
-
             SELECT N'NOI_BO:' + CONVERT(NVARCHAR(20),department.Id) AS [key],
                 N'NOI_BO' AS [source],department.Id AS sourceId,
                 department.MaBoPhan AS departmentCode,
@@ -345,8 +331,7 @@ router.get('/traceability-lookups', authorize(VIEW_PERMISSIONS), async (_req, re
         `);
         res.json({
             departments: result.recordsets[0] || [],
-            inspectors: result.recordsets[1] || [],
-            responsibleDepartments: result.recordsets[2] || []
+            responsibleDepartments: result.recordsets[1] || []
         });
     } catch (error) {
         console.error('DoiTraPhoiLoi traceability lookup error:', error);
@@ -375,10 +360,19 @@ router.post('/summary-preview', authorizeDoiTraAccess, async (req, res) => {
 
                 SELECT phieu.Id,phieu.SoPhieu,phieu.TrangThai,phieu.NgayLap,
                     planRow.PlanID,planRow.PlanNo,planRow.OrderCode,planRow.ProductCode,planRow.ProductName,
-                    planRow.DepartmentCode,planRow.DepartmentName,planRow.UnitCode,planRow.UnitName
+                    planRow.DepartmentCode,planRow.DepartmentName,planRow.UnitCode,planRow.UnitName,
+                    productionLot.ExpectedProductionLot
                 FROM #SelectedPhieu selected
                 JOIN dbo.DOI_TRA_PHOI_LOI phieu ON phieu.Id=selected.Id
                 JOIN dbo.DOI_TRA_PHOI_LOI_PLAN planRow ON planRow.PhieuId=phieu.Id
+                OUTER APPLY (
+                    SELECT MAX(lotRow.So_LoSanXuat) AS ExpectedProductionLot
+                    FROM TAG_QLSX.dbo.KeHoachSanXuat_SanPham planProduct
+                    JOIN TAG_QTKD.dbo.DonHang_LoSanXuat lotRow
+                      ON lotRow.ID_DonHang_LoSanXuat=planProduct.ID_DonHang_LoSanXuat
+                     AND lotRow.TonTai=1
+                    WHERE planProduct.ID_KeHoachSanXuat=TRY_CONVERT(INT,planRow.PlanID)
+                ) productionLot
                 ORDER BY phieu.NgayLap,phieu.Id;
 
                 SELECT phoiRow.*
@@ -731,9 +725,10 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                 SET XACT_ABORT ON;
                 BEGIN TRANSACTION;
 
-                DECLARE @ProductCode NVARCHAR(100), @ProductName NVARCHAR(500), @FromStatus NVARCHAR(40);
+                DECLARE @ProductCode NVARCHAR(100), @ProductName NVARCHAR(500), @FromStatus NVARCHAR(40),
+                    @PlanID VARCHAR(50), @ProductionLot NVARCHAR(100);
                 SELECT @FromStatus = phieu.TrangThai, @ProductCode = planRow.ProductCode,
-                       @ProductName = planRow.ProductName
+                       @ProductName = planRow.ProductName, @PlanID = planRow.PlanID
                 FROM dbo.DOI_TRA_PHOI_LOI phieu WITH (UPDLOCK, HOLDLOCK)
                 INNER JOIN dbo.DOI_TRA_PHOI_LOI_PLAN planRow ON planRow.PhieuId = phieu.Id
                 WHERE phieu.Id = @PhieuId AND phieu.RowVersion = @RowVersion
@@ -742,6 +737,13 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
 
                 IF @FromStatus IS NULL
                     THROW 52020, N'Phiếu đã thay đổi, không còn ở bước KCS hoặc bạn không có quyền sửa.', 1;
+
+                SELECT @ProductionLot=MAX(productionLot.So_LoSanXuat)
+                FROM TAG_QLSX.dbo.KeHoachSanXuat_SanPham planProduct
+                JOIN TAG_QTKD.dbo.DonHang_LoSanXuat productionLot
+                  ON productionLot.ID_DonHang_LoSanXuat=planProduct.ID_DonHang_LoSanXuat
+                 AND productionLot.TonTai=1
+                WHERE planProduct.ID_KeHoachSanXuat=TRY_CONVERT(INT,@PlanID);
 
                 IF EXISTS(
                     SELECT 1
@@ -772,21 +774,20 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                     NgayTaoPhoi DATE NULL,
                     ToSanXuat NVARCHAR(255) NULL,
                     CongNhanSanXuat NVARCHAR(1000) NULL,
-                    KcsId INT NULL,
                     SortOrder INT NOT NULL
                 );
                 INSERT #InputPhoi
                 SELECT SourceLoiPhoiId, SoLuongKiem, SoLuongPhoiLoi, NULLIF(GhiChu, N''),
-                    NULLIF(LotSanXuat,N''),NULLIF(LenhXuatVatTu,N''),NULLIF(DauTuan,N''),
-                    DonViTaoPhoiId,NgayTaoPhoi,NULLIF(ToSanXuat,N''),NULLIF(CongNhanSanXuat,N''),KcsId,SortOrder
+                    NULLIF(LotSanXuat,N''),NULLIF(LenhXuatVatTu,N''),NULLIF(DauTuan,N''),DonViTaoPhoiId,NgayTaoPhoi,
+                    NULLIF(ToSanXuat,N''),NULLIF(CongNhanSanXuat,N''),SortOrder
                 FROM OPENJSON(@ItemsJson) WITH (
                     SourceLoiPhoiId INT '$.sourceLoiPhoiId', SoLuongKiem INT '$.soLuongKiem',
                     SoLuongPhoiLoi INT '$.soLuongPhoiLoi', GhiChu NVARCHAR(1000) '$.ghiChu',
                     LotSanXuat NVARCHAR(100) '$.lotSanXuat',LenhXuatVatTu NVARCHAR(100) '$.lenhXuatVatTu',
-                    DauTuan NVARCHAR(100) '$.dauTuan',DonViTaoPhoiId INT '$.donViTaoPhoiId',
+                    DauTuan NVARCHAR(100) '$.dauTuan',
+                    DonViTaoPhoiId INT '$.donViTaoPhoiId',
                     NgayTaoPhoi DATE '$.ngayTaoPhoi',ToSanXuat NVARCHAR(255) '$.toSanXuat',
-                    CongNhanSanXuat NVARCHAR(1000) '$.congNhanSanXuat',KcsId INT '$.kcsId',
-                    SortOrder INT '$.sortOrder'
+                    CongNhanSanXuat NVARCHAR(1000) '$.congNhanSanXuat',SortOrder INT '$.sortOrder'
                 );
 
                 IF EXISTS (
@@ -794,19 +795,6 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                     LEFT JOIN dbo.DM_BO_PHAN department ON department.Id=inputRow.DonViTaoPhoiId AND ISNULL(department.TrangThai,1)=1
                     WHERE inputRow.DonViTaoPhoiId IS NOT NULL AND department.Id IS NULL
                 ) THROW 52023, N'Đơn vị tạo phôi không tồn tại hoặc đã ngừng sử dụng.', 1;
-
-                IF EXISTS (
-                    SELECT 1 FROM #InputPhoi inputRow
-                    LEFT JOIN dbo.USERS inspector ON inspector.Id=inputRow.KcsId AND ISNULL(inspector.TrangThai,0)=1
-                    WHERE inputRow.KcsId IS NOT NULL AND (
-                        inspector.Id IS NULL OR NOT EXISTS (
-                            SELECT 1 FROM dbo.USER_ROLE userRole
-                            JOIN dbo.ROLE_PERMISSION rolePermission ON rolePermission.RoleId=userRole.RoleId
-                            JOIN dbo.PERMISSIONS permissionRow ON permissionRow.Id=rolePermission.PermissionId
-                            WHERE userRole.UserId=inputRow.KcsId AND permissionRow.PermissionCode=N'THUC_HIEN_KIEM'
-                        )
-                    )
-                ) THROW 52024, N'KCS được chọn không hợp lệ hoặc không còn quyền thực hiện kiểm.', 1;
 
                 CREATE TABLE #SourcePhoi (
                     SourceLoiPhoiId INT NOT NULL PRIMARY KEY, SourceSanPhamId INT NOT NULL,
@@ -886,16 +874,13 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                        sourceRow.MaVatTu, sourceRow.QuyCachVatTu, sourceRow.TenLoaiPhoi,
                        sourceRow.DaoChat, sourceRow.SoPhoi, sourceRow.KyHieu,
                        inputRow.SoLuongKiem, inputRow.SoLuongPhoiLoi, inputRow.GhiChu,
-                       inputRow.LotSanXuat,inputRow.LenhXuatVatTu,inputRow.DauTuan,inputRow.DonViTaoPhoiId,
+                       COALESCE(NULLIF(@ProductionLot,N''),inputRow.LotSanXuat),inputRow.LenhXuatVatTu,
+                       inputRow.DauTuan,inputRow.DonViTaoPhoiId,
                        department.MaBoPhan,department.TenBoPhan,inputRow.NgayTaoPhoi,inputRow.ToSanXuat,
-                       inputRow.CongNhanSanXuat,inputRow.KcsId,
-                       COALESCE(NULLIF(inspector.FullName,N''),inspector.Username),
-                       inspectorDepartment.MaBoPhan,inspectorDepartment.TenBoPhan,inputRow.SortOrder
+                       inputRow.CongNhanSanXuat,NULL,NULL,NULL,NULL,inputRow.SortOrder
                 FROM #InputPhoi inputRow
                 INNER JOIN #SourcePhoi sourceRow ON sourceRow.SourceLoiPhoiId=inputRow.SourceLoiPhoiId
-                LEFT JOIN dbo.DM_BO_PHAN department ON department.Id=inputRow.DonViTaoPhoiId
-                LEFT JOIN dbo.USERS inspector ON inspector.Id=inputRow.KcsId
-                LEFT JOIN dbo.DM_BO_PHAN inspectorDepartment ON inspectorDepartment.Id=inspector.BoPhanId;
+                LEFT JOIN dbo.DM_BO_PHAN department ON department.Id=inputRow.DonViTaoPhoiId;
 
                 INSERT dbo.DOI_TRA_PHOI_LOI_PHOI_DEFECT (
                     PhoiId, NhomLoiId, DefectId, MaNhomLoi, TenNhomLoi,
@@ -1224,6 +1209,15 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
                 BEGIN
                     IF NOT EXISTS (SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI WHERE PhieuId=@PhieuId)
                         THROW 52110, N'Phiếu phải có ít nhất một loại phôi.', 1;
+                    UPDATE phoiRow
+                    SET KcsId=@UserId,
+                        TenKcs=COALESCE(NULLIF(inspector.FullName,N''),inspector.Username),
+                        MaBoPhanKcs=inspectorDepartment.MaBoPhan,
+                        TenBoPhanKcs=inspectorDepartment.TenBoPhan
+                    FROM dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow
+                    INNER JOIN dbo.USERS inspector ON inspector.Id=@UserId
+                    LEFT JOIN dbo.DM_BO_PHAN inspectorDepartment ON inspectorDepartment.Id=inspector.BoPhanId
+                    WHERE phoiRow.PhieuId=@PhieuId;
                     IF EXISTS (
                         SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow
                         WHERE phoiRow.PhieuId=@PhieuId AND (
@@ -1231,22 +1225,18 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
                             OR phoiRow.SoLuongPhoiLoi>phoiRow.SoLuongKiem
                             OR NULLIF(LTRIM(RTRIM(phoiRow.LotSanXuat)),N'') IS NULL
                             OR NULLIF(LTRIM(RTRIM(phoiRow.LenhXuatVatTu)),N'') IS NULL
-                            OR NULLIF(LTRIM(RTRIM(phoiRow.DauTuan)),N'') IS NULL
                             OR phoiRow.DonViTaoPhoiId IS NULL OR phoiRow.NgayTaoPhoi IS NULL
                             OR NULLIF(LTRIM(RTRIM(phoiRow.ToSanXuat)),N'') IS NULL
                             OR NULLIF(LTRIM(RTRIM(phoiRow.CongNhanSanXuat)),N'') IS NULL
-                            OR phoiRow.KcsId IS NULL
                         )
-                    ) THROW 52111, N'Mỗi loại phôi phải có đủ số lượng, LOT, LXVT và thông tin tem truy nguyên.', 1;
+                    ) THROW 52111, N'Mỗi loại phôi phải có đủ số lượng, LXVT, lot sản xuất và thông tin tem truy nguyên.', 1;
                     IF EXISTS (
                         SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow
                         LEFT JOIN dbo.DM_BO_PHAN sourceDepartment
                           ON sourceDepartment.Id=phoiRow.DonViTaoPhoiId AND ISNULL(sourceDepartment.TrangThai,1)=1
-                        LEFT JOIN dbo.USERS selectedKcs
-                          ON selectedKcs.Id=phoiRow.KcsId AND ISNULL(selectedKcs.TrangThai,0)=1
                         WHERE phoiRow.PhieuId=@PhieuId
-                          AND (sourceDepartment.Id IS NULL OR selectedKcs.Id IS NULL)
-                    ) THROW 52118, N'Đơn vị tạo phôi hoặc KCS được chọn không còn hoạt động.', 1;
+                          AND sourceDepartment.Id IS NULL
+                    ) THROW 52118, N'Đơn vị tạo phôi không còn hoạt động.', 1;
                     IF EXISTS (
                         SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow
                         WHERE phoiRow.PhieuId=@PhieuId AND NOT EXISTS (
