@@ -39,6 +39,26 @@ export const executeDoiTraAction = (id, actionCode, data) =>
 export const confirmDoiTraSoLuong = (id, rowVersion) =>
     axiosClient.post(`/doi-tra-phoi-loi/${id}/actions/B7_CONFIRM`, { rowVersion });
 
+export const getDoiTraKph = (id) => axiosClient.get(`/doi-tra-phoi-loi/${id}/kph`);
+export const saveDoiTraKphDepartments = (id, rowVersion, boPhanIds) =>
+    axiosClient.put(`/doi-tra-phoi-loi/${id}/kph/opinion-departments`, { rowVersion, boPhanIds });
+export const addDoiTraKphSection = (id, section, data) =>
+    axiosClient.post(`/doi-tra-phoi-loi/${id}/kph/sections/${section}`, data);
+export const updateDoiTraKphSection = (id, section, rowId, data) =>
+    axiosClient.patch(`/doi-tra-phoi-loi/${id}/kph/sections/${section}/${rowId}`, data);
+export const deleteDoiTraKphSection = (id, section, rowId) =>
+    axiosClient.delete(`/doi-tra-phoi-loi/${id}/kph/sections/${section}/${rowId}`);
+export const saveDoiTraKphOpinion = (id, opinionId, noiDung) =>
+    axiosClient.put(`/doi-tra-phoi-loi/${id}/kph/opinions/${opinionId}/draft`, { noiDung });
+export const confirmDoiTraKphOpinion = (id, opinionId) =>
+    axiosClient.post(`/doi-tra-phoi-loi/${id}/kph/opinions/${opinionId}/confirm`);
+export const returnDoiTraKphOpinion = (id, opinionId, reason) =>
+    axiosClient.post(`/doi-tra-phoi-loi/${id}/kph/opinions/${opinionId}/return`, { reason });
+export const confirmDoiTraKphCreator = (id) => axiosClient.post(`/doi-tra-phoi-loi/${id}/kph/creator-confirm`);
+export const approveDoiTraKphExecutive = (id, decision, reason) =>
+    axiosClient.post(`/doi-tra-phoi-loi/${id}/kph/executive-approval`, { decision, reason });
+export const followUpDoiTraKph = (id, data) => axiosClient.post(`/doi-tra-phoi-loi/${id}/kph/follow-up`, data);
+
 // Tương thích tạm thời với các màn hình cũ còn import tên hàm định mức.
 export const saveDoiTraDinhMuc = saveDoiTraSoLuong;
 export const confirmDoiTraDinhMuc = confirmDoiTraSoLuong;

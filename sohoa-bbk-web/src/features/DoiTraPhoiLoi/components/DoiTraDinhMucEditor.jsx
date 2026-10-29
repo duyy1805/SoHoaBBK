@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-    Alert, Button, CircularProgress, Paper, Stack, Table, TableBody, TableCell,
+    Alert, Box, Button, Chip, CircularProgress, Paper, Stack, Table, TableBody, TableCell,
     TableContainer, TableHead, TableRow, TextField, Typography
 } from '@mui/material';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
@@ -10,6 +10,27 @@ import { formatDoiTraQuantity } from '../doiTraPhoiLoi.utils';
 
 const titleOf = (item) => [item.TenLoaiPhoi, item.SoPhoi && `Số phôi ${item.SoPhoi}`, item.KyHieu]
     .filter(Boolean).join(' — ') || `Phôi #${item.Id}`;
+const defectTitleOf = (item) => [item.MaLoi, item.TenLoi].filter(Boolean).join(' — ') || 'Lỗi chưa có tên';
+
+const DefectivePartList = ({ items = [] }) => <Stack spacing={0.75} sx={{ mt: 1 }}>
+    {items.map((part, index) => <Box key={part.Id || `${part.SourceLoiPhoiId}-${index}`} sx={{
+        px: 1, py: 0.75, border: 1, borderColor: 'divider', borderRadius: 1.25, bgcolor: '#fafbfc'
+    }}>
+        <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="flex-start">
+            <Typography variant="caption" fontWeight={700} sx={{ color: 'text.primary', lineHeight: 1.45 }}>
+                {`Chi tiết ${index + 1}: ${titleOf(part)}`}
+            </Typography>
+            <Chip size="small" color="error" variant="outlined"
+                label={`${formatDoiTraQuantity(part.SoLuongPhoiLoi)} lỗi`} sx={{ flexShrink: 0, fontWeight: 700 }} />
+        </Stack>
+        {(part.defects || []).length > 0 && <Stack direction="row" spacing={0.5} useFlexGap flexWrap="wrap" sx={{ mt: 0.65 }}>
+            {part.defects.map((defect) => <Chip key={defect.Id || `${defect.DefectId}-${defect.SoLuongLoi}`}
+                size="small" variant="filled"
+                label={`${defectTitleOf(defect)}: ${formatDoiTraQuantity(defect.SoLuongLoi)}`}
+                sx={{ height: 'auto', bgcolor: '#fff3e0', color: '#8a4b08', '& .MuiChip-label': { py: 0.35, whiteSpace: 'normal' } }} />)}
+        </Stack>}
+    </Box>)}
+</Stack>;
 
 const createDraft = (phoiItems, savedItems) => {
     const byMaterial = new Map((savedItems || []).map((item) => [Number(item.SourceVatTuId), item]));
@@ -112,7 +133,7 @@ export default function DoiTraDinhMucEditor({
             <TableContainer component={Paper} variant="outlined">
                 <Table size="small">
                     <TableHead><TableRow sx={{ bgcolor: '#f8fafc' }}>
-                        <TableCell>Vật tư / các chi tiết trong bộ</TableCell><TableCell align="right">Số bộ lỗi</TableCell>
+                        <TableCell sx={{ minWidth: 460 }}>Vật tư / số lỗi từng chi tiết trong bộ</TableCell><TableCell align="right">Số bộ lỗi</TableCell>
                         <TableCell sx={{ minWidth: 170 }}>Số lượng đổi trả</TableCell><TableCell>ĐVT</TableCell>
                         <TableCell sx={{ minWidth: 220 }}>Ghi chú</TableCell>
                     </TableRow></TableHead>
@@ -120,13 +141,11 @@ export default function DoiTraDinhMucEditor({
                             <TableCell>
                                 <Typography variant="body2" fontWeight={700}>{item.material.maVatTu || '---'}</Typography>
                                 {item.material.quyCachVatTu && <Typography variant="caption" display="block">{item.material.quyCachVatTu}</Typography>}
-                                <Typography variant="caption" color="text.secondary">
-                                    {item.material.phoiItems.map(titleOf).join('; ')}
-                                </Typography>
+                                <DefectivePartList items={item.material.phoiItems} />
                             </TableCell>
                             <TableCell align="right">
                                 <Typography variant="body2" fontWeight={700}>{formatDoiTraQuantity(item.material.soLuongBoLoi)}</Typography>
-                                <Typography variant="caption" color="text.secondary">Lớn nhất trong {item.material.phoiItems.length} chi tiết</Typography>
+                                <Typography variant="caption" color="text.secondary">Cao nhất trong {item.material.phoiItems.length} chi tiết</Typography>
                             </TableCell>
                             <TableCell><TextField fullWidth size="small" type="number" value={item.soLuongDoiTra} disabled={!canEdit} inputProps={{ min: 0.001, step: 0.001 }} onChange={(event) => patch(index, { soLuongDoiTra: event.target.value })} /></TableCell>
                             <TableCell>{item.unit || '---'}</TableCell>

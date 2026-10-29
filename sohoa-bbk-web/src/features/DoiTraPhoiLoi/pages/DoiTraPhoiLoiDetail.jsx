@@ -15,16 +15,20 @@ import ReplayOutlinedIcon from '@mui/icons-material/ReplayOutlined';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined';
 import CalculateOutlinedIcon from '@mui/icons-material/CalculateOutlined';
+import BuildCircleOutlinedIcon from '@mui/icons-material/BuildCircleOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useReactToPrint } from 'react-to-print';
 import {
-    cancelDoiTraPhoiLoi, deleteDoiTraPhoiLoi, executeDoiTraAction, getDoiTraPhoiLoiDetail
+    cancelDoiTraPhoiLoi, deleteDoiTraPhoiLoi, executeDoiTraAction, getDoiTraKph,
+    getDoiTraPhoiLoiDetail
 } from '../../../api/doiTraPhoiLoi.api';
 import { hasPermission } from '../../../utils/auth';
 import DoiTraPhoiLoiSummaryPrintTemplate from '../components/DoiTraPhoiLoiSummaryPrintTemplate';
+import DoiTraPhoiLoiPrintTemplate from '../components/DoiTraPhoiLoiPrintTemplate';
 import DoiTraPhoiEditor from '../components/DoiTraPhoiEditor';
 import DoiTraDinhMucEditor from '../components/DoiTraDinhMucEditor';
+import DoiTraKphWorkflow from '../components/DoiTraKphWorkflow';
 import {
     doiTraDinhMucStatusMeta, doiTraHistoryActionLabel, doiTraStatusMeta,
     formatDoiTraDate, formatDoiTraQuantity
@@ -36,12 +40,14 @@ const Info = ({ label, value }) => (
         <Typography variant="body2" fontWeight={700}>{value || '---'}</Typography>
     </Box>
 );
-const DETAIL_TABS = ['overview', 'phoi', 'inspection', 'quota', 'history'];
+const DETAIL_TABS = ['overview', 'phoi', 'inspection', 'kph', 'quota', 'history'];
 const chooseDefaultTab = (detail) => {
     const actions = detail.workflow?.availableActions || [];
     if (actions.some((item) => ['TBP_CONFIRM', 'TBP_RETURN'].includes(item.ActionCode))) return 'inspection';
     if (actions.some((item) => ['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(item.ActionCode))) return detail.phoiItems?.length ? 'inspection' : 'phoi';
     if (detail.capabilities?.canEditDinhMuc && detail.phoiItems?.length && detail.phieu?.DinhMucTrangThai !== 'DA_XAC_NHAN') return 'quota';
+    if (Number(detail.workflow?.definition?.VersionNo) >= 5
+        && !['TAO_MOI', 'TRA_LAI_KCS', 'CHO_TBP_KCS_XAC_NHAN'].includes(detail.phieu?.TrangThai)) return 'kph';
     return 'overview';
 };
 
@@ -50,10 +56,13 @@ export default function DoiTraPhoiLoiDetail() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const summaryPrintRef = useRef(null);
+    const kphPrintRef = useRef(null);
     const [data, setData] = useState({ phieu: null, plans: [], history: [], phoiItems: [], dinhMucItems: [], workflow: { steps: [], availableActions: [] }, defectGroups: [], capabilities: {} });
     const [loading, setLoading] = useState(true);
     const [cancelling, setCancelling] = useState(false);
     const [printOpen, setPrintOpen] = useState(false);
+    const [printTab, setPrintTab] = useState('summary');
+    const [kphData, setKphData] = useState(null);
     const [phoiDirty, setPhoiDirty] = useState(false);
     const [quotaDirty, setQuotaDirty] = useState(false);
     const [showDetails, setShowDetails] = useState(false);
@@ -93,6 +102,10 @@ export default function DoiTraPhoiLoiDetail() {
         contentRef: summaryPrintRef,
         documentTitle: data.phieu?.SoPhieu ? `TongHopDoiTra_${data.phieu.SoPhieu}` : 'TongHopDoiTraPhoiLoi'
     });
+    const printKph = useReactToPrint({
+        contentRef: kphPrintRef,
+        documentTitle: data.phieu?.SoPhieu ? `KPH_${data.phieu.SoPhieu}` : 'XuLyKPH_DoiTraPhoiLoi'
+    });
     const activeTab = DETAIL_TABS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'overview';
     const hasUnsavedChanges = phoiDirty || quotaDirty;
     const changeTab = (_, nextTab) => {
@@ -103,7 +116,16 @@ export default function DoiTraPhoiLoiDetail() {
         if (hasUnsavedChanges && !window.confirm('Bạn có thay đổi chưa lưu. Bỏ thay đổi và quay lại danh sách?')) return;
         navigate('/doi-tra-phoi-loi');
     };
-    const openPrintPreview = () => setPrintOpen(true);
+    const openPrintPreview = async () => {
+        setPrintTab('summary'); setPrintOpen(true);
+        if (Number(data.workflow?.definition?.VersionNo) < 5 || kphData) return;
+        try {
+            const response = await getDoiTraKph(id);
+            setKphData(response.data || null);
+        } catch (error) {
+            window.alert(error.response?.data?.message || 'Không tải được dữ liệu bản in KPH.');
+        }
+    };
 
     const cancel = async () => {
         if (!window.confirm('Hủy phiếu nháp này? Phiếu sẽ được giữ lại trong lịch sử.')) return;
@@ -173,11 +195,13 @@ export default function DoiTraPhoiLoiDetail() {
     const plan = plans[0] || {};
     const status = doiTraStatusMeta(phieu.TrangThai);
     const workflowSteps = workflow.steps || [];
-    const mainSteps = workflowSteps.filter((step) => String(step.TrackCode || 'MAIN').toUpperCase() !== 'DINH_MUC');
+    const mainSteps = workflowSteps.filter((step) => String(step.TrackCode || 'MAIN').toUpperCase() !== 'DINH_MUC'
+        && (step.StepCode !== 'KPH_BGD' || Boolean(phieu.RequiresExecutiveApproval)));
     const configuredStepIndex = mainSteps.findIndex((step) => step.IsCurrent);
     const activeStep = phieu.TrangThai === 'HOAN_TAT'
         ? mainSteps.length
         : (configuredStepIndex >= 0 ? configuredStepIndex : Math.min(status.step, Math.max(mainSteps.length - 1, 0)));
+    const isKphWorkflow = Number(workflow.definition?.VersionNo) >= 5;
     const availableActions = workflow.availableActions || [];
     const regularActions = availableActions.filter((action) => action.ActionCode !== 'B7_CONFIRM');
     const canB7Confirm = Boolean(capabilities.canConfirmDinhMuc);
@@ -218,7 +242,7 @@ export default function DoiTraPhoiLoiDetail() {
                     </Stack>
                     <Box sx={{ overflowX: 'auto', pb: 0.5 }}>
                         <Stepper activeStep={activeStep} alternativeLabel sx={{ minWidth: { xs: 760, md: 0 }, '& .MuiStepLabel-label': { fontSize: '0.72rem', mt: 0.5 } }}>
-                            {(mainSteps.length ? mainSteps : [{ StepName: 'KCS kiểm và nhập BTP lỗi' }, { StepName: 'TBP KCS xác nhận' }, { StepName: 'B7 tạo lệnh xuất VT' }]).map((step) => <Step key={step.StepCode || step.StepName}><StepLabel>{step.StepName}</StepLabel></Step>)}
+                            {(mainSteps.length ? mainSteps : [{ StepName: 'KCS kiểm và nhập BTP lỗi' }, { StepName: 'TBP KCS xác nhận' }, { StepName: 'Thiết lập và xử lý KPH' }]).map((step) => <Step key={step.StepCode || step.StepName}><StepLabel>{step.StepName}</StepLabel></Step>)}
                         </Stepper>
                     </Box>
                 </Box>
@@ -226,6 +250,7 @@ export default function DoiTraPhoiLoiDetail() {
                     <Tab value="overview" icon={<DashboardOutlinedIcon />} iconPosition="start" label="Tổng quan" />
                     <Tab value="phoi" icon={<Inventory2OutlinedIcon />} iconPosition="start" label={`Danh sách phôi (${phoiItems.length})`} />
                     <Tab value="inspection" icon={<TaskAltOutlinedIcon />} iconPosition="start" label={`Kết quả kiểm (${phoiItems.length})`} />
+                    {isKphWorkflow && <Tab value="kph" icon={<BuildCircleOutlinedIcon />} iconPosition="start" label={`Xử lý KPH${kphData?.opinions?.filter((item) => !item.HasConfirmed).length ? ` (${kphData.opinions.filter((item) => !item.HasConfirmed).length})` : ''}`} />}
                     <Tab value="quota" icon={<CalculateOutlinedIcon />} iconPosition="start" label={quotaStatus.label} />
                     <Tab value="history" icon={<HistoryIcon />} iconPosition="start" label={`Lịch sử (${history.length})`} />
                 </Tabs>
@@ -235,7 +260,7 @@ export default function DoiTraPhoiLoiDetail() {
             {hasUnsavedChanges && <Alert severity="warning" sx={{ mb: 2 }}>Bạn đang có thay đổi chưa lưu. Hãy lưu trước khi chuyển khu vực hoặc thực hiện xác nhận.</Alert>}
 
             {activeTab === 'overview' && <Stack spacing={2}>
-                <Grid container spacing={2}><Grid size={{ xs: 12, md: 8 }}><Card variant="outlined" sx={{ height: '100%', borderRadius: 2 }}><CardContent><Typography fontWeight={900} sx={{ mb: 1.5 }}>Thông tin kế hoạch</Typography><Grid container spacing={1.5}><Grid size={{ xs: 12, sm: 6 }}><Info label="Kế hoạch" value={plan.PlanNo || plan.PlanID} /></Grid><Grid size={{ xs: 12, sm: 6 }}><Info label="Sản phẩm" value={[plan.ProductCode, plan.ProductName].filter(Boolean).join(' — ')} /></Grid><Grid size={{ xs: 12, sm: 6 }}><Info label="Đơn hàng" value={plan.OrderCode} /></Grid><Grid size={{ xs: 12, sm: 6 }}><Info label="Đơn vị" value={[plan.DepartmentName, plan.UnitName].filter(Boolean).join(' — ')} /></Grid><Grid size={{ xs: 6, sm: 4 }}><Info label="Công đoạn" value={[plan.OperationCode, plan.OperationName].filter(Boolean).join(' — ')} /></Grid><Grid size={{ xs: 6, sm: 4 }}><Info label="Số lượng kế hoạch" value={formatDoiTraQuantity(plan.PlanQty)} /></Grid><Grid size={{ xs: 12, sm: 4 }}><Info label="Trạng thái ERP" value={plan.ERPPlanStatus} /></Grid></Grid></CardContent></Card></Grid><Grid size={{ xs: 12, md: 4 }}><Card variant="outlined" sx={{ height: '100%', borderRadius: 2 }}><CardContent><Typography fontWeight={900}>B7 cấp vật tư đổi trả</Typography><Chip size="small" color={quotaStatus.color} label={quotaStatus.label} sx={{ my: 1.5 }} /><Typography variant="body2" color="text.secondary">Sau khi TBP KCS xác nhận, B7 nhập số lượng đổi trả và tạo lệnh xuất vật tư bổ sung.</Typography></CardContent></Card></Grid></Grid>
+                <Grid container spacing={2}><Grid size={{ xs: 12, md: 8 }}><Card variant="outlined" sx={{ height: '100%', borderRadius: 2 }}><CardContent><Typography fontWeight={900} sx={{ mb: 1.5 }}>Thông tin kế hoạch</Typography><Grid container spacing={1.5}><Grid size={{ xs: 12, sm: 6 }}><Info label="Kế hoạch" value={plan.PlanNo || plan.PlanID} /></Grid><Grid size={{ xs: 12, sm: 6 }}><Info label="Sản phẩm" value={[plan.ProductCode, plan.ProductName].filter(Boolean).join(' — ')} /></Grid><Grid size={{ xs: 12, sm: 6 }}><Info label="Đơn hàng" value={plan.OrderCode} /></Grid><Grid size={{ xs: 12, sm: 6 }}><Info label="Đơn vị" value={[plan.DepartmentName, plan.UnitName].filter(Boolean).join(' — ')} /></Grid><Grid size={{ xs: 6, sm: 4 }}><Info label="Công đoạn" value={[plan.OperationCode, plan.OperationName].filter(Boolean).join(' — ')} /></Grid><Grid size={{ xs: 6, sm: 4 }}><Info label="Số lượng kế hoạch" value={formatDoiTraQuantity(plan.PlanQty)} /></Grid><Grid size={{ xs: 12, sm: 4 }}><Info label="Trạng thái ERP" value={plan.ERPPlanStatus} /></Grid></Grid></CardContent></Card></Grid><Grid size={{ xs: 12, md: 4 }}><Card variant="outlined" sx={{ height: '100%', borderRadius: 2 }}><CardContent><Typography fontWeight={900}>KPH và B7 xử lý song song</Typography><Chip size="small" color={quotaStatus.color} label={quotaStatus.label} sx={{ my: 1.5 }} /><Typography variant="body2" color="text.secondary">Sau khi TBP KCS xác nhận, KPH bắt đầu thiết lập đồng thời B7 có thể nhập số lượng đổi trả và tạo lệnh xuất vật tư.</Typography></CardContent></Card></Grid></Grid>
                 <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}><Typography fontWeight={900} sx={{ mb: 1.5 }}>Thông tin xác nhận</Typography><Grid container spacing={2}><Grid size={{ xs: 12, md: 4 }}><Info label="KCS hoàn tất" value={phieu.KcsCompletedAt ? `${phieu.TenKcsHoanTat || '---'} — ${formatDoiTraDate(phieu.KcsCompletedAt, true)}` : null} /></Grid><Grid size={{ xs: 12, md: 4 }}><Info label="TBP KCS xác nhận" value={phieu.TbpKcsConfirmedAt ? `${phieu.TenTbpKcsXacNhan || '---'} — ${formatDoiTraDate(phieu.TbpKcsConfirmedAt, true)}` : null} /></Grid><Grid size={{ xs: 12, md: 4 }}><Info label="B7 xác nhận số lượng" value={phieu.B7ConfirmedAt ? `${phieu.TenB7XacNhan || '---'} — ${formatDoiTraDate(phieu.B7ConfirmedAt, true)}` : null} /></Grid></Grid></Paper>
                 {lenhXuatVatTuItems.length > 0 && <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}><Typography fontWeight={900} sx={{ mb: 1.5 }}>Lệnh xuất vật tư bổ sung</Typography><Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>{lenhXuatVatTuItems.map((item) => <Chip key={item.Id} color={item.TrangThai === 'ACTIVE' ? 'success' : 'default'} variant={item.TrangThai === 'ACTIVE' ? 'filled' : 'outlined'} label={`${item.SoLenhXuatVT} · ${item.TenKhoXuat || `Kho ${item.SourceKhoXuatId}`} · ${item.TrangThai === 'ACTIVE' ? 'Hiệu lực' : 'Đã hủy'}`} />)}</Stack></Paper>}
                 {phieuNhapBtpItems.length > 0 && <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}><Typography fontWeight={900} sx={{ mb: 1.5 }}>Phiếu nhập BTP lỗi</Typography><Stack spacing={1}>{phieuNhapBtpItems.map((item) => <Box key={item.Id}><Chip color={item.TrangThai === 'ACTIVE' ? 'info' : 'default'} label={`${item.SoPhieuNhapBtp} · ${formatDoiTraQuantity(item.SoLuongBtpLoi, 2)} · ${item.TenKhoNhap || `Kho ${item.SourceKhoNhapId}`}`} /><Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>{[item.MaBtp, item.TenBtp, item.SoLoSanXuat && `Lô ${item.SoLoSanXuat}`, item.TenQuyTrinhSanXuat, item.ErpTrangThai === 0 ? 'ERP: Đang lập' : `ERP: ${item.ErpTrangThai}`].filter(Boolean).join(' · ')}</Typography></Box>)}</Stack></Paper>}
@@ -245,6 +270,10 @@ export default function DoiTraPhoiLoiDetail() {
             {activeTab === 'phoi' && <Paper variant="outlined" sx={{ p: { xs: 1.25, md: 2 }, borderRadius: 2 }}><DoiTraPhoiEditor mode="list" phieuId={id} phieu={phieu} plan={plan} items={phoiItems} canEdit={capabilities.canEditPhoi} onSaved={() => load({ background: true })} onContinue={() => setSearchParams({ tab: 'inspection' })} onDirtyChange={setPhoiDirty} /></Paper>}
 
             {activeTab === 'inspection' && <Paper variant="outlined" sx={{ p: { xs: 1.25, md: 2 }, borderRadius: 2 }}><DoiTraPhoiEditor mode="inspection" phieuId={id} phieu={phieu} plan={plan} items={phoiItems} canEdit={capabilities.canEditPhoi} onSaved={() => load({ background: true })} onDirtyChange={setPhoiDirty} />{regularActions.length > 0 && <Paper elevation={3} sx={{ position: 'sticky', bottom: 8, zIndex: 3, p: 1, mt: 2, borderRadius: 2 }}><Stack direction="row" spacing={1} justifyContent="flex-end" flexWrap="wrap" useFlexGap>{regularActions.map((action) => <Button key={action.ActionCode} variant={action.ActionCode === 'TBP_RETURN' ? 'outlined' : 'contained'} color={action.ActionCode === 'TBP_RETURN' ? 'warning' : 'primary'} startIcon={action.ActionCode === 'TBP_RETURN' ? <ReplayOutlinedIcon /> : <TaskAltOutlinedIcon />} disabled={phoiDirty && ['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(action.ActionCode)} onClick={() => openAction(action)}>{action.ActionName}</Button>)}</Stack></Paper>}</Paper>}
+
+            {activeTab === 'kph' && (isKphWorkflow
+                ? <DoiTraKphWorkflow phieu={phieu} onChanged={() => load({ background: true })} onData={setKphData} />
+                : <Alert severity="info">Phiếu này đã hoàn tất theo workflow cũ và không yêu cầu bổ sung KPH.</Alert>)}
 
             {activeTab === 'quota' && <Paper variant="outlined" sx={{ p: { xs: 1.25, md: 2 }, borderRadius: 2 }}><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}><Typography fontWeight={900}>Số lượng đổi trả theo mã vật tư</Typography><Chip size="small" color={quotaStatus.color} label={quotaStatus.label} /></Stack>{lenhXuatVatTuItems.filter((item) => item.TrangThai === 'ACTIVE').length > 0 && <Alert severity="success" sx={{ mb: 1.5 }}>Lệnh xuất bổ sung: {lenhXuatVatTuItems.filter((item) => item.TrangThai === 'ACTIVE').map((item) => item.SoLenhXuatVT).join(', ')}</Alert>}{phoiItems.length && phieu.TrangThai !== 'DA_HUY' ? <DoiTraDinhMucEditor phieu={phieu} phoiItems={phoiItems} dinhMucItems={dinhMucItems} canEdit={capabilities.canEditDinhMuc} canConfirm={canB7Confirm} onChanged={() => load({ background: true })} onDirtyChange={setQuotaDirty} /> : <Alert severity="info">Phiếu chưa có loại phôi để nhập số lượng đổi trả.</Alert>}</Paper>}
 
@@ -280,14 +309,21 @@ export default function DoiTraPhoiLoiDetail() {
 
             <Dialog open={printOpen} onClose={() => setPrintOpen(false)} maxWidth="xl" fullWidth>
                 <DialogTitle sx={{ pb: 0 }}>Xem trước bản in đổi trả phôi lỗi</DialogTitle>
+                {isKphWorkflow && <Tabs value={printTab} onChange={(_, value) => setPrintTab(value)} sx={{ px: 3 }}>
+                    <Tab value="summary" label="Tổng hợp đổi phôi" />
+                    <Tab value="kph" label="Xử lý KPH" />
+                </Tabs>}
                 <DialogContent dividers sx={{ bgcolor: '#e5e7eb', p: 2, overflow: 'auto' }}>
-                    <Box sx={{ minWidth: '297mm' }}>
+                    <Box sx={{ display: printTab === 'summary' ? 'block' : 'none', minWidth: '297mm' }}>
                         <DoiTraPhoiLoiSummaryPrintTemplate ref={summaryPrintRef} data={summaryData} />
                     </Box>
+                    {isKphWorkflow && <Box sx={{ display: printTab === 'kph' ? 'flex' : 'none', justifyContent: 'center' }}>
+                        <DoiTraPhoiLoiPrintTemplate ref={kphPrintRef} data={{ ...data, kph: kphData || {} }} />
+                    </Box>}
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setPrintOpen(false)}>Đóng</Button>
-                    <Button variant="contained" startIcon={<PrintIcon />} onClick={printSummary}>In / Lưu PDF</Button>
+                    <Button variant="contained" startIcon={<PrintIcon />} onClick={printTab === 'kph' ? printKph : printSummary}>In / Lưu PDF</Button>
                 </DialogActions>
             </Dialog>
         </Box>

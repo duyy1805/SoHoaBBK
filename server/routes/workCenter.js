@@ -164,7 +164,34 @@ router.get("/", authenticateToken, async (req, res) => {
         normalRows.forEach((row) => rowsById.set(Number(row.BienBanId), row));
         standaloneRows.forEach((row) => rowsById.set(Number(row.BienBanId), row));
         const ids = [...rowsById.keys()].filter((id) => Number.isInteger(id) && id > 0);
-        if (!ids.length) return res.json({ items: [], generatedAt: new Date().toISOString() });
+        const dtpResult = await pool.request()
+            .input('UserId', sql.Int, Number(req.user.userId) || null)
+            .input('ManagedIds', sql.NVarChar(sql.MAX), managedDepartmentIds.join(','))
+            .input('CanViewAll', sql.Bit, hasGlobalKphVisibility(req.user))
+            .query(`SELECT p.Id,p.SoPhieu,p.TrangThai,p.DinhMucTrangThai,p.CreatedAt,p.UpdatedAt,p.NguoiLapId,
+                planRow.ProductCode,planRow.ProductName,planRow.OrderCode,planRow.PlanNo,
+                CAST(CASE WHEN p.NguoiLapId=@UserId OR EXISTS(SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_KPH_Y_KIEN opinion
+                    WHERE opinion.PhieuId=p.Id AND opinion.IsActive=1 AND opinion.BoPhanId IN(SELECT TRY_CONVERT(INT,value) FROM STRING_SPLIT(@ManagedIds,',')))
+                    OR (ISNULL(p.DinhMucTrangThai,N'CHUA_NHAP')<>N'DA_XAC_NHAN' AND EXISTS(
+                        SELECT 1 FROM dbo.USERS actor JOIN dbo.DM_BO_PHAN department ON department.Id=actor.BoPhanId
+                        WHERE actor.Id=@UserId AND UPPER(LTRIM(RTRIM(department.MaBoPhan)))=N'B7'))
+                    OR (p.TrangThai=N'CHO_BGD_XAC_NHAN' AND @CanViewAll=1) THEN 1 ELSE 0 END AS BIT) CanCurrentUserAct
+              FROM dbo.DOI_TRA_PHOI_LOI p
+              JOIN dbo.DOI_TRA_PHOI_LOI_WORKFLOW workflowRow ON workflowRow.Id=p.WorkflowId AND workflowRow.VersionNo>=5
+              JOIN dbo.DOI_TRA_PHOI_LOI_PLAN planRow ON planRow.PhieuId=p.Id
+              WHERE p.TrangThai NOT IN(N'DA_HUY',N'HOAN_TAT') AND (@CanViewAll=1 OR p.NguoiLapId=@UserId
+                OR (ISNULL(p.DinhMucTrangThai,N'CHUA_NHAP')<>N'DA_XAC_NHAN' AND EXISTS(
+                    SELECT 1 FROM dbo.USERS actor JOIN dbo.DM_BO_PHAN department ON department.Id=actor.BoPhanId
+                    WHERE actor.Id=@UserId AND UPPER(LTRIM(RTRIM(department.MaBoPhan)))=N'B7'))
+                OR EXISTS(SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_KPH_Y_KIEN opinion WHERE opinion.PhieuId=p.Id AND opinion.IsActive=1
+                    AND opinion.BoPhanId IN(SELECT TRY_CONVERT(INT,value) FROM STRING_SPLIT(@ManagedIds,','))))`);
+        const dtpItems = (dtpResult.recordset || []).map((item) => ({
+            ...item, BienBanId: item.Id, SoBienBan: item.SoPhieu, recordKey: `DTP:${item.Id}`,
+            recordSource: 'DOI_TRA_PHOI_LOI', recordType: 'DTP_KPH', detailRoute: `/doi-tra-phoi-loi/${item.Id}`,
+            TenLoaiKiem: 'Đổi trả phôi lỗi', TenSanPham: item.ProductName, MaSanPham: item.ProductCode,
+            DepartmentProgress: [], DefectCount: 0, AttachmentCount: 0, ImageCount: 0
+        }));
+        if (!ids.length) return res.json({ items: dtpItems, generatedAt: new Date().toISOString() });
 
         const [basicMeta, summaries, workMeta] = await Promise.all([
             loadBasicMeta(pool, ids),
@@ -187,7 +214,7 @@ router.get("/", authenticateToken, async (req, res) => {
             return {
                 ...merged,
                 CanCurrentUserAct: Boolean(merged.CanCurrentUserAct) ||
-                    (merged.TrangThai === "CHO_BGD_XAC_NHAN" && canActAsExecutive(user)),
+                    (merged.TrangThai === "CHO_BGD_XAC_NHAN" && canActAsExecutive(req.user)),
                 BienBanId: bienBanId,
                 recordKey: `${recordSource}:${bienBanId}`,
                 bienBanId,
@@ -209,7 +236,7 @@ router.get("/", authenticateToken, async (req, res) => {
             };
         }).filter((item) => canViewKphListItem(item, req.user, managedDepartmentIds));
 
-        res.json({ items, generatedAt: new Date().toISOString() });
+        res.json({ items: [...items, ...dtpItems], generatedAt: new Date().toISOString() });
     } catch (error) {
         console.error("Get Work Center error:", error);
         res.status(500).json({ message: "Không tải được Trung tâm xử lý" });

@@ -22,6 +22,7 @@ app.use('/api/hr', hrRouter);
 app.use('/api/phieu-kiem/cong-doan', require('./routes/phieuKiemCongDoan'));
 app.use('/api/phieu-kiem', require('./routes/phieuKiem'));
 app.use('/api/doi-tra-phoi-loi', require('./routes/doiTraPhoiLoi'));
+app.use('/api/doi-tra-phoi-loi', require('./routes/doiTraPhoiLoiKph'));
 app.use('/api/bien-ban', require('./routes/bienBanAttachments'));
 app.use('/api/bien-ban', require('./routes/bienBan'));
 app.use('/api/bien-ban-sxbt', require('./routes/bienBanSxbt'));

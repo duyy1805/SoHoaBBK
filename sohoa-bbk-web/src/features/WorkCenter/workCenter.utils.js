@@ -12,6 +12,12 @@ const STATUS_LABELS = {
     DA_XAC_NHAN: "Đã xác nhận",
     CHO_THEO_DOI: "Chờ theo dõi đánh giá",
     CHO_BGD_XAC_NHAN: "Chờ Ban giám đốc xác nhận",
+    CHO_THIET_LAP_KPH: "Chờ thiết lập KPH",
+    CHO_Y_KIEN_KPH: "Chờ ý kiến KPH",
+    CHO_XAC_NHAN_CUOI_KPH: "Chờ xác nhận cuối KPH",
+    KPH_HOAN_TAT_CHO_B7: "KPH hoàn tất, chờ B7",
+    CHO_TBP_KCS_XAC_NHAN: "Chờ TBP KCS xác nhận",
+    TRA_LAI_KCS: "Trả lại KCS",
     TRA_LAI_CHINH_SUA: "Trả lại chỉnh sửa",
     HOAN_THANH: "Hoàn thành",
     HOAN_TAT: "Hoàn tất",
@@ -129,6 +135,7 @@ export const exportWorkCenterCsv = (items) => {
 
 export const RECORD_TYPE_LABELS = {
     KPH_V01: "KPH V01",
+    DTP_KPH: "Đổi trả phôi lỗi",
     BIEN_BAN_V00: "Biên bản",
     SXBT: "SXBT"
 };

@@ -4,9 +4,10 @@ const { poolPromise } = require('../db');
 const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
 const requireExactPermission = require('../middlewares/exactPermission.middleware');
-const { canLeadDepartment } = require('../utils/managedDepartments');
+const { canLeadDepartment, getManagedDepartmentIds } = require('../utils/managedDepartments');
 const { loadSignatureDataUrlMap } = require('../utils/signatureImage');
 const { isValidReturnQuantity } = require('../utils/doiTraReturnQuantity');
+const { canB7Work } = require('../utils/doiTraParallelWorkflow');
 const {
     createDoiTraSupplementIssues,
     cancelDraftSupplementIssuesForKcsReturn,
@@ -102,11 +103,18 @@ const authorizeDoiTraAccess = async (req, res, next) => {
         if (await isB7Actor(pool, req.user)) return next();
         const routeId = positiveId(String(req.path || '').split('/').filter(Boolean)[0]);
         if (routeId) {
+            const managedDepartmentIds = await getManagedDepartmentIds(pool, userIdOf(req), req.user?.boPhanId);
             const participant = await pool.request()
                 .input('PhieuId', sql.Int, routeId)
                 .input('UserId', sql.Int, userIdOf(req))
+                .input('ManagedIds', sql.NVarChar(sql.MAX), managedDepartmentIds.join(','))
                 .query(`SELECT TOP 1 1 Allowed FROM dbo.DOI_TRA_PHOI_LOI p
-                    WHERE p.Id=@PhieuId AND p.NguoiLapId=@UserId`);
+                    WHERE p.Id=@PhieuId AND (p.NguoiLapId=@UserId OR EXISTS(
+                        SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_KPH_Y_KIEN y
+                        WHERE y.PhieuId=p.Id AND y.IsActive=1 AND y.BoPhanId IN(
+                            SELECT TRY_CONVERT(INT,value) FROM STRING_SPLIT(@ManagedIds,',')
+                        )
+                    ))`);
             if (participant.recordset?.length) return next();
         }
         return res.status(403).json({ message: 'Bạn không có quyền truy cập phiếu đổi trả phôi lỗi' });
@@ -327,6 +335,14 @@ router.get('/traceability-lookups', authorize(VIEW_PERMISSIONS), async (_req, re
               ON externalUnit.ID_DonVi=externalDepartment.ID_DonVi
             WHERE externalDepartment.SuDung=1 AND externalDepartment.TonTai=1
               AND externalDepartment.ID_DonVi=32
+            UNION ALL
+            SELECT N'NHA_CUNG_CAP:' + CONVERT(NVARCHAR(20),supplier.ID_NhaCungCap) AS [key],
+                N'NHA_CUNG_CAP' AS [source],CONVERT(INT,supplier.ID_NhaCungCap) AS sourceId,
+                LTRIM(RTRIM(supplier.MaSo_NhaCungCap)) COLLATE DATABASE_DEFAULT AS departmentCode,
+                LTRIM(RTRIM(supplier.Ten_NhaCungCap)) COLLATE DATABASE_DEFAULT AS departmentName,
+                CAST(NULL AS INT) AS unitId,CAST(NULL AS NVARCHAR(255)) AS unitName
+            FROM TAG_QTKD.dbo.DM_NhaCungCap supplier
+            WHERE supplier.SuDung=1 AND supplier.TonTai=1
             ORDER BY departmentName,unitName,departmentCode,sourceId;
         `);
         res.json({
@@ -698,7 +714,7 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
         || (item.congNhanSanXuat?.length || 0) > 1000
         || item.defects.some((defect) => !defect.nhomLoiId || !defect.defectId
             || !defect.soLuongLoi || !defect.boPhanGayLoiSourceId
-            || !['NOI_BO', 'TAG_SYSTEM'].includes(defect.boPhanGayLoiSource)));
+            || !['NOI_BO', 'TAG_SYSTEM', 'NHA_CUNG_CAP'].includes(defect.boPhanGayLoiSource)));
     if (!phieuId || !rowVersion || invalidItem) {
         return res.status(400).json({ message: 'Danh sách phôi, số lượng hoặc phiên bản dữ liệu không hợp lệ' });
     }
@@ -848,7 +864,7 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                     LEFT JOIN #InputPhoi inputPhoi ON inputPhoi.SourceLoiPhoiId=inputDefect.SourceLoiPhoiId
                     WHERE groupRow.Id IS NULL OR defectRow.Id IS NULL OR inputPhoi.SourceLoiPhoiId IS NULL
                        OR inputDefect.SoLuongLoi <= 0 OR inputDefect.SoLuongLoi > inputPhoi.SoLuongPhoiLoi
-                       OR inputDefect.BoPhanGayLoiSource NOT IN (N'NOI_BO',N'TAG_SYSTEM')
+                       OR inputDefect.BoPhanGayLoiSource NOT IN (N'NOI_BO',N'TAG_SYSTEM',N'NHA_CUNG_CAP')
                 ) THROW 52022, N'Nhóm lỗi, lỗi hoặc số lượng lỗi không hợp lệ.', 1;
 
                 IF EXISTS (SELECT 1 FROM #InputDefect d LEFT JOIN dbo.DM_BO_PHAN bp
@@ -859,6 +875,10 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                     ON bp.ID_BoPhan=d.BoPhanGayLoiSourceId AND bp.SuDung=1 AND bp.TonTai=1 AND bp.ID_DonVi=32
                     WHERE d.BoPhanGayLoiSource=N'TAG_SYSTEM' AND bp.ID_BoPhan IS NULL)
                     THROW 52025, N'Nhà thầu SXBT gây lỗi không tồn tại hoặc đã ngừng hoạt động.', 1;
+                IF EXISTS (SELECT 1 FROM #InputDefect d LEFT JOIN TAG_QTKD.dbo.DM_NhaCungCap supplier
+                    ON supplier.ID_NhaCungCap=d.BoPhanGayLoiSourceId AND supplier.SuDung=1 AND supplier.TonTai=1
+                    WHERE d.BoPhanGayLoiSource=N'NHA_CUNG_CAP' AND supplier.ID_NhaCungCap IS NULL)
+                    THROW 52025, N'Nhà cung cấp gây lỗi không tồn tại hoặc đã ngừng sử dụng.', 1;
 
                 DELETE FROM dbo.DOI_TRA_PHOI_LOI_PHOI WHERE PhieuId=@PhieuId;
 
@@ -893,8 +913,9 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                        inputDefect.SoLuongLoi, inputDefect.GhiChu, inputDefect.SortOrder,
                        inputDefect.BoPhanGayLoiSource,inputDefect.BoPhanGayLoiSourceId,
                        CASE WHEN inputDefect.BoPhanGayLoiSource=N'NOI_BO' THEN localDepartment.Id END,
-                       localDepartment.MaBoPhan,
-                       COALESCE(localDepartment.TenBoPhan,LTRIM(RTRIM(externalDepartment.Ten_BoPhan)) COLLATE DATABASE_DEFAULT),
+                       COALESCE(localDepartment.MaBoPhan,LTRIM(RTRIM(supplier.MaSo_NhaCungCap)) COLLATE DATABASE_DEFAULT),
+                       COALESCE(localDepartment.TenBoPhan,LTRIM(RTRIM(externalDepartment.Ten_BoPhan)) COLLATE DATABASE_DEFAULT,
+                           LTRIM(RTRIM(supplier.Ten_NhaCungCap)) COLLATE DATABASE_DEFAULT),
                        externalDepartment.ID_DonVi,LTRIM(RTRIM(externalUnit.Ten_DonVi)) COLLATE DATABASE_DEFAULT
                 FROM #InputDefect inputDefect
                 INNER JOIN dbo.DOI_TRA_PHOI_LOI_PHOI savedPhoi
@@ -905,7 +926,9 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                     AND inputDefect.BoPhanGayLoiSource=N'NOI_BO'
                 LEFT JOIN TAG_System.dbo.DM_BoPhan externalDepartment ON externalDepartment.ID_BoPhan=inputDefect.BoPhanGayLoiSourceId
                     AND inputDefect.BoPhanGayLoiSource=N'TAG_SYSTEM'
-                LEFT JOIN TAG_System.dbo.DM_DonVi externalUnit ON externalUnit.ID_DonVi=externalDepartment.ID_DonVi;
+                LEFT JOIN TAG_System.dbo.DM_DonVi externalUnit ON externalUnit.ID_DonVi=externalDepartment.ID_DonVi
+                LEFT JOIN TAG_QTKD.dbo.DM_NhaCungCap supplier ON supplier.ID_NhaCungCap=inputDefect.BoPhanGayLoiSourceId
+                    AND inputDefect.BoPhanGayLoiSource=N'NHA_CUNG_CAP';
 
                 IF EXISTS(
                     SELECT SourceVatTuId,SoLuongBoLoi FROM #OldMaterialBasis
@@ -997,7 +1020,10 @@ const saveReturnQuantities = async (req, res) => {
                 SELECT @FromStatus=TrangThai
                 FROM dbo.DOI_TRA_PHOI_LOI WITH (UPDLOCK,HOLDLOCK)
                 WHERE Id=@PhieuId AND RowVersion=@RowVersion
-                  AND TrangThai=N'CHO_B7_NHAP_DINH_MUC';
+                  AND TbpKcsConfirmedAt IS NOT NULL
+                  AND ISNULL(DinhMucTrangThai,N'CHUA_NHAP')<>N'DA_XAC_NHAN'
+                  AND TrangThai IN(N'CHO_THIET_LAP_KPH',N'CHO_Y_KIEN_KPH',N'CHO_XAC_NHAN_CUOI_KPH',
+                      N'CHO_BGD_XAC_NHAN',N'CHO_THEO_DOI',N'KPH_HOAN_TAT_CHO_B7');
                 IF @FromStatus IS NULL
                     THROW 52102, N'Phiếu đã thay đổi hoặc đã khóa số lượng đổi trả.', 1;
                 IF EXISTS(
@@ -1146,15 +1172,25 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
                 SELECT phieu.Id,phieu.SoPhieu,phieu.NguoiLapId,phieu.BoPhanKcsId,phieu.TrangThai,
                     phieu.WorkflowId,phieu.CurrentStepId,
                     transitionRow.Id AS TransitionId,transitionRow.ActionCode,transitionRow.ActionName,
-                    transitionRow.ToStepId,transitionRow.ToStatusCode
+                    CASE WHEN @ActionCode=N'B7_CONFIRM' THEN phieu.CurrentStepId ELSE transitionRow.ToStepId END AS ToStepId,
+                    CASE WHEN @ActionCode=N'B7_CONFIRM' AND phieu.TrangThai=N'KPH_HOAN_TAT_CHO_B7'
+                         THEN N'HOAN_TAT' WHEN @ActionCode=N'B7_CONFIRM' THEN phieu.TrangThai
+                         ELSE transitionRow.ToStatusCode END AS ToStatusCode
                 FROM dbo.DOI_TRA_PHOI_LOI phieu WITH (UPDLOCK,HOLDLOCK)
-                JOIN dbo.DOI_TRA_PHOI_LOI_WORKFLOW_TRANSITION transitionRow
+                JOIN dbo.DOI_TRA_PHOI_LOI_WORKFLOW workflowRow ON workflowRow.Id=phieu.WorkflowId
+                LEFT JOIN dbo.DOI_TRA_PHOI_LOI_WORKFLOW_TRANSITION transitionRow
                   ON transitionRow.WorkflowId=phieu.WorkflowId
                  AND transitionRow.FromStepId=phieu.CurrentStepId
                  AND transitionRow.FromStatusCode=phieu.TrangThai
                  AND transitionRow.ActionCode=@ActionCode
                  AND transitionRow.IsActive=1
-                WHERE phieu.Id=@PhieuId AND phieu.RowVersion=@RowVersion;
+                WHERE phieu.Id=@PhieuId AND phieu.RowVersion=@RowVersion
+                  AND ((@ActionCode<>N'B7_CONFIRM' AND transitionRow.Id IS NOT NULL)
+                    OR (@ActionCode=N'B7_CONFIRM' AND workflowRow.VersionNo>=5
+                        AND phieu.TbpKcsConfirmedAt IS NOT NULL
+                        AND ISNULL(phieu.DinhMucTrangThai,N'CHUA_NHAP')<>N'DA_XAC_NHAN'
+                        AND phieu.TrangThai IN(N'CHO_THIET_LAP_KPH',N'CHO_Y_KIEN_KPH',N'CHO_XAC_NHAN_CUOI_KPH',
+                            N'CHO_BGD_XAC_NHAN',N'CHO_THEO_DOI',N'KPH_HOAN_TAT_CHO_B7')));
             `);
         const workflowAction = loaded.recordset?.[0];
         if (!workflowAction) {
@@ -1255,9 +1291,9 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
                         SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI_DEFECT defectRow
                         JOIN dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow ON phoiRow.Id=defectRow.PhoiId
                         WHERE phoiRow.PhieuId=@PhieuId
-                          AND (defectRow.BoPhanGayLoiSource NOT IN (N'NOI_BO',N'TAG_SYSTEM')
+                          AND (defectRow.BoPhanGayLoiSource NOT IN (N'NOI_BO',N'TAG_SYSTEM',N'NHA_CUNG_CAP')
                                OR defectRow.BoPhanGayLoiSourceId IS NULL)
-                    ) THROW 52119, N'Mỗi lỗi phải có bộ phận hoặc nhà thầu gây lỗi hợp lệ.', 1;
+                    ) THROW 52119, N'Mỗi lỗi phải có bộ phận, nhà thầu hoặc nhà cung cấp gây lỗi hợp lệ.', 1;
                     UPDATE phieu SET
                         TrangThai=@ToStatus,CurrentStepId=@ToStepId,
                         KcsCompletedBy=@UserId,
@@ -1270,6 +1306,8 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
                 BEGIN
                     UPDATE phieu SET TrangThai=@ToStatus,CurrentStepId=@ToStepId,
                         TbpKcsConfirmedBy=@UserId,TbpKcsConfirmedAt=SYSDATETIME(),LyDoTraLai=NULL,
+                        RequiresExecutiveApproval=ISNULL((SELECT TOP 1 CAST(BitValue AS bit)
+                            FROM dbo.SYSTEM_SETTINGS WHERE SettingKey=N'REQUIRE_EXECUTIVE_APPROVAL_KPH'),0),
                         UpdatedAt=SYSDATETIME()
                     FROM dbo.DOI_TRA_PHOI_LOI phieu
                     WHERE phieu.Id=@PhieuId;
@@ -1295,7 +1333,8 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
                         WHERE quota.Id IS NULL OR quota.SoLuongDoiTra IS NULL OR quota.SoLuongDoiTra<=0
                     ) THROW 52116, N'Vui lòng nhập số lượng đổi trả lớn hơn 0 cho tất cả vật tư.', 1;
 
-                    UPDATE dbo.DOI_TRA_PHOI_LOI SET TrangThai=@ToStatus,CurrentStepId=NULL,
+                    UPDATE dbo.DOI_TRA_PHOI_LOI SET TrangThai=@ToStatus,
+                        CurrentStepId=CASE WHEN @ToStatus=N'HOAN_TAT' THEN NULL ELSE CurrentStepId END,
                         DinhMucTrangThai=N'DA_XAC_NHAN',DinhMucCurrentStepId=NULL,
                         B7ConfirmedBy=@UserId,B7ConfirmedAt=SYSDATETIME(),UpdatedAt=SYSDATETIME()
                     WHERE Id=@PhieuId;
@@ -1506,6 +1545,12 @@ router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
         const issueLinks = result.recordsets[9] || [];
         const receiptLinks = result.recordsets[10] || [];
         const hasActiveIssue = issueLinks.some((item) => item.TrangThai === 'ACTIVE');
+        const canWorkB7 = canB7Work({
+            status: phieu.TrangThai,
+            tbpConfirmedAt: phieu.TbpKcsConfirmedAt,
+            dinhMucStatus: phieu.DinhMucTrangThai,
+            hasActiveIssue
+        });
         const availableActions = [];
         for (const action of result.recordsets[8] || []) {
             if (await canRunWorkflowAction(pool, req.user, phieu, action.ActionCode)) {
@@ -1544,10 +1589,9 @@ router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
             capabilities: {
                 canCancel: phieu.TrangThai === 'TAO_MOI' && canEditPhoi,
                 canEditPhoi,
-                canEditDinhMuc: phieu.TrangThai === 'CHO_B7_NHAP_DINH_MUC' && b7Actor && !hasActiveIssue,
-                canSaveDinhMuc: phieu.TrangThai === 'CHO_B7_NHAP_DINH_MUC' && b7Actor && !hasActiveIssue,
-                canConfirmDinhMuc: phieu.TrangThai === 'CHO_B7_NHAP_DINH_MUC'
-                    && Boolean(phieu.TbpKcsConfirmedAt) && b7Actor && !hasActiveIssue
+                canEditDinhMuc: canWorkB7 && b7Actor,
+                canSaveDinhMuc: canWorkB7 && b7Actor,
+                canConfirmDinhMuc: canWorkB7 && b7Actor
             }
         }));
     } catch (error) {
@@ -1651,6 +1695,13 @@ router.delete('/:id', requireExactPermission('XOA_HO_SO_KCS'), async (req, res) 
                         JSON_QUERY((SELECT quotaRow.* FROM dbo.DOI_TRA_PHOI_LOI_VAT_TU_DINH_MUC quotaRow WHERE quotaRow.PhieuId=phieu.Id FOR JSON PATH)) AS VatTuDinhMuc,
                         JSON_QUERY((SELECT issueRow.* FROM dbo.DOI_TRA_PHOI_LOI_LENH_XUAT_VT issueRow WHERE issueRow.PhieuId=phieu.Id FOR JSON PATH)) AS LenhXuatVatTu,
                         JSON_QUERY((SELECT receiptRow.* FROM dbo.DOI_TRA_PHOI_LOI_PHIEU_NHAP_BTP receiptRow WHERE receiptRow.PhieuId=phieu.Id FOR JSON PATH)) AS PhieuNhapBtp,
+                        JSON_QUERY((SELECT item.* FROM dbo.DOI_TRA_PHOI_LOI_KPH_Y_KIEN item WHERE item.PhieuId=phieu.Id FOR JSON PATH)) AS KphYKien,
+                        JSON_QUERY((SELECT item.* FROM dbo.DOI_TRA_PHOI_LOI_KPH_XU_LY item WHERE item.PhieuId=phieu.Id FOR JSON PATH)) AS KphXuLy,
+                        JSON_QUERY((SELECT item.* FROM dbo.DOI_TRA_PHOI_LOI_KPH_CHI_PHI item WHERE item.PhieuId=phieu.Id FOR JSON PATH)) AS KphChiPhi,
+                        JSON_QUERY((SELECT item.* FROM dbo.DOI_TRA_PHOI_LOI_KPH_HANH_DONG item WHERE item.PhieuId=phieu.Id FOR JSON PATH)) AS KphHanhDong,
+                        JSON_QUERY((SELECT item.* FROM dbo.DOI_TRA_PHOI_LOI_KPH_REVIEW_HISTORY item WHERE item.PhieuId=phieu.Id FOR JSON PATH)) AS KphReviewHistory,
+                        JSON_QUERY((SELECT item.* FROM dbo.DOI_TRA_PHOI_LOI_KPH_BGD_APPROVAL item WHERE item.PhieuId=phieu.Id FOR JSON PATH)) AS KphBgdApproval,
+                        JSON_QUERY((SELECT item.* FROM dbo.DOI_TRA_PHOI_LOI_KPH_THEO_DOI item WHERE item.PhieuId=phieu.Id FOR JSON PATH)) AS KphTheoDoi,
                         JSON_QUERY((
                             SELECT phoiRow.*,
                                 JSON_QUERY((SELECT defectRow.* FROM dbo.DOI_TRA_PHOI_LOI_PHOI_DEFECT defectRow WHERE defectRow.PhoiId=phoiRow.Id FOR JSON PATH)) AS Defects,
@@ -1667,6 +1718,8 @@ router.delete('/:id', requireExactPermission('XOA_HO_SO_KCS'), async (req, res) 
                     (EntityType,EntityId,RecordNumber,DeletedBy,SnapshotJson)
                 VALUES (N'DOI_TRA_PHOI_LOI',@PhieuId,@SoPhieu,@DeletedBy,@SnapshotJson);
 
+                DELETE FROM dbo.NOTIFICATIONS
+                WHERE ReferenceId=@PhieuId AND Type IN(N'DTP_KPH_OPINION',N'DTP_EXECUTIVE_APPROVAL');
                 DELETE FROM dbo.DOI_TRA_PHOI_LOI WHERE Id=@PhieuId;
                 SELECT @@ROWCOUNT AS DeletedCount;
             `);
@@ -1683,7 +1736,7 @@ router.delete('/:id', requireExactPermission('XOA_HO_SO_KCS'), async (req, res) 
         }
         const number = Number(error?.number || error?.originalError?.info?.number);
         console.error('DoiTraPhoiLoi delete error:', error);
-        res.status(number === 52130 ? 404 : number === 52131 ? 409 : 500)
+        res.status(number === 52130 ? 404 : [52131, 52132].includes(number) ? 409 : 500)
             .json({ message: errorMessage(error, 'Không thể xóa phiếu đổi trả phôi lỗi') });
     }
 });

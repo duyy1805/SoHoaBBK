@@ -4,7 +4,13 @@ export const DOI_TRA_STATUS_META = {
     CHO_TBP_KCS_XAC_NHAN: { label: 'Chờ TBP KCS xác nhận', color: 'secondary', step: 1 },
     TRA_LAI_KCS: { label: 'Trả lại KCS', color: 'warning', step: 0 },
     CHO_B7_NHAP_DINH_MUC: { label: 'Chờ B7 nhập số lượng đổi trả', color: 'info', step: 2 },
-    HOAN_TAT: { label: 'Hoàn tất', color: 'success', step: 3 },
+    CHO_THIET_LAP_KPH: { label: 'Chờ thiết lập KPH', color: 'info', step: 2 },
+    CHO_Y_KIEN_KPH: { label: 'Chờ ý kiến phòng ban', color: 'warning', step: 3 },
+    CHO_XAC_NHAN_CUOI_KPH: { label: 'Chờ xác nhận cuối KPH', color: 'secondary', step: 4 },
+    CHO_BGD_XAC_NHAN: { label: 'Chờ Ban giám đốc xác nhận', color: 'secondary', step: 5 },
+    CHO_THEO_DOI: { label: 'Chờ theo dõi đánh giá', color: 'warning', step: 6 },
+    KPH_HOAN_TAT_CHO_B7: { label: 'KPH hoàn tất, chờ B7', color: 'info', step: 7 },
+    HOAN_TAT: { label: 'Hoàn tất', color: 'success', step: 8 },
     DA_HUY: { label: 'Đã hủy', color: 'error', step: 0 }
 };
 
@@ -31,6 +37,13 @@ export const DOI_TRA_HISTORY_ACTION_LABELS = {
     TBP_CONFIRM: 'TBP KCS duyệt',
     TBP_RETURN: 'TBP KCS trả lại',
     B7_CONFIRM: 'B7 xác nhận hoàn tất',
+    KPH_SETUP: 'Thiết lập bộ phận lấy ý kiến KPH',
+    KPH_ALL_OPINIONS_CONFIRMED: 'Hoàn tất lấy ý kiến KPH',
+    KPH_OPINION_RETURN: 'TBP trả KPH về thiết lập',
+    KPH_CREATOR_CONFIRM: 'TBP bộ phận lập xác nhận KPH',
+    KPH_EXECUTIVE_APPROVE: 'Ban giám đốc xác nhận KPH',
+    KPH_EXECUTIVE_RETURN: 'Ban giám đốc trả KPH về thiết lập',
+    KPH_FOLLOW_UP: 'Hoàn tất theo dõi KPH',
     CANCEL_DRAFT: 'Hủy phiếu nháp'
 };
 
