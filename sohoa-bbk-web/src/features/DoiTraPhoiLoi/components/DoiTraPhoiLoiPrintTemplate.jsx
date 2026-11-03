@@ -18,6 +18,7 @@ const DoiTraPhoiLoiPrintTemplate = forwardRef(function DoiTraPhoiLoiPrintTemplat
         const objectName = [
             item.TenLoaiPhoi,
             item.SoPhoi ? `Số phôi ${item.SoPhoi}` : '',
+            item.DaoChat ? `Dao chặt ${item.DaoChat}` : '',
             item.KyHieu,
             item.MaVatTu
         ].filter(Boolean).join(' - ');
@@ -28,7 +29,7 @@ const DoiTraPhoiLoiPrintTemplate = forwardRef(function DoiTraPhoiLoiPrintTemplat
                 SoLuongKiem: item.SoLuongKiem,
                 SoLuong: item.SoLuongPhoiLoi,
                 TenLoiTuNhap: 'Chưa cập nhật nhóm lỗi/lỗi',
-                GhiChu: [item.QuyCachVatTu, item.GhiChu].filter(Boolean).join(' - ')
+                GhiChu: item.MaVatTu || ''
             }];
         }
         return defects.map((defect) => ({
@@ -42,9 +43,7 @@ const DoiTraPhoiLoiPrintTemplate = forwardRef(function DoiTraPhoiLoiPrintTemplat
             SoLuong: defect.SoLuongLoi,
             GhiChu: [
                 defect.TenNhomLoi ? `Nhóm lỗi: ${defect.TenNhomLoi}` : '',
-                item.QuyCachVatTu,
-                item.GhiChu,
-                defect.GhiChu
+                item.MaVatTu
             ].filter(Boolean).join(' - ')
         }));
     });

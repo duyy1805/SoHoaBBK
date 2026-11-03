@@ -9,9 +9,13 @@ import PrintIcon from '@mui/icons-material/Print';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import SearchIcon from '@mui/icons-material/Search';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 import { useNavigate } from 'react-router-dom';
 import { useReactToPrint } from 'react-to-print';
-import { deleteDoiTraPhoiLoi, getDoiTraPhoiLoiList, previewDoiTraSummary } from '../../../api/doiTraPhoiLoi.api';
+import {
+    deleteDoiTraPhoiLoi, exportDoiTraSummaryExcel, getDoiTraPhoiLoiList,
+    previewDoiTraSummary
+} from '../../../api/doiTraPhoiLoi.api';
 import { getCurrentUser } from '../../../utils/auth';
 import {
     DOI_TRA_STATUS_META, doiTraDinhMucStatusMeta, doiTraStatusMeta,
@@ -27,6 +31,7 @@ export default function DoiTraPhoiLoiList() {
     const [summaryOpen, setSummaryOpen] = useState(false);
     const [summaryLoading, setSummaryLoading] = useState(false);
     const [summaryData, setSummaryData] = useState(null);
+    const [exportingExcel, setExportingExcel] = useState(false);
     const summaryPrintRef = useRef(null);
     const [filters, setFilters] = useState({ keyword: '', status: '', fromDate: '', toDate: '' });
     const [deletingId, setDeletingId] = useState(null);
@@ -70,6 +75,26 @@ export default function DoiTraPhoiLoiList() {
             window.alert(error.response?.data?.message || 'Không tạo được bản xem trước tổng hợp.');
         } finally {
             setSummaryLoading(false);
+        }
+    };
+
+    const exportSummaryExcel = async () => {
+        if (!selectedIds.length) return;
+        try {
+            setExportingExcel(true);
+            const response = await exportDoiTraSummaryExcel(selectedIds);
+            const url = window.URL.createObjectURL(response.data);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `tong-hop-doi-phoi-${selectedIds.length}-phieu.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch {
+            window.alert('Không xuất được Excel tổng hợp đổi phôi.');
+        } finally {
+            setExportingExcel(false);
         }
     };
 
@@ -194,7 +219,11 @@ export default function DoiTraPhoiLoiList() {
                         {summaryData && <DoiTraPhoiLoiSummaryPrintTemplate ref={summaryPrintRef} data={summaryData} />}
                     </Box>
                 </DialogContent>
-                <DialogActions><Button onClick={() => setSummaryOpen(false)}>Đóng</Button><Button variant="contained" startIcon={<PrintIcon />} onClick={printSummary}>In / Lưu PDF</Button></DialogActions>
+                <DialogActions>
+                    <Button onClick={() => setSummaryOpen(false)}>Đóng</Button>
+                    <Button variant="outlined" startIcon={exportingExcel ? <CircularProgress size={18} /> : <FileDownloadOutlinedIcon />} disabled={exportingExcel} onClick={exportSummaryExcel}>Xuất Excel</Button>
+                    <Button variant="contained" startIcon={<PrintIcon />} onClick={printSummary}>In / Lưu PDF</Button>
+                </DialogActions>
             </Dialog>
         </Box>
     );

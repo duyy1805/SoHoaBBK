@@ -1,4 +1,5 @@
 import { forwardRef } from 'react';
+import { doiTraDefectiveSetQuantity } from '../doiTraPhoiLoi.utils';
 
 const ROWS_PER_PAGE = 12;
 const ERROR_COLUMNS = [
@@ -26,8 +27,9 @@ const formatQuantity = (value) => {
 const materialLabel = (item) => {
     const name = text(item?.TenLoaiPhoi);
     const code = text(item?.MaVatTu);
-    if (name && code) return `${name} (${code})`;
-    return name || code;
+    const daoChat = text(item?.DaoChat);
+    const label = name && code ? `${name} (${code})` : name || code;
+    return [label, daoChat ? `Dao chặt: ${daoChat}` : ''].filter(Boolean).join(' - ');
 };
 const errorColumn = (defect) => {
     const value = normalize([
@@ -162,7 +164,7 @@ const DoiTraPhoiLoiSummaryPrintTemplate = forwardRef(function DoiTraPhoiLoiSumma
                                         <td style={cell}>{row ? row.ticket.DepartmentName || row.ticket.UnitName || '' : ''}</td>
                                         <td style={{ ...cell, textAlign: 'center' }}>{row ? formatDate(row.ticket.NgayLap) : ''}</td>
                                         <td style={cell}>{row ? materialLabel(row) : ''}</td>
-                                        <td style={{ ...cell, textAlign: 'center' }}>{row ? formatQuantity(row.quota.SoLuongBoLoiSnapshot ?? row.SoLuongPhoiLoi) : ''}</td>
+                                        <td style={{ ...cell, textAlign: 'center' }}>{row ? formatQuantity(row.quota.SoLuongBoLoiSnapshot ?? doiTraDefectiveSetQuantity(row)) : ''}</td>
                                         <td style={{ ...cell, textAlign: 'center' }}>{row?.quota?.TenDonViTinh || ''}</td>
                                         <td style={{ ...cell, textAlign: 'center' }}>{row ? formatQuantity(row.quota.SoLuongDoiTra) : ''}</td>
                                         <td style={cell}>{row?.LenhXuatVatTu || ''}</td>

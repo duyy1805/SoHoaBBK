@@ -908,6 +908,7 @@ const attachListQuantities = async (pool, rows = []) => {
     const result = await pool.request()
         .input('IdsJson', sql.NVarChar(sql.MAX), JSON.stringify(ids))
         .input('CuoiChuyenLoaiKiemId', sql.Int, CUOI_CHUYEN_LOAI_KIEM_ID)
+        .input('DauVaoLoaiKiemId', sql.Int, DAU_VAO_LOAI_KIEM_ID)
         .query(`
             SELECT pk.Id,
                 CASE WHEN pk.LoaiKiemId = @CuoiChuyenLoaiKiemId
@@ -936,6 +937,8 @@ const attachListQuantities = async (pool, rows = []) => {
                     THEN COALESCE(sxbtPlanUnit.MaDonVi, sxbtLegacyUnit.MaDonVi) END AS SxbtMaDonVi
                 , CASE WHEN pk.LoaiKiemId = 4
                     THEN COALESCE(sxbtPlanUnit.TenDonVi, sxbtLegacyUnit.TenDonVi, NULLIF(pk.DoiTuong, N'')) END AS SxbtTenDonVi
+                , CASE WHEN pk.LoaiKiemId = @DauVaoLoaiKiemId
+                    THEN inputSupplier.TenNhaCungCap END AS NhaCungCap
             FROM dbo.PHIEU_KIEM pk
             LEFT JOIN dbo.USERS creator ON creator.Id = pk.NguoiLapId
             LEFT JOIN dbo.DM_BO_PHAN creatorDepartment ON creatorDepartment.Id = creator.BoPhanId
@@ -964,6 +967,18 @@ const attachListQuantities = async (pool, rows = []) => {
                 FROM dbo.PHIEU_KIEM_CUOI_CHUYEN_PLAN planRow
                 WHERE planRow.PhieuKiemId = pk.Id
             ) planTotals
+            OUTER APPLY (
+                SELECT TOP (1)
+                    supplier.Ten_NhaCungCap AS TenNhaCungCap
+                FROM TAG_QTKD.dbo.ChungTuNhap_ChiTiet receiptDetail
+                INNER JOIN TAG_QTKD.dbo.ChungTuNhap receipt
+                    ON receipt.ID_ChungTuNhap = receiptDetail.ID_ChungTuNhap
+                LEFT JOIN TAG_QTKD.dbo.DM_NhaCungCap supplier
+                    ON supplier.ID_NhaCungCap = receipt.ID_NhaCungCap
+                   AND supplier.TonTai = 1
+                WHERE pk.LoaiKiemId = @DauVaoLoaiKiemId
+                  AND receiptDetail.ID_ChungTuNhap_ChiTiet = pk.SourceId
+            ) inputSupplier
             OUTER APPLY (
                 SELECT TOP (1)
                     contractor.Ma_NhaThau AS MaDonVi,

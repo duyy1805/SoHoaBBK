@@ -58,6 +58,33 @@ const getDefaultDateRange = () => {
     fromDate.setDate(fromDate.getDate() - 6);
     return { fromDate: formatDateOnly(fromDate), toDate: formatDateOnly(toDate) };
 };
+const normalizeFilterText = (value) => String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+const getLoaiKiemLabel = (item) => item.TenLoaiKiem || (item.LoaiKiemId ? `Loại ${item.LoaiKiemId}` : "");
+const getDepartmentLabel = (item) => {
+    const code = item.MaBoPhanTao || item.MaBoPhanNguoiKiem || "";
+    const name = item.TenBoPhanTao || item.TenBoPhanNguoiKiem || item.TenBoPhan || "";
+    return [code, name].filter(Boolean).join(" - ");
+};
+const getSxbtProductionUnitLabel = (item) => {
+    if (Number(item.LoaiKiemId) !== 4) return "";
+    return [item.SxbtMaDonVi, item.SxbtTenDonVi]
+        .map((value) => String(value || "").trim())
+        .filter((value, index, values) => value && values.indexOf(value) === index)
+        .join(" - ");
+};
+const getProductSourceLabel = (item) => {
+    if (Number(item.LoaiKiemId) === 1) return String(item.NhaCungCap || "").trim();
+    return getSxbtProductionUnitLabel(item);
+};
+const includesFilter = (value, filter) => {
+    const normalizedFilter = normalizeFilterText(filter);
+    if (!normalizedFilter) return true;
+    return normalizeFilterText(value).includes(normalizedFilter);
+};
 
 export default function PhieuKiemList() {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -73,6 +100,7 @@ export default function PhieuKiemList() {
     const [filterStatus, setFilterStatus] = useState(() => searchParams.get("status") || "");
     const [filterLoaiKiem, setFilterLoaiKiem] = useState(() => searchParams.get("type") || "");
     const [filterNguoiKiem, setFilterNguoiKiem] = useState(() => searchParams.get("inspector") || "");
+    const [filterSanPham, setFilterSanPham] = useState(() => searchParams.get("product") || "");
     const [filterKetLuan, setFilterKetLuan] = useState(() => searchParams.get("result") || "");
     const [dateFrom, setDateFrom] = useState(() => searchParams.get("from") || defaultDateRange.fromDate);
     const [dateTo, setDateTo] = useState(() => searchParams.get("to") || defaultDateRange.toDate);
@@ -105,6 +133,7 @@ export default function PhieuKiemList() {
         setFilterStatus(searchParams.get("status") || "");
         setFilterLoaiKiem(searchParams.get("type") || "");
         setFilterNguoiKiem(searchParams.get("inspector") || "");
+        setFilterSanPham(searchParams.get("product") || "");
         setFilterKetLuan(searchParams.get("result") || "");
         setDateFrom(searchParams.get("from") || defaultDateRange.fromDate);
         setDateTo(searchParams.get("to") || defaultDateRange.toDate);
@@ -177,32 +206,6 @@ export default function PhieuKiemList() {
         }
     };
 
-    const normalizeFilterText = (value) => String(value || "")
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .trim();
-
-    const getLoaiKiemLabel = (item) => item.TenLoaiKiem || (item.LoaiKiemId ? `Loại ${item.LoaiKiemId}` : "");
-    const getDepartmentLabel = (item) => {
-        const code = item.MaBoPhanTao || item.MaBoPhanNguoiKiem || "";
-        const name = item.TenBoPhanTao || item.TenBoPhanNguoiKiem || item.TenBoPhan || "";
-        return [code, name].filter(Boolean).join(" - ");
-    };
-    const getSxbtProductionUnitLabel = (item) => {
-        if (Number(item.LoaiKiemId) !== 4) return "";
-        return [item.SxbtMaDonVi, item.SxbtTenDonVi]
-            .map((value) => String(value || "").trim())
-            .filter((value, index, values) => value && values.indexOf(value) === index)
-            .join(" - ");
-    };
-
-    const includesFilter = (value, filter) => {
-        const normalizedFilter = normalizeFilterText(filter);
-        if (!normalizedFilter) return true;
-        return normalizeFilterText(value).includes(normalizedFilter);
-    };
-
     // Xử lý bộ lọc đa trường bằng useMemo
     const filteredData = useMemo(() => {
         return data.filter((item) => {
@@ -216,6 +219,10 @@ export default function PhieuKiemList() {
             if (!includesFilter(
                 `${item.TenNguoiKiem || ""} ${getDepartmentLabel(item)}`,
                 filterNguoiKiem
+            )) return false;
+            if (!includesFilter(
+                `${item.MaSanPham || ""} ${item.TenSanPham || ""} ${getProductSourceLabel(item)}`,
+                filterSanPham
             )) return false;
             if (filterKetLuan && item.KetLuan !== filterKetLuan) return false;
 
@@ -235,15 +242,16 @@ export default function PhieuKiemList() {
                 const matchSanPham = item.TenSanPham?.toLowerCase().includes(searchLower); // Đã thêm lọc theo sản phẩm
                 const matchBoPhan = getDepartmentLabel(item).toLowerCase().includes(searchLower);
                 const matchDonViSxbt = getSxbtProductionUnitLabel(item).toLowerCase().includes(searchLower);
+                const matchNhaCungCap = String(item.NhaCungCap || "").toLowerCase().includes(searchLower);
 
-                if (!matchSoPhieu && !matchLot && !matchNguoiKiem && !matchSanPham && !matchBoPhan && !matchDonViSxbt) {
+                if (!matchSoPhieu && !matchLot && !matchNguoiKiem && !matchSanPham && !matchBoPhan && !matchDonViSxbt && !matchNhaCungCap) {
                     return false;
                 }
             }
 
             return true;
         });
-    }, [data, dateFrom, dateTo, filterLoaiKiem, filterNguoiKiem, filterKetLuan, filterStatus, searchText]);
+    }, [data, dateFrom, dateTo, filterLoaiKiem, filterNguoiKiem, filterSanPham, filterKetLuan, filterStatus, searchText]);
 
     const canApproveWorkflow = hasPermission("PHAN_CONG_NGUOI_XU_LY");
     const canConfirmDepartment = hasPermission("XAC_NHAN_PX");
@@ -690,9 +698,9 @@ export default function PhieuKiemList() {
                                             <Typography color="primary" fontWeight={800}>{item.SoPhieu}</Typography>
                                             <Typography fontWeight={700}>{item.TenSanPham || "—"}</Typography>
                                             <Typography variant="caption" color="text.secondary">{item.MaSanPham || ""}</Typography>
-                                            {getSxbtProductionUnitLabel(item) && (
+                                            {getProductSourceLabel(item) && (
                                                 <Typography variant="caption" color="primary.main" display="block" fontWeight={700}>
-                                                    {getSxbtProductionUnitLabel(item)}
+                                                    {getProductSourceLabel(item)}
                                                 </Typography>
                                             )}
                                         </Box>
@@ -789,7 +797,15 @@ export default function PhieuKiemList() {
                                             placeholder: "Nhập loại kiểm"
                                         })}
                                     </TableCell>
-                                    <TableCell sx={{ width: 255 }}>Sản phẩm</TableCell>
+                                    <TableCell sx={{ width: 255 }}>
+                                        {renderFilterHeader({
+                                            field: "sanPham",
+                                            label: "Sản phẩm",
+                                            value: filterSanPham,
+                                            onChange: (value) => updateFilter(setFilterSanPham, "product", value),
+                                            placeholder: "Nhập sản phẩm hoặc nhà cung cấp"
+                                        })}
+                                    </TableCell>
                                     <TableCell sx={{ width: 100 }}>LOT</TableCell>
                                     <TableCell sx={{ width: 145 }} align="right">Số lượng</TableCell>
                                     <TableCell sx={{ width: 220 }}>
@@ -902,8 +918,11 @@ export default function PhieuKiemList() {
                                                 <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11.5 }}>
                                                     {item.MaSanPham || ""}
                                                 </Typography>
-                                                {getSxbtProductionUnitLabel(item) && (
-                                                    <Tooltip title={`Đơn vị sản xuất: ${getSxbtProductionUnitLabel(item)}`} placement="top-start">
+                                                {getProductSourceLabel(item) && (
+                                                    <Tooltip
+                                                        title={`${Number(item.LoaiKiemId) === 1 ? "Nhà cung cấp" : "Đơn vị sản xuất"}: ${getProductSourceLabel(item)}`}
+                                                        placement="top-start"
+                                                    >
                                                         <Typography
                                                             variant="caption"
                                                             color="primary.main"
@@ -911,7 +930,7 @@ export default function PhieuKiemList() {
                                                             fontWeight={700}
                                                             sx={{ fontSize: 11.5, mt: 0.25 }}
                                                         >
-                                                            {getSxbtProductionUnitLabel(item)}
+                                                            {getProductSourceLabel(item)}
                                                         </Typography>
                                                     </Tooltip>
                                                 )}

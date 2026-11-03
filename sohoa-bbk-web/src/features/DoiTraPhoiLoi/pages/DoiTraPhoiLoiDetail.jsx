@@ -17,11 +17,12 @@ import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined';
 import CalculateOutlinedIcon from '@mui/icons-material/CalculateOutlined';
 import BuildCircleOutlinedIcon from '@mui/icons-material/BuildCircleOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useReactToPrint } from 'react-to-print';
 import {
-    cancelDoiTraPhoiLoi, deleteDoiTraPhoiLoi, executeDoiTraAction, getDoiTraKph,
-    getDoiTraPhoiLoiDetail
+    cancelDoiTraPhoiLoi, deleteDoiTraPhoiLoi, executeDoiTraAction,
+    exportDoiTraSummaryExcel, getDoiTraKph, getDoiTraPhoiLoiDetail
 } from '../../../api/doiTraPhoiLoi.api';
 import { hasPermission } from '../../../utils/auth';
 import DoiTraPhoiLoiSummaryPrintTemplate from '../components/DoiTraPhoiLoiSummaryPrintTemplate';
@@ -31,7 +32,7 @@ import DoiTraDinhMucEditor from '../components/DoiTraDinhMucEditor';
 import DoiTraKphWorkflow from '../components/DoiTraKphWorkflow';
 import {
     doiTraDinhMucStatusMeta, doiTraHistoryActionLabel, doiTraStatusMeta,
-    formatDoiTraDate, formatDoiTraQuantity
+    formatDoiTraDate, formatDoiTraQuantity, maxDoiTraDefectiveSetQuantity
 } from '../doiTraPhoiLoi.utils';
 
 const Info = ({ label, value }) => (
@@ -71,6 +72,7 @@ export default function DoiTraPhoiLoiDetail() {
     const [btpDefectQuantity, setBtpDefectQuantity] = useState('');
     const [actionLoading, setActionLoading] = useState(false);
     const [deleting, setDeleting] = useState(false);
+    const [exportingExcel, setExportingExcel] = useState(false);
 
     const load = useCallback(async ({ background = false } = {}) => {
         try {
@@ -127,6 +129,26 @@ export default function DoiTraPhoiLoiDetail() {
         }
     };
 
+    const exportSummaryExcel = async () => {
+        try {
+            setExportingExcel(true);
+            const response = await exportDoiTraSummaryExcel([Number(id)]);
+            const url = window.URL.createObjectURL(response.data);
+            const link = document.createElement('a');
+            const safeNumber = String(data.phieu?.SoPhieu || id).replace(/[^\w.-]+/g, '_');
+            link.href = url;
+            link.download = `tong-hop-doi-phoi-${safeNumber}.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch {
+            window.alert('Không xuất được Excel tổng hợp đổi phôi.');
+        } finally {
+            setExportingExcel(false);
+        }
+    };
+
     const cancel = async () => {
         if (!window.confirm('Hủy phiếu nháp này? Phiếu sẽ được giữ lại trong lịch sử.')) return;
         try {
@@ -159,7 +181,9 @@ export default function DoiTraPhoiLoiDetail() {
         }
         setActionDialog(action);
         setActionNote('');
-        setBtpDefectQuantity(data.phieu?.SoLuongBtpLoi || '');
+        const savedQuantity = Number(data.phieu?.SoLuongBtpLoi);
+        const defaultQuantity = maxDoiTraDefectiveSetQuantity(data.phoiItems);
+        setBtpDefectQuantity(savedQuantity > 0 ? savedQuantity : (defaultQuantity || ''));
     };
 
     const executeAction = async () => {
@@ -291,11 +315,11 @@ export default function DoiTraPhoiLoiDetail() {
                             inputProps={{ maxLength: 1000 }}
                         />
                         {['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(actionDialog?.ActionCode) && <>
-                            <TextField required fullWidth type="number" label="Số lượng BTP lỗi" value={btpDefectQuantity} onChange={(event) => setBtpDefectQuantity(event.target.value)} inputProps={{ min: 0.01, max: plan.PlanQty, step: 0.01 }} helperText={`Tối đa ${formatDoiTraQuantity(plan.PlanQty, 2)} · Tối đa 2 chữ số thập phân`} />
+                            <TextField required fullWidth type="number" label="Số lượng BTP lỗi" value={btpDefectQuantity} onChange={(event) => setBtpDefectQuantity(event.target.value)} inputProps={{ min: 0.01, max: plan.PlanQty, step: 0.01 }} helperText={`Mặc định là số bộ lỗi lớn nhất · Tối đa ${formatDoiTraQuantity(plan.PlanQty, 2)} · Có thể chỉnh sửa`} />
                             <Alert severity="info">
                                 BTP: {expectedBtp}{plan.ExpectedProductionLot ? ` · Lô ${plan.ExpectedProductionLot}` : ''}<br />
                                 Công đoạn: {[plan.OperationCode, plan.OperationName].filter(Boolean).join(' — ') || '---'}<br />
-                                Kho nhập dự kiến: {expectedWarehouse}. Backend sẽ đối chiếu lại toàn bộ dữ liệu theo PlanID trước khi tạo phiếu.
+                                Kho nhập dự kiến: {expectedWarehouse}.
                             </Alert>
                             <Alert severity="info">Khi xác nhận, hệ thống tạo phiếu nhập BTP lỗi ở trạng thái Đang lập. Danh sách phôi và lỗi sẽ bị khóa đến khi TBP KCS trả lại.</Alert>
                         </>}
@@ -323,6 +347,7 @@ export default function DoiTraPhoiLoiDetail() {
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setPrintOpen(false)}>Đóng</Button>
+                    {printTab === 'summary' && <Button variant="outlined" startIcon={exportingExcel ? <CircularProgress size={18} /> : <FileDownloadOutlinedIcon />} disabled={exportingExcel} onClick={exportSummaryExcel}>Xuất Excel</Button>}
                     <Button variant="contained" startIcon={<PrintIcon />} onClick={printTab === 'kph' ? printKph : printSummary}>In / Lưu PDF</Button>
                 </DialogActions>
             </Dialog>

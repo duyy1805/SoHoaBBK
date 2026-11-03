@@ -6,12 +6,13 @@ import {
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
 import TaskAltOutlinedIcon from '@mui/icons-material/TaskAltOutlined';
 import { confirmDoiTraSoLuong, saveDoiTraSoLuong } from '../../../api/doiTraPhoiLoi.api';
-import { formatDoiTraQuantity } from '../doiTraPhoiLoi.utils';
+import {
+    doiTraDefectiveSetQuantity, doiTraPhoiCount, formatDoiTraQuantity
+} from '../doiTraPhoiLoi.utils';
 
 const titleOf = (item) => [item.TenLoaiPhoi, item.SoPhoi && `Số phôi ${item.SoPhoi}`, item.KyHieu]
     .filter(Boolean).join(' — ') || `Phôi #${item.Id}`;
 const defectTitleOf = (item) => [item.MaLoi, item.TenLoi].filter(Boolean).join(' — ') || 'Lỗi chưa có tên';
-
 const DefectivePartList = ({ items = [] }) => <Stack spacing={0.75} sx={{ mt: 1 }}>
     {items.map((part, index) => <Box key={part.Id || `${part.SourceLoiPhoiId}-${index}`} sx={{
         px: 1, py: 0.75, border: 1, borderColor: 'divider', borderRadius: 1.25, bgcolor: '#fafbfc'
@@ -23,6 +24,12 @@ const DefectivePartList = ({ items = [] }) => <Stack spacing={0.75} sx={{ mt: 1 
             <Chip size="small" color="error" variant="outlined"
                 label={`${formatDoiTraQuantity(part.SoLuongPhoiLoi)} lỗi`} sx={{ flexShrink: 0, fontWeight: 700 }} />
         </Stack>
+        <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.35 }}>
+            Dao chặt: {part.DaoChat || '---'}
+        </Typography>
+        <Typography variant="caption" display="block" color="text.secondary">
+            {`${formatDoiTraQuantity(part.SoLuongPhoiLoi)} lỗi / ${formatDoiTraQuantity(doiTraPhoiCount(part))} phôi = ${formatDoiTraQuantity(doiTraDefectiveSetQuantity(part))} bộ lỗi`}
+        </Typography>
         {(part.defects || []).length > 0 && <Stack direction="row" spacing={0.5} useFlexGap flexWrap="wrap" sx={{ mt: 0.65 }}>
             {part.defects.map((defect) => <Chip key={defect.Id || `${defect.DefectId}-${defect.SoLuongLoi}`}
                 size="small" variant="filled"
@@ -40,14 +47,14 @@ const createDraft = (phoiItems, savedItems) => {
         const current = materialGroups.get(sourceVatTuId);
         if (current) {
             current.phoiItems.push(phoi);
-            current.soLuongBoLoi = Math.max(current.soLuongBoLoi, Number(phoi.SoLuongPhoiLoi) || 0);
+            current.soLuongBoLoi = Math.max(current.soLuongBoLoi, doiTraDefectiveSetQuantity(phoi));
         } else {
             materialGroups.set(sourceVatTuId, {
                 sourceVatTuId,
                 maVatTu: phoi.MaVatTu,
                 quyCachVatTu: phoi.QuyCachVatTu,
                 currentUnit: phoi.CurrentTenDonViTinh,
-                soLuongBoLoi: Number(phoi.SoLuongPhoiLoi) || 0,
+                soLuongBoLoi: doiTraDefectiveSetQuantity(phoi),
                 phoiItems: [phoi]
             });
         }
@@ -145,7 +152,7 @@ export default function DoiTraDinhMucEditor({
                             </TableCell>
                             <TableCell align="right">
                                 <Typography variant="body2" fontWeight={700}>{formatDoiTraQuantity(item.material.soLuongBoLoi)}</Typography>
-                                <Typography variant="caption" color="text.secondary">Cao nhất trong {item.material.phoiItems.length} chi tiết</Typography>
+                                <Typography variant="caption" color="text.secondary">Cao nhất sau quy đổi từ {item.material.phoiItems.length} chi tiết</Typography>
                             </TableCell>
                             <TableCell><TextField fullWidth size="small" type="number" value={item.soLuongDoiTra} disabled={!canEdit} inputProps={{ min: 0.001, step: 0.001 }} onChange={(event) => patch(index, { soLuongDoiTra: event.target.value })} /></TableCell>
                             <TableCell>{item.unit || '---'}</TableCell>

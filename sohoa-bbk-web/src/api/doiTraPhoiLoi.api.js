@@ -77,3 +77,6 @@ export const getDoiTraTraceabilityLookups = () =>
 
 export const previewDoiTraSummary = (phieuIds) =>
     axiosClient.post('/doi-tra-phoi-loi/summary-preview', { phieuIds });
+
+export const exportDoiTraSummaryExcel = (phieuIds) =>
+    axiosClient.post('/doi-tra-phoi-loi/summary-export', { phieuIds }, { responseType: 'blob' });

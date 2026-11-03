@@ -66,3 +66,16 @@ export const formatDoiTraQuantity = (value, maximumFractionDigits = 3) => {
         ? number.toLocaleString('vi-VN', { maximumFractionDigits })
         : String(value);
 };
+
+export const doiTraPhoiCount = (item) => {
+    const value = Number(String(item?.SoPhoi ?? '').trim());
+    return Number.isFinite(value) && value > 0 ? value : 1;
+};
+
+export const doiTraDefectiveSetQuantity = (item) => Math.ceil(
+    (Number(item?.SoLuongPhoiLoi) || 0) / doiTraPhoiCount(item)
+);
+
+export const maxDoiTraDefectiveSetQuantity = (items = []) => (items || []).reduce(
+    (maximum, item) => Math.max(maximum, doiTraDefectiveSetQuantity(item)), 0
+);

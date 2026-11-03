@@ -8,6 +8,7 @@ const { canLeadDepartment, getManagedDepartmentIds } = require('../utils/managed
 const { loadSignatureDataUrlMap } = require('../utils/signatureImage');
 const { isValidReturnQuantity } = require('../utils/doiTraReturnQuantity');
 const { canB7Work } = require('../utils/doiTraParallelWorkflow');
+const { writeDoiTraSummaryExcel } = require('../utils/doiTraSummaryExcel');
 const {
     createDoiTraSupplementIssues,
     cancelDraftSupplementIssuesForKcsReturn,
@@ -465,6 +466,85 @@ router.post('/summary-preview', authorizeDoiTraAccess, async (req, res) => {
     }
 });
 
+router.post('/summary-export', authorizeDoiTraAccess, async (req, res) => {
+    const phieuIds = [...new Set((Array.isArray(req.body?.phieuIds) ? req.body.phieuIds : [])
+        .map(positiveId).filter(Boolean))];
+    if (!phieuIds.length || phieuIds.length > 100) {
+        return res.status(400).json({ message: 'Vui lòng chọn từ 1 đến 100 phiếu để xuất Excel' });
+    }
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('PhieuIdsJson', sql.NVarChar(sql.MAX), JSON.stringify(phieuIds))
+            .query(`
+                CREATE TABLE #SelectedPhieu (Id INT NOT NULL PRIMARY KEY);
+                INSERT #SelectedPhieu SELECT value FROM OPENJSON(@PhieuIdsJson) WITH (value INT '$');
+
+                IF EXISTS (SELECT 1 FROM #SelectedPhieu selected LEFT JOIN dbo.DOI_TRA_PHOI_LOI phieu ON phieu.Id=selected.Id WHERE phieu.Id IS NULL)
+                    THROW 52030, N'Có phiếu đổi trả không tồn tại.', 1;
+                IF EXISTS (SELECT 1 FROM #SelectedPhieu selected JOIN dbo.DOI_TRA_PHOI_LOI phieu ON phieu.Id=selected.Id WHERE phieu.TrangThai=N'DA_HUY')
+                    THROW 52031, N'Không thể xuất phiếu đã hủy.', 1;
+
+                SELECT phoiRow.Id AS PhoiId,phieu.Id AS PhieuId,phieu.SoPhieu,phieu.NgayLap,
+                    planRow.PlanID,planRow.PlanNo,planRow.OrderCode,planRow.ProductCode,planRow.ProductName,
+                    planRow.OperationCode,planRow.OperationName,planRow.DepartmentCode,planRow.DepartmentName,
+                    productionLot.ExpectedProductionLot,phoiRow.*,
+                    quota.SoLuongBoLoiSnapshot,quota.SoLuongDoiTra,quota.TenDonViTinh
+                FROM #SelectedPhieu selected
+                JOIN dbo.DOI_TRA_PHOI_LOI phieu ON phieu.Id=selected.Id
+                JOIN dbo.DOI_TRA_PHOI_LOI_PLAN planRow ON planRow.PhieuId=phieu.Id
+                JOIN dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow ON phoiRow.PhieuId=phieu.Id
+                LEFT JOIN dbo.DOI_TRA_PHOI_LOI_VAT_TU_DINH_MUC quota
+                  ON quota.PhieuId=phieu.Id AND quota.SourceVatTuId=phoiRow.SourceVatTuId
+                OUTER APPLY (
+                    SELECT MAX(lotRow.So_LoSanXuat) AS ExpectedProductionLot
+                    FROM TAG_QLSX.dbo.KeHoachSanXuat_SanPham planProduct
+                    JOIN TAG_QTKD.dbo.DonHang_LoSanXuat lotRow
+                      ON lotRow.ID_DonHang_LoSanXuat=planProduct.ID_DonHang_LoSanXuat
+                     AND lotRow.TonTai=1
+                    WHERE planProduct.ID_KeHoachSanXuat=TRY_CONVERT(INT,planRow.PlanID)
+                ) productionLot
+                ORDER BY phieu.NgayLap,phieu.Id,phoiRow.SortOrder,phoiRow.Id;
+
+                SELECT defectRow.*
+                FROM #SelectedPhieu selected
+                JOIN dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow ON phoiRow.PhieuId=selected.Id
+                JOIN dbo.DOI_TRA_PHOI_LOI_PHOI_DEFECT defectRow ON defectRow.PhoiId=phoiRow.Id
+                ORDER BY phoiRow.PhieuId,phoiRow.SortOrder,defectRow.SortOrder,defectRow.Id;
+
+                SELECT phieu.SoPhieu,receiptLink.SoPhieuNhapBtp,receiptLink.SoLuongBtpLoi,
+                    warehouse.Ten_Kho AS TenKhoNhap,processRow.Ten_QuyTrinhSanXuat,
+                    receiptLink.TrangThai,receiptLink.CreatedAt,receipt.TrangThai AS ErpTrangThai,
+                    orderProduct.ItemCode AS MaBtp,orderProduct.Ten_SanPham AS TenBtp,
+                    productionLot.So_LoSanXuat AS SoLoSanXuat
+                FROM #SelectedPhieu selected
+                JOIN dbo.DOI_TRA_PHOI_LOI phieu ON phieu.Id=selected.Id
+                JOIN dbo.DOI_TRA_PHOI_LOI_PHIEU_NHAP_BTP receiptLink ON receiptLink.PhieuId=selected.Id
+                LEFT JOIN TAG_QTKD.dbo.PhieuNhapBTP receipt ON receipt.ID_PhieuNhapBTP=receiptLink.SourcePhieuNhapBtpId
+                LEFT JOIN TAG_QTKD.dbo.PhieuNhapBTP_ChiTiet receiptDetail ON receiptDetail.ID_PhieuNhapBTP=receipt.ID_PhieuNhapBTP
+                LEFT JOIN TAG_QTKD.dbo.DonHang_SanPham orderProduct ON orderProduct.ID_DonHang_SanPham=receiptDetail.ID_DonHang_SanPham
+                LEFT JOIN TAG_QTKD.dbo.DonHang_LoSanXuat productionLot ON productionLot.ID_DonHang_LoSanXuat=receiptDetail.ID_DonHang_LoSanXuat
+                LEFT JOIN TAG_QTKD.dbo.DM_Kho warehouse ON warehouse.ID_Kho=receiptLink.SourceKhoNhapId
+                LEFT JOIN TAG_QTKD.dbo.DM_QuyTrinhSanXuat processRow ON processRow.ID_QuyTrinhSanXuat=receiptLink.SourceQuyTrinhSanXuatId
+                ORDER BY phieu.NgayLap,phieu.Id,receiptLink.CreatedAt,receiptLink.Id;
+            `);
+        const buffer = writeDoiTraSummaryExcel({
+            items: result.recordsets[0] || [],
+            defects: result.recordsets[1] || [],
+            receipts: result.recordsets[2] || []
+        });
+        const suffix = phieuIds.length === 1 ? `-${phieuIds[0]}` : `-${phieuIds.length}-phieu`;
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="tong-hop-doi-phoi${suffix}.xlsx"`);
+        res.send(buffer);
+    } catch (error) {
+        console.error('DoiTraPhoiLoi summary export error:', error);
+        const number = Number(error?.number || error?.originalError?.info?.number);
+        res.status(number >= 52030 && number <= 52031 ? 409 : 500)
+            .json({ message: errorMessage(error, 'Không xuất được Excel tổng hợp đổi phôi') });
+    }
+});
+
 router.get('/', authorizeDoiTraAccess, async (req, res) => {
     try {
         const pool = await poolPromise;
@@ -773,10 +853,16 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                       ))
                 ) THROW 52026,N'Lệnh xuất bổ sung đã được xử lý trên ERP. Cần thu hồi nghiệp vụ ERP trước khi sửa phiếu.',1;
 
-                SELECT SourceVatTuId,MAX(SoLuongPhoiLoi) AS SoLuongBoLoi
+                SELECT phoiRow.SourceVatTuId,
+                    MAX(CONVERT(INT,CEILING(
+                        CONVERT(DECIMAL(38,10),phoiRow.SoLuongPhoiLoi) /
+                        CASE WHEN TRY_CONVERT(DECIMAL(18,6),NULLIF(LTRIM(RTRIM(phoiRow.SoPhoi)),N''))>0
+                            THEN TRY_CONVERT(DECIMAL(18,6),NULLIF(LTRIM(RTRIM(phoiRow.SoPhoi)),N''))
+                            ELSE CONVERT(DECIMAL(18,6),1) END
+                    ))) AS SoLuongBoLoi
                 INTO #OldMaterialBasis
-                FROM dbo.DOI_TRA_PHOI_LOI_PHOI
-                WHERE PhieuId=@PhieuId GROUP BY SourceVatTuId;
+                FROM dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow
+                WHERE phoiRow.PhieuId=@PhieuId GROUP BY phoiRow.SourceVatTuId;
 
                 CREATE TABLE #InputPhoi (
                     SourceLoiPhoiId INT NOT NULL PRIMARY KEY,
@@ -933,9 +1019,19 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                 IF EXISTS(
                     SELECT SourceVatTuId,SoLuongBoLoi FROM #OldMaterialBasis
                     EXCEPT
-                    SELECT SourceVatTuId,MAX(SoLuongPhoiLoi) FROM dbo.DOI_TRA_PHOI_LOI_PHOI WHERE PhieuId=@PhieuId GROUP BY SourceVatTuId
+                    SELECT phoiRow.SourceVatTuId,MAX(CONVERT(INT,CEILING(
+                        CONVERT(DECIMAL(38,10),phoiRow.SoLuongPhoiLoi) /
+                        CASE WHEN TRY_CONVERT(DECIMAL(18,6),NULLIF(LTRIM(RTRIM(phoiRow.SoPhoi)),N''))>0
+                            THEN TRY_CONVERT(DECIMAL(18,6),NULLIF(LTRIM(RTRIM(phoiRow.SoPhoi)),N''))
+                            ELSE CONVERT(DECIMAL(18,6),1) END
+                    ))) FROM dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow WHERE phoiRow.PhieuId=@PhieuId GROUP BY phoiRow.SourceVatTuId
                 ) OR EXISTS(
-                    SELECT SourceVatTuId,MAX(SoLuongPhoiLoi) FROM dbo.DOI_TRA_PHOI_LOI_PHOI WHERE PhieuId=@PhieuId GROUP BY SourceVatTuId
+                    SELECT phoiRow.SourceVatTuId,MAX(CONVERT(INT,CEILING(
+                        CONVERT(DECIMAL(38,10),phoiRow.SoLuongPhoiLoi) /
+                        CASE WHEN TRY_CONVERT(DECIMAL(18,6),NULLIF(LTRIM(RTRIM(phoiRow.SoPhoi)),N''))>0
+                            THEN TRY_CONVERT(DECIMAL(18,6),NULLIF(LTRIM(RTRIM(phoiRow.SoPhoi)),N''))
+                            ELSE CONVERT(DECIMAL(18,6),1) END
+                    ))) FROM dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow WHERE phoiRow.PhieuId=@PhieuId GROUP BY phoiRow.SourceVatTuId
                     EXCEPT SELECT SourceVatTuId,SoLuongBoLoi FROM #OldMaterialBasis
                 )
                 BEGIN
@@ -1061,7 +1157,12 @@ const saveReturnQuantities = async (req, res) => {
                 );
                 INSERT #Material(SourceVatTuId,MaVatTu,QuyCachVatTu,SoLuongBoLoi)
                 SELECT phoiRow.SourceVatTuId,MAX(phoiRow.MaVatTu),MAX(phoiRow.QuyCachVatTu),
-                    MAX(phoiRow.SoLuongPhoiLoi)
+                    MAX(CONVERT(INT,CEILING(
+                        CONVERT(DECIMAL(38,10),phoiRow.SoLuongPhoiLoi) /
+                        CASE WHEN TRY_CONVERT(DECIMAL(18,6),NULLIF(LTRIM(RTRIM(phoiRow.SoPhoi)),N''))>0
+                            THEN TRY_CONVERT(DECIMAL(18,6),NULLIF(LTRIM(RTRIM(phoiRow.SoPhoi)),N''))
+                            ELSE CONVERT(DECIMAL(18,6),1) END
+                    )))
                 FROM dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow
                 WHERE phoiRow.PhieuId=@PhieuId
                 GROUP BY phoiRow.SourceVatTuId;
@@ -1323,10 +1424,15 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
                     IF EXISTS (
                         SELECT 1
                         FROM (
-                            SELECT SourceVatTuId,MAX(SoLuongPhoiLoi) AS SoLuongBoLoi
-                            FROM dbo.DOI_TRA_PHOI_LOI_PHOI
-                            WHERE PhieuId=@PhieuId
-                            GROUP BY SourceVatTuId
+                            SELECT phoiRow.SourceVatTuId,MAX(CONVERT(INT,CEILING(
+                                CONVERT(DECIMAL(38,10),phoiRow.SoLuongPhoiLoi) /
+                                CASE WHEN TRY_CONVERT(DECIMAL(18,6),NULLIF(LTRIM(RTRIM(phoiRow.SoPhoi)),N''))>0
+                                    THEN TRY_CONVERT(DECIMAL(18,6),NULLIF(LTRIM(RTRIM(phoiRow.SoPhoi)),N''))
+                                    ELSE CONVERT(DECIMAL(18,6),1) END
+                            ))) AS SoLuongBoLoi
+                            FROM dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow
+                            WHERE phoiRow.PhieuId=@PhieuId
+                            GROUP BY phoiRow.SourceVatTuId
                         ) materialGroup
                         LEFT JOIN dbo.DOI_TRA_PHOI_LOI_VAT_TU_DINH_MUC quota
                           ON quota.PhieuId=@PhieuId AND quota.SourceVatTuId=materialGroup.SourceVatTuId
