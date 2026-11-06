@@ -26,6 +26,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
     );
     const departmentSigner = findSigner(['PX', 'TBP', 'TRUONG_BO_PHAN']);
     const inspectorSigner = findSigner(['KCS', 'NHAN_VIEN_KIEM', 'KIEM_NGHIEM']);
+    const inspectorSignatureDataUrl = phieu?.NguoiKiemSignatureDataUrl || inspectorSigner?.SignatureDataUrl || null;
     if (!phieu) return null;
 
     // Chuyển array dynamicFields thành object để dễ map vào thẻ input
@@ -1070,7 +1071,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                         </Box>
                         <Box style={styles.signatureCol}>
                             <div style={{ ...styles.text, minHeight: '30px' }}><b>Người kiểm hàng</b></div>
-                            <PrintSignatureImage src={inspectorSigner?.SignatureDataUrl} height={60} />
+                            <PrintSignatureImage src={inspectorSignatureDataUrl} height={60} />
                             <div style={styles.text}>{phieu.TenNguoiKiem}</div>
                         </Box>
                     </Box>

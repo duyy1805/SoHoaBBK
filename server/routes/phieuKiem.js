@@ -2484,6 +2484,10 @@ router.get(
                     ORDER BY xn.ThoiGian, xn.Id
                 `);
             const xacNhans = await attachSignatureDataUrls(pool, confirmationResult.recordset || [], 'NguoiXacNhanId');
+            if (phieu?.NguoiKiemId) {
+                const inspectorSignatureMap = await loadSignatureDataUrlMap(pool, [phieu.NguoiKiemId]);
+                phieu.NguoiKiemSignatureDataUrl = inspectorSignatureMap.get(Number(phieu.NguoiKiemId)) || null;
+            }
             const retestInfo = Number(phieu?.LoaiKiemId) === DONG_CONT_LOAI_KIEM_ID
                 ? await getDongContRetestInfo(pool, Number(id), req)
                 : Number(phieu?.LoaiKiemId) === DAU_VAO_LOAI_KIEM_ID
