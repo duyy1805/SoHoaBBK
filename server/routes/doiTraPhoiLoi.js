@@ -9,6 +9,9 @@ const { loadSignatureDataUrlMap } = require('../utils/signatureImage');
 const { isValidReturnQuantity } = require('../utils/doiTraReturnQuantity');
 const { canB7Work } = require('../utils/doiTraParallelWorkflow');
 const { writeDoiTraSummaryExcel } = require('../utils/doiTraSummaryExcel');
+const { writeDefectFlowExcel } = require('../utils/doiTraDefectFlowExcel');
+const { buildDefectFlowReport, normalizeGroupType } = require('../utils/doiTraDefectFlowReport');
+const { loadDefectFlowRecordsets } = require('../services/doiTraDefectFlowReport');
 const {
     createDoiTraSupplementIssues,
     cancelDraftSupplementIssuesForKcsReturn,
@@ -161,6 +164,20 @@ const normalizedPhoiItems = (value) => (Array.isArray(value) ? value : []).map((
         sortOrder: index + 1,
         defects
     };
+});
+
+const defectFlowFilters = (query = {}) => ({
+    fromDate: isDateOnly(query.fromDate) ? String(query.fromDate) : null,
+    toDate: isDateOnly(query.toDate) ? String(query.toDate) : null,
+    unitId: positiveId(query.unitId),
+    departmentId: positiveId(query.departmentId),
+    planId: positiveId(query.planId),
+    orderId: positiveId(query.orderId),
+    warehouseId: positiveId(query.warehouseId),
+    keyword: trimOrNull(query.keyword),
+    groupBy: normalizeGroupType(query.groupBy),
+    page: positiveId(query.page) || 1,
+    pageSize: Math.min(positiveId(query.pageSize) || 50, 200)
 });
 
 const loadPlanDetail = async (executor, planSelectKey) => {
@@ -353,6 +370,46 @@ router.get('/traceability-lookups', authorize(VIEW_PERMISSIONS), async (_req, re
     } catch (error) {
         console.error('DoiTraPhoiLoi traceability lookup error:', error);
         res.status(500).json({ message: errorMessage(error, 'Không tải được danh mục truy nguyên') });
+    }
+});
+
+router.get('/reports/defect-flow', authorizeDoiTraAccess, async (req, res) => {
+    const filters = defectFlowFilters(req.query);
+    if ((req.query.fromDate && !filters.fromDate) || (req.query.toDate && !filters.toDate)) {
+        return res.status(400).json({ message: 'Khoảng ngày báo cáo không hợp lệ' });
+    }
+    try {
+        const pool = await poolPromise;
+        const recordsets = await loadDefectFlowRecordsets(pool, filters, false);
+        res.json(encodeBinary(buildDefectFlowReport(recordsets, { groupBy: filters.groupBy })));
+    } catch (error) {
+        const number = Number(error?.number || error?.originalError?.info?.number);
+        console.error('DoiTraPhoiLoi defect flow report error:', error);
+        res.status(number >= 52500 && number <= 52509 ? 400 : 500)
+            .json({ message: errorMessage(error, 'Không tải được báo cáo đối soát BTP lỗi') });
+    }
+});
+
+router.get('/reports/defect-flow/export', authorizeDoiTraAccess, async (req, res) => {
+    const filters = defectFlowFilters(req.query);
+    if ((req.query.fromDate && !filters.fromDate) || (req.query.toDate && !filters.toDate)) {
+        return res.status(400).json({ message: 'Khoảng ngày báo cáo không hợp lệ' });
+    }
+    try {
+        const pool = await poolPromise;
+        const recordsets = await loadDefectFlowRecordsets(pool, filters, true);
+        const report = buildDefectFlowReport(recordsets, { groupBy: filters.groupBy });
+        const buffer = writeDefectFlowExcel(report);
+        const from = filters.fromDate || 'tu-dau';
+        const to = filters.toDate || 'hien-tai';
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="bao-cao-doi-soat-btp-loi-${from}-${to}.xlsx"`);
+        res.send(buffer);
+    } catch (error) {
+        const number = Number(error?.number || error?.originalError?.info?.number);
+        console.error('DoiTraPhoiLoi defect flow export error:', error);
+        res.status(number >= 52500 && number <= 52509 ? 400 : 500)
+            .json({ message: errorMessage(error, 'Không xuất được báo cáo đối soát BTP lỗi') });
     }
 });
 
@@ -556,6 +613,7 @@ router.get('/', authorizeDoiTraAccess, async (req, res) => {
             .query(`
                 SELECT phieu.Id, phieu.SoPhieu, phieu.TrangThai, phieu.NgayLap,
                     phieu.NguoiLapId, phieu.BoPhanKcsId, phieu.CreatedAt, phieu.UpdatedAt,
+                    ISNULL(phieu.ReviewRound,1) AS ReviewRound,
                     COALESCE(phieu.DinhMucTrangThai,
                         CASE WHEN phieu.B7ConfirmedAt IS NULL THEN N'CHUA_NHAP' ELSE N'DA_XAC_NHAN' END
                     ) AS DinhMucTrangThai,
@@ -589,7 +647,52 @@ router.get('/', authorizeDoiTraAccess, async (req, res) => {
                   )
                 ORDER BY phieu.NgayLap DESC, phieu.Id DESC;
             `);
-        res.json(encodeBinary(result.recordset || []));
+        const rows = result.recordset || [];
+        const phieuIds = rows.map((item) => Number(item.Id)).filter((id) => Number.isInteger(id) && id > 0);
+        if (!phieuIds.length) return res.json([]);
+
+        const opinionResult = await pool.request()
+            .input('PhieuIdsJson', sql.NVarChar(sql.MAX), JSON.stringify(phieuIds))
+            .query(`
+                SELECT opinion.PhieuId,opinion.BoPhanId,
+                    COALESCE(NULLIF(opinion.MaBoPhan,N''),department.MaBoPhan) AS MaBoPhan,
+                    COALESCE(NULLIF(opinion.TenBoPhan,N''),department.TenBoPhan) AS TenBoPhan,
+                    CASE WHEN ISNULL(opinion.ConfirmedReviewRound,0)=ISNULL(phieu.ReviewRound,1)
+                        THEN 1 ELSE 0 END AS DaXacNhan
+                FROM dbo.DOI_TRA_PHOI_LOI_KPH_Y_KIEN opinion
+                JOIN dbo.DOI_TRA_PHOI_LOI phieu ON phieu.Id=opinion.PhieuId
+                LEFT JOIN dbo.DM_BO_PHAN department ON department.Id=opinion.BoPhanId
+                JOIN OPENJSON(@PhieuIdsJson) WITH (Id INT '$') selected ON selected.Id=opinion.PhieuId
+                WHERE opinion.IsActive=1
+                ORDER BY opinion.PhieuId,opinion.SortOrder,opinion.Id;
+            `);
+        const progressByPhieu = new Map();
+        for (const opinion of opinionResult.recordset || []) {
+            const phieuId = Number(opinion.PhieuId);
+            const progress = progressByPhieu.get(phieuId) || { departments: [], pending: [], done: 0 };
+            const department = {
+                id: Number(opinion.BoPhanId),
+                maBoPhan: opinion.MaBoPhan || null,
+                tenBoPhan: opinion.TenBoPhan || null,
+                daXacNhan: Number(opinion.DaXacNhan) === 1
+            };
+            progress.departments.push(department);
+            if (department.daXacNhan) progress.done += 1;
+            else progress.pending.push(department);
+            progressByPhieu.set(phieuId, progress);
+        }
+        res.json(encodeBinary(rows.map((item) => {
+            const progress = progressByPhieu.get(Number(item.Id)) || { departments: [], pending: [], done: 0 };
+            return {
+                ...item,
+                SoBoPhan: progress.departments.length,
+                DaCoYKien: progress.done,
+                OpinionDepartments: progress.departments,
+                BoPhanChuaXacNhanText: progress.pending
+                    .map((department) => department.tenBoPhan || department.maBoPhan || `Bộ phận #${department.id}`)
+                    .join(', ') || null
+            };
+        })));
     } catch (error) {
         console.error('DoiTraPhoiLoi list error:', error);
         res.status(500).json({ message: errorMessage(error, 'Không tải được danh sách phiếu đổi trả phôi lỗi') });

@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Alert, Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions,
     DialogContent, DialogTitle, MenuItem, Paper, Stack, Table, TableBody, TableCell,
-    TableContainer, TableHead, TableRow, TextField, Typography
+    TableContainer, TableHead, TableRow, Tab, Tabs, TextField, Typography
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import PrintIcon from '@mui/icons-material/Print';
@@ -10,7 +10,7 @@ import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import SearchIcon from '@mui/icons-material/Search';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useReactToPrint } from 'react-to-print';
 import {
     deleteDoiTraPhoiLoi, exportDoiTraSummaryExcel, getDoiTraPhoiLoiList,
@@ -22,9 +22,12 @@ import {
     formatDoiTraDate, formatDoiTraQuantity
 } from '../doiTraPhoiLoi.utils';
 import DoiTraPhoiLoiSummaryPrintTemplate from '../components/DoiTraPhoiLoiSummaryPrintTemplate';
+import DoiTraDefectFlowReport from '../components/DoiTraDefectFlowReport';
 
 export default function DoiTraPhoiLoiList() {
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const activeTab = searchParams.get('tab') === 'report' ? 'report' : 'tickets';
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedIds, setSelectedIds] = useState([]);
@@ -33,15 +36,45 @@ export default function DoiTraPhoiLoiList() {
     const [summaryData, setSummaryData] = useState(null);
     const [exportingExcel, setExportingExcel] = useState(false);
     const summaryPrintRef = useRef(null);
-    const [filters, setFilters] = useState({ keyword: '', status: '', fromDate: '', toDate: '' });
+    const [filters, setFilters] = useState({ keyword: '', status: '', opinionDepartment: 'all', fromDate: '', toDate: '' });
     const [deletingId, setDeletingId] = useState(null);
-    const user = getCurrentUser();
+    const user = useMemo(() => getCurrentUser() || {}, []);
     const permissions = user?.permissions || [];
     const isAdmin = permissions.includes('QUAN_TRI_DM')
         || (user?.roles || []).some((role) => String(role).toUpperCase().includes('ADMIN'));
     const canCreate = isAdmin || permissions.includes('THUC_HIEN_KIEM');
     const canDelete = permissions.includes('XOA_HO_SO_KCS');
-    const printableRows = rows.filter((row) => row.TrangThai !== 'DA_HUY');
+    const serverFilters = useMemo(() => Object.fromEntries(Object.entries({
+        keyword: filters.keyword,
+        status: filters.status,
+        fromDate: filters.fromDate,
+        toDate: filters.toDate
+    }).filter(([, value]) => value)), [filters.fromDate, filters.keyword, filters.status, filters.toDate]);
+    const managedDepartmentIds = useMemo(() => new Set(
+        (user?.managedBoPhanIds || [user?.boPhanId]).map(Number).filter((id) => Number.isInteger(id) && id > 0)
+    ), [user]);
+    const opinionDepartmentOptions = useMemo(() => {
+        const options = new Map();
+        rows.forEach((row) => (Array.isArray(row.OpinionDepartments) ? row.OpinionDepartments : []).forEach((department) => {
+            const id = Number(department.id);
+            if (!Number.isInteger(id) || id <= 0) return;
+            options.set(id, {
+                id,
+                label: [department.maBoPhan, department.tenBoPhan].filter(Boolean).join(' - ') || `Bộ phận #${id}`
+            });
+        }));
+        return [...options.values()].sort((a, b) => a.label.localeCompare(b.label, 'vi'));
+    }, [rows]);
+    const filteredRows = useMemo(() => rows.filter((row) => {
+        if (filters.opinionDepartment === 'all') return true;
+        const departmentIds = (Array.isArray(row.OpinionDepartments) ? row.OpinionDepartments : [])
+            .map((department) => Number(department.id));
+        if (filters.opinionDepartment === 'mine') {
+            return departmentIds.some((id) => managedDepartmentIds.has(id));
+        }
+        return departmentIds.includes(Number(filters.opinionDepartment));
+    }), [filters.opinionDepartment, managedDepartmentIds, rows]);
+    const printableRows = filteredRows.filter((row) => row.TrangThai !== 'DA_HUY');
 
     const printSummary = useReactToPrint({
         contentRef: summaryPrintRef,
@@ -51,16 +84,14 @@ export default function DoiTraPhoiLoiList() {
     const load = useCallback(async () => {
         try {
             setLoading(true);
-            const response = await getDoiTraPhoiLoiList(Object.fromEntries(
-                Object.entries(filters).filter(([, value]) => value)
-            ));
+            const response = await getDoiTraPhoiLoiList(serverFilters);
             setRows(response.data || []);
         } catch (error) {
             window.alert(error.response?.data?.message || 'Không tải được danh sách phiếu đổi trả phôi lỗi.');
         } finally {
             setLoading(false);
         }
-    }, [filters]);
+    }, [serverFilters]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -121,14 +152,22 @@ export default function DoiTraPhoiLoiList() {
                         KCS nhập BTP lỗi, TBP KCS xác nhận và B7 tạo lệnh xuất vật tư đổi trả
                     </Typography>
                 </Box>
-                <Stack direction="row" spacing={1}>
+                {activeTab === 'tickets' && <Stack direction="row" spacing={1}>
                     <Button variant="outlined" startIcon={summaryLoading ? <CircularProgress size={18} /> : <PrintIcon />} disabled={summaryLoading || !selectedIds.length} onClick={openSummary}>Xem tổng hợp ({selectedIds.length})</Button>
                     {canCreate && <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/doi-tra-phoi-loi/create')}>Tạo phiếu</Button>}
-                </Stack>
+                </Stack>}
             </Stack>
 
+            <Paper variant="outlined" sx={{ mb: 2, borderRadius: 2 }}>
+                <Tabs value={activeTab} onChange={(_event, value) => setSearchParams(value === 'report' ? { tab: 'report' } : {})}>
+                    <Tab value="tickets" label="Danh sách phiếu" />
+                    <Tab value="report" label="Báo cáo đối soát BTP lỗi" />
+                </Tabs>
+            </Paper>
+
+            {activeTab === 'report' ? <DoiTraDefectFlowReport /> : <>
             <Paper variant="outlined" sx={{ p: 1.5, mb: 2, borderRadius: 2 }}>
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} useFlexGap sx={{ flexWrap: { md: 'wrap' } }}>
                     <TextField
                         size="small"
                         placeholder="Tìm số phiếu, kế hoạch, đơn hàng, sản phẩm"
@@ -145,6 +184,17 @@ export default function DoiTraPhoiLoiList() {
                             <MenuItem key={value} value={value}>{meta.label}</MenuItem>
                         ))}
                     </TextField>
+                    <TextField select size="small" label="Bộ phận được xin ý kiến" value={filters.opinionDepartment}
+                        onChange={(event) => {
+                            setSelectedIds([]);
+                            setFilters((current) => ({ ...current, opinionDepartment: event.target.value }));
+                        }} sx={{ minWidth: 250 }}>
+                        <MenuItem value="all">Tất cả bộ phận được xin ý kiến</MenuItem>
+                        {managedDepartmentIds.size > 0 && <MenuItem value="mine">Bộ phận của tôi</MenuItem>}
+                        {opinionDepartmentOptions.map((department) => (
+                            <MenuItem key={department.id} value={String(department.id)}>{department.label}</MenuItem>
+                        ))}
+                    </TextField>
                     <TextField size="small" type="date" label="Từ ngày" value={filters.fromDate}
                         onChange={(event) => setFilters((current) => ({ ...current, fromDate: event.target.value }))}
                         slotProps={{ inputLabel: { shrink: true } }} />
@@ -157,7 +207,7 @@ export default function DoiTraPhoiLoiList() {
             <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
                 {loading ? (
                     <Box sx={{ py: 8, display: 'grid', placeItems: 'center' }}><CircularProgress /></Box>
-                ) : rows.length === 0 ? (
+                ) : filteredRows.length === 0 ? (
                     <Alert severity="info" sx={{ m: 2 }}>Chưa có phiếu đổi trả phôi lỗi phù hợp.</Alert>
                 ) : (
                     <TableContainer>
@@ -178,7 +228,7 @@ export default function DoiTraPhoiLoiList() {
                                 </TableRow>
                             </TableHead>
                             <TableBody>
-                                {rows.map((row) => {
+                                {filteredRows.map((row) => {
                                     const status = doiTraStatusMeta(row.TrangThai);
                                     const dinhMucStatus = doiTraDinhMucStatusMeta(row.DinhMucTrangThai);
                                     return (
@@ -191,7 +241,17 @@ export default function DoiTraPhoiLoiList() {
                                             <TableCell>{row.OperationName || row.OperationCode || '---'}<br /><Typography variant="caption" color="text.secondary">{row.DepartmentName || '---'}</Typography></TableCell>
                                             <TableCell align="right">{formatDoiTraQuantity(row.PlanQty)}</TableCell>
                                             <TableCell>{row.TenNguoiLap || '---'}</TableCell>
-                                            <TableCell><Chip size="small" color={status.color} label={status.label} /></TableCell>
+                                            <TableCell sx={{ minWidth: 220, maxWidth: 320 }}>
+                                                <Chip size="small" color={status.color} label={status.label} />
+                                                {row.TrangThai === 'CHO_Y_KIEN_KPH' && <Box sx={{ mt: 0.75 }}>
+                                                    <Typography variant="caption" fontWeight={700} display="block">
+                                                        {row.DaCoYKien || 0}/{row.SoBoPhan || 0} bộ phận đã xác nhận
+                                                    </Typography>
+                                                    {row.BoPhanChuaXacNhanText && <Typography variant="caption" color="warning.dark" display="block" sx={{ mt: 0.25, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
+                                                        Chờ: {row.BoPhanChuaXacNhanText}
+                                                    </Typography>}
+                                                </Box>}
+                                            </TableCell>
                                             <TableCell>
                                                 <Chip size="small" variant="outlined" color={dinhMucStatus.color} label={dinhMucStatus.label} />
                                                 {row.DinhMucTrangThai === 'DA_XAC_NHAN' && <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
@@ -225,6 +285,7 @@ export default function DoiTraPhoiLoiList() {
                     <Button variant="contained" startIcon={<PrintIcon />} onClick={printSummary}>In / Lưu PDF</Button>
                 </DialogActions>
             </Dialog>
+            </>}
         </Box>
     );
 }

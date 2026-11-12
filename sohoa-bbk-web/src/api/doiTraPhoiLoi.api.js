@@ -80,3 +80,9 @@ export const previewDoiTraSummary = (phieuIds) =>
 
 export const exportDoiTraSummaryExcel = (phieuIds) =>
     axiosClient.post('/doi-tra-phoi-loi/summary-export', { phieuIds }, { responseType: 'blob' });
+
+export const getDoiTraDefectFlowReport = (params = {}) =>
+    axiosClient.get('/doi-tra-phoi-loi/reports/defect-flow', { params });
+
+export const exportDoiTraDefectFlowReport = (params = {}) =>
+    axiosClient.get('/doi-tra-phoi-loi/reports/defect-flow/export', { params, responseType: 'blob' });
