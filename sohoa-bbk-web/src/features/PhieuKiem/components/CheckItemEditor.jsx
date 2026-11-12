@@ -9,8 +9,12 @@ import {
     DialogContent,
     DialogTitle,
     Divider,
+    FormControl,
     FormControlLabel,
     IconButton,
+    InputLabel,
+    MenuItem,
+    Select,
     Stack,
     TextField,
     ToggleButton,
@@ -47,6 +51,9 @@ const mapSavedDefect = (defect) => ({
 export default function CheckItemEditor({
     open,
     item,
+    canEditAql = false,
+    inspectionLevels = [],
+    sectionInspectionLevel = "",
     canEditDiemTrongYeu = false,
     onClose,
     onSaved
@@ -54,6 +61,7 @@ export default function CheckItemEditor({
     const [ketQua, setKetQua] = useState("");
     const [giaTriDo, setGiaTriDo] = useState("");
     const [diemTrongYeu, setDiemTrongYeu] = useState(false);
+    const [inspectionLevelOverride, setInspectionLevelOverride] = useState("");
     const [catalog, setCatalog] = useState([]);
     const [rows, setRows] = useState([]);
     const [saving, setSaving] = useState(false);
@@ -64,6 +72,7 @@ export default function CheckItemEditor({
         setKetQua(item.KetQua || "");
         setGiaTriDo(item.GiaTriDo == null ? "" : String(item.GiaTriDo));
         setDiemTrongYeu(Boolean(item.DiemTrongYeu));
+        setInspectionLevelOverride(item.InspectionLevelOverride || "");
         setRows((item.Defects || []).map(mapSavedDefect));
         setError("");
         getDefectList().then((response) => setCatalog(response.data || []))
@@ -143,6 +152,7 @@ export default function CheckItemEditor({
                 ketQua,
                 defects: ketQua === "KHONG_DAT" ? uploadedRows : [],
                 giaTriDo,
+                ...(canEditAql ? { inspectionLevelOverride: inspectionLevelOverride || null } : {}),
                 ...(canEditDiemTrongYeu ? { diemTrongYeu } : {})
             });
             await onSaved?.();
@@ -177,6 +187,29 @@ export default function CheckItemEditor({
                         <Typography variant="caption" color="text.secondary">Tiêu chuẩn kỹ thuật</Typography>
                         <Typography>{item?.TieuChuan || "—"}</Typography>
                     </Box>
+                    {canEditAql && (
+                        <FormControl fullWidth>
+                            <InputLabel id="check-item-aql-label">AQL áp dụng</InputLabel>
+                            <Select
+                                labelId="check-item-aql-label"
+                                label="AQL áp dụng"
+                                value={inspectionLevelOverride}
+                                onChange={(event) => setInspectionLevelOverride(event.target.value)}
+                            >
+                                <MenuItem value="">
+                                    Theo nhóm ({sectionInspectionLevel || "—"})
+                                </MenuItem>
+                                {inspectionLevels.map((level) => (
+                                    <MenuItem key={level.InspectionLevel} value={level.InspectionLevel}>
+                                        {level.InspectionLevel}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, ml: 1.75 }}>
+                                AQL riêng chỉ áp dụng cho chi tiết này; để “Theo nhóm” nếu không cần thay đổi.
+                            </Typography>
+                        </FormControl>
+                    )}
                     <ToggleButtonGroup
                         exclusive
                         fullWidth

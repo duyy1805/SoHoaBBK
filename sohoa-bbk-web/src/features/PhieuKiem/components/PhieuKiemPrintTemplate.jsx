@@ -515,7 +515,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                             )}
                                         </td>
                                         <td style={{ ...styles.tdCenter, fontWeight: 600 }}>
-                                            {section.InspectionLevel || ''}
+                                            {item.InspectionLevelOverride || section.InspectionLevel || ''}
                                         </td>
                                         <td style={styles.td}>
                                             {renderDekOfficialDefectDescription(item, itemDefects)}
@@ -558,6 +558,81 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
             </tbody>
         </table>
     );
+
+    const buildDekAqlSummary = (matchesLevel) => {
+        const items = checkItems.filter((item) =>
+            normalizeText(item.KetQua) !== 'NA'
+            && matchesLevel(normalizeText(item.EffectiveInspectionLevel || item.InspectionLevelOverride || ''))
+        );
+        const itemIds = new Set(items.map((item) => Number(item.Id)));
+        const totals = { MINOR: 0, MAJOR: 0, CRITICAL: 0 };
+        (defects || []).forEach((defect) => {
+            if (!itemIds.has(Number(defect.CheckItemId))) return;
+            const type = normalizeText(defect.DefectType);
+            if (Object.prototype.hasOwnProperty.call(totals, type)) {
+                totals[type] += Number(defect.SoLuong || 0);
+            }
+        });
+
+        // Nếu nhiều chi tiết cùng nhóm AQL có cỡ lô khác nhau, dùng ngưỡng nhỏ nhất
+        // để bảng tổng hợp không nới lỏng tiêu chuẩn của bất kỳ chi tiết nào.
+        const minThreshold = (field) => {
+            const values = items.map((item) => Number(item[field])).filter(Number.isFinite);
+            return values.length ? Math.min(...values) : null;
+        };
+        const acceptance = {
+            MINOR: minThreshold('EffectiveAc_Minor'),
+            MAJOR: minThreshold('EffectiveAc_Major'),
+            CRITICAL: minThreshold('EffectiveAc_Critical')
+        };
+        const rejection = {
+            MINOR: minThreshold('EffectiveRe_Minor'),
+            MAJOR: minThreshold('EffectiveRe_Major'),
+            CRITICAL: minThreshold('EffectiveRe_Critical')
+        };
+        const hasData = items.length > 0;
+        const rejected = hasData && Object.keys(totals).some((type) =>
+            rejection[type] !== null && totals[type] >= rejection[type]
+        );
+        const levels = [...new Set(items.map((item) => item.EffectiveInspectionLevel).filter(Boolean))];
+
+        return { totals, acceptance, rejected, hasData, levels };
+    };
+
+    const dekNormalAqlSummary = buildDekAqlSummary((level) => level !== 'S2');
+    const dekS2AqlSummary = buildDekAqlSummary((level) => level === 'S2');
+    const renderDekAqlSummaryTable = (label, summary) => {
+        const columns = ['MINOR', 'MAJOR', 'CRITICAL'];
+        const summaryCell = { ...styles.tdCenter, width: '11%', fontSize: '8pt', padding: '2px' };
+        return (
+            <table style={{ ...styles.table, marginBottom: '8px', tableLayout: 'fixed' }}>
+                <tbody>
+                    <tr>
+                        <td rowSpan={3} style={{ ...styles.tdCenter, width: '22%', fontWeight: 'bold', fontSize: '9pt' }}>
+                            {label}
+                        </td>
+                        <td style={{ ...styles.td, width: '45%', textAlign: 'center', fontWeight: 'bold' }}>Tổng sản phẩm lỗi:</td>
+                        {columns.map((type) => <td key={type} style={summaryCell}>{summary.hasData ? summary.totals[type] : ''}</td>)}
+                    </tr>
+                    <tr>
+                        <td style={{ ...styles.td, textAlign: 'center', fontWeight: 'bold' }}>Sản phẩm lỗi tối đa có thể chấp nhận:</td>
+                        {columns.map((type) => (
+                            <td key={type} style={summaryCell}>
+                                {summary.acceptance[type] ?? ''}
+                            </td>
+                        ))}
+                    </tr>
+                    <tr>
+                        <td colSpan={4} style={{ ...styles.td, fontWeight: 'bold' }}>
+                            <span style={{ marginRight: '16px' }}>Kết luận:</span>
+                            <span style={{ marginRight: '20px' }}>{renderCheckbox(summary.hasData && !summary.rejected)} ĐẠT</span>
+                            <span>{renderCheckbox(summary.hasData && summary.rejected)} KHÔNG ĐẠT</span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        );
+    };
 
     return (
         <div ref={ref} style={styles.previewBackground} className="preview-background">
@@ -1043,24 +1118,36 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                             </Box>
                         </Box>
                     ) : (
-                        <>
-                            <Box mb={2} style={{ display: 'flex', alignItems: 'center' }}>
-                                <div style={{ ...styles.boldText, marginRight: '15px' }}>* Kết quả:</div>
-                                <div style={{ ...styles.boldText, textTransform: 'uppercase' }}>
-                                    {phieu.KetLuan === 'DAT' ? 'ĐẠT YÊU CẦU' : phieu.KetLuan === 'KHONG_DAT' ? 'KHÔNG ĐẠT YÊU CẦU' : '.........................................................'}
-                                </div>
+                        <Box style={{ display: 'flex', gap: isDekOfficial ? '18px' : 0, alignItems: 'flex-start' }}>
+                            <Box style={{ flex: 1, minWidth: 0 }}>
+                                <Box mb={2} style={{ display: 'flex', alignItems: 'center' }}>
+                                    <div style={{ ...styles.boldText, marginRight: '15px' }}>* Kết quả:</div>
+                                    <div style={{ ...styles.boldText, textTransform: 'uppercase' }}>
+                                        {phieu.KetLuan === 'DAT' ? 'ĐẠT YÊU CẦU' : phieu.KetLuan === 'KHONG_DAT' ? 'KHÔNG ĐẠT YÊU CẦU' : '.........................................................'}
+                                    </div>
+                                </Box>
+
+                                <Box mb={2} style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                                    <div style={styles.boldText}>* Kết luận:</div>
+                                    <Box style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        {renderCheckbox(phieu.KetLuan === 'DAT')} <span>Cho xuất hàng</span>
+                                    </Box>
+                                    <Box style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        {renderCheckbox(phieu.KetLuan === 'KHONG_DAT')} <span>Giữ lại hàng (Lập biên bản KPH)</span>
+                                    </Box>
+                                </Box>
                             </Box>
 
-                            <Box mb={2} style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                                <div style={styles.boldText}>* Kết luận:</div>
-                                <Box style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    {renderCheckbox(phieu.KetLuan === 'DAT')} <span>Cho xuất hàng</span>
+                            {isDekOfficial && (
+                                <Box style={{ width: '43%', flexShrink: 0 }}>
+                                    {renderDekAqlSummaryTable(
+                                        `AQL cấp độ ${dekNormalAqlSummary.levels.join(', ') || 'I (II)'}`,
+                                        dekNormalAqlSummary
+                                    )}
+                                    {renderDekAqlSummaryTable('AQL S2', dekS2AqlSummary)}
                                 </Box>
-                                <Box style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    {renderCheckbox(phieu.KetLuan === 'KHONG_DAT')} <span>Giữ lại hàng (Lập biên bản KPH)</span>
-                                </Box>
-                            </Box>
-                        </>
+                            )}
+                        </Box>
                     )}
 
                     <Box style={{ ...styles.signatureBlock, marginTop: '10px' }}>

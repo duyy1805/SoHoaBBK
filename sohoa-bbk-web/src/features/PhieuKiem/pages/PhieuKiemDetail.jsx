@@ -263,6 +263,10 @@ export default function PhieuKiemDetail() {
 
                 const levelsRes = await getInspectionLevels();
                 setLevels(levelsRes.data);
+            } else if (Number(data.phieu?.LoaiKiemId) === 5) {
+                // Phiếu đã tạo section vẫn cần danh sách level để đổi AQL từng chi tiết.
+                const levelsRes = await getInspectionLevels();
+                setLevels(levelsRes.data || []);
             }
         } catch (err) {
             console.error(err);
@@ -1241,20 +1245,26 @@ export default function PhieuKiemDetail() {
                                                     minHeight: 44
                                                 }}
                                             >
-                                                <Typography
-                                                    title={item.TenMucKiem}
-                                                    fontWeight={600}
-                                                    sx={{
-                                                        minWidth: 0,
-                                                        lineHeight: 1.25,
-                                                        display: "-webkit-box",
-                                                        WebkitBoxOrient: "vertical",
-                                                        WebkitLineClamp: 2,
-                                                        overflow: "hidden"
-                                                    }}
-                                                >
-                                                    {item.TenMucKiem}
-                                                </Typography>
+                                                <Box sx={{ minWidth: 0 }}>
+                                                    <Typography
+                                                        title={item.TenMucKiem}
+                                                        fontWeight={600}
+                                                        sx={{
+                                                            lineHeight: 1.25,
+                                                            display: "-webkit-box",
+                                                            WebkitBoxOrient: "vertical",
+                                                            WebkitLineClamp: 2,
+                                                            overflow: "hidden"
+                                                        }}
+                                                    >
+                                                        {item.TenMucKiem}
+                                                    </Typography>
+                                                    {item.InspectionLevelOverride && (
+                                                        <Typography variant="caption" color="primary.main" fontWeight={700}>
+                                                            AQL riêng: {item.InspectionLevelOverride}
+                                                        </Typography>
+                                                    )}
+                                                </Box>
 
                                                 <Typography
                                                     variant="caption"
@@ -1572,6 +1582,11 @@ export default function PhieuKiemDetail() {
                 <CheckItemEditor
                     open={Boolean(editingItem)}
                     item={editingItem}
+                    canEditAql={Number(phieu?.LoaiKiemId) === 5}
+                    inspectionLevels={levels}
+                    sectionInspectionLevel={sections.find(
+                        (section) => Number(section.Id) === Number(editingItem?.SectionId)
+                    )?.InspectionLevel || ""}
                     canEditDiemTrongYeu={[1, 5].includes(Number(phieu?.LoaiKiemId))}
                     onClose={() => setEditingItem(null)}
                     onSaved={async () => {

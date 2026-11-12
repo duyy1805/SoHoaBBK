@@ -2471,6 +2471,36 @@ router.get(
             });
 
             const checkItems = Object.values(map);
+            const effectiveAqlResult = await pool.request()
+                .input('PhieuKiemId', sql.Int, Number(id))
+                .query(`
+                    SELECT checkItem.Id,
+                        COALESCE(NULLIF(checkItem.InspectionLevelOverride, N''), sectionRow.InspectionLevel) AS EffectiveInspectionLevel,
+                        effectiveAql.SampleSize AS EffectiveSampleSize,
+                        effectiveAql.Ac_Critical AS EffectiveAc_Critical,
+                        effectiveAql.Re_Critical AS EffectiveRe_Critical,
+                        effectiveAql.Ac_Major AS EffectiveAc_Major,
+                        effectiveAql.Re_Major AS EffectiveRe_Major,
+                        effectiveAql.Ac_Minor AS EffectiveAc_Minor,
+                        effectiveAql.Re_Minor AS EffectiveRe_Minor
+                    FROM dbo.PHIEU_KIEM_CHECK_ITEM AS checkItem
+                    JOIN dbo.PHIEU_KIEM_SECTION AS sectionRow ON sectionRow.Id = checkItem.SectionId
+                    OUTER APPLY (
+                        SELECT TOP (1) aql.SampleSize,
+                            aql.Ac_Critical, aql.Re_Critical,
+                            aql.Ac_Major, aql.Re_Major,
+                            aql.Ac_Minor, aql.Re_Minor
+                        FROM dbo.DM_AQL_PLAN AS aql
+                        WHERE aql.InspectionLevel = COALESCE(NULLIF(checkItem.InspectionLevelOverride, N''), sectionRow.InspectionLevel)
+                          AND sectionRow.TongSo BETWEEN aql.LotMin AND aql.LotMax
+                        ORDER BY aql.LotMin DESC
+                    ) AS effectiveAql
+                    WHERE sectionRow.PhieuKiemId = @PhieuKiemId
+                `);
+            const effectiveAqlByItemId = new Map(
+                (effectiveAqlResult.recordset || []).map((row) => [Number(row.Id), row])
+            );
+            checkItems.forEach((item) => Object.assign(item, effectiveAqlByItemId.get(Number(item.Id)) || {}));
             const confirmationResult = await pool.request()
                 .input('PhieuKiemId', sql.Int, Number(id))
                 .query(`
@@ -5064,7 +5094,7 @@ router.post(
     authenticateToken,
     authorize("THUC_HIEN_KIEM"),
     async (req, res) => {
-        const { checkItemId, ketQua, defects = [], giaTriDo, diemTrongYeu } = req.body;
+        const { checkItemId, ketQua, defects = [], giaTriDo, diemTrongYeu, inspectionLevelOverride } = req.body;
 
         try {
             const pool = await poolPromise;
@@ -5102,6 +5132,8 @@ router.post(
                     SELECT
                         pci.DanhMucCheckItemId,
                         pci.DiemTrongYeu,
+                        pci.InspectionLevelOverride,
+                        sectionRow.TongSo,
                         pk.TrangThai,
                         lk.MaLoai
                     FROM dbo.PHIEU_KIEM_CHECK_ITEM pci
@@ -5117,7 +5149,38 @@ router.post(
             }
 
             const shouldUpdateCritical = typeof diemTrongYeu === "boolean";
+            const shouldUpdateInspectionLevel = inspectionLevelOverride !== undefined;
+            const normalizedInspectionLevel = inspectionLevelOverride == null
+                ? null
+                : String(inspectionLevelOverride).trim() || null;
             const maLoai = String(currentItem.MaLoai || "").trim().toUpperCase();
+
+            if (shouldUpdateInspectionLevel && maLoai !== "KIEM_DONG_CONT") {
+                return res.status(400).json({
+                    message: "Chỉ phiếu kiểm cuối đóng cont được thay đổi AQL theo từng chi tiết"
+                });
+            }
+
+            if (shouldUpdateInspectionLevel && !["DA_TAO_SECTION", "DANG_KIEM"].includes(currentItem.TrangThai)) {
+                return res.status(409).json({
+                    message: "Chỉ được thay đổi AQL chi tiết khi phiếu đang kiểm"
+                });
+            }
+
+            if (shouldUpdateInspectionLevel && normalizedInspectionLevel) {
+                const levelResult = await pool.request()
+                    .input("InspectionLevel", sql.NVarChar(100), normalizedInspectionLevel)
+                    .input("LotSize", sql.Int, currentItem.TongSo)
+                    .query(`
+                        SELECT TOP (1) 1 AS IsValid
+                        FROM dbo.DM_AQL_PLAN
+                        WHERE InspectionLevel = @InspectionLevel
+                          AND @LotSize BETWEEN LotMin AND LotMax
+                    `);
+                if (!levelResult.recordset?.length) {
+                    return res.status(400).json({ message: "Mức AQL không áp dụng cho số lượng của nhóm này" });
+                }
+            }
 
             if (shouldUpdateCritical && !["DAU_VAO", "KIEM_DONG_CONT"].includes(maLoai)) {
                 return res.status(400).json({
@@ -5160,6 +5223,17 @@ router.post(
                             UPDATE dbo.PHIEU_KIEM_CHECK_ITEM
                             SET DiemTrongYeu = @DiemTrongYeu
                             WHERE DanhMucCheckItemId = @DanhMucCheckItemId;
+                        `);
+                }
+
+                if (shouldUpdateInspectionLevel) {
+                    await transaction.request()
+                        .input("CheckItemId", sql.Int, checkItemId)
+                        .input("InspectionLevelOverride", sql.NVarChar(100), normalizedInspectionLevel)
+                        .query(`
+                            UPDATE dbo.PHIEU_KIEM_CHECK_ITEM
+                            SET InspectionLevelOverride = @InspectionLevelOverride
+                            WHERE Id = @CheckItemId
                         `);
                 }
 
