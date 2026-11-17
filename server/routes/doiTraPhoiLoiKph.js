@@ -99,7 +99,8 @@ router.get('/:id/kph', async (req, res) => {
             return res.status(403).json({ message: 'Bạn không có quyền xem KPH của phiếu' });
         }
         const result = await pool.request().input('Id', sql.Int, record.Id).query(`
-            SELECT y.*,bp.TenBoPhan,COALESCE(NULLIF(saved.FullName,N''),saved.Username) OpinionSavedByName,
+            SELECT y.*,bp.MaBoPhan AS CurrentMaBoPhan,bp.TenBoPhan AS CurrentTenBoPhan,
+                COALESCE(NULLIF(saved.FullName,N''),saved.Username) OpinionSavedByName,
                 COALESCE(NULLIF(confirmed.FullName,N''),confirmed.Username) ConfirmedByName
             FROM dbo.DOI_TRA_PHOI_LOI_KPH_Y_KIEN y
             LEFT JOIN dbo.DM_BO_PHAN bp ON bp.Id=y.BoPhanId
@@ -121,6 +122,8 @@ router.get('/:id/kph', async (req, res) => {
             ...(result.recordsets[4] || []).map((item) => item.NguoiTheoDoiId),
             ...(result.recordsets[5] || []).map((item) => item.ActedBy)]);
         const opinions = (result.recordsets[0] || []).map((item) => ({ ...item,
+            MaBoPhan: item.MaBoPhan || item.CurrentMaBoPhan || null,
+            TenBoPhan: item.TenBoPhan || item.CurrentTenBoPhan || null,
             HasOpinion: Boolean(item.NoiDung), HasConfirmed: Boolean(item.ConfirmedAt),
             SignatureDataUrl: signatures.get(Number(item.ConfirmedBy)) || null,
             CanSaveOpinion: editableStatuses.includes(record.TrangThai)

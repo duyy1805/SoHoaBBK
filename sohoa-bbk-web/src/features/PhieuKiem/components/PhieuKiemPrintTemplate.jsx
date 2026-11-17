@@ -515,7 +515,7 @@ export const PhieuKiemPrintTemplate = React.forwardRef(({
                                             )}
                                         </td>
                                         <td style={{ ...styles.tdCenter, fontWeight: 600 }}>
-                                            {item.InspectionLevelOverride || section.InspectionLevel || ''}
+                                            {item.EffectiveInspectionLevel || item.InspectionLevelOverride || section.InspectionLevel || ''}
                                         </td>
                                         <td style={styles.td}>
                                             {renderDekOfficialDefectDescription(item, itemDefects)}

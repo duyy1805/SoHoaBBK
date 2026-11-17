@@ -134,7 +134,7 @@ export default function DoiTraDinhMucEditor({
     return (
         <Stack spacing={1.5}>
             <Alert severity="info">
-                Sau khi TBP KCS xác nhận, B7 nhập số lượng đổi trả để hệ thống lấy định mức đơn hàng và tạo lệnh xuất bổ sung theo từng kho.
+                Sau khi KCS hoàn tất, B7 nhập số lượng đổi trả để hệ thống lấy định mức đơn hàng và tạo lệnh xuất bổ sung theo từng kho.
             </Alert>
             {dirty && <Alert severity="warning">Số lượng đổi trả đang có thay đổi chưa lưu.</Alert>}
             <TableContainer component={Paper} variant="outlined">

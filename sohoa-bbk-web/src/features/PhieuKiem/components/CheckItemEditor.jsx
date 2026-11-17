@@ -197,7 +197,9 @@ export default function CheckItemEditor({
                                 onChange={(event) => setInspectionLevelOverride(event.target.value)}
                             >
                                 <MenuItem value="">
-                                    Theo nhóm ({sectionInspectionLevel || "—"})
+                                    {item?.ConfiguredInspectionLevel
+                                        ? `Theo cấu hình (${item.ConfiguredInspectionLevel})`
+                                        : `Theo nhóm (${sectionInspectionLevel || "—"})`}
                                 </MenuItem>
                                 {inspectionLevels.map((level) => (
                                     <MenuItem key={level.InspectionLevel} value={level.InspectionLevel}>
@@ -206,7 +208,7 @@ export default function CheckItemEditor({
                                 ))}
                             </Select>
                             <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, ml: 1.75 }}>
-                                AQL riêng chỉ áp dụng cho chi tiết này; để “Theo nhóm” nếu không cần thay đổi.
+                                AQL chỉnh riêng luôn được ưu tiên. Khi bỏ chọn, hệ thống dùng AQL cấu hình theo khách hàng hoặc AQL nhóm.
                             </Typography>
                         </FormControl>
                     )}

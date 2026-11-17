@@ -3,9 +3,9 @@ const KPH_B7_OPEN_STATUSES = Object.freeze([
     'CHO_BGD_XAC_NHAN', 'CHO_THEO_DOI', 'KPH_HOAN_TAT_CHO_B7'
 ]);
 
-const canB7Work = ({ status, tbpConfirmedAt, dinhMucStatus, hasActiveIssue = false }) =>
+const canB7Work = ({ status, workflowReadyAt, tbpConfirmedAt, dinhMucStatus, hasActiveIssue = false }) =>
     KPH_B7_OPEN_STATUSES.includes(status)
-    && Boolean(tbpConfirmedAt)
+    && Boolean(workflowReadyAt || tbpConfirmedAt)
     && dinhMucStatus !== 'DA_XAC_NHAN'
     && !hasActiveIssue;
 

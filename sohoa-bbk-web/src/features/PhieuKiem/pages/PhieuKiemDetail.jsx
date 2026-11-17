@@ -1259,9 +1259,19 @@ export default function PhieuKiemDetail() {
                                                     >
                                                         {item.TenMucKiem}
                                                     </Typography>
-                                                    {item.InspectionLevelOverride && (
-                                                        <Typography variant="caption" color="primary.main" fontWeight={700}>
-                                                            AQL riêng: {item.InspectionLevelOverride}
+                                                    {item.EffectiveAqlSource === "ITEM_OVERRIDE" && (
+                                                        <Typography variant="caption" color="primary.main" fontWeight={700} display="block">
+                                                            AQL riêng: {item.EffectiveInspectionLevel}
+                                                        </Typography>
+                                                    )}
+                                                    {item.EffectiveAqlSource === "CONFIG" && (
+                                                        <Typography variant="caption" color="secondary.main" fontWeight={700} display="block">
+                                                            AQL cấu hình: {item.EffectiveInspectionLevel}
+                                                        </Typography>
+                                                    )}
+                                                    {item.EffectiveAqlSource === "CONFIG" && item.EffectiveSampleSize == null && (
+                                                        <Typography variant="caption" color="error.main" fontWeight={700} display="block">
+                                                            Thiếu bảng AQL phù hợp với cỡ lô
                                                         </Typography>
                                                     )}
                                                 </Box>

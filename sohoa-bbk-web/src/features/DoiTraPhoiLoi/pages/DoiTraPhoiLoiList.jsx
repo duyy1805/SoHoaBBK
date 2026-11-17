@@ -149,7 +149,7 @@ export default function DoiTraPhoiLoiList() {
                 <Box>
                     <Typography variant="h5" fontWeight={800} color="#0f172a">Đổi trả phôi lỗi</Typography>
                     <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-                        KCS nhập BTP lỗi, TBP KCS xác nhận và B7 tạo lệnh xuất vật tư đổi trả
+                        KCS tạo phiếu nhập và mở KPH; Kho xác nhận nhập, B7 tạo lệnh xuất vật tư đổi trả
                     </Typography>
                 </Box>
                 {activeTab === 'tickets' && <Stack direction="row" spacing={1}>
@@ -223,6 +223,7 @@ export default function DoiTraPhoiLoiList() {
                                     <TableCell align="right">Số lượng KH</TableCell>
                                     <TableCell>Người lập</TableCell>
                                     <TableCell>Trạng thái</TableCell>
+                                    <TableCell>Kho xác nhận nhập</TableCell>
                                     <TableCell>Số lượng đổi trả B7</TableCell>
                                     <TableCell align="center">Thao tác</TableCell>
                                 </TableRow>
@@ -251,6 +252,19 @@ export default function DoiTraPhoiLoiList() {
                                                         Chờ: {row.BoPhanChuaXacNhanText}
                                                     </Typography>}
                                                 </Box>}
+                                            </TableCell>
+                                            <TableCell sx={{ minWidth: 190 }}>
+                                                {row.SoPhieuNhapBtp ? <>
+                                                    <Chip size="small" variant="outlined"
+                                                        color={Number(row.PhieuNhapErpTrangThai) === 5 ? 'success' : 'warning'}
+                                                        label={Number(row.PhieuNhapErpTrangThai) === 5 ? 'Đã xác nhận nhập' : 'Chưa xác nhận nhập'} />
+                                                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                                                        {row.SoPhieuNhapBtp}
+                                                    </Typography>
+                                                    {row.WarehouseConfirmedAt && <Typography variant="caption" color="text.secondary" display="block">
+                                                        {[row.TenKhoXacNhan, formatDoiTraDate(row.WarehouseConfirmedAt, true)].filter((value) => value && value !== '---').join(' — ')}
+                                                    </Typography>}
+                                                </> : <Chip size="small" variant="outlined" label="Chưa tạo phiếu nhập" />}
                                             </TableCell>
                                             <TableCell>
                                                 <Chip size="small" variant="outlined" color={dinhMucStatus.color} label={dinhMucStatus.label} />

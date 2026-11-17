@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-    Alert, Box, Button, Chip, CircularProgress, Divider, Drawer, IconButton,
+    Alert, Box, Button, Chip, CircularProgress, Divider, IconButton,
     Paper, Skeleton, Stack, Typography
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
@@ -49,7 +49,7 @@ const parseImageUrls = (value) => {
     }
 };
 
-export default function WorkCenterPreviewDrawer({ record, now, docked = false, onClose, onListChanged }) {
+export default function WorkCenterPreviewDrawer({ record, now, onClose, onListChanged }) {
     const navigate = useNavigate();
     const [detail, setDetail] = useState(null);
     const [attachments, setAttachments] = useState([]);
@@ -243,16 +243,24 @@ export default function WorkCenterPreviewDrawer({ record, now, docked = false, o
         </Stack>
     );
 
-    if (docked) {
-        if (!record) return null;
-        return <Paper variant="outlined" sx={{ position: "sticky", top: 72, height: "calc(100dvh - 88px)", minHeight: 560, borderRadius: 1.25, borderColor: "#e5e9f0", overflow: "hidden" }}>{content}</Paper>;
-    }
-
+    if (!record) return null;
     return (
-        <Drawer anchor="right" open={Boolean(record)} onClose={onClose}
-            slotProps={{ paper: { sx: { width: { xs: "100%", sm: 430 }, maxWidth: "100%" } } }}>
+        <Paper
+            variant="outlined"
+            sx={{
+                order: { xs: -1, lg: 0 },
+                position: { xs: "relative", lg: "sticky" },
+                top: { lg: 72 },
+                width: "100%",
+                height: { xs: "min(72dvh, 720px)", lg: "calc(100dvh - 88px)" },
+                minHeight: { xs: 420, lg: 560 },
+                borderRadius: 1.25,
+                borderColor: "#e5e9f0",
+                overflow: "hidden"
+            }}
+        >
             {content}
-        </Drawer>
+        </Paper>
     );
 }
 

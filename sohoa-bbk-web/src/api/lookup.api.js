@@ -158,6 +158,21 @@ export const deleteCheckItem = (id) => {
     return axiosClient.delete(`/lookup/check-item/${id}`);
 };
 
+export const getCheckItemAqlConfigs = (params = {}) =>
+    axiosClient.get("/lookup/check-item-aql-config", { params });
+
+export const getCheckItemAqlConfigOptions = () =>
+    axiosClient.get("/lookup/check-item-aql-config/options");
+
+export const createCheckItemAqlConfig = (data) =>
+    axiosClient.post("/lookup/check-item-aql-config", data);
+
+export const updateCheckItemAqlConfig = (id, data) =>
+    axiosClient.put(`/lookup/check-item-aql-config/${id}`, data);
+
+export const updateCheckItemAqlConfigStatus = (id, TrangThai) =>
+    axiosClient.patch(`/lookup/check-item-aql-config/${id}/status`, { TrangThai });
+
 const postDanhMucKiemExcel = (url, file, extraFields = {}) => {
     const formData = new FormData();
     formData.append("file", file);

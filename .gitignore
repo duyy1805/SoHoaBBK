@@ -9,6 +9,9 @@ dist/
 build/
 
 *.sql
+!server/sql/migrations/20261112_doi_tra_phoi_loi_kcs_direct_kho_confirm.sql
+!server/sql/migrations/20261113_check_item_customer_aql_config.sql
+!server/sql/migrations/20261114_small_lot_aql_fallback.sql
 
 *.xlsx
 
@@ -16,3 +19,5 @@ build/
 
 /outputs
 /docs
+server/test
+scripts

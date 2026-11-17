@@ -3,7 +3,7 @@ import {
     Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Collapse, Dialog,
     DialogActions, DialogContent, DialogTitle, Divider, Grid, Paper, Stack, Step,
     StepLabel, Stepper, Tab, Table, TableBody, TableCell, TableContainer,
-    TableHead, TableRow, Tabs, TextField, Typography
+    TableHead, TableRow, Tabs, TextField, Typography, MenuItem
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import PrintIcon from '@mui/icons-material/Print';
@@ -70,6 +70,7 @@ export default function DoiTraPhoiLoiDetail() {
     const [actionDialog, setActionDialog] = useState(null);
     const [actionNote, setActionNote] = useState('');
     const [btpDefectQuantity, setBtpDefectQuantity] = useState('');
+    const [receiptWarehouseId, setReceiptWarehouseId] = useState('');
     const [actionLoading, setActionLoading] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [exportingExcel, setExportingExcel] = useState(false);
@@ -181,6 +182,7 @@ export default function DoiTraPhoiLoiDetail() {
         }
         setActionDialog(action);
         setActionNote('');
+        setReceiptWarehouseId('');
         const savedQuantity = Number(data.phieu?.SoLuongBtpLoi);
         const defaultQuantity = maxDoiTraDefectiveSetQuantity(data.phoiItems);
         setBtpDefectQuantity(savedQuantity > 0 ? savedQuantity : (defaultQuantity || ''));
@@ -191,6 +193,9 @@ export default function DoiTraPhoiLoiDetail() {
         if (actionDialog.ActionCode === 'TBP_RETURN' && !actionNote.trim()) return window.alert('Vui lòng nhập lý do trả lại.');
         const isKcsCompletion = ['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(actionDialog.ActionCode);
         const quantity = Number(btpDefectQuantity);
+        if (isKcsCompletion && !Number(receiptWarehouseId)) {
+            return window.alert('Vui lòng chọn Kho nhập BTP lỗi.');
+        }
         if (isKcsCompletion && (!Number.isFinite(quantity) || quantity <= 0
             || quantity > Number(data.plans?.[0]?.PlanQty || 0)
             || Math.abs(quantity * 100 - Math.round(quantity * 100)) > 1e-8)) {
@@ -201,7 +206,8 @@ export default function DoiTraPhoiLoiDetail() {
             await executeDoiTraAction(id, actionDialog.ActionCode, {
                 rowVersion: data.phieu.RowVersion,
                 ghiChu: actionNote.trim() || null,
-                soLuongBtpLoi: isKcsCompletion ? quantity : null
+                soLuongBtpLoi: isKcsCompletion ? quantity : null,
+                khoNhapId: isKcsCompletion ? Number(receiptWarehouseId) : null
             });
             setActionDialog(null);
             await load({ background: true });
@@ -215,7 +221,7 @@ export default function DoiTraPhoiLoiDetail() {
     if (loading) return <Box sx={{ py: 10, display: 'grid', placeItems: 'center' }}><CircularProgress /></Box>;
     if (!data.phieu) return <Alert severity="error">Không tìm thấy phiếu đổi trả phôi lỗi.</Alert>;
 
-    const { phieu, plans, history, phoiItems = [], dinhMucItems = [], lenhXuatVatTuItems = [], phieuNhapBtpItems = [], workflow = {}, defectGroups = [], capabilities } = data;
+    const { phieu, plans, history, phoiItems = [], dinhMucItems = [], lenhXuatVatTuItems = [], phieuNhapBtpItems = [], warehouses = [], workflow = {}, defectGroups = [], capabilities } = data;
     const plan = plans[0] || {};
     const status = doiTraStatusMeta(phieu.TrangThai);
     const workflowSteps = workflow.steps || [];
@@ -227,13 +233,14 @@ export default function DoiTraPhoiLoiDetail() {
         : (configuredStepIndex >= 0 ? configuredStepIndex : Math.min(status.step, Math.max(mainSteps.length - 1, 0)));
     const isKphWorkflow = Number(workflow.definition?.VersionNo) >= 5;
     const availableActions = workflow.availableActions || [];
-    const regularActions = availableActions.filter((action) => action.ActionCode !== 'B7_CONFIRM');
+    const regularActions = availableActions.filter((action) => !['B7_CONFIRM', 'KHO_CONFIRM'].includes(action.ActionCode));
     const canB7Confirm = Boolean(capabilities.canConfirmDinhMuc);
     const quotaStatus = doiTraDinhMucStatusMeta(phieu.DinhMucTrangThai);
     const expectedBtp = Number(plan.ExpectedBtpCount) === 1
         ? [plan.ExpectedBtpCode, plan.ExpectedBtpName].filter(Boolean).join(' — ')
         : 'Không xác định duy nhất';
-    const expectedWarehouse = plan.ExpectedWarehouseName || 'Chưa cấu hình';
+    const activeReceipt = phieuNhapBtpItems.find((item) => item.TrangThai === 'ACTIVE');
+    const warehouseConfirmed = Number(activeReceipt?.ErpTrangThai) === 5;
     const summaryData = {
         tickets: [{ ...plan, ...phieu }],
         phoiItems,
@@ -266,7 +273,7 @@ export default function DoiTraPhoiLoiDetail() {
                     </Stack>
                     <Box sx={{ overflowX: 'auto', pb: 0.5 }}>
                         <Stepper activeStep={activeStep} alternativeLabel sx={{ minWidth: { xs: 760, md: 0 }, '& .MuiStepLabel-label': { fontSize: '0.72rem', mt: 0.5 } }}>
-                            {(mainSteps.length ? mainSteps : [{ StepName: 'KCS kiểm và nhập BTP lỗi' }, { StepName: 'TBP KCS xác nhận' }, { StepName: 'Thiết lập và xử lý KPH' }]).map((step) => <Step key={step.StepCode || step.StepName}><StepLabel>{step.StepName}</StepLabel></Step>)}
+                            {(mainSteps.length ? mainSteps : [{ StepName: 'KCS kiểm, tạo phiếu nhập và mở KPH' }, { StepName: 'Thiết lập và xử lý KPH' }]).map((step) => <Step key={step.StepCode || step.StepName}><StepLabel>{step.StepName}</StepLabel></Step>)}
                         </Stepper>
                     </Box>
                 </Box>
@@ -284,10 +291,10 @@ export default function DoiTraPhoiLoiDetail() {
             {hasUnsavedChanges && <Alert severity="warning" sx={{ mb: 2 }}>Bạn đang có thay đổi chưa lưu. Hãy lưu trước khi chuyển khu vực hoặc thực hiện xác nhận.</Alert>}
 
             {activeTab === 'overview' && <Stack spacing={2}>
-                <Grid container spacing={2}><Grid size={{ xs: 12, md: 8 }}><Card variant="outlined" sx={{ height: '100%', borderRadius: 2 }}><CardContent><Typography fontWeight={900} sx={{ mb: 1.5 }}>Thông tin kế hoạch</Typography><Grid container spacing={1.5}><Grid size={{ xs: 12, sm: 6 }}><Info label="Kế hoạch" value={plan.PlanNo || plan.PlanID} /></Grid><Grid size={{ xs: 12, sm: 6 }}><Info label="Sản phẩm" value={[plan.ProductCode, plan.ProductName].filter(Boolean).join(' — ')} /></Grid><Grid size={{ xs: 12, sm: 6 }}><Info label="Đơn hàng" value={plan.OrderCode} /></Grid><Grid size={{ xs: 12, sm: 6 }}><Info label="Đơn vị" value={[plan.DepartmentName, plan.UnitName].filter(Boolean).join(' — ')} /></Grid><Grid size={{ xs: 6, sm: 4 }}><Info label="Công đoạn" value={[plan.OperationCode, plan.OperationName].filter(Boolean).join(' — ')} /></Grid><Grid size={{ xs: 6, sm: 4 }}><Info label="Số lượng kế hoạch" value={formatDoiTraQuantity(plan.PlanQty)} /></Grid><Grid size={{ xs: 12, sm: 4 }}><Info label="Trạng thái ERP" value={plan.ERPPlanStatus} /></Grid></Grid></CardContent></Card></Grid><Grid size={{ xs: 12, md: 4 }}><Card variant="outlined" sx={{ height: '100%', borderRadius: 2 }}><CardContent><Typography fontWeight={900}>KPH và B7 xử lý song song</Typography><Chip size="small" color={quotaStatus.color} label={quotaStatus.label} sx={{ my: 1.5 }} /><Typography variant="body2" color="text.secondary">Sau khi TBP KCS xác nhận, KPH bắt đầu thiết lập đồng thời B7 có thể nhập số lượng đổi trả và tạo lệnh xuất vật tư.</Typography></CardContent></Card></Grid></Grid>
-                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}><Typography fontWeight={900} sx={{ mb: 1.5 }}>Thông tin xác nhận</Typography><Grid container spacing={2}><Grid size={{ xs: 12, md: 4 }}><Info label="KCS hoàn tất" value={phieu.KcsCompletedAt ? `${phieu.TenKcsHoanTat || '---'} — ${formatDoiTraDate(phieu.KcsCompletedAt, true)}` : null} /></Grid><Grid size={{ xs: 12, md: 4 }}><Info label="TBP KCS xác nhận" value={phieu.TbpKcsConfirmedAt ? `${phieu.TenTbpKcsXacNhan || '---'} — ${formatDoiTraDate(phieu.TbpKcsConfirmedAt, true)}` : null} /></Grid><Grid size={{ xs: 12, md: 4 }}><Info label="B7 xác nhận số lượng" value={phieu.B7ConfirmedAt ? `${phieu.TenB7XacNhan || '---'} — ${formatDoiTraDate(phieu.B7ConfirmedAt, true)}` : null} /></Grid></Grid></Paper>
+                <Grid container spacing={2}><Grid size={{ xs: 12, md: 8 }}><Card variant="outlined" sx={{ height: '100%', borderRadius: 2 }}><CardContent><Typography fontWeight={900} sx={{ mb: 1.5 }}>Thông tin kế hoạch</Typography><Grid container spacing={1.5}><Grid size={{ xs: 12, sm: 6 }}><Info label="Kế hoạch" value={plan.PlanNo || plan.PlanID} /></Grid><Grid size={{ xs: 12, sm: 6 }}><Info label="Sản phẩm" value={[plan.ProductCode, plan.ProductName].filter(Boolean).join(' — ')} /></Grid><Grid size={{ xs: 12, sm: 6 }}><Info label="Đơn hàng" value={plan.OrderCode} /></Grid><Grid size={{ xs: 12, sm: 6 }}><Info label="Đơn vị" value={[plan.DepartmentName, plan.UnitName].filter(Boolean).join(' — ')} /></Grid><Grid size={{ xs: 6, sm: 4 }}><Info label="Công đoạn" value={[plan.OperationCode, plan.OperationName].filter(Boolean).join(' — ')} /></Grid><Grid size={{ xs: 6, sm: 4 }}><Info label="Số lượng kế hoạch" value={formatDoiTraQuantity(plan.PlanQty)} /></Grid><Grid size={{ xs: 12, sm: 4 }}><Info label="Trạng thái ERP" value={plan.ERPPlanStatus} /></Grid></Grid></CardContent></Card></Grid><Grid size={{ xs: 12, md: 4 }}><Card variant="outlined" sx={{ height: '100%', borderRadius: 2 }}><CardContent><Typography fontWeight={900}>KPH, B7 và Kho xử lý độc lập</Typography><Stack direction="row" spacing={1} sx={{ my: 1.5 }} flexWrap="wrap" useFlexGap><Chip size="small" color={quotaStatus.color} label={quotaStatus.label} /><Chip size="small" color={warehouseConfirmed ? 'success' : 'warning'} label={warehouseConfirmed ? 'Kho đã xác nhận nhập' : 'Kho chưa xác nhận nhập'} /></Stack><Typography variant="body2" color="text.secondary">Ngay khi KCS hoàn tất, hệ thống tạo phiếu nhập BTP lỗi và mở KPH. B7 và Kho có thể xác nhận trên hai nhánh độc lập.</Typography></CardContent></Card></Grid></Grid>
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}><Typography fontWeight={900} sx={{ mb: 1.5 }}>Thông tin xác nhận</Typography><Grid container spacing={2}><Grid size={{ xs: 12, md: 4 }}><Info label="KCS hoàn tất" value={phieu.KcsCompletedAt ? `${phieu.TenKcsHoanTat || '---'} — ${formatDoiTraDate(phieu.KcsCompletedAt, true)}` : null} /></Grid>{Number(workflow.definition?.VersionNo) < 6 && <Grid size={{ xs: 12, md: 4 }}><Info label="TBP KCS xác nhận" value={phieu.TbpKcsConfirmedAt ? `${phieu.TenTbpKcsXacNhan || '---'} — ${formatDoiTraDate(phieu.TbpKcsConfirmedAt, true)}` : null} /></Grid>}<Grid size={{ xs: 12, md: 4 }}><Info label="B7 xác nhận số lượng" value={phieu.B7ConfirmedAt ? `${phieu.TenB7XacNhan || '---'} — ${formatDoiTraDate(phieu.B7ConfirmedAt, true)}` : null} /></Grid><Grid size={{ xs: 12, md: 4 }}><Info label="Kho xác nhận nhập" value={activeReceipt?.WarehouseConfirmedAt ? `${activeReceipt.TenKhoXacNhan || '---'} — ${formatDoiTraDate(activeReceipt.WarehouseConfirmedAt, true)}` : null} /></Grid></Grid></Paper>
                 {lenhXuatVatTuItems.length > 0 && <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}><Typography fontWeight={900} sx={{ mb: 1.5 }}>Lệnh xuất vật tư bổ sung</Typography><Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>{lenhXuatVatTuItems.map((item) => <Chip key={item.Id} color={item.TrangThai === 'ACTIVE' ? 'success' : 'default'} variant={item.TrangThai === 'ACTIVE' ? 'filled' : 'outlined'} label={`${item.SoLenhXuatVT} · ${item.TenKhoXuat || `Kho ${item.SourceKhoXuatId}`} · ${item.TrangThai === 'ACTIVE' ? 'Hiệu lực' : 'Đã hủy'}`} />)}</Stack></Paper>}
-                {phieuNhapBtpItems.length > 0 && <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}><Typography fontWeight={900} sx={{ mb: 1.5 }}>Phiếu nhập BTP lỗi</Typography><Stack spacing={1}>{phieuNhapBtpItems.map((item) => <Box key={item.Id}><Chip color={item.TrangThai === 'ACTIVE' ? 'info' : 'default'} label={`${item.SoPhieuNhapBtp} · ${formatDoiTraQuantity(item.SoLuongBtpLoi, 2)} · ${item.TenKhoNhap || `Kho ${item.SourceKhoNhapId}`}`} /><Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>{[item.MaBtp, item.TenBtp, item.SoLoSanXuat && `Lô ${item.SoLoSanXuat}`, item.TenQuyTrinhSanXuat, item.ErpTrangThai === 0 ? 'ERP: Đang lập' : `ERP: ${item.ErpTrangThai}`].filter(Boolean).join(' · ')}</Typography></Box>)}</Stack></Paper>}
+                {phieuNhapBtpItems.length > 0 && <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}><Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1} sx={{ mb: 1.5 }}><Typography fontWeight={900}>Phiếu nhập BTP lỗi</Typography>{capabilities.canConfirmWarehouse && <Button variant="contained" color="success" startIcon={<TaskAltOutlinedIcon />} onClick={() => openAction({ ActionCode: 'KHO_CONFIRM', ActionName: 'Kho xác nhận nhập BTP lỗi' })}>Kho xác nhận nhập</Button>}</Stack><Stack spacing={1}>{phieuNhapBtpItems.map((item) => <Box key={item.Id}><Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap><Chip color={item.TrangThai === 'ACTIVE' ? 'info' : 'default'} label={`${item.SoPhieuNhapBtp} · ${formatDoiTraQuantity(item.SoLuongBtpLoi, 2)} · ${item.TenKhoNhap || `Kho ${item.SourceKhoNhapId}`}`} /><Chip size="small" color={Number(item.ErpTrangThai) === 5 ? 'success' : 'warning'} variant="outlined" label={Number(item.ErpTrangThai) === 5 ? 'Kho đã xác nhận nhập' : 'Kho chưa xác nhận nhập'} /></Stack><Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>{[item.MaBtp, item.TenBtp, item.SoLoSanXuat && `Lô ${item.SoLoSanXuat}`, item.TenQuyTrinhSanXuat, Number(item.ErpTrangThai) === 0 ? 'ERP: Đang lập' : Number(item.ErpTrangThai) === 5 ? 'ERP: Đã duyệt' : `ERP: ${item.ErpTrangThai}`].filter(Boolean).join(' · ')}</Typography>{item.WarehouseConfirmedAt && <Typography variant="caption" display="block" color="success.main">{[item.TenKhoXacNhan, formatDoiTraDate(item.WarehouseConfirmedAt, true)].filter(Boolean).join(' — ')}</Typography>}</Box>)}</Stack></Paper>}
                 {phieu.TrangThai === 'HOAN_TAT' && <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}><Box sx={{ p: 2 }}><Typography fontWeight={900}>Tổng hợp phôi và kết quả xử lý</Typography></Box><TableContainer><Table size="small"><TableHead><TableRow sx={{ bgcolor: '#f8fafc' }}><TableCell>Loại phôi / vật tư</TableCell><TableCell align="right">SL kiểm</TableCell><TableCell align="right">SL lỗi</TableCell><TableCell>Trạng thái</TableCell></TableRow></TableHead><TableBody>{phoiItems.map((item) => <TableRow key={item.Id}><TableCell><Typography variant="body2" fontWeight={800}>{item.TenLoaiPhoi || `Phôi #${item.Id}`}</Typography><Typography variant="caption" display="block" color="text.secondary">{item.MaVatTu} — {item.QuyCachVatTu}</Typography></TableCell><TableCell align="right">{formatDoiTraQuantity(item.SoLuongKiem)}</TableCell><TableCell align="right">{formatDoiTraQuantity(item.SoLuongPhoiLoi)}</TableCell><TableCell><Chip size="small" color="success" label="Đã xử lý" /></TableCell></TableRow>)}</TableBody></Table></TableContainer></Paper>}
             </Stack>}
 
@@ -316,13 +323,21 @@ export default function DoiTraPhoiLoiDetail() {
                         />
                         {['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(actionDialog?.ActionCode) && <>
                             <TextField required fullWidth type="number" label="Số lượng BTP lỗi" value={btpDefectQuantity} onChange={(event) => setBtpDefectQuantity(event.target.value)} inputProps={{ min: 0.01, max: plan.PlanQty, step: 0.01 }} helperText={`Mặc định là số bộ lỗi lớn nhất · Tối đa ${formatDoiTraQuantity(plan.PlanQty, 2)} · Có thể chỉnh sửa`} />
+                            <TextField required fullWidth select label="Kho nhập BTP lỗi" value={receiptWarehouseId}
+                                onChange={(event) => setReceiptWarehouseId(event.target.value)}
+                                helperText="Chọn trực tiếp từ danh mục kho đang sử dụng trên ERP">
+                                <MenuItem value=""><em>Chọn kho nhập</em></MenuItem>
+                                {warehouses.map((warehouse) => <MenuItem key={warehouse.Id} value={warehouse.Id}>
+                                    {warehouse.TenKho || `Kho ${warehouse.Id}`}
+                                </MenuItem>)}
+                            </TextField>
                             <Alert severity="info">
                                 BTP: {expectedBtp}{plan.ExpectedProductionLot ? ` · Lô ${plan.ExpectedProductionLot}` : ''}<br />
-                                Công đoạn: {[plan.OperationCode, plan.OperationName].filter(Boolean).join(' — ') || '---'}<br />
-                                Kho nhập dự kiến: {expectedWarehouse}.
+                                Công đoạn: {[plan.OperationCode, plan.OperationName].filter(Boolean).join(' — ') || '---'}.
                             </Alert>
-                            <Alert severity="info">Khi xác nhận, hệ thống tạo phiếu nhập BTP lỗi ở trạng thái Đang lập. Danh sách phôi và lỗi sẽ bị khóa đến khi TBP KCS trả lại.</Alert>
+                            <Alert severity="info">Khi xác nhận, hệ thống tạo phiếu nhập BTP lỗi ở trạng thái Đang lập, đồng thời mở luồng KPH. Danh sách phôi và lỗi sẽ được khóa; Kho xác nhận nhập ở bước độc lập.</Alert>
                         </>}
+                        {actionDialog?.ActionCode === 'KHO_CONFIRM' && <Alert severity="warning">Xác nhận sẽ chuyển phiếu nhập BTP lỗi sang trạng thái ERP 5 — Đã duyệt. Thao tác được ghi nhận theo tài khoản Kho hiện tại.</Alert>}
                     </Stack>
                 </DialogContent>
                 <DialogActions>

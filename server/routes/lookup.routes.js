@@ -14,6 +14,10 @@ const authenticateToken = require('../middlewares/auth.middleware');
 const authorize = require('../middlewares/permission.middleware');
 const authorizeCheckCatalogCrud = require('../middlewares/checkCatalogCrud.middleware');
 const {
+  normalizeAqlConfigKey,
+  normalizeAqlCustomers
+} = require('../utils/checkItemAqlConfig');
+const {
   buildSyncPlan: buildDanhMucKiemSyncPlan,
   executeSyncPlan: executeDanhMucKiemSyncPlan,
   groupKey: buildDanhMucKiemGroupKey
@@ -2051,6 +2055,253 @@ router.delete(
     } catch (err) {
       console.error("Delete check item error:", err);
       res.status(500).json({ message: "Xoá thất bại" });
+    }
+  }
+);
+
+const validateCheckItemAqlConfigPayload = async (pool, payload, { requireCustomers = false } = {}) => {
+  const TenNhom = trimValue(payload?.TenNhom);
+  const TenMucKiem = trimValue(payload?.TenMucKiem);
+  const InspectionLevel = trimValue(payload?.InspectionLevel);
+  const KhachHangList = normalizeAqlCustomers(
+    payload?.KhachHangList ?? payload?.customers ?? payload?.KhachHang
+  );
+
+  if (!TenNhom || !TenMucKiem || !InspectionLevel) {
+    const error = new Error("Nhóm kiểm, mục kiểm và AQL là bắt buộc");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (requireCustomers && !KhachHangList.length) {
+    const error = new Error("Vui lòng chọn ít nhất một khách hàng IKEA hoặc DEK");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const levelResult = await pool.request()
+    .input("InspectionLevel", sql.NVarChar(100), InspectionLevel)
+    .query(`
+      SELECT TOP (1) 1 AS IsValid
+      FROM dbo.DM_AQL_PLAN
+      WHERE InspectionLevel = @InspectionLevel
+    `);
+  if (!levelResult.recordset?.length) {
+    const error = new Error("AQL không tồn tại trong danh mục Inspection Level");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return {
+    TenNhom,
+    NhomKiemKey: normalizeAqlConfigKey(TenNhom),
+    TenMucKiem,
+    TenMucKiemKey: normalizeAqlConfigKey(TenMucKiem),
+    InspectionLevel,
+    KhachHangList,
+    TrangThai: payload?.TrangThai !== false
+  };
+};
+
+router.get(
+  "/check-item-aql-config/options",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const pool = await poolPromise;
+      const result = await pool.request().query(`
+        SELECT MIN(groupRow.TenNhom) AS TenNhom,
+               MIN(itemRow.TenMucKiem) AS TenMucKiem,
+               dbo.fn_AqlConfig_NormalizeKey(groupRow.TenNhom) AS NhomKiemKey,
+               dbo.fn_AqlConfig_NormalizeKey(itemRow.TenMucKiem) AS TenMucKiemKey
+        FROM dbo.DM_CHECK_ITEM itemRow
+        JOIN dbo.DM_NHOM_KIEM groupRow ON groupRow.Id = itemRow.NhomKiemId
+        WHERE itemRow.TrangThai = 1
+          AND ISNULL(groupRow.TrangThai, 1) = 1
+          AND NULLIF(LTRIM(RTRIM(groupRow.TenNhom)), N'') IS NOT NULL
+          AND NULLIF(LTRIM(RTRIM(itemRow.TenMucKiem)), N'') IS NOT NULL
+        GROUP BY dbo.fn_AqlConfig_NormalizeKey(groupRow.TenNhom),
+                 dbo.fn_AqlConfig_NormalizeKey(itemRow.TenMucKiem)
+        ORDER BY MIN(groupRow.TenNhom), MIN(itemRow.TenMucKiem);
+
+        SELECT DISTINCT InspectionLevel
+        FROM dbo.DM_AQL_PLAN
+        WHERE NULLIF(LTRIM(RTRIM(InspectionLevel)), N'') IS NOT NULL
+        ORDER BY InspectionLevel;
+      `);
+      res.json({
+        items: result.recordsets?.[0] || [],
+        inspectionLevels: result.recordsets?.[1] || []
+      });
+    } catch (err) {
+      console.error("Get check item AQL config options error:", err);
+      res.status(500).json({ message: "Không lấy được dữ liệu cấu hình AQL" });
+    }
+  }
+);
+
+router.get(
+  "/check-item-aql-config",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const customer = trimValue(req.query.customer).toUpperCase();
+      const groupName = trimValue(req.query.groupName);
+      const keyword = trimValue(req.query.keyword);
+      const status = req.query.status === "true" ? true : req.query.status === "false" ? false : null;
+      const pool = await poolPromise;
+      const result = await pool.request()
+        .input("Customer", sql.VarChar(10), customer || null)
+        .input("GroupKey", sql.NVarChar(255), groupName ? normalizeAqlConfigKey(groupName) : null)
+        .input("Keyword", sql.NVarChar(255), keyword || null)
+        .input("Status", sql.Bit, status)
+        .query(`
+          SELECT config.*,
+              CAST(CASE WHEN EXISTS (
+                  SELECT 1
+                  FROM dbo.DM_CHECK_ITEM itemRow
+                  JOIN dbo.DM_NHOM_KIEM groupRow ON groupRow.Id = itemRow.NhomKiemId
+                  WHERE itemRow.TrangThai = 1
+                    AND dbo.fn_AqlConfig_NormalizeKey(groupRow.TenNhom) = config.NhomKiemKey
+                    AND dbo.fn_AqlConfig_NormalizeKey(itemRow.TenMucKiem) = config.TenMucKiemKey
+              ) THEN 1 ELSE 0 END AS BIT) AS IsMatched,
+              CAST(CASE WHEN EXISTS (
+                  SELECT 1 FROM dbo.DM_AQL_PLAN planRow
+                  WHERE planRow.InspectionLevel = config.InspectionLevel
+              ) THEN 1 ELSE 0 END AS BIT) AS HasAqlPlan
+          FROM dbo.DM_CHECK_ITEM_AQL_CONFIG config
+          WHERE (@Customer IS NULL OR config.KhachHang = @Customer)
+            AND (@GroupKey IS NULL OR config.NhomKiemKey = @GroupKey)
+            AND (@Status IS NULL OR config.TrangThai = @Status)
+            AND (@Keyword IS NULL
+                 OR config.TenMucKiem LIKE N'%' + @Keyword + N'%'
+                 OR config.TenNhom LIKE N'%' + @Keyword + N'%')
+          ORDER BY config.TenNhom, config.TenMucKiem, config.KhachHang;
+        `);
+      res.json(result.recordset || []);
+    } catch (err) {
+      console.error("Get check item AQL config error:", err);
+      res.status(500).json({ message: "Không lấy được cấu hình AQL theo mục kiểm" });
+    }
+  }
+);
+
+router.post(
+  "/check-item-aql-config",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  async (req, res) => {
+    try {
+      const pool = await poolPromise;
+      const payload = await validateCheckItemAqlConfigPayload(pool, req.body, { requireCustomers: true });
+      const transaction = new sql.Transaction(pool);
+      await transaction.begin();
+      try {
+        for (const customer of payload.KhachHangList) {
+          await transaction.request()
+            .input("Customer", sql.VarChar(10), customer)
+            .input("TenNhom", sql.NVarChar(255), payload.TenNhom)
+            .input("NhomKiemKey", sql.NVarChar(255), payload.NhomKiemKey)
+            .input("TenMucKiem", sql.NVarChar(255), payload.TenMucKiem)
+            .input("TenMucKiemKey", sql.NVarChar(255), payload.TenMucKiemKey)
+            .input("InspectionLevel", sql.NVarChar(100), payload.InspectionLevel)
+            .input("TrangThai", sql.Bit, payload.TrangThai)
+            .input("UserId", sql.Int, req.user?.userId || null)
+            .query(`
+              INSERT dbo.DM_CHECK_ITEM_AQL_CONFIG
+                  (KhachHang, TenNhom, NhomKiemKey, TenMucKiem, TenMucKiemKey,
+                   InspectionLevel, TrangThai, CreatedBy, UpdatedBy)
+              VALUES
+                  (@Customer, @TenNhom, @NhomKiemKey, @TenMucKiem, @TenMucKiemKey,
+                   @InspectionLevel, @TrangThai, @UserId, @UserId);
+            `);
+        }
+        await transaction.commit();
+      } catch (transactionError) {
+        await transaction.rollback();
+        throw transactionError;
+      }
+      res.status(201).json({ message: "Đã tạo cấu hình AQL theo mục kiểm" });
+    } catch (err) {
+      console.error("Create check item AQL config error:", err);
+      const duplicate = Number(err.number) === 2601 || Number(err.number) === 2627;
+      res.status(duplicate ? 409 : err.statusCode || 500).json({
+        message: duplicate ? "Mục kiểm đã có cấu hình cho khách hàng đã chọn" : err.message || "Tạo cấu hình thất bại"
+      });
+    }
+  }
+);
+
+router.put(
+  "/check-item-aql-config/:id",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  async (req, res) => {
+    try {
+      const pool = await poolPromise;
+      const payload = await validateCheckItemAqlConfigPayload(pool, req.body);
+      const customer = normalizeAqlCustomers(req.body?.KhachHang)?.[0];
+      if (!customer) return res.status(400).json({ message: "Khách hàng không hợp lệ" });
+      const result = await pool.request()
+        .input("Id", sql.Int, req.params.id)
+        .input("Customer", sql.VarChar(10), customer)
+        .input("TenNhom", sql.NVarChar(255), payload.TenNhom)
+        .input("NhomKiemKey", sql.NVarChar(255), payload.NhomKiemKey)
+        .input("TenMucKiem", sql.NVarChar(255), payload.TenMucKiem)
+        .input("TenMucKiemKey", sql.NVarChar(255), payload.TenMucKiemKey)
+        .input("InspectionLevel", sql.NVarChar(100), payload.InspectionLevel)
+        .input("TrangThai", sql.Bit, payload.TrangThai)
+        .input("UserId", sql.Int, req.user?.userId || null)
+        .query(`
+          UPDATE dbo.DM_CHECK_ITEM_AQL_CONFIG
+          SET KhachHang = @Customer,
+              TenNhom = @TenNhom,
+              NhomKiemKey = @NhomKiemKey,
+              TenMucKiem = @TenMucKiem,
+              TenMucKiemKey = @TenMucKiemKey,
+              InspectionLevel = @InspectionLevel,
+              TrangThai = @TrangThai,
+              UpdatedBy = @UserId,
+              UpdatedAt = SYSDATETIME()
+          WHERE Id = @Id;
+          SELECT @@ROWCOUNT AS AffectedRows;
+        `);
+      if (!result.recordset?.[0]?.AffectedRows) return res.status(404).json({ message: "Không tìm thấy cấu hình" });
+      res.json({ message: "Đã cập nhật cấu hình AQL" });
+    } catch (err) {
+      console.error("Update check item AQL config error:", err);
+      const duplicate = Number(err.number) === 2601 || Number(err.number) === 2627;
+      res.status(duplicate ? 409 : err.statusCode || 500).json({
+        message: duplicate ? "Mục kiểm đã có cấu hình cho khách hàng này" : err.message || "Cập nhật cấu hình thất bại"
+      });
+    }
+  }
+);
+
+router.patch(
+  "/check-item-aql-config/:id/status",
+  authenticateToken,
+  authorize("QUAN_TRI_DM"),
+  async (req, res) => {
+    try {
+      if (typeof req.body?.TrangThai !== "boolean") {
+        return res.status(400).json({ message: "Trạng thái không hợp lệ" });
+      }
+      const pool = await poolPromise;
+      const result = await pool.request()
+        .input("Id", sql.Int, req.params.id)
+        .input("TrangThai", sql.Bit, req.body.TrangThai)
+        .input("UserId", sql.Int, req.user?.userId || null)
+        .query(`
+          UPDATE dbo.DM_CHECK_ITEM_AQL_CONFIG
+          SET TrangThai = @TrangThai, UpdatedBy = @UserId, UpdatedAt = SYSDATETIME()
+          WHERE Id = @Id;
+          SELECT @@ROWCOUNT AS AffectedRows;
+        `);
+      if (!result.recordset?.[0]?.AffectedRows) return res.status(404).json({ message: "Không tìm thấy cấu hình" });
+      res.json({ message: req.body.TrangThai ? "Đã bật cấu hình" : "Đã tắt cấu hình" });
+    } catch (err) {
+      console.error("Toggle check item AQL config error:", err);
+      res.status(500).json({ message: "Không cập nhật được trạng thái cấu hình" });
     }
   }
 );

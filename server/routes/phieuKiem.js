@@ -2473,28 +2473,99 @@ router.get(
             const checkItems = Object.values(map);
             const effectiveAqlResult = await pool.request()
                 .input('PhieuKiemId', sql.Int, Number(id))
+                .input('LoaiKiemId', sql.Int, Number(phieu?.LoaiKiemId || 0))
+                .input('KhachHang', sql.VarChar(10), phieu?.KhachHang || null)
                 .query(`
                     SELECT checkItem.Id,
-                        COALESCE(NULLIF(checkItem.InspectionLevelOverride, N''), sectionRow.InspectionLevel) AS EffectiveInspectionLevel,
-                        effectiveAql.SampleSize AS EffectiveSampleSize,
-                        effectiveAql.Ac_Critical AS EffectiveAc_Critical,
-                        effectiveAql.Re_Critical AS EffectiveRe_Critical,
-                        effectiveAql.Ac_Major AS EffectiveAc_Major,
-                        effectiveAql.Re_Major AS EffectiveRe_Major,
-                        effectiveAql.Ac_Minor AS EffectiveAc_Minor,
-                        effectiveAql.Re_Minor AS EffectiveRe_Minor
+                        config.InspectionLevel AS ConfiguredInspectionLevel,
+                        effectiveLevel.InspectionLevel AS EffectiveInspectionLevel,
+                        CASE
+                            WHEN NULLIF(checkItem.InspectionLevelOverride, N'') IS NOT NULL THEN 'ITEM_OVERRIDE'
+                            WHEN NULLIF(config.InspectionLevel, N'') IS NOT NULL THEN 'CONFIG'
+                            ELSE 'SECTION'
+                        END AS EffectiveAqlSource,
+                        CASE
+                            WHEN effectiveAql.PlanFound = 1 THEN effectiveAql.SampleSize
+                            WHEN levelRange.MinimumLot IS NOT NULL AND sectionRow.TongSo < levelRange.MinimumLot
+                                THEN sectionRow.TongSo
+                            WHEN effectiveLevel.UsesItemAql = 0 THEN sectionRow.SoLuongKiem
+                            ELSE NULL
+                        END AS EffectiveSampleSize,
+                        CASE
+                            WHEN effectiveAql.PlanFound = 1 THEN effectiveAql.Ac_Critical
+                            WHEN levelRange.MinimumLot IS NOT NULL AND sectionRow.TongSo < levelRange.MinimumLot THEN 0
+                            WHEN effectiveLevel.UsesItemAql = 0 THEN sectionRow.Ac_Critical
+                            ELSE NULL
+                        END AS EffectiveAc_Critical,
+                        CASE
+                            WHEN effectiveAql.PlanFound = 1 THEN effectiveAql.Re_Critical
+                            WHEN levelRange.MinimumLot IS NOT NULL AND sectionRow.TongSo < levelRange.MinimumLot THEN 1
+                            WHEN effectiveLevel.UsesItemAql = 0 THEN sectionRow.Re_Critical
+                            ELSE NULL
+                        END AS EffectiveRe_Critical,
+                        CASE
+                            WHEN effectiveAql.PlanFound = 1 THEN effectiveAql.Ac_Major
+                            WHEN levelRange.MinimumLot IS NOT NULL AND sectionRow.TongSo < levelRange.MinimumLot THEN 0
+                            WHEN effectiveLevel.UsesItemAql = 0 THEN sectionRow.Ac_Major
+                            ELSE NULL
+                        END AS EffectiveAc_Major,
+                        CASE
+                            WHEN effectiveAql.PlanFound = 1 THEN effectiveAql.Re_Major
+                            WHEN levelRange.MinimumLot IS NOT NULL AND sectionRow.TongSo < levelRange.MinimumLot THEN 1
+                            WHEN effectiveLevel.UsesItemAql = 0 THEN sectionRow.Re_Major
+                            ELSE NULL
+                        END AS EffectiveRe_Major,
+                        CASE
+                            WHEN effectiveAql.PlanFound = 1 THEN effectiveAql.Ac_Minor
+                            WHEN levelRange.MinimumLot IS NOT NULL AND sectionRow.TongSo < levelRange.MinimumLot THEN 0
+                            WHEN effectiveLevel.UsesItemAql = 0 THEN sectionRow.Ac_Minor
+                            ELSE NULL
+                        END AS EffectiveAc_Minor,
+                        CASE
+                            WHEN effectiveAql.PlanFound = 1 THEN effectiveAql.Re_Minor
+                            WHEN levelRange.MinimumLot IS NOT NULL AND sectionRow.TongSo < levelRange.MinimumLot THEN 1
+                            WHEN effectiveLevel.UsesItemAql = 0 THEN sectionRow.Re_Minor
+                            ELSE NULL
+                        END AS EffectiveRe_Minor
                     FROM dbo.PHIEU_KIEM_CHECK_ITEM AS checkItem
                     JOIN dbo.PHIEU_KIEM_SECTION AS sectionRow ON sectionRow.Id = checkItem.SectionId
                     OUTER APPLY (
-                        SELECT TOP (1) aql.SampleSize,
+                        SELECT TOP (1) configRule.InspectionLevel
+                        FROM dbo.DM_CHECK_ITEM_AQL_CONFIG AS configRule
+                        WHERE @LoaiKiemId = 5
+                          AND configRule.TrangThai = 1
+                          AND configRule.KhachHang = @KhachHang
+                          AND configRule.NhomKiemKey = dbo.fn_AqlConfig_NormalizeKey(sectionRow.TenNhom)
+                          AND configRule.TenMucKiemKey = dbo.fn_AqlConfig_NormalizeKey(checkItem.TenMucKiem)
+                        ORDER BY configRule.Id
+                    ) AS config
+                    CROSS APPLY (
+                        SELECT COALESCE(
+                                   NULLIF(checkItem.InspectionLevelOverride, N''),
+                                   NULLIF(config.InspectionLevel, N''),
+                                   sectionRow.InspectionLevel
+                               ) AS InspectionLevel,
+                               CASE
+                                   WHEN NULLIF(checkItem.InspectionLevelOverride, N'') IS NOT NULL
+                                     OR NULLIF(config.InspectionLevel, N'') IS NOT NULL THEN 1
+                                   ELSE 0
+                               END AS UsesItemAql
+                    ) AS effectiveLevel
+                    OUTER APPLY (
+                        SELECT TOP (1) 1 AS PlanFound, aql.SampleSize,
                             aql.Ac_Critical, aql.Re_Critical,
                             aql.Ac_Major, aql.Re_Major,
                             aql.Ac_Minor, aql.Re_Minor
                         FROM dbo.DM_AQL_PLAN AS aql
-                        WHERE aql.InspectionLevel = COALESCE(NULLIF(checkItem.InspectionLevelOverride, N''), sectionRow.InspectionLevel)
+                        WHERE aql.InspectionLevel = effectiveLevel.InspectionLevel
                           AND sectionRow.TongSo BETWEEN aql.LotMin AND aql.LotMax
                         ORDER BY aql.LotMin DESC
                     ) AS effectiveAql
+                    OUTER APPLY (
+                        SELECT MIN(aql.LotMin) AS MinimumLot
+                        FROM dbo.DM_AQL_PLAN AS aql
+                        WHERE aql.InspectionLevel = effectiveLevel.InspectionLevel
+                    ) AS levelRange
                     WHERE sectionRow.PhieuKiemId = @PhieuKiemId
                 `);
             const effectiveAqlByItemId = new Map(
@@ -5172,12 +5243,22 @@ router.post(
                     .input("InspectionLevel", sql.NVarChar(100), normalizedInspectionLevel)
                     .input("LotSize", sql.Int, currentItem.TongSo)
                     .query(`
-                        SELECT TOP (1) 1 AS IsValid
-                        FROM dbo.DM_AQL_PLAN
-                        WHERE InspectionLevel = @InspectionLevel
-                          AND @LotSize BETWEEN LotMin AND LotMax
+                        SELECT CASE
+                            WHEN EXISTS (
+                                SELECT 1
+                                FROM dbo.DM_AQL_PLAN
+                                WHERE InspectionLevel = @InspectionLevel
+                                  AND @LotSize BETWEEN LotMin AND LotMax
+                            ) THEN 1
+                            WHEN @LotSize < (
+                                SELECT MIN(LotMin)
+                                FROM dbo.DM_AQL_PLAN
+                                WHERE InspectionLevel = @InspectionLevel
+                            ) THEN 1
+                            ELSE 0
+                        END AS IsValid
                     `);
-                if (!levelResult.recordset?.length) {
+                if (Number(levelResult.recordset?.[0]?.IsValid || 0) !== 1) {
                     return res.status(400).json({ message: "Mức AQL không áp dụng cho số lượng của nhóm này" });
                 }
             }
@@ -5279,24 +5360,37 @@ router.post(
 
         try {
             const pool = await poolPromise;
+            const transaction = new sql.Transaction(pool);
+            await transaction.begin();
+            try {
+                // Tự động cho các mục "Chưa kiểm" (KetQua IS NULL) thành "ĐẠT".
+                // Cùng transaction với bước tính để rollback nếu cấu hình AQL thiếu.
+                await transaction.request()
+                    .input("SectionId", sql.Int, sectionId)
+                    .query(`
+                        UPDATE PHIEU_KIEM_CHECK_ITEM
+                        SET KetQua = 'DAT'
+                        WHERE SectionId = @SectionId AND KetQua IS NULL
+                    `);
 
-            // Tự động cho các mục "Chưa kiểm" (KetQua IS NULL) thành "ĐẠT"
-            await pool.request()
-                .input("SectionId", sql.Int, sectionId)
-                .query(`
-                    UPDATE PHIEU_KIEM_CHECK_ITEM
-                    SET KetQua = 'DAT'
-                    WHERE SectionId = @SectionId AND KetQua IS NULL
-                `);
-
-            await pool.request()
-                .input("SectionId", sql.Int, sectionId)
-                .execute("sp_PhieuKiem_CalculateAQL");
+                await transaction.request()
+                    .input("SectionId", sql.Int, sectionId)
+                    .execute("sp_PhieuKiem_CalculateAQL");
+                await transaction.commit();
+            } catch (transactionError) {
+                await transaction.rollback();
+                throw transactionError;
+            }
 
             res.json({ success: true });
         } catch (err) {
             console.error(err);
-            res.status(500).json({ message: "Tính AQL thất bại" });
+            const isAqlConfigurationError = Number(err.number) === 50001;
+            res.status(isAqlConfigurationError ? 409 : 500).json({
+                message: isAqlConfigurationError
+                    ? err.message
+                    : "Tính AQL thất bại"
+            });
         }
     }
 );

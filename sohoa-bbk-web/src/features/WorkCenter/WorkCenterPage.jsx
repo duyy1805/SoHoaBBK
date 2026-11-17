@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-    Alert, Box, Button, CircularProgress, Menu, MenuItem, Stack, Typography, useMediaQuery
+    Alert, Box, Button, CircularProgress, Menu, MenuItem, Stack, Typography
 } from "@mui/material";
 import HistoryOutlinedIcon from "@mui/icons-material/HistoryOutlined";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
@@ -21,7 +21,6 @@ const filterDefaults = { q: "", work: "action", type: "all", quick: "", departme
 
 export default function WorkCenterPage() {
     const navigate = useNavigate();
-    const dockedViewport = useMediaQuery("(min-width:1440px)");
     const [searchParams, setSearchParams] = useSearchParams();
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -72,7 +71,7 @@ export default function WorkCenterPage() {
             else next.set(key, key === "advanced" ? "1" : String(value));
             next.delete("page");
             return next;
-        }, { replace: key !== "preview" });
+        }, { replace: true });
     };
 
     const selectSummary = (key) => {
@@ -144,7 +143,7 @@ export default function WorkCenterPage() {
     }), filters.sort, now), [currentUser, filteredBeforeWork, filters.sort, filters.work, now]);
 
     const previewRecord = recentItems.find((item) => item.recordKey === previewKey) || null;
-    const docked = Boolean(previewRecord && dockedViewport);
+    const previewOpen = Boolean(previewRecord);
     const activeSummary = filters.quick || (["action", "waiting"].includes(filters.work) ? filters.work : "");
 
     return (
@@ -163,21 +162,28 @@ export default function WorkCenterPage() {
             </Stack>
 
             {error && <Alert severity="error" action={<Button color="inherit" onClick={load}>Thử lại</Button>} sx={{ mb: 1.5 }}>{error}</Alert>}
-            <Box sx={{ display: "grid", gridTemplateColumns: docked ? "minmax(0,1fr) 430px" : "minmax(0,1fr)", gap: 1.5, alignItems: "start", transition: "grid-template-columns .2s" }}>
+            <Box sx={{
+                display: "grid",
+                gridTemplateColumns: previewOpen
+                    ? { xs: "minmax(0,1fr)", lg: "minmax(0,1fr) minmax(360px,430px)" }
+                    : "minmax(0,1fr)",
+                gap: 1.5,
+                alignItems: "start",
+                transition: "grid-template-columns .2s"
+            }}>
                 <Stack spacing={1.5} minWidth={0}>
                     <WorkCenterSummaryCards items={recentItems} activeKey={activeSummary} onSelect={selectSummary} currentUser={currentUser} />
                     <WorkCenterFilters filters={filters} onChange={updateParam} departments={departments} statuses={statuses} workCounts={workCounts}
                         onExport={() => exportWorkCenterCsv(filtered)} resultCount={filtered.length} />
                     {loading ? <Stack alignItems="center" sx={{ py: 8 }}><CircularProgress /><Typography color="text.secondary" sx={{ mt: 1 }}>Đang tải hồ sơ...</Typography></Stack> : filtered.length ? (
                         <Stack spacing={0.75}>{filtered.map((item) => (
-                            <WorkCenterRecordCard key={item.recordKey} item={item} now={now} compact={docked} selected={item.recordKey === previewKey}
+                            <WorkCenterRecordCard key={item.recordKey} item={item} now={now} compact={previewOpen} selected={item.recordKey === previewKey}
                                 onOpen={(record) => updateParam("preview", record.recordKey)} onOpenDetail={(record) => navigate(record.detailRoute)} />
                         ))}</Stack>
                     ) : <Alert severity="info">Không có hồ sơ phù hợp trong 14 ngày gần nhất.</Alert>}
                 </Stack>
-                {docked && <WorkCenterPreviewDrawer record={previewRecord} now={now} docked onClose={() => updateParam("preview", "")} onListChanged={load} />}
+                {previewOpen && <WorkCenterPreviewDrawer record={previewRecord} now={now} onClose={() => updateParam("preview", "")} onListChanged={load} />}
             </Box>
-            {!docked && <WorkCenterPreviewDrawer record={previewRecord} now={now} onClose={() => updateParam("preview", "")} onListChanged={load} />}
         </Box>
     );
 }

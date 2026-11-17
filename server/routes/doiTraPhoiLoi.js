@@ -21,12 +21,13 @@ const {
 const {
     createDoiTraDefectReceipt,
     cancelDraftDefectReceipt,
+    confirmDefectReceiptByWarehouse,
     RECEIPT_VALIDATION_ERROR_MIN,
     RECEIPT_VALIDATION_ERROR_MAX
 } = require('../services/doiTraDefectReceipt');
 
 const router = express.Router();
-const VIEW_PERMISSIONS = ['THUC_HIEN_KIEM', 'XEM_PHIEU_KIEM'];
+const VIEW_PERMISSIONS = ['THUC_HIEN_KIEM', 'XEM_PHIEU_KIEM', 'XAC_NHAN_KHO_SXBT'];
 const MAX_PLAN_SEARCH_ROWS = 200;
 
 const userIdOf = (req) => Number(req.user?.userId || req.user?.id || 0);
@@ -97,6 +98,7 @@ const canRunWorkflowAction = async (executor, user, phieu, actionCode) => {
             && canLeadDepartment(executor, user, phieu.BoPhanKcsId);
     }
     if (actionCode === 'B7_CONFIRM') return isB7Actor(executor, user);
+    if (actionCode === 'KHO_CONFIRM') return hasPermission(user, 'XAC_NHAN_KHO_SXBT');
     return false;
 };
 const authorizeDoiTraAccess = async (req, res, next) => {
@@ -620,6 +622,9 @@ router.get('/', authorizeDoiTraAccess, async (req, res) => {
                     phieu.B7ConfirmedAt,
                     COALESCE(NULLIF(creator.FullName, N''), creator.Username) AS TenNguoiLap,
                     COALESCE(NULLIF(b7Actor.FullName, N''), b7Actor.Username) AS TenB7XacNhan,
+                    receiptLink.SoPhieuNhapBtp,receiptLink.WarehouseConfirmedAt,
+                    receipt.ErpTrangThai AS PhieuNhapErpTrangThai,
+                    COALESCE(NULLIF(warehouseActor.FullName,N''),warehouseActor.Username) AS TenKhoXacNhan,
                     department.MaBoPhan AS MaBoPhanKcs,
                     department.TenBoPhan AS TenBoPhanKcs,
                     planRow.PlanSelectKey, planRow.PlanID, planRow.PlanNo,
@@ -632,6 +637,12 @@ router.get('/', authorizeDoiTraAccess, async (req, res) => {
                 INNER JOIN dbo.DOI_TRA_PHOI_LOI_PLAN planRow ON planRow.PhieuId = phieu.Id
                 LEFT JOIN dbo.USERS creator ON creator.Id = phieu.NguoiLapId
                 LEFT JOIN dbo.USERS b7Actor ON b7Actor.Id = phieu.B7ConfirmedBy
+                LEFT JOIN dbo.DOI_TRA_PHOI_LOI_PHIEU_NHAP_BTP receiptLink
+                  ON receiptLink.PhieuId=phieu.Id AND receiptLink.TrangThai=N'ACTIVE'
+                LEFT JOIN (SELECT ID_PhieuNhapBTP,TrangThai AS ErpTrangThai
+                    FROM TAG_QTKD.dbo.PhieuNhapBTP) receipt
+                  ON receipt.ID_PhieuNhapBTP=receiptLink.SourcePhieuNhapBtpId
+                LEFT JOIN dbo.USERS warehouseActor ON warehouseActor.Id=receiptLink.WarehouseConfirmedBy
                 LEFT JOIN dbo.DM_BO_PHAN department ON department.Id = phieu.BoPhanKcsId
                 WHERE (@Status IS NULL OR phieu.TrangThai = @Status)
                   AND (@FromDate IS NULL OR phieu.NgayLap >= @FromDate)
@@ -1216,12 +1227,14 @@ const saveReturnQuantities = async (req, res) => {
             .input('ItemsJson', sql.NVarChar(sql.MAX), JSON.stringify(items))
             .query(`
                 DECLARE @FromStatus NVARCHAR(80);
-                SELECT @FromStatus=TrangThai
-                FROM dbo.DOI_TRA_PHOI_LOI WITH (UPDLOCK,HOLDLOCK)
-                WHERE Id=@PhieuId AND RowVersion=@RowVersion
-                  AND TbpKcsConfirmedAt IS NOT NULL
-                  AND ISNULL(DinhMucTrangThai,N'CHUA_NHAP')<>N'DA_XAC_NHAN'
-                  AND TrangThai IN(N'CHO_THIET_LAP_KPH',N'CHO_Y_KIEN_KPH',N'CHO_XAC_NHAN_CUOI_KPH',
+                SELECT @FromStatus=phieu.TrangThai
+                FROM dbo.DOI_TRA_PHOI_LOI phieu WITH (UPDLOCK,HOLDLOCK)
+                JOIN dbo.DOI_TRA_PHOI_LOI_WORKFLOW workflowRow ON workflowRow.Id=phieu.WorkflowId
+                WHERE phieu.Id=@PhieuId AND phieu.RowVersion=@RowVersion
+                  AND ((workflowRow.VersionNo>=6 AND phieu.KcsCompletedAt IS NOT NULL)
+                    OR (workflowRow.VersionNo<6 AND phieu.TbpKcsConfirmedAt IS NOT NULL))
+                  AND ISNULL(phieu.DinhMucTrangThai,N'CHUA_NHAP')<>N'DA_XAC_NHAN'
+                  AND phieu.TrangThai IN(N'CHO_THIET_LAP_KPH',N'CHO_Y_KIEN_KPH',N'CHO_XAC_NHAN_CUOI_KPH',
                       N'CHO_BGD_XAC_NHAN',N'CHO_THEO_DOI',N'KPH_HOAN_TAT_CHO_B7');
                 IF @FromStatus IS NULL
                     THROW 52102, N'Phiếu đã thay đổi hoặc đã khóa số lượng đổi trả.', 1;
@@ -1350,8 +1363,12 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
     const ghiChu = trimOrNull(req.body?.ghiChu);
     const rawBtpQuantity = req.body?.soLuongBtpLoi;
     const soLuongBtpLoi = rawBtpQuantity === '' || rawBtpQuantity == null ? null : Number(rawBtpQuantity);
+    const khoNhapId = positiveId(req.body?.khoNhapId);
     const isKcsCompletion = ['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(actionCode);
-    const supportedActions = ['KCS_SUBMIT', 'KCS_RESUBMIT', 'TBP_CONFIRM', 'TBP_RETURN', 'B7_CONFIRM'];
+    const supportedActions = ['KCS_SUBMIT', 'KCS_RESUBMIT', 'TBP_CONFIRM', 'TBP_RETURN', 'B7_CONFIRM', 'KHO_CONFIRM'];
+    if (isKcsCompletion && (!khoNhapId || khoNhapId > 32767)) {
+        return res.status(400).json({ message: 'Vui lòng chọn kho nhập BTP lỗi hợp lệ' });
+    }
     if (!phieuId || !rowVersion || !supportedActions.includes(actionCode)
         || (ghiChu?.length || 0) > 1000 || (actionCode === 'TBP_RETURN' && !ghiChu)
         || (isKcsCompletion && (!Number.isFinite(soLuongBtpLoi)
@@ -1376,9 +1393,10 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
                 SELECT phieu.Id,phieu.SoPhieu,phieu.NguoiLapId,phieu.BoPhanKcsId,phieu.TrangThai,
                     phieu.WorkflowId,phieu.CurrentStepId,
                     transitionRow.Id AS TransitionId,transitionRow.ActionCode,transitionRow.ActionName,
-                    CASE WHEN @ActionCode=N'B7_CONFIRM' THEN phieu.CurrentStepId ELSE transitionRow.ToStepId END AS ToStepId,
+                    CASE WHEN @ActionCode IN(N'B7_CONFIRM',N'KHO_CONFIRM') THEN phieu.CurrentStepId ELSE transitionRow.ToStepId END AS ToStepId,
                     CASE WHEN @ActionCode=N'B7_CONFIRM' AND phieu.TrangThai=N'KPH_HOAN_TAT_CHO_B7'
                          THEN N'HOAN_TAT' WHEN @ActionCode=N'B7_CONFIRM' THEN phieu.TrangThai
+                         WHEN @ActionCode=N'KHO_CONFIRM' THEN phieu.TrangThai
                          ELSE transitionRow.ToStatusCode END AS ToStatusCode
                 FROM dbo.DOI_TRA_PHOI_LOI phieu WITH (UPDLOCK,HOLDLOCK)
                 JOIN dbo.DOI_TRA_PHOI_LOI_WORKFLOW workflowRow ON workflowRow.Id=phieu.WorkflowId
@@ -1389,12 +1407,23 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
                  AND transitionRow.ActionCode=@ActionCode
                  AND transitionRow.IsActive=1
                 WHERE phieu.Id=@PhieuId AND phieu.RowVersion=@RowVersion
-                  AND ((@ActionCode<>N'B7_CONFIRM' AND transitionRow.Id IS NOT NULL)
+                  AND ((@ActionCode NOT IN(N'B7_CONFIRM',N'KHO_CONFIRM') AND transitionRow.Id IS NOT NULL)
                     OR (@ActionCode=N'B7_CONFIRM' AND workflowRow.VersionNo>=5
-                        AND phieu.TbpKcsConfirmedAt IS NOT NULL
+                        AND ((workflowRow.VersionNo>=6 AND phieu.KcsCompletedAt IS NOT NULL)
+                          OR (workflowRow.VersionNo<6 AND phieu.TbpKcsConfirmedAt IS NOT NULL))
                         AND ISNULL(phieu.DinhMucTrangThai,N'CHUA_NHAP')<>N'DA_XAC_NHAN'
                         AND phieu.TrangThai IN(N'CHO_THIET_LAP_KPH',N'CHO_Y_KIEN_KPH',N'CHO_XAC_NHAN_CUOI_KPH',
-                            N'CHO_BGD_XAC_NHAN',N'CHO_THEO_DOI',N'KPH_HOAN_TAT_CHO_B7')));
+                            N'CHO_BGD_XAC_NHAN',N'CHO_THEO_DOI',N'KPH_HOAN_TAT_CHO_B7'))
+                    OR (@ActionCode=N'KHO_CONFIRM' AND workflowRow.VersionNo>=6
+                        AND phieu.KcsCompletedAt IS NOT NULL
+                        AND phieu.TrangThai<>N'DA_HUY'
+                        AND EXISTS(SELECT 1
+                            FROM dbo.DOI_TRA_PHOI_LOI_PHIEU_NHAP_BTP receiptLink
+                            JOIN TAG_QTKD.dbo.PhieuNhapBTP receipt
+                              ON receipt.ID_PhieuNhapBTP=receiptLink.SourcePhieuNhapBtpId
+                            WHERE receiptLink.PhieuId=phieu.Id AND receiptLink.TrangThai=N'ACTIVE'
+                              AND receipt.TonTai=1 AND receipt.TrangThai IN(0,5)
+                              AND receiptLink.WarehouseConfirmedAt IS NULL)));
             `);
         const workflowAction = loaded.recordset?.[0];
         if (!workflowAction) {
@@ -1421,7 +1450,13 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
                 phieuId,
                 userId: userIdOf(req),
                 soPhieu: workflowAction.SoPhieu,
-                quantity: soLuongBtpLoi
+                quantity: soLuongBtpLoi,
+                warehouseId: khoNhapId
+            });
+        } else if (actionCode === 'KHO_CONFIRM') {
+            generatedReceipt = await confirmDefectReceiptByWarehouse(transaction, {
+                phieuId,
+                userId: userIdOf(req)
             });
         } else if (actionCode === 'TBP_RETURN') {
             await cancelDraftDefectReceipt(transaction, {
@@ -1503,6 +1538,10 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
                         KcsCompletedBy=@UserId,
                         KcsCompletedAt=SYSDATETIME(),TbpKcsConfirmedBy=NULL,TbpKcsConfirmedAt=NULL,
                         LyDoTraLai=NULL,UpdatedAt=SYSDATETIME()
+                        ,RequiresExecutiveApproval=CASE WHEN @ToStatus=N'CHO_THIET_LAP_KPH'
+                            THEN ISNULL((SELECT TOP 1 CAST(BitValue AS bit)
+                                FROM dbo.SYSTEM_SETTINGS WHERE SettingKey=N'REQUIRE_EXECUTIVE_APPROVAL_KPH'),0)
+                            ELSE RequiresExecutiveApproval END
                     FROM dbo.DOI_TRA_PHOI_LOI phieu
                     WHERE phieu.Id=@PhieuId;
                 END
@@ -1548,6 +1587,8 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
                         B7ConfirmedBy=@UserId,B7ConfirmedAt=SYSDATETIME(),UpdatedAt=SYSDATETIME()
                     WHERE Id=@PhieuId;
                 END;
+                ELSE IF @ActionCode=N'KHO_CONFIRM'
+                    UPDATE dbo.DOI_TRA_PHOI_LOI SET UpdatedAt=SYSDATETIME() WHERE Id=@PhieuId;
 
                 INSERT dbo.DOI_TRA_PHOI_LOI_HISTORY
                     (PhieuId,ActionCode,FromStatus,ToStatus,ActionBy,GhiChu)
@@ -1601,21 +1642,13 @@ router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
                     btpPreview.ExpectedBtpCount,btpPreview.ExpectedBtpCode,btpPreview.ExpectedBtpName,
                     btpPreview.ExpectedProductionLot,
                     currentPlan.ID_QuyTrinhSanXuat AS ExpectedProcessId,
-                    currentProcess.Ten_QuyTrinhSanXuat AS ExpectedProcessName,
-                    warehouseMap.SourceKhoNhapId AS ExpectedWarehouseId,
-                    expectedWarehouse.Ten_Kho AS ExpectedWarehouseName
+                    currentProcess.Ten_QuyTrinhSanXuat AS ExpectedProcessName
                 FROM dbo.DOI_TRA_PHOI_LOI_PLAN planRow
                 LEFT JOIN TAG_QLSX.dbo.KeHoachSanXuat currentPlan
                   ON currentPlan.ID_KeHoachSanXuat=TRY_CONVERT(INT,planRow.PlanID)
                  AND currentPlan.TonTai=1
                 LEFT JOIN TAG_QTKD.dbo.DM_QuyTrinhSanXuat currentProcess
                   ON currentProcess.ID_QuyTrinhSanXuat=currentPlan.ID_QuyTrinhSanXuat
-                LEFT JOIN dbo.DOI_TRA_PHOI_LOI_BTP_KHO_MAP warehouseMap
-                  ON warehouseMap.SourceQuyTrinhSanXuatId=currentPlan.ID_QuyTrinhSanXuat
-                 AND warehouseMap.IsActive=1
-                LEFT JOIN TAG_QTKD.dbo.DM_Kho expectedWarehouse
-                  ON expectedWarehouse.ID_Kho=warehouseMap.SourceKhoNhapId
-                 AND expectedWarehouse.SuDung=1 AND expectedWarehouse.TonTai=1
                 OUTER APPLY(
                     SELECT COUNT(*) AS ExpectedBtpCount,
                         MAX(orderProduct.ItemCode) AS ExpectedBtpCode,
@@ -1719,6 +1752,8 @@ router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
                     receiptLink.SoLuongBtpLoi,receiptLink.SourceKhoNhapId,warehouse.Ten_Kho AS TenKhoNhap,
                     receiptLink.SourceQuyTrinhSanXuatId,processRow.Ten_QuyTrinhSanXuat,
                     receiptLink.TrangThai,receiptLink.CreatedAt,receiptLink.CancelledAt,receiptLink.CancelReason,
+                    receiptLink.WarehouseConfirmedBy,receiptLink.WarehouseConfirmedAt,
+                    COALESCE(NULLIF(warehouseActor.FullName,N''),warehouseActor.Username) AS TenKhoXacNhan,
                     receipt.TrangThai AS ErpTrangThai,receipt.TonTai,
                     orderProduct.ItemCode AS MaBtp,orderProduct.Ten_SanPham AS TenBtp,
                     productionLot.So_LoSanXuat AS SoLoSanXuat
@@ -1734,9 +1769,15 @@ router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
                 LEFT JOIN TAG_QTKD.dbo.DM_Kho warehouse ON warehouse.ID_Kho=receiptLink.SourceKhoNhapId
                 LEFT JOIN TAG_QTKD.dbo.DM_QuyTrinhSanXuat processRow
                   ON processRow.ID_QuyTrinhSanXuat=receiptLink.SourceQuyTrinhSanXuatId
+                LEFT JOIN dbo.USERS warehouseActor ON warehouseActor.Id=receiptLink.WarehouseConfirmedBy
                 WHERE receiptLink.PhieuId=@PhieuId
                 ORDER BY CASE WHEN receiptLink.TrangThai=N'ACTIVE' THEN 0 ELSE 1 END,
                     receiptLink.CreatedAt DESC,receiptLink.Id DESC;
+
+                SELECT warehouse.ID_Kho AS Id,warehouse.Ten_Kho AS TenKho
+                FROM TAG_QTKD.dbo.DM_Kho warehouse
+                WHERE warehouse.SuDung=1 AND warehouse.TonTai=1
+                ORDER BY warehouse.Ten_Kho,warehouse.ID_Kho;
             `);
         const phieu = result.recordsets[0]?.[0];
         if (!phieu) return res.status(404).json({ message: 'Không tìm thấy phiếu đổi trả phôi lỗi' });
@@ -1753,13 +1794,23 @@ router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
         const b7Actor = await isB7Actor(pool, req.user);
         const issueLinks = result.recordsets[9] || [];
         const receiptLinks = result.recordsets[10] || [];
+        const workflowVersion = Number(result.recordsets[5]?.[0]?.VersionNo || 0);
         const hasActiveIssue = issueLinks.some((item) => item.TrangThai === 'ACTIVE');
         const canWorkB7 = canB7Work({
             status: phieu.TrangThai,
-            tbpConfirmedAt: phieu.TbpKcsConfirmedAt,
+            workflowReadyAt: workflowVersion >= 6 ? phieu.KcsCompletedAt : phieu.TbpKcsConfirmedAt,
             dinhMucStatus: phieu.DinhMucTrangThai,
             hasActiveIssue
         });
+        const activeReceipt = receiptLinks.find((item) => item.TrangThai === 'ACTIVE');
+        const canConfirmWarehouse = workflowVersion >= 6
+            && Boolean(phieu.KcsCompletedAt)
+            && phieu.TrangThai !== 'DA_HUY'
+            && Boolean(activeReceipt)
+            && Number(activeReceipt.TonTai) === 1
+            && [0, 5].includes(Number(activeReceipt.ErpTrangThai))
+            && !activeReceipt.WarehouseConfirmedAt
+            && (isAdmin(req.user) || hasPermission(req.user, 'XAC_NHAN_KHO_SXBT'));
         const availableActions = [];
         for (const action of result.recordsets[8] || []) {
             if (await canRunWorkflowAction(pool, req.user, phieu, action.ActionCode)) {
@@ -1795,12 +1846,14 @@ router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
             doiTraItems: result.recordsets[7] || [],
             lenhXuatVatTuItems: issueLinks,
             phieuNhapBtpItems: receiptLinks,
+            warehouses: result.recordsets[11] || [],
             capabilities: {
                 canCancel: phieu.TrangThai === 'TAO_MOI' && canEditPhoi,
                 canEditPhoi,
                 canEditDinhMuc: canWorkB7 && b7Actor,
                 canSaveDinhMuc: canWorkB7 && b7Actor,
-                canConfirmDinhMuc: canWorkB7 && b7Actor
+                canConfirmDinhMuc: canWorkB7 && b7Actor,
+                canConfirmWarehouse
             }
         }));
     } catch (error) {

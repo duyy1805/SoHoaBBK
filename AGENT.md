@@ -224,8 +224,9 @@ Biên bản SXBT có luồng riêng tại `/api/bien-ban-sxbt`.
 - Khi xác nhận mức độ, backend tạo các bước xác nhận theo bộ phận tùy mức độ.
 - Thêm/cập nhật dòng xử lý qua `POST /bien-ban-sxbt/:id/xu-ly-row`.
 - Submit biên bản qua `POST /bien-ban-sxbt/:id/submit`, yêu cầu quyền `KET_LUAN`.
-- Các bộ phận trong luồng được mở ý kiến song song và gọi `POST /bien-ban-sxbt/:id/confirm-step`; biên bản chỉ hoàn tất khi tất cả bộ phận đã xác nhận.
-- Hoàn tất biên bản SXBT qua `POST /bien-ban-sxbt/:id/complete`, yêu cầu quyền `KET_LUAN`.
+- Các bộ phận trong luồng được mở ý kiến song song và gọi `POST /bien-ban-sxbt/:id/confirm-step`; xác nhận bước cuối không tự hoàn tất biên bản.
+- File đính kèm có thể được tích là minh chứng. Biên bản mức C cần ít nhất một file minh chứng còn hiệu lực.
+- Sau khi tất cả bộ phận đã xác nhận ý kiến, riêng B8 có quyền `KET_LUAN` hoàn tất biên bản qua `POST /bien-ban-sxbt/:id/complete`.
 - Trạng thái UI thường gặp: `BB_SXBT_MOI`, `BB_SXBT_TP_B8_DRAFT`, `BB_SXBT_CHO_XAC_NHAN`, `BB_SXBT_HOAN_TAT`.
 
 ## 10.1 Luồng Phiếu Xử Lý Không Phù Hợp Độc Lập
