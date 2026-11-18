@@ -11,6 +11,26 @@ const dateOrBlank = (value) => {
     const date = value instanceof Date ? value : new Date(value);
     return Number.isNaN(date.getTime()) ? text(value).slice(0, 10) : date;
 };
+const dateText = (value) => {
+    const normalized = dateOrBlank(value);
+    if (!normalized) return '';
+    if (normalized instanceof Date) {
+        return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}-${String(normalized.getDate()).padStart(2, '0')}`;
+    }
+    return text(normalized).slice(0, 10);
+};
+const parseIssueTraceabilities = (item) => {
+    if (Array.isArray(item.issueTraceabilities)) return item.issueTraceabilities;
+    try {
+        const parsed = JSON.parse(item.IssueTraceabilitiesJson || '[]');
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+};
+const traceLines = (traces, field, formatter = text) => traces
+    .map((trace) => formatter(trace[field]))
+    .join('\n');
 const phoiCount = (value) => {
     const parsed = Number(text(value));
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
@@ -55,6 +75,10 @@ const buildDoiTraSummaryWorkbook = ({ items = [], defects = [], receipts = [] } 
 
     const summaryRows = items.map((item, index) => {
         const itemDefects = defectsByPhoi.get(Number(item.PhoiId)) || [];
+        const issueTraceabilities = parseIssueTraceabilities(item);
+        const issueNumbers = issueTraceabilities.length
+            ? issueTraceabilities.map((trace) => text(trace.SoLenhXuatVT)).filter(Boolean)
+            : [...new Set(itemDefects.map((defect) => text(defect.SoLenhXuatVT)).filter(Boolean))];
         return {
             'STT': index + 1,
             'Số phiếu': item.SoPhieu || '',
@@ -76,13 +100,13 @@ const buildDoiTraSummaryWorkbook = ({ items = [], defects = [], receipts = [] } 
             'Số bộ lỗi': numberOrBlank(item.SoLuongBoLoiSnapshot ?? defectiveSetQuantity(item)),
             'ĐVT': item.TenDonViTinh || '',
             'Số lượng đổi trả': numberOrBlank(item.SoLuongDoiTra),
-            'LXVT': item.LenhXuatVatTu || '',
-            'Lot sản xuất': item.ExpectedProductionLot || item.LotSanXuat || '',
-            'Dấu tuần': item.DauTuan || '',
-            'Đơn vị tạo phôi': item.TenDonViTaoPhoi || '',
-            'Ngày tạo phôi': dateOrBlank(item.NgayTaoPhoi),
-            'Tổ sản xuất': item.ToSanXuat || '',
-            'Công nhân sản xuất': item.CongNhanSanXuat || '',
+            'LXVT': issueNumbers.join('\n') || item.LenhXuatVatTu || '',
+            'Lot sản xuất': issueTraceabilities.length ? traceLines(issueTraceabilities, 'LotSanXuat') : item.ExpectedProductionLot || item.LotSanXuat || '',
+            'Dấu tuần': issueTraceabilities.length ? traceLines(issueTraceabilities, 'DauTuan') : item.DauTuan || '',
+            'Đơn vị tạo phôi': issueTraceabilities.length ? traceLines(issueTraceabilities, 'TenDonViTaoPhoi') : item.TenDonViTaoPhoi || '',
+            'Ngày tạo phôi': issueTraceabilities.length ? traceLines(issueTraceabilities, 'NgayTaoPhoi', dateText) : dateOrBlank(item.NgayTaoPhoi),
+            'Tổ sản xuất': issueTraceabilities.length ? traceLines(issueTraceabilities, 'ToSanXuat') : item.ToSanXuat || '',
+            'Công nhân sản xuất': issueTraceabilities.length ? traceLines(issueTraceabilities, 'CongNhanSanXuat') : item.CongNhanSanXuat || '',
             'KCS': item.TenKcs || '',
             'Chi tiết lỗi': itemDefects.map(defectLabel).filter(Boolean).join('\n'),
             'Bộ phận/NCC gây lỗi': [...new Set(itemDefects.map(responsibleLabel).filter(Boolean))].join('\n'),

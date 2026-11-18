@@ -27,6 +27,12 @@ export const getDoiTraDefectGroups = () =>
 export const getDoiTraPhoiOptions = (id) =>
     axiosClient.get(`/doi-tra-phoi-loi/${id}/phoi-options`);
 
+export const createDoiTraManualPhoi = (id, data) =>
+    axiosClient.post(`/doi-tra-phoi-loi/${id}/manual-phoi`, data);
+
+export const getDoiTraMaterialIssueOptions = (id) =>
+    axiosClient.get(`/doi-tra-phoi-loi/${id}/material-issue-options`);
+
 export const saveDoiTraPhoi = (id, rowVersion, items) =>
     axiosClient.put(`/doi-tra-phoi-loi/${id}/phoi`, { rowVersion, items });
 

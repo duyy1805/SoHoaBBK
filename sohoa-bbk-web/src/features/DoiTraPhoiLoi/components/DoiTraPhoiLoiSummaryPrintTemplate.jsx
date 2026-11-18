@@ -112,7 +112,16 @@ const DoiTraPhoiLoiSummaryPrintTemplate = forwardRef(function DoiTraPhoiLoiSumma
         });
         const responsibleUnits = [...new Set((item.defects || [])
             .map(responsibleUnitLabel).filter(Boolean))];
-        return { ...item, ticket, quota, errorQuantities, responsibleUnits };
+        const issueTraceabilities = item.issueTraceabilities || [];
+        const materialIssueNumbers = issueTraceabilities.length
+            ? issueTraceabilities.map((trace) => text(trace.SoLenhXuatVT)).filter(Boolean)
+            : [...new Set((item.defects || []).map((defect) => text(defect.SoLenhXuatVT)).filter(Boolean))];
+        const traceLines = (field, formatter = (value) => value) => issueTraceabilities
+            .map((trace) => {
+                const value = formatter(trace[field]);
+                return value || '';
+            }).join('\n');
+        return { ...item, ticket, quota, errorQuantities, responsibleUnits, materialIssueNumbers, issueTraceabilities, traceLines };
     }));
     const pages = chunkRows(rows);
 
@@ -213,13 +222,13 @@ const DoiTraPhoiLoiSummaryPrintTemplate = forwardRef(function DoiTraPhoiLoiSumma
                                         <td style={cell}>{row ? materialLabel(row) : ''}</td>
                                         <td style={{ ...cell, textAlign: 'center' }}>{row?.quota?.TenDonViTinh || ''}</td>
                                         <td style={{ ...cell, textAlign: 'center' }}>{row ? formatQuantity(row.quota.SoLuongDoiTra) : ''}</td>
-                                        <td style={cell}>{row?.LenhXuatVatTu || ''}</td>
-                                        <td style={{ ...cell, textAlign: 'center' }}>{row ? row.ticket.ExpectedProductionLot || row.LotSanXuat || '' : ''}</td>
-                                        <td style={{ ...cell, textAlign: 'center' }}>{row?.DauTuan || ''}</td>
-                                        <td style={cell}>{row?.TenDonViTaoPhoi || ''}</td>
-                                        <td style={{ ...cell, textAlign: 'center' }}>{formatDate(row?.NgayTaoPhoi)}</td>
-                                        <td style={cell}>{row?.ToSanXuat || ''}</td>
-                                        <td style={cell}>{row?.CongNhanSanXuat || ''}</td>
+                                        <td style={{ ...cell, whiteSpace: 'pre-wrap' }}>{row?.materialIssueNumbers?.join('\n') || row?.LenhXuatVatTu || ''}</td>
+                                        <td style={{ ...cell, textAlign: 'center', whiteSpace: 'pre-wrap' }}>{row?.traceLines?.('LotSanXuat') || (row ? row.ticket.ExpectedProductionLot || row.LotSanXuat || '' : '')}</td>
+                                        <td style={{ ...cell, textAlign: 'center', whiteSpace: 'pre-wrap' }}>{row?.traceLines?.('DauTuan') || row?.DauTuan || ''}</td>
+                                        <td style={{ ...cell, whiteSpace: 'pre-wrap' }}>{row?.traceLines?.('TenDonViTaoPhoi') || row?.TenDonViTaoPhoi || ''}</td>
+                                        <td style={{ ...cell, textAlign: 'center', whiteSpace: 'pre-wrap' }}>{row?.traceLines?.('NgayTaoPhoi', formatDate) || formatDate(row?.NgayTaoPhoi)}</td>
+                                        <td style={{ ...cell, whiteSpace: 'pre-wrap' }}>{row?.traceLines?.('ToSanXuat') || row?.ToSanXuat || ''}</td>
+                                        <td style={{ ...cell, whiteSpace: 'pre-wrap' }}>{row?.traceLines?.('CongNhanSanXuat') || row?.CongNhanSanXuat || ''}</td>
                                         <td style={cell}>{row?.TenKcs || ''}</td>
                                         {ERROR_COLUMNS.map((column) => <td key={column.key} style={{ ...cell, textAlign: 'center' }}>{row ? formatQuantity(row.errorQuantities.get(column.key) || '') : ''}</td>)}
                                         <td style={{ ...cell, whiteSpace: 'pre-wrap' }}>{row?.responsibleUnits?.join('\n') || ''}</td>

@@ -18,11 +18,39 @@ import {
 } from '../../../api/doiTraPhoiLoi.api';
 import { getCurrentUser } from '../../../utils/auth';
 import {
-    DOI_TRA_STATUS_META, doiTraDinhMucStatusMeta, doiTraStatusMeta,
+    DOI_TRA_DINH_MUC_STATUS_META, DOI_TRA_STATUS_META, doiTraDinhMucStatusMeta, doiTraStatusMeta,
     formatDoiTraDate, formatDoiTraQuantity
 } from '../doiTraPhoiLoi.utils';
 import DoiTraPhoiLoiSummaryPrintTemplate from '../components/DoiTraPhoiLoiSummaryPrintTemplate';
 import DoiTraDefectFlowReport from '../components/DoiTraDefectFlowReport';
+
+const emptyColumnFilters = {
+    ticketNo: '', createdDate: '', planOrder: '', product: '', operationDepartment: '',
+    planQuantity: '', creator: '', status: '', warehouseStatus: '', b7Status: ''
+};
+
+const searchable = (value) => String(value ?? '').normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('vi').trim();
+
+const containsSearch = (values, keyword) => !keyword
+    || values.some((value) => searchable(value).includes(searchable(keyword)));
+
+const dateKey = (value) => {
+    if (!value) return '';
+    const raw = String(value);
+    const isoDate = raw.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+    if (isoDate) return isoDate;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+const columnFilterSx = {
+    minWidth: 105,
+    '& .MuiInputBase-root': { fontSize: 12 },
+    '& .MuiInputBase-input': { py: 0.75 },
+    '& .MuiSelect-select': { py: '6px !important' }
+};
 
 export default function DoiTraPhoiLoiList() {
     const navigate = useNavigate();
@@ -37,6 +65,7 @@ export default function DoiTraPhoiLoiList() {
     const [exportingExcel, setExportingExcel] = useState(false);
     const summaryPrintRef = useRef(null);
     const [filters, setFilters] = useState({ keyword: '', status: '', opinionDepartment: 'all', fromDate: '', toDate: '' });
+    const [columnFilters, setColumnFilters] = useState(emptyColumnFilters);
     const [deletingId, setDeletingId] = useState(null);
     const user = useMemo(() => getCurrentUser() || {}, []);
     const permissions = user?.permissions || [];
@@ -66,15 +95,43 @@ export default function DoiTraPhoiLoiList() {
         return [...options.values()].sort((a, b) => a.label.localeCompare(b.label, 'vi'));
     }, [rows]);
     const filteredRows = useMemo(() => rows.filter((row) => {
-        if (filters.opinionDepartment === 'all') return true;
-        const departmentIds = (Array.isArray(row.OpinionDepartments) ? row.OpinionDepartments : [])
-            .map((department) => Number(department.id));
-        if (filters.opinionDepartment === 'mine') {
-            return departmentIds.some((id) => managedDepartmentIds.has(id));
+        if (filters.opinionDepartment !== 'all') {
+            const departmentIds = (Array.isArray(row.OpinionDepartments) ? row.OpinionDepartments : [])
+                .map((department) => Number(department.id));
+            if (filters.opinionDepartment === 'mine') {
+                if (!departmentIds.some((id) => managedDepartmentIds.has(id))) return false;
+            } else if (!departmentIds.includes(Number(filters.opinionDepartment))) return false;
         }
-        return departmentIds.includes(Number(filters.opinionDepartment));
-    }), [filters.opinionDepartment, managedDepartmentIds, rows]);
+
+        if (!containsSearch([row.SoPhieu], columnFilters.ticketNo)) return false;
+        if (columnFilters.createdDate && dateKey(row.NgayLap) !== columnFilters.createdDate) return false;
+        if (!containsSearch([row.PlanNo, row.PlanID, row.OrderCode], columnFilters.planOrder)) return false;
+        if (!containsSearch([row.ProductCode, row.ProductName], columnFilters.product)) return false;
+        if (!containsSearch([
+            row.OperationCode, row.OperationName, row.DepartmentCode, row.DepartmentName
+        ], columnFilters.operationDepartment)) return false;
+        if (columnFilters.planQuantity) {
+            const expectedQuantity = Number(String(columnFilters.planQuantity).replace(',', '.'));
+            if (!Number.isFinite(expectedQuantity) || Number(row.PlanQty) !== expectedQuantity) return false;
+        }
+        if (!containsSearch([row.TenNguoiLap], columnFilters.creator)) return false;
+        if (columnFilters.status && row.TrangThai !== columnFilters.status) return false;
+        if (columnFilters.warehouseStatus === 'CONFIRMED'
+            && (!row.SoPhieuNhapBtp || Number(row.PhieuNhapErpTrangThai) !== 5)) return false;
+        if (columnFilters.warehouseStatus === 'PENDING'
+            && (!row.SoPhieuNhapBtp || Number(row.PhieuNhapErpTrangThai) === 5)) return false;
+        if (columnFilters.warehouseStatus === 'NOT_CREATED' && row.SoPhieuNhapBtp) return false;
+        if (columnFilters.b7Status && row.DinhMucTrangThai !== columnFilters.b7Status) return false;
+        return true;
+    }), [columnFilters, filters.opinionDepartment, managedDepartmentIds, rows]);
     const printableRows = filteredRows.filter((row) => row.TrangThai !== 'DA_HUY');
+    const printableIdSet = new Set(printableRows.map((row) => Number(row.Id)));
+    const visibleSelectedIds = selectedIds.filter((id) => printableIdSet.has(Number(id)));
+
+    const setColumnFilter = (name, value) => {
+        setSelectedIds([]);
+        setColumnFilters((current) => ({ ...current, [name]: value }));
+    };
 
     const printSummary = useReactToPrint({
         contentRef: summaryPrintRef,
@@ -207,14 +264,12 @@ export default function DoiTraPhoiLoiList() {
             <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
                 {loading ? (
                     <Box sx={{ py: 8, display: 'grid', placeItems: 'center' }}><CircularProgress /></Box>
-                ) : filteredRows.length === 0 ? (
-                    <Alert severity="info" sx={{ m: 2 }}>Chưa có phiếu đổi trả phôi lỗi phù hợp.</Alert>
                 ) : (
                     <TableContainer>
                         <Table size="small">
                             <TableHead>
                                 <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                                    <TableCell padding="checkbox"><Checkbox checked={printableRows.length > 0 && selectedIds.length === printableRows.length} indeterminate={selectedIds.length > 0 && selectedIds.length < printableRows.length} onChange={(event) => setSelectedIds(event.target.checked ? printableRows.map((row) => row.Id) : [])} /></TableCell>
+                                    <TableCell padding="checkbox"><Checkbox checked={printableRows.length > 0 && visibleSelectedIds.length === printableRows.length} indeterminate={visibleSelectedIds.length > 0 && visibleSelectedIds.length < printableRows.length} onChange={(event) => setSelectedIds(event.target.checked ? printableRows.map((row) => row.Id) : [])} /></TableCell>
                                     <TableCell>Số phiếu</TableCell>
                                     <TableCell>Ngày lập</TableCell>
                                     <TableCell>Kế hoạch / Đơn hàng</TableCell>
@@ -227,8 +282,25 @@ export default function DoiTraPhoiLoiList() {
                                     <TableCell>Số lượng đổi trả B7</TableCell>
                                     <TableCell align="center">Thao tác</TableCell>
                                 </TableRow>
+                                <TableRow sx={{ bgcolor: '#fff', '& .MuiTableCell-root': { py: 0.75, verticalAlign: 'top' } }}>
+                                    <TableCell padding="checkbox" />
+                                    <TableCell><TextField fullWidth size="small" variant="standard" placeholder="Lọc số phiếu" value={columnFilters.ticketNo} onChange={(event) => setColumnFilter('ticketNo', event.target.value)} sx={columnFilterSx} /></TableCell>
+                                    <TableCell><TextField fullWidth size="small" variant="standard" type="date" value={columnFilters.createdDate} onChange={(event) => setColumnFilter('createdDate', event.target.value)} sx={{ ...columnFilterSx, minWidth: 125 }} inputProps={{ 'aria-label': 'Lọc ngày lập' }} /></TableCell>
+                                    <TableCell><TextField fullWidth size="small" variant="standard" placeholder="KH hoặc đơn hàng" value={columnFilters.planOrder} onChange={(event) => setColumnFilter('planOrder', event.target.value)} sx={{ ...columnFilterSx, minWidth: 145 }} /></TableCell>
+                                    <TableCell><TextField fullWidth size="small" variant="standard" placeholder="Mã hoặc tên SP" value={columnFilters.product} onChange={(event) => setColumnFilter('product', event.target.value)} sx={{ ...columnFilterSx, minWidth: 145 }} /></TableCell>
+                                    <TableCell><TextField fullWidth size="small" variant="standard" placeholder="Công đoạn/BP" value={columnFilters.operationDepartment} onChange={(event) => setColumnFilter('operationDepartment', event.target.value)} sx={{ ...columnFilterSx, minWidth: 145 }} /></TableCell>
+                                    <TableCell><TextField fullWidth size="small" variant="standard" type="number" placeholder="SL" value={columnFilters.planQuantity} onChange={(event) => setColumnFilter('planQuantity', event.target.value)} sx={{ ...columnFilterSx, minWidth: 80 }} inputProps={{ min: 0, 'aria-label': 'Lọc số lượng kế hoạch' }} /></TableCell>
+                                    <TableCell><TextField fullWidth size="small" variant="standard" placeholder="Người lập" value={columnFilters.creator} onChange={(event) => setColumnFilter('creator', event.target.value)} sx={columnFilterSx} /></TableCell>
+                                    <TableCell><TextField select fullWidth size="small" variant="standard" value={columnFilters.status} onChange={(event) => setColumnFilter('status', event.target.value)} sx={{ ...columnFilterSx, minWidth: 160 }} SelectProps={{ displayEmpty: true }}><MenuItem value="">Tất cả</MenuItem>{Object.entries(DOI_TRA_STATUS_META).map(([value, meta]) => <MenuItem key={value} value={value}>{meta.label}</MenuItem>)}</TextField></TableCell>
+                                    <TableCell><TextField select fullWidth size="small" variant="standard" value={columnFilters.warehouseStatus} onChange={(event) => setColumnFilter('warehouseStatus', event.target.value)} sx={{ ...columnFilterSx, minWidth: 155 }} SelectProps={{ displayEmpty: true }}><MenuItem value="">Tất cả</MenuItem><MenuItem value="CONFIRMED">Đã xác nhận nhập</MenuItem><MenuItem value="PENDING">Chưa xác nhận nhập</MenuItem><MenuItem value="NOT_CREATED">Chưa tạo phiếu nhập</MenuItem></TextField></TableCell>
+                                    <TableCell><TextField select fullWidth size="small" variant="standard" value={columnFilters.b7Status} onChange={(event) => setColumnFilter('b7Status', event.target.value)} sx={{ ...columnFilterSx, minWidth: 155 }} SelectProps={{ displayEmpty: true }}><MenuItem value="">Tất cả</MenuItem>{Object.entries(DOI_TRA_DINH_MUC_STATUS_META).map(([value, meta]) => <MenuItem key={value} value={value}>{meta.label}</MenuItem>)}</TextField></TableCell>
+                                    <TableCell align="center"><Button size="small" disabled={!Object.values(columnFilters).some(Boolean)} onClick={() => { setSelectedIds([]); setColumnFilters(emptyColumnFilters); }}>Xóa lọc</Button></TableCell>
+                                </TableRow>
                             </TableHead>
                             <TableBody>
+                                {filteredRows.length === 0 && <TableRow><TableCell colSpan={12}>
+                                    <Alert severity="info">Chưa có phiếu đổi trả phôi lỗi phù hợp. Bạn có thể thay đổi hoặc xóa bộ lọc ngay trên đầu cột.</Alert>
+                                </TableCell></TableRow>}
                                 {filteredRows.map((row) => {
                                     const status = doiTraStatusMeta(row.TrangThai);
                                     const dinhMucStatus = doiTraDinhMucStatusMeta(row.DinhMucTrangThai);

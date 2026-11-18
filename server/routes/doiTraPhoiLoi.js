@@ -146,7 +146,9 @@ const normalizedPhoiItems = (value) => (Array.isArray(value) ? value : []).map((
     const sourceId = positiveId(item?.sourceId ?? item?.SourceId ?? (
         sourceType === 'BTP_STAGE'
             ? item?.sourceCatalogProductId ?? item?.SourceCatalogProductId
-            : legacySourceId
+            : sourceType === 'MANUAL'
+                ? item?.sourceManualPhoiId ?? item?.SourceManualPhoiId
+                : legacySourceId
     ));
     const defects = (Array.isArray(item?.defects) ? item.defects : []).map((defect, defectIndex) => ({
         nhomLoiId: positiveId(defect?.nhomLoiId ?? defect?.NhomLoiId),
@@ -155,13 +157,26 @@ const normalizedPhoiItems = (value) => (Array.isArray(value) ? value : []).map((
         ghiChu: trimOrNull(defect?.ghiChu ?? defect?.GhiChu),
         boPhanGayLoiSource: String(defect?.boPhanGayLoiSource ?? defect?.BoPhanGayLoiSource ?? '').trim().toUpperCase(),
         boPhanGayLoiSourceId: positiveId(defect?.boPhanGayLoiSourceId ?? defect?.BoPhanGayLoiSourceId),
+        sourceLenhXuatVTId: positiveId(defect?.sourceLenhXuatVTId ?? defect?.SourceLenhXuatVTId),
         sortOrder: defectIndex + 1
+    }));
+    const issueTraceabilities = (Array.isArray(item?.issueTraceabilities) ? item.issueTraceabilities : []).map((trace, traceIndex) => ({
+        sourceLenhXuatVTId: positiveId(trace?.sourceLenhXuatVTId ?? trace?.SourceLenhXuatVTId),
+        lotSanXuat: trimOrNull(trace?.lotSanXuat ?? trace?.LotSanXuat),
+        dauTuan: trimOrNull(trace?.dauTuan ?? trace?.DauTuan),
+        donViTaoPhoiId: positiveId(trace?.donViTaoPhoiId ?? trace?.DonViTaoPhoiId),
+        ngayTaoPhoi: isDateOnly(trace?.ngayTaoPhoi ?? trace?.NgayTaoPhoi)
+            ? String(trace?.ngayTaoPhoi ?? trace?.NgayTaoPhoi) : null,
+        toSanXuat: trimOrNull(trace?.toSanXuat ?? trace?.ToSanXuat),
+        congNhanSanXuat: trimOrNull(trace?.congNhanSanXuat ?? trace?.CongNhanSanXuat),
+        sortOrder: traceIndex + 1
     }));
     return {
         sourceType,
         sourceId,
         sourceLoiPhoiId: sourceType === 'COMPONENT' ? sourceId : null,
         sourceCatalogProductId: sourceType === 'BTP_STAGE' ? sourceId : null,
+        sourceManualPhoiId: sourceType === 'MANUAL' ? sourceId : null,
         soLuongKiem: positiveId(item?.soLuongKiem ?? item?.SoLuongKiem),
         soLuongPhoiLoi: nonNegativeInteger(item?.soLuongPhoiLoi ?? item?.SoLuongPhoiLoi),
         ghiChu: trimOrNull(item?.ghiChu ?? item?.GhiChu),
@@ -175,7 +190,8 @@ const normalizedPhoiItems = (value) => (Array.isArray(value) ? value : []).map((
         congNhanSanXuat: trimOrNull(item?.congNhanSanXuat ?? item?.CongNhanSanXuat),
         kcsId: null,
         sortOrder: index + 1,
-        defects
+        defects,
+        issueTraceabilities
     };
 });
 
@@ -552,7 +568,14 @@ router.post('/summary-preview', authorizeDoiTraAccess, async (req, res) => {
                 ) productionLot
                 ORDER BY phieu.NgayLap,phieu.Id;
 
-                SELECT phoiRow.*
+                SELECT phoiRow.*,
+                    JSON_QUERY((
+                        SELECT traceRow.*
+                        FROM dbo.DOI_TRA_PHOI_LOI_PHOI_LXVT_TRUY_NGUYEN traceRow
+                        WHERE traceRow.PhoiId=phoiRow.Id
+                        ORDER BY traceRow.SortOrder,traceRow.Id
+                        FOR JSON PATH
+                    )) AS IssueTraceabilitiesJson
                 FROM #SelectedPhieu selected
                 JOIN dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow ON phoiRow.PhieuId=selected.Id
                 ORDER BY phoiRow.PhieuId,phoiRow.SortOrder,phoiRow.Id;
@@ -607,10 +630,15 @@ router.post('/summary-preview', authorizeDoiTraAccess, async (req, res) => {
             `);
         const tickets = result.recordsets[0] || [];
         const defects = result.recordsets[2] || [];
-        const phoiItems = (result.recordsets[1] || []).map((item) => ({
-            ...item,
-            defects: defects.filter((defect) => Number(defect.PhoiId) === Number(item.Id))
-        }));
+        const phoiItems = (result.recordsets[1] || []).map((item) => {
+            let issueTraceabilities = [];
+            try { issueTraceabilities = JSON.parse(item.IssueTraceabilitiesJson || '[]'); } catch { issueTraceabilities = []; }
+            return {
+                ...item,
+                issueTraceabilities,
+                defects: defects.filter((defect) => Number(defect.PhoiId) === Number(item.Id))
+            };
+        });
         res.json(encodeBinary({
             tickets,
             phoiItems,
@@ -649,7 +677,14 @@ router.post('/summary-export', authorizeDoiTraAccess, async (req, res) => {
                     planRow.PlanID,planRow.PlanNo,planRow.OrderCode,planRow.ProductCode,planRow.ProductName,
                     planRow.OperationCode,planRow.OperationName,planRow.DepartmentCode,planRow.DepartmentName,
                     productionLot.ExpectedProductionLot,phoiRow.*,
-                    quota.SoLuongBoLoiSnapshot,quota.SoLuongDoiTra,quota.TenDonViTinh
+                    quota.SoLuongBoLoiSnapshot,quota.SoLuongDoiTra,quota.TenDonViTinh,
+                    JSON_QUERY((
+                        SELECT traceRow.*
+                        FROM dbo.DOI_TRA_PHOI_LOI_PHOI_LXVT_TRUY_NGUYEN traceRow
+                        WHERE traceRow.PhoiId=phoiRow.Id
+                        ORDER BY traceRow.SortOrder,traceRow.Id
+                        FOR JSON PATH
+                    )) AS IssueTraceabilitiesJson
                 FROM #SelectedPhieu selected
                 JOIN dbo.DOI_TRA_PHOI_LOI phieu ON phieu.Id=selected.Id
                 JOIN dbo.DOI_TRA_PHOI_LOI_PLAN planRow ON planRow.PhieuId=phieu.Id
@@ -958,6 +993,99 @@ router.post('/', authorize('THUC_HIEN_KIEM'), async (req, res) => {
     }
 });
 
+router.post('/:id/manual-phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
+    const phieuId = positiveId(req.params.id);
+    const sourceVatTuId = positiveId(req.body?.sourceVatTuId);
+    const tenLoaiPhoi = trimOrNull(req.body?.tenLoaiPhoi);
+    const daoChat = trimOrNull(req.body?.daoChat);
+    const soPhoi = trimOrNull(req.body?.soPhoi) || '1';
+    const kyHieu = trimOrNull(req.body?.kyHieu);
+    if (!phieuId || !sourceVatTuId || !tenLoaiPhoi
+        || tenLoaiPhoi.length > 200 || (daoChat?.length || 0) > 100
+        || soPhoi.length > 30 || (kyHieu?.length || 0) > 50) {
+        return res.status(400).json({ message: 'Thông tin phôi nhập tay không hợp lệ' });
+    }
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('PhieuId', sql.Int, phieuId)
+            .input('UserId', sql.Int, userIdOf(req))
+            .input('IsAdmin', sql.Bit, isAdmin(req.user))
+            .input('SourceVatTuId', sql.Int, sourceVatTuId)
+            .input('TenLoaiPhoi', sql.NVarChar(200), tenLoaiPhoi)
+            .input('DaoChat', sql.NVarChar(100), daoChat)
+            .input('SoPhoi', sql.NVarChar(30), soPhoi)
+            .input('KyHieu', sql.NVarChar(50), kyHieu)
+            .query(`
+                SET XACT_ABORT ON;
+                BEGIN TRANSACTION;
+                DECLARE @ProductCode NVARCHAR(100),@SelectionMode NVARCHAR(30),@ManualId INT;
+                SELECT @ProductCode=planRow.ProductCode,@SelectionMode=planRow.PhoiSelectionMode
+                FROM dbo.DOI_TRA_PHOI_LOI phieu WITH(UPDLOCK,HOLDLOCK)
+                JOIN dbo.DOI_TRA_PHOI_LOI_PLAN planRow ON planRow.PhieuId=phieu.Id
+                WHERE phieu.Id=@PhieuId AND phieu.TrangThai IN(N'TAO_MOI',N'TRA_LAI_KCS')
+                  AND (@IsAdmin=1 OR phieu.NguoiLapId=@UserId);
+                IF @ProductCode IS NULL
+                    THROW 52015,N'Phiếu không còn ở bước KCS hoặc bạn không có quyền thêm phôi.',1;
+                IF @SelectionMode<>N'COMPONENT'
+                    THROW 52016,N'Công đoạn này chỉ cho phép chọn BTP theo cấu hình, không áp dụng phôi nhập tay.',1;
+                IF (SELECT COUNT(*) FROM TAG_QTKD.dbo.DM_SanPham
+                    WHERE LTRIM(RTRIM(ItemCode))=LTRIM(RTRIM(@ProductCode)) AND TonTai=1)<>1
+                    THROW 52017,N'Không tìm thấy duy nhất sản phẩm ERP của kế hoạch.',1;
+                IF NOT EXISTS(
+                    SELECT 1 FROM TAG_QTKD.dbo.DM_SanPham product
+                    JOIN TAG_Giang.dbo.DA_TruyNguyen_SanPham_LoiPhoi sourceRow
+                      ON sourceRow.ID_SanPham=product.ID_SanPham AND sourceRow.ID_VatTu=@SourceVatTuId
+                     AND ISNULL(sourceRow.TonTai,1)=1
+                    JOIN TAG_QTKD.dbo.DM_VatTu material
+                      ON material.ID_VatTu=sourceRow.ID_VatTu AND ISNULL(material.TonTai,1)=1
+                    WHERE LTRIM(RTRIM(product.ItemCode))=LTRIM(RTRIM(@ProductCode)) AND product.TonTai=1
+                ) THROW 52017,N'Vật tư đã chọn không thuộc danh sách phôi của sản phẩm kế hoạch.',1;
+
+                SELECT TOP 1 @ManualId=Id
+                FROM dbo.DM_PHOI_DOI_TRA_NHAP_TAY WITH(UPDLOCK,HOLDLOCK)
+                WHERE LTRIM(RTRIM(ProductCode))=LTRIM(RTRIM(@ProductCode))
+                  AND SourceVatTuId=@SourceVatTuId AND IsActive=1
+                  AND UPPER(LTRIM(RTRIM(TenLoaiPhoi)))=UPPER(LTRIM(RTRIM(@TenLoaiPhoi)))
+                  AND ISNULL(UPPER(LTRIM(RTRIM(DaoChat))),N'')=ISNULL(UPPER(LTRIM(RTRIM(@DaoChat))),N'')
+                  AND ISNULL(UPPER(LTRIM(RTRIM(SoPhoi))),N'')=ISNULL(UPPER(LTRIM(RTRIM(@SoPhoi))),N'')
+                  AND ISNULL(UPPER(LTRIM(RTRIM(KyHieu))),N'')=ISNULL(UPPER(LTRIM(RTRIM(@KyHieu))),N'');
+                IF @ManualId IS NULL
+                BEGIN
+                    INSERT dbo.DM_PHOI_DOI_TRA_NHAP_TAY(
+                        ProductCode,SourceVatTuId,MaVatTu,QuyCachVatTu,TenLoaiPhoi,
+                        DaoChat,SoPhoi,KyHieu,CreatedBy
+                    )
+                    SELECT @ProductCode,material.ID_VatTu,material.Ma_VatTu,material.QuyCach,
+                        @TenLoaiPhoi,@DaoChat,@SoPhoi,@KyHieu,@UserId
+                    FROM TAG_QTKD.dbo.DM_VatTu material
+                    WHERE material.ID_VatTu=@SourceVatTuId AND ISNULL(material.TonTai,1)=1;
+                    SET @ManualId=SCOPE_IDENTITY();
+                END;
+                IF @ManualId IS NULL THROW 52017,N'Không tạo được phôi nhập tay từ vật tư đã chọn.',1;
+
+                SELECT N'MANUAL' AS SourceType,manualRow.Id AS SourceId,
+                    CAST(NULL AS INT) AS SourceLoiPhoiId,product.ID_SanPham AS SourceSanPhamId,
+                    manualRow.SourceVatTuId,CAST(NULL AS INT) AS SourceCatalogProductId,
+                    manualRow.Id AS SourceManualPhoiId,CAST(NULL AS UNIQUEIDENTIFIER) AS SourceGuid,
+                    manualRow.ProductCode,manualRow.MaVatTu,manualRow.QuyCachVatTu,
+                    manualRow.TenLoaiPhoi,manualRow.DaoChat,manualRow.SoPhoi,manualRow.KyHieu,
+                    manualRow.MaVatTu AS SelectedItemCode,manualRow.TenLoaiPhoi AS SelectedItemName
+                FROM dbo.DM_PHOI_DOI_TRA_NHAP_TAY manualRow
+                CROSS JOIN TAG_QTKD.dbo.DM_SanPham product
+                WHERE manualRow.Id=@ManualId
+                  AND LTRIM(RTRIM(product.ItemCode))=LTRIM(RTRIM(manualRow.ProductCode)) AND product.TonTai=1;
+                COMMIT;
+            `);
+        res.status(201).json(encodeBinary(result.recordset?.[0]));
+    } catch (error) {
+        console.error('DoiTraPhoiLoi create manual blank error:', error);
+        const number = Number(error?.number || error?.originalError?.info?.number);
+        res.status(number >= 52015 && number <= 52017 ? 422 : 500)
+            .json({ message: errorMessage(error, 'Không tạo được phôi nhập tay') });
+    }
+});
+
 router.get('/:id/phoi-options', authorize(VIEW_PERMISSIONS), async (req, res) => {
     const phieuId = positiveId(req.params.id);
     if (!phieuId) return res.status(400).json({ message: 'Mã phiếu không hợp lệ' });
@@ -997,6 +1125,7 @@ router.get('/:id/phoi-options', authorize(VIEW_PERMISSIONS), async (req, res) =>
                     SELECT N'BTP_STAGE' AS SourceType,catalog.Id AS SourceId,
                         CAST(NULL AS INT) AS SourceLoiPhoiId,product.ID_SanPham AS SourceSanPhamId,
                         CAST(NULL AS INT) AS SourceVatTuId,catalog.Id AS SourceCatalogProductId,
+                        CAST(NULL AS INT) AS SourceManualPhoiId,
                         CAST(NULL AS UNIQUEIDENTIFIER) AS SourceGuid,@ProductCode AS ProductCode,
                         catalog.MaSanPham AS MaVatTu,N'BTP sau công đoạn May' AS QuyCachVatTu,
                         catalog.TenSanPham AS TenLoaiPhoi,CAST(NULL AS NVARCHAR(100)) AS DaoChat,
@@ -1015,6 +1144,7 @@ router.get('/:id/phoi-options', authorize(VIEW_PERMISSIONS), async (req, res) =>
                     product.ID_SanPham AS SourceSanPhamId,
                     sourceRow.ID_VatTu AS SourceVatTuId,
                     CAST(NULL AS INT) AS SourceCatalogProductId,
+                    CAST(NULL AS INT) AS SourceManualPhoiId,
                     sourceRow.GuID AS SourceGuid,
                     @ProductCode AS ProductCode,
                     material.Ma_VatTu AS MaVatTu,
@@ -1033,7 +1163,18 @@ router.get('/:id/phoi-options', authorize(VIEW_PERMISSIONS), async (req, res) =>
                   AND product.TonTai = 1
                   AND ISNULL(sourceRow.TonTai, 1) = 1
                   AND ISNULL(material.TonTai, 1) = 1
-                ORDER BY material.Ma_VatTu, sourceRow.Ten_loaiPhoi, sourceRow.So_phoi;
+                UNION ALL
+                SELECT N'MANUAL',manualRow.Id,NULL,product.ID_SanPham,
+                    manualRow.SourceVatTuId,NULL,manualRow.Id,NULL,@ProductCode,
+                    manualRow.MaVatTu,manualRow.QuyCachVatTu,manualRow.TenLoaiPhoi,
+                    manualRow.DaoChat,manualRow.SoPhoi,manualRow.KyHieu,
+                    manualRow.MaVatTu,manualRow.TenLoaiPhoi
+                FROM dbo.DM_PHOI_DOI_TRA_NHAP_TAY manualRow
+                CROSS JOIN TAG_QTKD.dbo.DM_SanPham product
+                WHERE LTRIM(RTRIM(manualRow.ProductCode))=LTRIM(RTRIM(@ProductCode))
+                  AND manualRow.IsActive=1
+                  AND LTRIM(RTRIM(product.ItemCode))=LTRIM(RTRIM(@ProductCode)) AND product.TonTai=1
+                ORDER BY MaVatTu,TenLoaiPhoi,SoPhoi;
             `);
         const rows = result.recordset || [];
         if (!rows.length) return res.status(404).json({ message: 'Sản phẩm của kế hoạch chưa được khai báo danh sách phôi.' });
@@ -1066,16 +1207,48 @@ router.get('/:id/phoi-options', authorize(VIEW_PERMISSIONS), async (req, res) =>
     }
 });
 
+router.get('/:id/material-issue-options', authorize(VIEW_PERMISSIONS), async (req, res) => {
+    const phieuId = positiveId(req.params.id);
+    if (!phieuId) return res.status(400).json({ message: 'Mã phiếu không hợp lệ' });
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request().input('PhieuId', sql.Int, phieuId).query(`
+            DECLARE @PlanId INT=(SELECT TRY_CONVERT(INT,PlanID)
+                FROM dbo.DOI_TRA_PHOI_LOI_PLAN WHERE PhieuId=@PhieuId);
+            IF @PlanId IS NULL THROW 52014,N'Phiếu chưa có kế hoạch ERP hợp lệ.',1;
+
+            SELECT issue.ID_LenhXuatVT AS SourceLenhXuatVTId,
+                LTRIM(RTRIM(issue.So_LenhXuatVT)) AS SoLenhXuatVT,
+                issue.Ngay_LenhXuatVT AS NgayLenhXuatVT,issue.TrangThai,
+                issue.ID_KhoXuat AS SourceKhoXuatId,warehouse.Ten_Kho AS TenKhoXuat
+            FROM TAG_QTKD.dbo.LenhXuatVT issue
+            LEFT JOIN TAG_QTKD.dbo.DM_Kho warehouse ON warehouse.ID_Kho=issue.ID_KhoXuat
+            WHERE issue.ID_KeHoachSanXuat=@PlanId AND issue.TonTai=1
+            ORDER BY issue.Ngay_LenhXuatVT DESC,issue.ID_LenhXuatVT DESC;
+        `);
+        res.json(encodeBinary(result.recordset || []));
+    } catch (error) {
+        console.error('DoiTraPhoiLoi material issue options error:', error);
+        const number = Number(error?.number || error?.originalError?.info?.number);
+        res.status(number === 52014 ? 422 : 500).json({
+            message: errorMessage(error, 'Không tải được lệnh xuất vật tư của kế hoạch')
+        });
+    }
+});
+
 router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
     const phieuId = positiveId(req.params.id);
     const rowVersion = rowVersionBuffer(req.body?.rowVersion);
     const items = normalizedPhoiItems(req.body?.items);
-    const invalidItem = items.some((item) => !['COMPONENT', 'BTP_STAGE'].includes(item.sourceType)
+    const invalidItem = items.some((item) => !['COMPONENT', 'BTP_STAGE', 'MANUAL'].includes(item.sourceType)
         || !item.sourceId || !item.soLuongKiem
         || item.soLuongPhoiLoi == null || item.soLuongPhoiLoi > item.soLuongKiem
         || (item.lotSanXuat?.length || 0) > 100 || (item.lenhXuatVatTu?.length || 0) > 100
         || (item.dauTuan?.length || 0) > 100 || (item.toSanXuat?.length || 0) > 255
         || (item.congNhanSanXuat?.length || 0) > 1000
+        || item.issueTraceabilities.some((trace) => !trace.sourceLenhXuatVTId
+            || (trace.lotSanXuat?.length || 0) > 100 || (trace.dauTuan?.length || 0) > 100
+            || (trace.toSanXuat?.length || 0) > 255 || (trace.congNhanSanXuat?.length || 0) > 1000)
         || item.defects.some((defect) => !defect.nhomLoiId || !defect.defectId
             || !defect.soLuongLoi || !defect.boPhanGayLoiSourceId
             || !['NOI_BO', 'TAG_SYSTEM', 'NHA_CUNG_CAP'].includes(defect.boPhanGayLoiSource)));
@@ -1084,7 +1257,8 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
     }
     const sourceIds = items.map((item) => `${item.sourceType}:${item.sourceId}`);
     if (new Set(sourceIds).size !== sourceIds.length
-        || items.some((item) => new Set(item.defects.map((defect) => `${defect.defectId}:${defect.boPhanGayLoiSource}:${defect.boPhanGayLoiSourceId}`)).size !== item.defects.length)) {
+        || items.some((item) => new Set(item.issueTraceabilities.map((trace) => trace.sourceLenhXuatVTId)).size !== item.issueTraceabilities.length)
+        || items.some((item) => new Set(item.defects.map((defect) => `${defect.sourceLenhXuatVTId || 0}:${defect.defectId}:${defect.boPhanGayLoiSource}:${defect.boPhanGayLoiSourceId}`)).size !== item.defects.length)) {
         return res.status(400).json({ message: 'Danh sách phôi hoặc lỗi đang bị trùng' });
     }
 
@@ -1095,6 +1269,11 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
             sourceId: item.sourceId,
             ...defect
         })));
+        const flattenedIssueTraceabilities = items.flatMap((item) => item.issueTraceabilities.map((trace) => ({
+            sourceType: item.sourceType,
+            sourceId: item.sourceId,
+            ...trace
+        })));
         const result = await pool.request()
             .input('PhieuId', sql.Int, phieuId)
             .input('UserId', sql.Int, userIdOf(req))
@@ -1102,6 +1281,7 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
             .input('RowVersion', sql.VarBinary(8), rowVersion)
             .input('ItemsJson', sql.NVarChar(sql.MAX), JSON.stringify(items))
             .input('DefectsJson', sql.NVarChar(sql.MAX), JSON.stringify(flattenedDefects))
+            .input('IssueTraceabilitiesJson', sql.NVarChar(sql.MAX), JSON.stringify(flattenedIssueTraceabilities))
             .query(`
                 SET XACT_ABORT ON;
                 BEGIN TRANSACTION;
@@ -1196,17 +1376,18 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                     WHERE inputRow.DonViTaoPhoiId IS NOT NULL AND department.Id IS NULL
                 ) THROW 52023, N'Đơn vị tạo phôi không tồn tại hoặc đã ngừng sử dụng.', 1;
 
-                IF EXISTS(SELECT 1 FROM #InputPhoi WHERE SourceType NOT IN(N'COMPONENT',N'BTP_STAGE'))
+                IF EXISTS(SELECT 1 FROM #InputPhoi WHERE SourceType NOT IN(N'COMPONENT',N'BTP_STAGE',N'MANUAL'))
                     THROW 52021,N'Loại nguồn phôi không hợp lệ.',1;
                 IF EXISTS(SELECT 1 FROM #InputPhoi WHERE
                     (@SelectionMode=N'PREVIOUS_STAGE_BTP' AND SourceType<>N'BTP_STAGE') OR
-                    (@SelectionMode<>N'PREVIOUS_STAGE_BTP' AND SourceType<>N'COMPONENT'))
+                    (@SelectionMode<>N'PREVIOUS_STAGE_BTP' AND SourceType NOT IN(N'COMPONENT',N'MANUAL')))
                     THROW 52021,N'Phôi đã chọn không đúng chế độ của công đoạn.',1;
 
                 CREATE TABLE #SourcePhoi (
                     SourceType NVARCHAR(20) NOT NULL,SourceId INT NOT NULL,
                     SourceLoiPhoiId INT NULL, SourceSanPhamId INT NOT NULL,
-                    SourceVatTuId INT NULL,SourceCatalogProductId INT NULL,SourceGuid UNIQUEIDENTIFIER NULL,
+                    SourceVatTuId INT NULL,SourceCatalogProductId INT NULL,SourceManualPhoiId INT NULL,
+                    SourceGuid UNIQUEIDENTIFIER NULL,
                     MaVatTu NVARCHAR(30) NULL, QuyCachVatTu NVARCHAR(4000) NULL,
                     TenLoaiPhoi NVARCHAR(200) NULL, DaoChat NVARCHAR(100) NULL,
                     SoPhoi NVARCHAR(30) NULL, KyHieu NVARCHAR(50) NULL,
@@ -1215,7 +1396,7 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                 );
                 INSERT #SourcePhoi
                 SELECT DISTINCT N'COMPONENT',sourceRow.ID_LoiPhoi,sourceRow.ID_LoiPhoi,
-                       product.ID_SanPham,sourceRow.ID_VatTu,NULL,
+                       product.ID_SanPham,sourceRow.ID_VatTu,NULL,NULL,
                        sourceRow.GuID, material.Ma_VatTu, material.QuyCach,
                        sourceRow.Ten_loaiPhoi, sourceRow.DaoChat,
                        sourceRow.So_phoi, sourceRow.KyHieu,material.Ma_VatTu,sourceRow.Ten_loaiPhoi
@@ -1230,6 +1411,19 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                   AND ISNULL(material.TonTai, 1) = 1
                 ;
 
+                INSERT #SourcePhoi
+                SELECT N'MANUAL',manualRow.Id,NULL,product.ID_SanPham,
+                    manualRow.SourceVatTuId,NULL,manualRow.Id,NULL,
+                    manualRow.MaVatTu,manualRow.QuyCachVatTu,manualRow.TenLoaiPhoi,
+                    manualRow.DaoChat,manualRow.SoPhoi,manualRow.KyHieu,
+                    manualRow.MaVatTu,manualRow.TenLoaiPhoi
+                FROM dbo.DM_PHOI_DOI_TRA_NHAP_TAY manualRow
+                CROSS JOIN TAG_QTKD.dbo.DM_SanPham product
+                JOIN #InputPhoi inputRow ON inputRow.SourceType=N'MANUAL' AND inputRow.SourceId=manualRow.Id
+                WHERE LTRIM(RTRIM(manualRow.ProductCode))=LTRIM(RTRIM(@ProductCode))
+                  AND manualRow.IsActive=1
+                  AND LTRIM(RTRIM(product.ItemCode))=LTRIM(RTRIM(@ProductCode)) AND product.TonTai=1;
+
                 IF @SelectionMode=N'PREVIOUS_STAGE_BTP'
                 BEGIN
                     DECLARE @StageCode NVARCHAR(100)=@ProductCode+N'.'+@BtpSuffix;
@@ -1241,7 +1435,7 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                         THROW 52029,N'Không tìm thấy duy nhất sản phẩm ERP của kế hoạch.',1;
 
                     INSERT #SourcePhoi
-                    SELECT N'BTP_STAGE',catalog.Id,NULL,product.ID_SanPham,NULL,catalog.Id,NULL,
+                    SELECT N'BTP_STAGE',catalog.Id,NULL,product.ID_SanPham,NULL,catalog.Id,NULL,NULL,
                         catalog.MaSanPham,N'BTP sau công đoạn May',LEFT(catalog.TenSanPham,200),NULL,N'1',NULL,
                         catalog.MaSanPham,catalog.TenSanPham
                     FROM dbo.DM_SAN_PHAM catalog
@@ -1256,24 +1450,65 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                            WHERE sourceRow.SourceId IS NULL)
                     THROW 52021, N'Có phôi không còn hiệu lực hoặc không thuộc sản phẩm của kế hoạch.', 1;
 
+                CREATE TABLE #InputIssueTrace(
+                    SourceType NVARCHAR(20) NOT NULL,SourceId INT NOT NULL,
+                    SourceLenhXuatVTId INT NOT NULL,LotSanXuat NVARCHAR(100) NULL,
+                    DauTuan NVARCHAR(100) NULL,DonViTaoPhoiId INT NULL,NgayTaoPhoi DATE NULL,
+                    ToSanXuat NVARCHAR(255) NULL,CongNhanSanXuat NVARCHAR(1000) NULL,
+                    SortOrder INT NOT NULL,
+                    PRIMARY KEY(SourceType,SourceId,SourceLenhXuatVTId)
+                );
+                INSERT #InputIssueTrace
+                SELECT SourceType,SourceId,SourceLenhXuatVTId,NULLIF(LotSanXuat,N''),
+                    NULLIF(DauTuan,N''),DonViTaoPhoiId,NgayTaoPhoi,NULLIF(ToSanXuat,N''),
+                    NULLIF(CongNhanSanXuat,N''),SortOrder
+                FROM OPENJSON(@IssueTraceabilitiesJson) WITH(
+                    SourceType NVARCHAR(20) '$.sourceType',SourceId INT '$.sourceId',
+                    SourceLenhXuatVTId INT '$.sourceLenhXuatVTId',LotSanXuat NVARCHAR(100) '$.lotSanXuat',
+                    DauTuan NVARCHAR(100) '$.dauTuan',DonViTaoPhoiId INT '$.donViTaoPhoiId',
+                    NgayTaoPhoi DATE '$.ngayTaoPhoi',ToSanXuat NVARCHAR(255) '$.toSanXuat',
+                    CongNhanSanXuat NVARCHAR(1000) '$.congNhanSanXuat',SortOrder INT '$.sortOrder'
+                );
+
+                IF EXISTS(
+                    SELECT 1 FROM #InputIssueTrace traceRow
+                    LEFT JOIN #InputPhoi inputPhoi ON inputPhoi.SourceType=traceRow.SourceType
+                        AND inputPhoi.SourceId=traceRow.SourceId
+                    LEFT JOIN TAG_QTKD.dbo.LenhXuatVT issue
+                      ON issue.ID_LenhXuatVT=traceRow.SourceLenhXuatVTId
+                     AND issue.ID_KeHoachSanXuat=TRY_CONVERT(INT,@PlanID) AND issue.TonTai=1
+                    LEFT JOIN dbo.DM_BO_PHAN department ON department.Id=traceRow.DonViTaoPhoiId
+                        AND ISNULL(department.TrangThai,1)=1
+                    WHERE inputPhoi.SourceId IS NULL OR issue.ID_LenhXuatVT IS NULL
+                       OR (traceRow.DonViTaoPhoiId IS NOT NULL AND department.Id IS NULL)
+                ) THROW 52033,N'Thông tin tem có phôi, LXVT hoặc đơn vị tạo phôi không hợp lệ.',1;
+
                 CREATE TABLE #InputDefect (
                     SourceType NVARCHAR(20) NOT NULL,SourceId INT NOT NULL,
                     NhomLoiId INT NOT NULL, DefectId INT NOT NULL,
                     SoLuongLoi INT NOT NULL, GhiChu NVARCHAR(1000) NULL, SortOrder INT NOT NULL,
                     BoPhanGayLoiSource NVARCHAR(20) NOT NULL, BoPhanGayLoiSourceId INT NOT NULL,
-                    PRIMARY KEY (SourceType,SourceId,DefectId,BoPhanGayLoiSource,BoPhanGayLoiSourceId)
+                    SourceLenhXuatVTId INT NULL
                 );
                 INSERT #InputDefect
                 SELECT SourceType,SourceId,NhomLoiId,DefectId,SoLuongLoi,NULLIF(GhiChu,N''),SortOrder,
-                    BoPhanGayLoiSource, BoPhanGayLoiSourceId
+                    BoPhanGayLoiSource,BoPhanGayLoiSourceId,SourceLenhXuatVTId
                 FROM OPENJSON(@DefectsJson) WITH (
                     SourceType NVARCHAR(20) '$.sourceType',SourceId INT '$.sourceId',
                     NhomLoiId INT '$.nhomLoiId',
                     DefectId INT '$.defectId', SoLuongLoi INT '$.soLuongLoi',
                     GhiChu NVARCHAR(1000) '$.ghiChu', SortOrder INT '$.sortOrder',
                     BoPhanGayLoiSource NVARCHAR(20) '$.boPhanGayLoiSource',
-                    BoPhanGayLoiSourceId INT '$.boPhanGayLoiSourceId'
+                    BoPhanGayLoiSourceId INT '$.boPhanGayLoiSourceId',
+                    SourceLenhXuatVTId INT '$.sourceLenhXuatVTId'
                 );
+
+                IF EXISTS (
+                    SELECT 1 FROM #InputDefect
+                    GROUP BY SourceType,SourceId,ISNULL(SourceLenhXuatVTId,0),DefectId,
+                        BoPhanGayLoiSource,BoPhanGayLoiSourceId
+                    HAVING COUNT(*)>1
+                ) THROW 52032,N'Lỗi đã được nhập trùng trong cùng một lệnh xuất vật tư và đơn vị gây lỗi.',1;
 
                 IF EXISTS (
                     SELECT 1 FROM #InputDefect inputDefect
@@ -1299,19 +1534,34 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                     ON supplier.ID_NhaCungCap=d.BoPhanGayLoiSourceId AND supplier.SuDung=1 AND supplier.TonTai=1
                     WHERE d.BoPhanGayLoiSource=N'NHA_CUNG_CAP' AND supplier.ID_NhaCungCap IS NULL)
                     THROW 52025, N'Nhà cung cấp gây lỗi không tồn tại hoặc đã ngừng sử dụng.', 1;
+                IF EXISTS (
+                    SELECT 1 FROM #InputDefect inputDefect
+                    LEFT JOIN TAG_QTKD.dbo.LenhXuatVT issue
+                      ON issue.ID_LenhXuatVT=inputDefect.SourceLenhXuatVTId
+                     AND issue.ID_KeHoachSanXuat=TRY_CONVERT(INT,@PlanID) AND issue.TonTai=1
+                    WHERE inputDefect.SourceLenhXuatVTId IS NOT NULL AND issue.ID_LenhXuatVT IS NULL
+                ) THROW 52030,N'Lệnh xuất vật tư đã chọn không thuộc kế hoạch hoặc không còn hiệu lực.',1;
+                IF EXISTS(
+                    SELECT 1 FROM #InputDefect inputDefect
+                    LEFT JOIN #InputIssueTrace traceRow
+                      ON traceRow.SourceType=inputDefect.SourceType AND traceRow.SourceId=inputDefect.SourceId
+                     AND traceRow.SourceLenhXuatVTId=inputDefect.SourceLenhXuatVTId
+                    WHERE inputDefect.SourceLenhXuatVTId IS NOT NULL
+                      AND traceRow.SourceLenhXuatVTId IS NULL
+                ) THROW 52034,N'Chỉ được gán lỗi cho LXVT đã nhập thông tin tem truy nguyên.',1;
 
                 DELETE FROM dbo.DOI_TRA_PHOI_LOI_PHOI WHERE PhieuId=@PhieuId;
 
                 INSERT dbo.DOI_TRA_PHOI_LOI_PHOI (
                     PhieuId,SourceType,SourceLoiPhoiId,SourceSanPhamId,SourceVatTuId,
-                    SourceCatalogProductId,SourceGuid,SelectedItemCode,SelectedItemName,
+                    SourceCatalogProductId,SourceManualPhoiId,SourceGuid,SelectedItemCode,SelectedItemName,
                     ProductCode, ProductName, MaVatTu, QuyCachVatTu, TenLoaiPhoi,
                     DaoChat, SoPhoi, KyHieu, SoLuongKiem, SoLuongPhoiLoi, GhiChu,
                     LotSanXuat,LenhXuatVatTu,DauTuan,DonViTaoPhoiId,MaDonViTaoPhoi,TenDonViTaoPhoi,
                     NgayTaoPhoi,ToSanXuat,CongNhanSanXuat,KcsId,TenKcs,MaBoPhanKcs,TenBoPhanKcs,SortOrder
                 )
                 SELECT @PhieuId,sourceRow.SourceType,sourceRow.SourceLoiPhoiId,sourceRow.SourceSanPhamId,
-                       sourceRow.SourceVatTuId,sourceRow.SourceCatalogProductId,sourceRow.SourceGuid,
+                       sourceRow.SourceVatTuId,sourceRow.SourceCatalogProductId,sourceRow.SourceManualPhoiId,sourceRow.SourceGuid,
                        sourceRow.SelectedItemCode,sourceRow.SelectedItemName,@ProductCode,@ProductName,
                        sourceRow.MaVatTu, sourceRow.QuyCachVatTu, sourceRow.TenLoaiPhoi,
                        sourceRow.DaoChat, sourceRow.SoPhoi, sourceRow.KyHieu,
@@ -1325,15 +1575,38 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                     AND sourceRow.SourceId=inputRow.SourceId
                 LEFT JOIN dbo.DM_BO_PHAN department ON department.Id=inputRow.DonViTaoPhoiId;
 
+                INSERT dbo.DOI_TRA_PHOI_LOI_PHOI_LXVT_TRUY_NGUYEN(
+                    PhoiId,SourceLenhXuatVTId,SoLenhXuatVT,SourceKhoXuatId,TenKhoXuat,
+                    LotSanXuat,DauTuan,DonViTaoPhoiId,MaDonViTaoPhoi,TenDonViTaoPhoi,
+                    NgayTaoPhoi,ToSanXuat,CongNhanSanXuat,SortOrder
+                )
+                SELECT savedPhoi.Id,traceRow.SourceLenhXuatVTId,LTRIM(RTRIM(issue.So_LenhXuatVT)),
+                    issue.ID_KhoXuat,warehouse.Ten_Kho,traceRow.LotSanXuat,traceRow.DauTuan,
+                    traceRow.DonViTaoPhoiId,department.MaBoPhan,department.TenBoPhan,
+                    traceRow.NgayTaoPhoi,traceRow.ToSanXuat,traceRow.CongNhanSanXuat,traceRow.SortOrder
+                FROM #InputIssueTrace traceRow
+                JOIN dbo.DOI_TRA_PHOI_LOI_PHOI savedPhoi
+                  ON savedPhoi.PhieuId=@PhieuId AND savedPhoi.SourceType=traceRow.SourceType
+                 AND ((savedPhoi.SourceType=N'COMPONENT' AND savedPhoi.SourceLoiPhoiId=traceRow.SourceId)
+                   OR (savedPhoi.SourceType=N'BTP_STAGE' AND savedPhoi.SourceCatalogProductId=traceRow.SourceId)
+                   OR (savedPhoi.SourceType=N'MANUAL' AND savedPhoi.SourceManualPhoiId=traceRow.SourceId))
+                JOIN TAG_QTKD.dbo.LenhXuatVT issue
+                  ON issue.ID_LenhXuatVT=traceRow.SourceLenhXuatVTId
+                 AND issue.ID_KeHoachSanXuat=TRY_CONVERT(INT,@PlanID) AND issue.TonTai=1
+                LEFT JOIN TAG_QTKD.dbo.DM_Kho warehouse ON warehouse.ID_Kho=issue.ID_KhoXuat
+                LEFT JOIN dbo.DM_BO_PHAN department ON department.Id=traceRow.DonViTaoPhoiId;
+
                 INSERT dbo.DOI_TRA_PHOI_LOI_PHOI_DEFECT (
                     PhoiId, NhomLoiId, DefectId, MaNhomLoi, TenNhomLoi,
                     MaLoi, TenLoi, DefectType, MoTa, SoLuongLoi, GhiChu, SortOrder,
+                    SourceLenhXuatVTId,SoLenhXuatVT,
                     BoPhanGayLoiSource,BoPhanGayLoiSourceId,BoPhanGayLoiId,MaBoPhanGayLoi,TenBoPhanGayLoi,
                     DonViGayLoiSourceId,TenDonViGayLoi
                 )
                 SELECT savedPhoi.Id, groupRow.Id, defectRow.Id, groupRow.MaNhom, groupRow.TenNhom,
                        defectRow.MaLoi, defectRow.TenLoi, defectRow.DefectType, defectRow.MoTa,
                        inputDefect.SoLuongLoi, inputDefect.GhiChu, inputDefect.SortOrder,
+                       inputDefect.SourceLenhXuatVTId,LTRIM(RTRIM(issue.So_LenhXuatVT)),
                        inputDefect.BoPhanGayLoiSource,inputDefect.BoPhanGayLoiSourceId,
                        CASE WHEN inputDefect.BoPhanGayLoiSource=N'NOI_BO' THEN localDepartment.Id END,
                        COALESCE(localDepartment.MaBoPhan,LTRIM(RTRIM(supplier.MaSo_NhaCungCap)) COLLATE DATABASE_DEFAULT),
@@ -1344,9 +1617,13 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                 INNER JOIN dbo.DOI_TRA_PHOI_LOI_PHOI savedPhoi
                     ON savedPhoi.PhieuId=@PhieuId AND savedPhoi.SourceType=inputDefect.SourceType
                     AND ((savedPhoi.SourceType=N'COMPONENT' AND savedPhoi.SourceLoiPhoiId=inputDefect.SourceId)
-                      OR (savedPhoi.SourceType=N'BTP_STAGE' AND savedPhoi.SourceCatalogProductId=inputDefect.SourceId))
+                      OR (savedPhoi.SourceType=N'BTP_STAGE' AND savedPhoi.SourceCatalogProductId=inputDefect.SourceId)
+                      OR (savedPhoi.SourceType=N'MANUAL' AND savedPhoi.SourceManualPhoiId=inputDefect.SourceId))
                 INNER JOIN dbo.DM_NHOM_LOI_DOI_TRA_PHOI groupRow ON groupRow.Id=inputDefect.NhomLoiId
                 INNER JOIN dbo.DM_DEFECT defectRow ON defectRow.Id=inputDefect.DefectId
+                LEFT JOIN TAG_QTKD.dbo.LenhXuatVT issue
+                  ON issue.ID_LenhXuatVT=inputDefect.SourceLenhXuatVTId
+                 AND issue.ID_KeHoachSanXuat=TRY_CONVERT(INT,@PlanID) AND issue.TonTai=1
                 LEFT JOIN dbo.DM_BO_PHAN localDepartment ON localDepartment.Id=inputDefect.BoPhanGayLoiSourceId
                     AND inputDefect.BoPhanGayLoiSource=N'NOI_BO'
                 LEFT JOIN TAG_System.dbo.DM_BoPhan externalDepartment ON externalDepartment.ID_BoPhan=inputDefect.BoPhanGayLoiSourceId
@@ -1419,7 +1696,7 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
     } catch (error) {
         console.error('DoiTraPhoiLoi save blanks error:', error);
         const number = Number(error?.number || error?.originalError?.info?.number);
-        res.status(number >= 52020 && number <= 52029 ? 409 : 500)
+        res.status(number >= 52020 && number <= 52034 ? 409 : 500)
             .json({ message: errorMessage(error, 'Không lưu được danh sách phôi và lỗi') });
     }
 });
@@ -1735,21 +2012,49 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
                         WHERE phoiRow.PhieuId=@PhieuId AND (
                             phoiRow.SoLuongKiem<=0 OR phoiRow.SoLuongPhoiLoi<=0
                             OR phoiRow.SoLuongPhoiLoi>phoiRow.SoLuongKiem
-                            OR NULLIF(LTRIM(RTRIM(phoiRow.LotSanXuat)),N'') IS NULL
-                            OR (planRow.RequireLenhXuatVatTu=1
-                                AND NULLIF(LTRIM(RTRIM(phoiRow.LenhXuatVatTu)),N'') IS NULL)
-                            OR phoiRow.DonViTaoPhoiId IS NULL OR phoiRow.NgayTaoPhoi IS NULL
-                            OR NULLIF(LTRIM(RTRIM(phoiRow.ToSanXuat)),N'') IS NULL
-                            OR NULLIF(LTRIM(RTRIM(phoiRow.CongNhanSanXuat)),N'') IS NULL
+                            OR (planRow.RequireLenhXuatVatTu=0 AND (
+                                NULLIF(LTRIM(RTRIM(phoiRow.LotSanXuat)),N'') IS NULL
+                                OR phoiRow.DonViTaoPhoiId IS NULL OR phoiRow.NgayTaoPhoi IS NULL
+                                OR NULLIF(LTRIM(RTRIM(phoiRow.ToSanXuat)),N'') IS NULL
+                                OR NULLIF(LTRIM(RTRIM(phoiRow.CongNhanSanXuat)),N'') IS NULL
+                            ))
                         )
-                    ) THROW 52111, N'Mỗi loại phôi phải có đủ số lượng, lot sản xuất và thông tin tem truy nguyên; LXVT bắt buộc theo cấu hình công đoạn.', 1;
+                    ) THROW 52111, N'Mỗi loại phôi phải có đủ số lượng, lot sản xuất và thông tin tem truy nguyên.', 1;
                     IF EXISTS (
                         SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow
+                        JOIN dbo.DOI_TRA_PHOI_LOI_PLAN planRow ON planRow.PhieuId=phoiRow.PhieuId
                         LEFT JOIN dbo.DM_BO_PHAN sourceDepartment
                           ON sourceDepartment.Id=phoiRow.DonViTaoPhoiId AND ISNULL(sourceDepartment.TrangThai,1)=1
-                        WHERE phoiRow.PhieuId=@PhieuId
+                        WHERE phoiRow.PhieuId=@PhieuId AND planRow.RequireLenhXuatVatTu=0
                           AND sourceDepartment.Id IS NULL
                     ) THROW 52118, N'Đơn vị tạo phôi không còn hoạt động.', 1;
+                    IF EXISTS(
+                        SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow
+                        JOIN dbo.DOI_TRA_PHOI_LOI_PLAN planRow ON planRow.PhieuId=phoiRow.PhieuId
+                        WHERE phoiRow.PhieuId=@PhieuId AND planRow.RequireLenhXuatVatTu=1
+                          AND NOT EXISTS(
+                            SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI_LXVT_TRUY_NGUYEN traceRow
+                            JOIN dbo.DM_BO_PHAN sourceDepartment ON sourceDepartment.Id=traceRow.DonViTaoPhoiId
+                              AND ISNULL(sourceDepartment.TrangThai,1)=1
+                            WHERE traceRow.PhoiId=phoiRow.Id
+                              AND NULLIF(LTRIM(RTRIM(traceRow.LotSanXuat)),N'') IS NOT NULL
+                              AND traceRow.NgayTaoPhoi IS NOT NULL
+                              AND NULLIF(LTRIM(RTRIM(traceRow.ToSanXuat)),N'') IS NOT NULL
+                              AND NULLIF(LTRIM(RTRIM(traceRow.CongNhanSanXuat)),N'') IS NOT NULL
+                          )
+                    ) THROW 52121,N'Mỗi loại phôi phải có ít nhất một LXVT với đầy đủ thông tin tem truy nguyên.',1;
+                    IF EXISTS(
+                        SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI_LXVT_TRUY_NGUYEN traceRow
+                        JOIN dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow ON phoiRow.Id=traceRow.PhoiId
+                        LEFT JOIN dbo.DM_BO_PHAN sourceDepartment ON sourceDepartment.Id=traceRow.DonViTaoPhoiId
+                          AND ISNULL(sourceDepartment.TrangThai,1)=1
+                        WHERE phoiRow.PhieuId=@PhieuId AND (
+                            NULLIF(LTRIM(RTRIM(traceRow.LotSanXuat)),N'') IS NULL
+                            OR sourceDepartment.Id IS NULL OR traceRow.NgayTaoPhoi IS NULL
+                            OR NULLIF(LTRIM(RTRIM(traceRow.ToSanXuat)),N'') IS NULL
+                            OR NULLIF(LTRIM(RTRIM(traceRow.CongNhanSanXuat)),N'') IS NULL
+                        )
+                    ) THROW 52122,N'Mỗi LXVT đã chọn phải có đầy đủ thông tin tem truy nguyên.',1;
                     IF EXISTS (
                         SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow
                         WHERE phoiRow.PhieuId=@PhieuId AND NOT EXISTS (
@@ -1771,6 +2076,22 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
                           AND (defectRow.BoPhanGayLoiSource NOT IN (N'NOI_BO',N'TAG_SYSTEM',N'NHA_CUNG_CAP')
                                OR defectRow.BoPhanGayLoiSourceId IS NULL)
                     ) THROW 52119, N'Mỗi lỗi phải có bộ phận, nhà thầu hoặc nhà cung cấp gây lỗi hợp lệ.', 1;
+                    IF EXISTS (
+                        SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI_DEFECT defectRow
+                        JOIN dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow ON phoiRow.Id=defectRow.PhoiId
+                        JOIN dbo.DOI_TRA_PHOI_LOI_PLAN planRow ON planRow.PhieuId=phoiRow.PhieuId
+                        LEFT JOIN TAG_QTKD.dbo.LenhXuatVT issue
+                          ON issue.ID_LenhXuatVT=defectRow.SourceLenhXuatVTId
+                         AND issue.ID_KeHoachSanXuat=TRY_CONVERT(INT,planRow.PlanID) AND issue.TonTai=1
+                        LEFT JOIN dbo.DOI_TRA_PHOI_LOI_PHOI_LXVT_TRUY_NGUYEN traceRow
+                          ON traceRow.PhoiId=defectRow.PhoiId
+                         AND traceRow.SourceLenhXuatVTId=defectRow.SourceLenhXuatVTId
+                        WHERE phoiRow.PhieuId=@PhieuId AND (
+                            (planRow.RequireLenhXuatVatTu=1 AND defectRow.SourceLenhXuatVTId IS NULL)
+                            OR (defectRow.SourceLenhXuatVTId IS NOT NULL AND issue.ID_LenhXuatVT IS NULL)
+                            OR (planRow.RequireLenhXuatVatTu=1 AND traceRow.Id IS NULL)
+                        )
+                    ) THROW 52120,N'Mỗi lỗi phải chọn LXVT đã nhập tem truy nguyên và thuộc đúng kế hoạch.',1;
                     UPDATE phieu SET
                         TrangThai=@ToStatus,CurrentStepId=@ToStepId,
                         KcsCompletedBy=@UserId,
@@ -1844,7 +2165,7 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
         }
         console.error('DoiTraPhoiLoi workflow action error:', error);
         const number = Number(error?.number || error?.originalError?.info?.number);
-        const status = (number >= 52110 && number <= 52119)
+        const status = (number >= 52110 && number <= 52122)
             || (number >= ERP_VALIDATION_ERROR_MIN && number <= ERP_VALIDATION_ERROR_MAX)
             || (number >= RECEIPT_VALIDATION_ERROR_MIN && number <= RECEIPT_VALIDATION_ERROR_MAX) ? 422 : 409;
         res.status(status).json({ message: errorMessage(error, 'Không thực hiện được hành động workflow') });
@@ -1926,7 +2247,14 @@ router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
                 ORDER BY history.CreatedAt, history.Id;
 
                 SELECT phoiRow.*,unitRow.ID_DonViTinh AS CurrentDonViTinhId,
-                    unitRow.Ten_DonViTinh AS CurrentTenDonViTinh
+                    unitRow.Ten_DonViTinh AS CurrentTenDonViTinh,
+                    JSON_QUERY((
+                        SELECT traceRow.*
+                        FROM dbo.DOI_TRA_PHOI_LOI_PHOI_LXVT_TRUY_NGUYEN traceRow
+                        WHERE traceRow.PhoiId=phoiRow.Id
+                        ORDER BY traceRow.SortOrder,traceRow.Id
+                        FOR JSON PATH
+                    )) AS IssueTraceabilitiesJson
                 FROM dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow
                 LEFT JOIN TAG_QTKD.dbo.DM_VatTu material ON material.ID_VatTu=phoiRow.SourceVatTuId
                 LEFT JOIN TAG_QTKD.dbo.DM_DonViTinh unitRow ON unitRow.ID_DonViTinh=material.ID_DonViTinh
@@ -2023,10 +2351,15 @@ router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
         if (!phieu) return res.status(404).json({ message: 'Không tìm thấy phiếu đổi trả phôi lỗi' });
         const planSnapshot = result.recordsets[1]?.[0] || {};
         const userId = userIdOf(req);
-        const phoiItems = (result.recordsets[3] || []).map((item) => ({
-            ...item,
-            defects: (result.recordsets[4] || []).filter((defect) => Number(defect.PhoiId) === Number(item.Id))
-        }));
+        const phoiItems = (result.recordsets[3] || []).map((item) => {
+            let issueTraceabilities = [];
+            try { issueTraceabilities = JSON.parse(item.IssueTraceabilitiesJson || '[]'); } catch { issueTraceabilities = []; }
+            return {
+                ...item,
+                issueTraceabilities,
+                defects: (result.recordsets[4] || []).filter((defect) => Number(defect.PhoiId) === Number(item.Id))
+            };
+        });
         const canEditPhoi = ['TAO_MOI', 'TRA_LAI_KCS'].includes(phieu.TrangThai)
             && (isAdmin(req.user) || (
                 Number(phieu.NguoiLapId) === userId
