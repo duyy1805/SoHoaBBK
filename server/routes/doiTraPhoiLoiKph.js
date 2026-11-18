@@ -5,6 +5,7 @@ const authenticateToken = require('../middlewares/auth.middleware');
 const { canLeadDepartment, getManagedDepartmentIds } = require('../utils/managedDepartments');
 const { canActAsExecutive, normalizeExecutiveDecision } = require('../utils/executiveApproval');
 const { loadSignatureDataUrlMap } = require('../utils/signatureImage');
+const { statusAfterKphCompletionForPlan } = require('../utils/doiTraParallelWorkflow');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -27,11 +28,17 @@ const editableStatuses = ['CHO_THIET_LAP_KPH', 'CHO_Y_KIEN_KPH', 'CHO_XAC_NHAN_C
 
 async function loadRecord(executor, phieuId, lock = false) {
     const result = await new sql.Request(executor).input('Id', sql.Int, phieuId).query(`
-        SELECT p.*,workflow.VersionNo,
+        SELECT p.*,workflow.VersionNo,planRow.RequiresB7,planRow.PhoiSelectionMode,
+            CAST(CASE WHEN EXISTS(
+                SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHIEU_NHAP_BTP receiptLink
+                WHERE receiptLink.PhieuId=p.Id AND receiptLink.TrangThai=N'ACTIVE'
+                  AND receiptLink.WarehouseConfirmedAt IS NOT NULL
+            ) THEN 1 ELSE 0 END AS bit) AS HasWarehouseConfirmed,
             COALESCE(p.BoPhanKcsId,creator.BoPhanId) CreatorDepartmentId,
             COALESCE(NULLIF(confirmer.FullName,N''),confirmer.Username) CreatorConfirmedByName
         FROM dbo.DOI_TRA_PHOI_LOI p ${lock ? 'WITH (UPDLOCK,HOLDLOCK)' : ''}
         JOIN dbo.DOI_TRA_PHOI_LOI_WORKFLOW workflow ON workflow.Id=p.WorkflowId
+        JOIN dbo.DOI_TRA_PHOI_LOI_PLAN planRow ON planRow.PhieuId=p.Id
         LEFT JOIN dbo.USERS creator ON creator.Id=p.NguoiLapId
         LEFT JOIN dbo.USERS confirmer ON confirmer.Id=p.CreatorConfirmedBy
         WHERE p.Id=@Id`);
@@ -367,7 +374,11 @@ router.post('/:id/kph/follow-up', async (req, res) => {
     try {
         await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE); const record = await loadRecord(transaction, validId(req.params.id), true);
         if (!record || record.TrangThai !== 'CHO_THEO_DOI' || (!isAdmin(req.user) && uid(req) !== Number(record.NguoiLapId) && !has(req.user, 'THEO_DOI_KPH') && !has(req.user, 'KET_LUAN'))) throw Object.assign(new Error('Không có quyền theo dõi phiếu'), { status: 403 });
-        const next = record.DinhMucTrangThai === 'DA_XAC_NHAN' ? 'HOAN_TAT' : 'KPH_HOAN_TAT_CHO_B7';
+        const next = statusAfterKphCompletionForPlan({
+            requiresB7: Boolean(record.RequiresB7),
+            dinhMucStatus: record.DinhMucTrangThai,
+            warehouseConfirmed: Boolean(record.HasWarehouseConfirmed)
+        });
         await new sql.Request(transaction).input('Id', sql.Int, record.Id).input('Result', sql.VarChar(20), resultCode)
             .input('NewNo', sql.NVarChar(50), newNumber || null).input('Note', sql.NVarChar(sql.MAX), String(req.body?.ghiChu || '').trim() || null)
             .input('User', sql.Int, uid(req)).input('Next', sql.NVarChar(80), next).query(`

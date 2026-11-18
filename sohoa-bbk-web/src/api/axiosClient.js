@@ -1,8 +1,8 @@
 import axios from 'axios';
 import { getToken, removeToken } from '../utils/auth';
 const axiosClient = axios.create({
-    baseURL: "https://z76api.z76.vn/api",
-    // baseURL: "http://localhost:5001/api",
+    // baseURL: "https://z76api.z76.vn/api",
+    baseURL: "http://localhost:5001/api",
     timeout: 15000
 });
 

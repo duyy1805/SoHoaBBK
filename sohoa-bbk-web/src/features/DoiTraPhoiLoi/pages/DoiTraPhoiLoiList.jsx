@@ -232,13 +232,16 @@ export default function DoiTraPhoiLoiList() {
                                 {filteredRows.map((row) => {
                                     const status = doiTraStatusMeta(row.TrangThai);
                                     const dinhMucStatus = doiTraDinhMucStatusMeta(row.DinhMucTrangThai);
+                                    const displayProductCode = row.PhoiSelectionMode === 'PREVIOUS_STAGE_BTP'
+                                        ? [row.ProductCode, row.BtpStageSuffix || 'M'].filter(Boolean).join('.')
+                                        : row.ProductCode;
                                     return (
                                         <TableRow key={row.Id} hover>
                                             <TableCell padding="checkbox"><Checkbox disabled={row.TrangThai === 'DA_HUY'} checked={selectedIds.includes(row.Id)} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, row.Id] : current.filter((id) => id !== row.Id))} /></TableCell>
                                             <TableCell><Typography variant="body2" fontWeight={800} color="primary.main">{row.SoPhieu}</Typography></TableCell>
                                             <TableCell>{formatDoiTraDate(row.NgayLap)}</TableCell>
                                             <TableCell>{row.PlanNo || row.PlanID || '---'}<br /><Typography variant="caption" color="text.secondary">{row.OrderCode || '---'}</Typography></TableCell>
-                                            <TableCell>{row.ProductCode || '---'}<br /><Typography variant="caption" color="text.secondary">{row.ProductName || '---'}</Typography></TableCell>
+                                            <TableCell>{displayProductCode || '---'}<br /><Typography variant="caption" color="text.secondary">{row.PhoiSelectionMode === 'PREVIOUS_STAGE_BTP' ? `BTP sau công đoạn May · ${row.ProductName || '---'}` : (row.ProductName || '---')}</Typography></TableCell>
                                             <TableCell>{row.OperationName || row.OperationCode || '---'}<br /><Typography variant="caption" color="text.secondary">{row.DepartmentName || '---'}</Typography></TableCell>
                                             <TableCell align="right">{formatDoiTraQuantity(row.PlanQty)}</TableCell>
                                             <TableCell>{row.TenNguoiLap || '---'}</TableCell>

@@ -15,4 +15,19 @@ const statusAfterB7Confirm = (currentStatus) =>
 const statusAfterKphCompletion = (dinhMucStatus) =>
     dinhMucStatus === 'DA_XAC_NHAN' ? 'HOAN_TAT' : 'KPH_HOAN_TAT_CHO_B7';
 
-module.exports = { KPH_B7_OPEN_STATUSES, canB7Work, statusAfterB7Confirm, statusAfterKphCompletion };
+const statusAfterKphCompletionForPlan = ({ requiresB7, dinhMucStatus, warehouseConfirmed }) =>
+    requiresB7
+        ? statusAfterKphCompletion(dinhMucStatus)
+        : (warehouseConfirmed ? 'HOAN_TAT' : 'KPH_HOAN_TAT_CHO_KHO');
+
+const statusAfterWarehouseConfirm = ({ requiresB7, currentStatus }) =>
+    !requiresB7 && currentStatus === 'KPH_HOAN_TAT_CHO_KHO' ? 'HOAN_TAT' : currentStatus;
+
+module.exports = {
+    KPH_B7_OPEN_STATUSES,
+    canB7Work,
+    statusAfterB7Confirm,
+    statusAfterKphCompletion,
+    statusAfterKphCompletionForPlan,
+    statusAfterWarehouseConfirm
+};

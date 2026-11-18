@@ -24,14 +24,23 @@ const clean = (value) => String(value || '')
     .replace(/Đ/g, 'd')
     .trim()
     .toLocaleLowerCase('vi');
-const phoiTitle = (item) => [item.TenLoaiPhoi, item.SoPhoi && `Số phôi ${item.SoPhoi}`, item.KyHieu]
-    .filter(Boolean).join(' — ') || `Phôi #${item.SourceLoiPhoiId || item.Id}`;
+const sourceTypeOf = (item) => String(item?.sourceType || item?.SourceType || 'COMPONENT').toUpperCase();
+const sourceIdOf = (item) => Number(item?.sourceId || item?.SourceId || (
+    sourceTypeOf(item) === 'BTP_STAGE'
+        ? item?.sourceCatalogProductId || item?.SourceCatalogProductId
+        : item?.sourceLoiPhoiId || item?.SourceLoiPhoiId
+) || item?.Id);
+const phoiTitle = (item) => sourceTypeOf(item) === 'BTP_STAGE'
+    ? [item.SelectedItemCode || item.MaVatTu, item.SelectedItemName || item.TenLoaiPhoi].filter(Boolean).join(' — ')
+    : [item.TenLoaiPhoi, item.SoPhoi && `Số phôi ${item.SoPhoi}`, item.KyHieu]
+        .filter(Boolean).join(' — ') || `Phôi #${item.SourceLoiPhoiId || item.Id}`;
 const defectiveQuantity = (item) => (item.defects || []).reduce(
     (total, defect) => total + (Number(defect.soLuongLoi ?? defect.SoLuongLoi) || 0), 0
 );
-const itemKey = (item) => Number(item.sourceLoiPhoiId || item.SourceLoiPhoiId || item.Id);
-const traceComplete = (item) => Boolean(
-    (item.lotSanXuat ?? item.LotSanXuat) && (item.lenhXuatVatTu ?? item.LenhXuatVatTu)
+const itemKey = (item) => `${sourceTypeOf(item)}:${sourceIdOf(item)}`;
+const traceComplete = (item, requireLxvt = true) => Boolean(
+    (item.lotSanXuat ?? item.LotSanXuat)
+    && (!requireLxvt || (item.lenhXuatVatTu ?? item.LenhXuatVatTu))
     && (item.donViTaoPhoiId ?? item.DonViTaoPhoiId)
     && (item.ngayTaoPhoi ?? item.NgayTaoPhoi) && (item.toSanXuat ?? item.ToSanXuat)
     && (item.congNhanSanXuat ?? item.CongNhanSanXuat)
@@ -56,7 +65,11 @@ const filterResponsibleOptions = (options, { inputValue }) => {
 };
 
 const toDraft = (item, defaultLot = '') => ({
-    sourceLoiPhoiId: Number(item.SourceLoiPhoiId), MaVatTu: item.MaVatTu || '',
+    sourceType: sourceTypeOf(item), sourceId: sourceIdOf(item),
+    sourceLoiPhoiId: item.SourceLoiPhoiId ? Number(item.SourceLoiPhoiId) : null,
+    sourceCatalogProductId: item.SourceCatalogProductId ? Number(item.SourceCatalogProductId) : null,
+    SelectedItemCode: item.SelectedItemCode || '', SelectedItemName: item.SelectedItemName || '',
+    MaVatTu: item.MaVatTu || '',
     QuyCachVatTu: item.QuyCachVatTu || '', TenLoaiPhoi: item.TenLoaiPhoi || '',
     DaoChat: item.DaoChat || '', SoPhoi: item.SoPhoi || '', KyHieu: item.KyHieu || '',
     soLuongKiem: item.SoLuongKiem ?? 1, ghiChu: item.GhiChu || '',
@@ -73,10 +86,10 @@ const toDraft = (item, defaultLot = '') => ({
     }))
 });
 
-const MasterItem = ({ item, selected, editing, onClick }) => {
+const MasterItem = ({ item, selected, editing, onClick, requireLxvt }) => {
     const errorQty = editing ? defectiveQuantity(item) : Number(item.SoLuongPhoiLoi || 0);
     const checkedQty = editing ? item.soLuongKiem : item.SoLuongKiem;
-    const isComplete = traceComplete(item) && errorQty > 0;
+    const isComplete = traceComplete(item, requireLxvt) && errorQty > 0;
     return <Paper component="button" type="button" onClick={onClick} variant="outlined" sx={{
         width: '100%', p: 1.25, textAlign: 'left', cursor: 'pointer', borderRadius: 1.5,
         borderColor: selected ? 'primary.main' : 'divider', bgcolor: selected ? '#f4f6ff' : 'background.paper',
@@ -91,8 +104,42 @@ const MasterItem = ({ item, selected, editing, onClick }) => {
     </Paper>;
 };
 
+const PhoiPickerDialog = ({ open, onClose, isStageBtp, search, onSearch, materials, selectedIds, onToggle }) => (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
+        <DialogTitle>{isStageBtp ? 'Chọn BTP sau May' : 'Chọn loại phôi'}</DialogTitle>
+        <DialogContent dividers>
+            <TextField fullWidth value={search} onChange={onSearch}
+                placeholder={isStageBtp ? 'Tìm mã hoặc tên BTP…' : 'Tìm vật tư, quy cách, loại phôi, số phôi…'}
+                InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} /> }} sx={{ mb: 2 }} />
+            {isStageBtp && <Alert severity="info" sx={{ mb: 2 }}>Lỗi phát hiện tại Bao gói được ghi nhận trên BTP sau công đoạn May.</Alert>}
+            <Stack spacing={2}>{materials.map((material) => (
+                <Box key={`${material.SourceType || 'COMPONENT'}:${material.SourceVatTuId || material.SourceId}`}>
+                    <Typography fontWeight={800}>{material.MaVatTu || 'Vật tư chưa có mã'}</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{material.QuyCachVatTu || 'Chưa có quy cách'}</Typography>
+                    <Stack spacing={0.75}>{material.phoi.map((option) => (
+                        <Paper key={itemKey(option)} variant="outlined" sx={{ p: 1 }}>
+                            <Stack direction="row" alignItems="center">
+                                <Checkbox checked={selectedIds.has(itemKey(option))} onChange={() => onToggle(option, material)} />
+                                <Box><Typography variant="body2" fontWeight={700}>{phoiTitle(option)}</Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                        {sourceTypeOf(option) === 'BTP_STAGE' ? 'BTP sau công đoạn May' : option.DaoChat ? `Dao chặt: ${option.DaoChat}` : 'Chưa có dao chặt'}
+                                    </Typography>
+                                </Box>
+                            </Stack>
+                        </Paper>
+                    ))}</Stack>
+                </Box>
+            ))}</Stack>
+            {!materials.length && <Alert severity="info">Không tìm thấy loại phôi phù hợp.</Alert>}
+        </DialogContent>
+        <DialogActions><Button onClick={onClose}>Xong</Button></DialogActions>
+    </Dialog>
+);
+
 export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, plan, items = [], canEdit, onSaved, onContinue, onDirtyChange }) {
     const defaultLot = plan?.ExpectedProductionLot || '';
+    const requireLxvt = plan?.RequireLenhXuatVatTu !== false && Number(plan?.RequireLenhXuatVatTu) !== 0;
+    const isStageBtp = plan?.PhoiSelectionMode === 'PREVIOUS_STAGE_BTP';
     const [editing, setEditing] = useState(false);
     const [pickerOpen, setPickerOpen] = useState(false);
     const [loadingLookups, setLoadingLookups] = useState(false);
@@ -107,11 +154,11 @@ export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, 
     const [responsibleDepartments, setResponsibleDepartments] = useState([]);
     const [draft, setDraft] = useState(() => items.map((item) => toDraft(item, defaultLot)));
     const visibleItems = editing ? draft : items;
-    const selectedItem = visibleItems.find((item) => itemKey(item) === Number(selectedKey)) || visibleItems[0] || null;
+    const selectedItem = visibleItems.find((item) => itemKey(item) === selectedKey) || visibleItems[0] || null;
     const selectedIndex = selectedItem ? visibleItems.findIndex((item) => itemKey(item) === itemKey(selectedItem)) : -1;
 
     useEffect(() => { if (!editing) setDraft(items.map((item) => toDraft(item, defaultLot))); }, [defaultLot, editing, items]);
-    useEffect(() => { if (visibleItems.length && !visibleItems.some((item) => itemKey(item) === Number(selectedKey))) setSelectedKey(itemKey(visibleItems[0])); }, [selectedKey, visibleItems]);
+    useEffect(() => { if (visibleItems.length && !visibleItems.some((item) => itemKey(item) === selectedKey)) setSelectedKey(itemKey(visibleItems[0])); }, [selectedKey, visibleItems]);
     useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
     const selectedIds = useMemo(() => new Set(draft.map(itemKey)), [draft]);
@@ -141,8 +188,10 @@ export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, 
         patchDefect(defectIndex, { defectId: selected.Id, MaLoi: selected.MaLoi || '', TenLoi: selected.TenLoi || '', DefectType: selected.DefectType || '' });
     };
     const togglePhoi = (option, material) => {
-        const key = Number(option.SourceLoiPhoiId);
-        updateDraft((current) => current.some((item) => itemKey(item) === key) ? current.filter((item) => itemKey(item) !== key) : [...current, toDraft({ ...option, ...material, SourceLoiPhoiId: key }, defaultLot)]);
+        const key = itemKey(option);
+        updateDraft((current) => current.some((item) => itemKey(item) === key)
+            ? current.filter((item) => itemKey(item) !== key)
+            : [...current, toDraft({ ...material, ...option }, defaultLot)]);
         setSelectedKey(key);
     };
     const validate = () => {
@@ -158,7 +207,9 @@ export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, 
         try {
             setSaving(true);
             await saveDoiTraPhoi(phieuId, phieu.RowVersion, draft.map((item) => ({
-                sourceLoiPhoiId: Number(item.sourceLoiPhoiId), soLuongKiem: Number(item.soLuongKiem), soLuongPhoiLoi: defectiveQuantity(item), ghiChu: item.ghiChu,
+                sourceType: item.sourceType, sourceId: Number(item.sourceId),
+                sourceLoiPhoiId: item.sourceType === 'COMPONENT' ? Number(item.sourceId) : null,
+                soLuongKiem: Number(item.soLuongKiem), soLuongPhoiLoi: defectiveQuantity(item), ghiChu: item.ghiChu,
                 lotSanXuat: item.lotSanXuat, lenhXuatVatTu: item.lenhXuatVatTu, dauTuan: item.dauTuan,
                 donViTaoPhoiId: item.donViTaoPhoiId ? Number(item.donViTaoPhoiId) : null, ngayTaoPhoi: item.ngayTaoPhoi || null,
                 toSanXuat: item.toSanXuat, congNhanSanXuat: item.congNhanSanXuat,
@@ -172,7 +223,7 @@ export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, 
 
     if (mode === 'list') return <Stack spacing={1.5}>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
-            <Box><Typography fontWeight={900}>Danh sách phôi cần kiểm</Typography><Typography variant="body2" color="text.secondary">Chọn các loại phôi theo vật tư và nhập số lượng KCS cần kiểm.</Typography></Box>
+            <Box><Typography fontWeight={900}>Danh sách phôi cần kiểm</Typography><Typography variant="body2" color="text.secondary">{isStageBtp ? 'Công đoạn Bao gói chọn BTP sau May theo mã .M.' : 'Chọn các loại phôi theo vật tư và nhập số lượng KCS cần kiểm.'}</Typography></Box>
             <Box sx={{ flex: 1 }} />
             {!editing && canEdit && <Button variant="contained" startIcon={<EditOutlinedIcon />} onClick={beginEdit}>{items.length ? 'Chỉnh sửa danh sách' : 'Chọn phôi'}</Button>}
             {editing && <Button variant="outlined" startIcon={<AddIcon />} disabled={loadingLookups} onClick={() => setPickerOpen(true)}>Chọn phôi từ danh sách</Button>}
@@ -181,15 +232,17 @@ export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, 
         {!visibleItems.length ? <Alert severity="info">Chưa có phôi nào được chọn. Nhấn “Chọn phôi” để bắt đầu.</Alert> : <Stack spacing={1}>
             {visibleItems.map((item, index) => <Paper key={itemKey(item)} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
                 <Grid container spacing={1.25} alignItems="center">
-                    <Grid size={{ xs: 12, md: 6 }}><Typography variant="body2" fontWeight={900}>{phoiTitle(item)}</Typography><Typography variant="caption" color="text.secondary">{[item.MaVatTu, item.QuyCachVatTu, item.DaoChat ? `Dao chặt: ${item.DaoChat}` : ''].filter(Boolean).join(' — ')}</Typography></Grid>
+                    <Grid size={{ xs: 12, md: 6 }}><Typography variant="body2" fontWeight={900}>{phoiTitle(item)}</Typography><Typography variant="caption" color="text.secondary">{sourceTypeOf(item) === 'BTP_STAGE' ? 'BTP sau công đoạn May' : [item.MaVatTu, item.QuyCachVatTu, item.DaoChat ? `Dao chặt: ${item.DaoChat}` : ''].filter(Boolean).join(' — ')}</Typography></Grid>
                     <Grid size={{ xs: 8, sm: 4, md: 2 }}>{editing ? <TextField fullWidth size="small" type="number" label="Số lượng kiểm" value={item.soLuongKiem} inputProps={{ min: 1, step: 1 }} onChange={(event) => updateDraft((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, soLuongKiem: event.target.value } : row))} /> : <><Typography variant="caption" color="text.secondary">Số lượng kiểm</Typography><Typography fontWeight={900}>{item.SoLuongKiem}</Typography></>}</Grid>
                     <Grid size={{ xs: 4, sm: 3, md: 2 }}><Typography variant="caption" color="text.secondary">Số phôi lỗi</Typography><Typography fontWeight={800} color="error.main">{editing ? defectiveQuantity(item) : item.SoLuongPhoiLoi || 0}</Typography></Grid>
-                    <Grid size={{ xs: 12, sm: 5, md: 2 }} sx={{ textAlign: 'right' }}>{editing ? <IconButton color="error" aria-label="Bỏ phôi khỏi danh sách" onClick={() => updateDraft((current) => current.filter((_, rowIndex) => rowIndex !== index))}><DeleteOutlineIcon /></IconButton> : <Chip size="small" color={traceComplete(item) && (item.defects || []).length ? 'success' : 'default'} label={traceComplete(item) && (item.defects || []).length ? 'Đã có kết quả' : 'Chưa kiểm'} />}</Grid>
+                    <Grid size={{ xs: 12, sm: 5, md: 2 }} sx={{ textAlign: 'right' }}>{editing ? <IconButton color="error" aria-label="Bỏ phôi khỏi danh sách" onClick={() => updateDraft((current) => current.filter((_, rowIndex) => rowIndex !== index))}><DeleteOutlineIcon /></IconButton> : <Chip size="small" color={traceComplete(item, requireLxvt) && (item.defects || []).length ? 'success' : 'default'} label={traceComplete(item, requireLxvt) && (item.defects || []).length ? 'Đã có kết quả' : 'Chưa kiểm'} />}</Grid>
                 </Grid>
             </Paper>)}
         </Stack>}
         {editing && <Paper elevation={3} sx={{ position: 'sticky', bottom: 8, zIndex: 3, p: 1, borderRadius: 2 }}><Stack direction={{ xs: 'column-reverse', sm: 'row' }} spacing={1} justifyContent="flex-end"><Button disabled={saving} onClick={() => { setEditing(false); onDirtyChange?.(false); }}>Hủy chỉnh sửa</Button><Button variant="outlined" startIcon={saving ? <CircularProgress size={18} /> : <SaveIcon />} disabled={saving || loadingLookups || !draft.length} onClick={() => save(false)}>Lưu danh sách</Button><Button variant="contained" disabled={saving || loadingLookups || !draft.length} onClick={() => save(true)}>Lưu và nhập kết quả kiểm</Button></Stack></Paper>}
-        <Dialog open={pickerOpen} onClose={() => setPickerOpen(false)} fullWidth maxWidth="md"><DialogTitle>Chọn loại phôi</DialogTitle><DialogContent dividers><TextField fullWidth value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm vật tư, quy cách, loại phôi, số phôi…" InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} /> }} sx={{ mb: 2 }} /><Stack spacing={2}>{filteredOptions.map((material) => <Box key={material.SourceVatTuId}><Typography fontWeight={800}>{material.MaVatTu || 'Vật tư chưa có mã'}</Typography><Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{material.QuyCachVatTu || 'Chưa có quy cách'}</Typography><Stack spacing={0.75}>{material.phoi.map((option) => <Paper key={option.SourceLoiPhoiId} variant="outlined" sx={{ p: 1 }}><Stack direction="row" alignItems="center"><Checkbox checked={selectedIds.has(Number(option.SourceLoiPhoiId))} onChange={() => togglePhoi(option, material)} /><Box><Typography variant="body2" fontWeight={700}>{phoiTitle(option)}</Typography><Typography variant="caption" color="text.secondary">{option.DaoChat ? `Dao chặt: ${option.DaoChat}` : 'Chưa có dao chặt'}</Typography></Box></Stack></Paper>)}</Stack></Box>)}</Stack>{!filteredOptions.length && <Alert severity="info">Không tìm thấy loại phôi phù hợp.</Alert>}</DialogContent><DialogActions><Button onClick={() => setPickerOpen(false)}>Xong</Button></DialogActions></Dialog>
+        <PhoiPickerDialog open={pickerOpen} onClose={() => setPickerOpen(false)} isStageBtp={isStageBtp}
+            search={search} onSearch={(event) => setSearch(event.target.value)} materials={filteredOptions}
+            selectedIds={selectedIds} onToggle={togglePhoi} />
     </Stack>;
 
     const readDefects = selectedItem?.defects || [];
@@ -202,11 +255,13 @@ export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, 
         {loadingLookups && <Alert icon={<CircularProgress size={18} />} severity="info">Đang tải danh sách phôi và lỗi…</Alert>}
         {!visibleItems.length ? <Alert severity="warning">Chưa chọn loại phôi.</Alert> : <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0,1fr)', md: '290px minmax(0,1fr)' }, gap: 1.5, alignItems: 'start' }}>
             <Stack spacing={1} sx={{ maxHeight: { md: 'calc(100vh - 310px)' }, overflow: 'auto', pr: { md: 0.5 }, flexDirection: { xs: 'row', md: 'column' }, '& > *': { minWidth: { xs: 250, md: 0 } } }}>
-                {visibleItems.map((item) => <MasterItem key={itemKey(item)} item={item} editing={editing} selected={itemKey(item) === itemKey(selectedItem)} onClick={() => setSelectedKey(itemKey(item))} />)}
+                {visibleItems.map((item) => <MasterItem key={itemKey(item)} item={item} editing={editing}
+                    requireLxvt={requireLxvt} selected={itemKey(item) === itemKey(selectedItem)}
+                    onClick={() => setSelectedKey(itemKey(item))} />)}
             </Stack>
             {selectedItem && <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', minWidth: 0 }}>
                 <Box sx={{ p: 1.5, bgcolor: '#fafbff' }}><Stack direction="row" justifyContent="space-between" spacing={1}>
-                    <Box sx={{ minWidth: 0 }}><Typography fontWeight={900}>{phoiTitle(selectedItem)}</Typography><Typography variant="body2" color="text.secondary">{[selectedItem.MaVatTu, selectedItem.QuyCachVatTu, selectedItem.DaoChat ? `Dao chặt: ${selectedItem.DaoChat}` : ''].filter(Boolean).join(' — ')}</Typography></Box>
+                    <Box sx={{ minWidth: 0 }}><Typography fontWeight={900}>{phoiTitle(selectedItem)}</Typography><Typography variant="body2" color="text.secondary">{sourceTypeOf(selectedItem) === 'BTP_STAGE' ? 'BTP sau công đoạn May' : [selectedItem.MaVatTu, selectedItem.QuyCachVatTu, selectedItem.DaoChat ? `Dao chặt: ${selectedItem.DaoChat}` : ''].filter(Boolean).join(' — ')}</Typography></Box>
                     {editing && <Chip size="small" color="primary" variant="outlined" label="Đang nhập kết quả" />}
                 </Stack>
                     {editing ? <Grid container spacing={1} sx={{ mt: 0.5 }}><Grid size={{ xs: 6, sm: 3 }}><TextField fullWidth size="small" label="Số lượng kiểm" value={selectedItem.soLuongKiem} slotProps={{ input: { readOnly: true } }} helperText="Chỉnh tại tab Danh sách phôi" /></Grid><Grid size={{ xs: 6, sm: 3 }}><TextField fullWidth size="small" label="Số phôi lỗi" value={defectiveQuantity(selectedItem)} slotProps={{ input: { readOnly: true } }} helperText="Tự động theo tổng lỗi" /></Grid><Grid size={{ xs: 12, sm: 6 }}><TextField fullWidth size="small" label="Ghi chú phôi" value={selectedItem.ghiChu} onChange={(e) => patchItem({ ghiChu: e.target.value })} /></Grid></Grid> : <Stack direction="row" spacing={1} sx={{ mt: 1 }}><Chip label={`Số lượng kiểm: ${selectedItem.SoLuongKiem}`} /><Chip color="error" label={`Số phôi lỗi: ${selectedItem.SoLuongPhoiLoi}`} /></Stack>}</Box>
@@ -216,11 +271,24 @@ export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, 
                         {selectedItem.defects.map((defect, index) => { const chosen = defects.find((option) => Number(option.Id) === Number(defect.defectId)); const responsible = responsibleDepartments.find((option) => option.source === defect.boPhanGayLoiSource && Number(option.sourceId) === Number(defect.boPhanGayLoiSourceId)); return <Paper key={index} variant="outlined" sx={{ p: 1.25, bgcolor: '#fcfcfd' }}><Grid container spacing={1} alignItems="center"><Grid size={{ xs: 12, md: 3 }}><FormControl fullWidth size="small"><InputLabel>Nhóm lỗi</InputLabel><Select label="Nhóm lỗi" value={defect.nhomLoiId} onChange={(e) => patchDefect(index, { nhomLoiId: e.target.value })}>{groups.map((group) => <MenuItem key={group.Id} value={group.Id}>{group.MaNhom} — {group.TenNhom}</MenuItem>)}</Select></FormControl></Grid><Grid size={{ xs: 12, md: 4 }}><DefectPickerDialog fullWidth defects={defects} onSelect={(value) => selectDefect(index, value)} buttonLabel={chosen ? `${chosen.MaLoi || ''} — ${chosen.TenLoi || ''}` : 'Chọn lỗi từ danh mục'} /></Grid><Grid size={{ xs: 12, md: 3 }}><Autocomplete size="small" options={responsibleDepartments} filterOptions={filterResponsibleOptions} value={responsible || null} isOptionEqualToValue={(a, b) => a.key === b.key} getOptionKey={(row) => row.key} getOptionLabel={responsibleOptionLabel} onChange={(_, value) => patchDefect(index, { boPhanGayLoiSource: value?.source || '', boPhanGayLoiSourceId: value?.sourceId || '' })} renderInput={(params) => <TextField {...params} required label="Bộ phận/NCC gây lỗi" />} /></Grid><Grid size={{ xs: 9, md: 1 }}><TextField fullWidth size="small" type="number" label="SL lỗi" value={defect.soLuongLoi} onChange={(e) => patchDefect(index, { soLuongLoi: e.target.value })} /></Grid><Grid size={{ xs: 3, md: 1 }} textAlign="right"><IconButton color="error" onClick={() => patchItem({ defects: selectedItem.defects.filter((_, i) => i !== index) })}><DeleteOutlineIcon /></IconButton></Grid><Grid size={12}><TextField fullWidth size="small" label="Ghi chú lỗi" value={defect.ghiChu} onChange={(e) => patchDefect(index, { ghiChu: e.target.value })} /></Grid></Grid></Paper>; })}
                         <Button startIcon={<AddIcon />} onClick={() => patchItem({ defects: [...selectedItem.defects, { nhomLoiId: '', defectId: '', soLuongLoi: 1, ghiChu: '', boPhanGayLoiSource: '', boPhanGayLoiSourceId: '' }] })}>Thêm dòng lỗi</Button>
                     </Stack> : readDefects.length ? <Stack spacing={1}>{readDefects.map((defect) => <Paper key={defect.Id} variant="outlined" sx={{ p: 1.25 }}><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}><Chip size="small" color="primary" label={defect.TenNhomLoi} /><Typography variant="body2" fontWeight={700} sx={{ flex: 1 }}>{[defect.MaLoi, defect.TenLoi].filter(Boolean).join(' — ')}</Typography><Chip size="small" color="error" variant="outlined" label={`SL ${defect.SoLuongLoi}`} /></Stack><Typography variant="caption" color="text.secondary">Bộ phận/nhà thầu/nhà cung cấp gây lỗi: {responsibleLabel(defect) || '---'}</Typography>{defect.GhiChu && <Typography variant="caption" color="text.secondary">{defect.GhiChu}</Typography>}</Paper>)}</Stack> : <Alert severity="info">Chưa cập nhật nhóm lỗi/lỗi.</Alert>)}
-                    {detailTab === 'trace' && (editing ? <Grid container spacing={1.25}><Grid size={{ xs: 12, md: 4 }}><TextField required fullWidth size="small" label="LXVT" value={selectedItem.lenhXuatVatTu} onChange={(e) => patchItem({ lenhXuatVatTu: e.target.value })} /></Grid><Grid size={{ xs: 12, md: 4 }}><TextField fullWidth size="small" label="Lot sản xuất" value={selectedItem.lotSanXuat} slotProps={{ input: { readOnly: true } }} helperText="Tự động lấy từ lô của kế hoạch ban đầu" /></Grid><Grid size={{ xs: 12, md: 4 }}><TextField fullWidth size="small" label="Dấu tuần" value={selectedItem.dauTuan} onChange={(e) => patchItem({ dauTuan: e.target.value })} /></Grid><Grid size={{ xs: 12, md: 4 }}><Autocomplete size="small" options={departments} value={departments.find((row) => Number(row.Id) === Number(selectedItem.donViTaoPhoiId)) || null} getOptionLabel={(row) => [row.MaBoPhan, row.TenBoPhan].filter(Boolean).join(' — ')} onChange={(_, value) => patchItem({ donViTaoPhoiId: value?.Id || '' })} renderInput={(params) => <TextField {...params} label="Đơn vị tạo phôi" />} /></Grid><Grid size={{ xs: 12, md: 4 }}><TextField fullWidth size="small" type="date" label="Ngày tạo phôi" value={selectedItem.ngayTaoPhoi} onChange={(e) => patchItem({ ngayTaoPhoi: e.target.value })} slotProps={{ inputLabel: { shrink: true } }} /></Grid><Grid size={{ xs: 12, md: 4 }}><TextField fullWidth size="small" label="Tổ sản xuất" value={selectedItem.toSanXuat} onChange={(e) => patchItem({ toSanXuat: e.target.value })} /></Grid><Grid size={{ xs: 12, md: 4 }}><TextField fullWidth size="small" label="Công nhân sản xuất" value={selectedItem.congNhanSanXuat} onChange={(e) => patchItem({ congNhanSanXuat: e.target.value })} /></Grid></Grid> : <Grid container spacing={1.5}>{[['LXVT', selectedItem.LenhXuatVatTu], ['Lot sản xuất', defaultLot || selectedItem.LotSanXuat], ['Dấu tuần', selectedItem.DauTuan], ['Đơn vị tạo phôi', selectedItem.TenDonViTaoPhoi], ['Ngày tạo phôi', String(selectedItem.NgayTaoPhoi || '').slice(0, 10)], ['Tổ sản xuất', selectedItem.ToSanXuat], ['Công nhân sản xuất', selectedItem.CongNhanSanXuat], ['KCS xác nhận', selectedItem.TenKcs]].map(([label, value]) => <Grid key={label} size={{ xs: 12, sm: 6, md: 4 }}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="body2" fontWeight={700}>{value || '---'}</Typography></Grid>)}</Grid>)}
+                    {detailTab === 'trace' && (editing ? <Grid container spacing={1.25}>
+                        <Grid size={{ xs: 12, md: 4 }}><TextField required={requireLxvt} fullWidth size="small"
+                            label={requireLxvt ? 'LXVT' : 'LXVT (không bắt buộc)'}
+                            helperText={requireLxvt ? undefined : 'Có thể nhập nếu BTP có tham chiếu LXVT'}
+                            value={selectedItem.lenhXuatVatTu} onChange={(e) => patchItem({ lenhXuatVatTu: e.target.value })} /></Grid>
+                        <Grid size={{ xs: 12, md: 4 }}><TextField fullWidth size="small" label="Lot sản xuất" value={selectedItem.lotSanXuat} slotProps={{ input: { readOnly: true } }} helperText="Tự động lấy từ lô của kế hoạch ban đầu" /></Grid>
+                        <Grid size={{ xs: 12, md: 4 }}><TextField fullWidth size="small" label="Dấu tuần" value={selectedItem.dauTuan} onChange={(e) => patchItem({ dauTuan: e.target.value })} /></Grid>
+                        <Grid size={{ xs: 12, md: 4 }}><Autocomplete size="small" options={departments} value={departments.find((row) => Number(row.Id) === Number(selectedItem.donViTaoPhoiId)) || null} getOptionLabel={(row) => [row.MaBoPhan, row.TenBoPhan].filter(Boolean).join(' — ')} onChange={(_, value) => patchItem({ donViTaoPhoiId: value?.Id || '' })} renderInput={(params) => <TextField {...params} label="Đơn vị tạo phôi" />} /></Grid>
+                        <Grid size={{ xs: 12, md: 4 }}><TextField fullWidth size="small" type="date" label="Ngày tạo phôi" value={selectedItem.ngayTaoPhoi} onChange={(e) => patchItem({ ngayTaoPhoi: e.target.value })} slotProps={{ inputLabel: { shrink: true } }} /></Grid>
+                        <Grid size={{ xs: 12, md: 4 }}><TextField fullWidth size="small" label="Tổ sản xuất" value={selectedItem.toSanXuat} onChange={(e) => patchItem({ toSanXuat: e.target.value })} /></Grid>
+                        <Grid size={{ xs: 12, md: 4 }}><TextField fullWidth size="small" label="Công nhân sản xuất" value={selectedItem.congNhanSanXuat} onChange={(e) => patchItem({ congNhanSanXuat: e.target.value })} /></Grid>
+                    </Grid> : <Grid container spacing={1.5}>{[['LXVT', selectedItem.LenhXuatVatTu], ['Lot sản xuất', defaultLot || selectedItem.LotSanXuat], ['Dấu tuần', selectedItem.DauTuan], ['Đơn vị tạo phôi', selectedItem.TenDonViTaoPhoi], ['Ngày tạo phôi', String(selectedItem.NgayTaoPhoi || '').slice(0, 10)], ['Tổ sản xuất', selectedItem.ToSanXuat], ['Công nhân sản xuất', selectedItem.CongNhanSanXuat], ['KCS xác nhận', selectedItem.TenKcs]].map(([label, value]) => <Grid key={label} size={{ xs: 12, sm: 6, md: 4 }}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="body2" fontWeight={700}>{value || '---'}</Typography></Grid>)}</Grid>)}
                 </Box>
             </Paper>}
         </Box>}
         {editing && <Paper elevation={3} sx={{ position: 'sticky', bottom: 8, zIndex: 3, p: 1, borderRadius: 2 }}><Stack direction="row" spacing={1} justifyContent="flex-end"><Button disabled={saving} onClick={() => { setEditing(false); onDirtyChange?.(false); }}>Hủy chỉnh sửa</Button><Button startIcon={saving ? <CircularProgress size={18} /> : <SaveIcon />} variant="contained" disabled={saving || loadingLookups} onClick={() => save(false)}>Lưu nháp</Button></Stack></Paper>}
-        <Dialog open={pickerOpen} onClose={() => setPickerOpen(false)} fullWidth maxWidth="md"><DialogTitle>Chọn loại phôi</DialogTitle><DialogContent dividers><TextField fullWidth value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm vật tư, quy cách, loại phôi, số phôi…" InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} /> }} sx={{ mb: 2 }} /><Stack spacing={2}>{filteredOptions.map((material) => <Box key={material.SourceVatTuId}><Typography fontWeight={800}>{material.MaVatTu || 'Vật tư chưa có mã'}</Typography><Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{material.QuyCachVatTu || 'Chưa có quy cách'}</Typography><Stack spacing={0.75}>{material.phoi.map((option) => <Paper key={option.SourceLoiPhoiId} variant="outlined" sx={{ p: 1 }}><Stack direction="row" alignItems="center"><Checkbox checked={selectedIds.has(Number(option.SourceLoiPhoiId))} onChange={() => togglePhoi(option, material)} /><Box><Typography variant="body2" fontWeight={700}>{phoiTitle(option)}</Typography><Typography variant="caption" color="text.secondary">{option.DaoChat ? `Dao chặt: ${option.DaoChat}` : 'Chưa có dao chặt'}</Typography></Box></Stack></Paper>)}</Stack></Box>)}</Stack>{!filteredOptions.length && <Alert severity="info">Không tìm thấy loại phôi phù hợp.</Alert>}</DialogContent><DialogActions><Button onClick={() => setPickerOpen(false)}>Xong</Button></DialogActions></Dialog>
+        <PhoiPickerDialog open={pickerOpen} onClose={() => setPickerOpen(false)} isStageBtp={isStageBtp}
+            search={search} onSearch={(event) => setSearch(event.target.value)} materials={filteredOptions}
+            selectedIds={selectedIds} onToggle={togglePhoi} />
     </Stack>;
 }

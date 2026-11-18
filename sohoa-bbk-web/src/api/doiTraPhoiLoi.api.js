@@ -72,6 +72,12 @@ export const createDoiTraDefectGroup = (data) =>
 export const updateDoiTraDefectGroup = (id, data) =>
     axiosClient.put(`/doi-tra-phoi-loi/defect-groups/${id}`, data);
 
+export const getDoiTraOperationConfigs = () =>
+    axiosClient.get('/doi-tra-phoi-loi/operation-configs/manage');
+
+export const updateDoiTraOperationConfig = (processId, data) =>
+    axiosClient.put(`/doi-tra-phoi-loi/operation-configs/${processId}`, data);
+
 export const getDoiTraTraceabilityLookups = () =>
     axiosClient.get('/doi-tra-phoi-loi/traceability-lookups');
 

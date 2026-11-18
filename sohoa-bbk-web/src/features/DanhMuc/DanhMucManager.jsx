@@ -8,6 +8,7 @@ import SanPhamManger from "./components/SanPhamManager";
 import InspectionLevelManager from "./components/InspectionLevelManager";
 import DoiTraDefectGroupManager from "./components/DoiTraDefectGroupManager";
 import CheckItemAqlConfigManager from "./components/CheckItemAqlConfigManager";
+import DoiTraOperationConfigManager from "./components/DoiTraOperationConfigManager";
 
 export default function DanhMucManager() {
     const [type, setType] = useState("DEFECT");
@@ -32,6 +33,7 @@ export default function DanhMucManager() {
                 <MenuItem value="INSPECTION_LEVEL">Inspection Level</MenuItem>
                 <MenuItem value="CHECK_ITEM_AQL_CONFIG">AQL theo mục kiểm</MenuItem>
                 <MenuItem value="DOI_TRA_DEFECT_GROUP">Nhóm lỗi đổi trả phôi</MenuItem>
+                <MenuItem value="DOI_TRA_OPERATION_CONFIG">Luồng đổi trả theo công đoạn</MenuItem>
             </TextField>
 
             {type === "DEFECT" && <DefectManager />}
@@ -41,6 +43,7 @@ export default function DanhMucManager() {
             {type === "INSPECTION_LEVEL" && <InspectionLevelManager />}
             {type === "CHECK_ITEM_AQL_CONFIG" && <CheckItemAqlConfigManager />}
             {type === "DOI_TRA_DEFECT_GROUP" && <DoiTraDefectGroupManager />}
+            {type === "DOI_TRA_OPERATION_CONFIG" && <DoiTraOperationConfigManager />}
         </Box>
     );
 }
