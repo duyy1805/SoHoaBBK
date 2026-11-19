@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Alert, Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions,
-    DialogContent, DialogTitle, MenuItem, Paper, Stack, Table, TableBody, TableCell,
-    TableContainer, TableHead, TableRow, Tab, Tabs, TextField, Typography
+    DialogContent, DialogTitle, IconButton, MenuItem, Paper, Popover, Stack, Table,
+    TableBody, TableCell, TableContainer, TableHead, TableRow, Tab, Tabs, TextField,
+    Tooltip, Typography
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import PrintIcon from '@mui/icons-material/Print';
@@ -10,6 +11,10 @@ import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import SearchIcon from '@mui/icons-material/Search';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
+import FilterListIcon from '@mui/icons-material/FilterList';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useReactToPrint } from 'react-to-print';
 import {
@@ -29,6 +34,21 @@ const emptyColumnFilters = {
     planQuantity: '', creator: '', status: '', warehouseStatus: '', b7Status: ''
 };
 
+const statusColumnOptions = [
+    { value: '', label: 'Tất cả trạng thái' },
+    ...Object.entries(DOI_TRA_STATUS_META).map(([value, meta]) => ({ value, label: meta.label }))
+];
+const warehouseColumnOptions = [
+    { value: '', label: 'Tất cả trạng thái' },
+    { value: 'CONFIRMED', label: 'Đã xác nhận nhập' },
+    { value: 'PENDING', label: 'Chưa xác nhận nhập' },
+    { value: 'NOT_CREATED', label: 'Chưa tạo phiếu nhập' }
+];
+const b7ColumnOptions = [
+    { value: '', label: 'Tất cả trạng thái' },
+    ...Object.entries(DOI_TRA_DINH_MUC_STATUS_META).map(([value, meta]) => ({ value, label: meta.label }))
+];
+
 const searchable = (value) => String(value ?? '').normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('vi').trim();
 
@@ -45,13 +65,6 @@ const dateKey = (value) => {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
-const columnFilterSx = {
-    minWidth: 105,
-    '& .MuiInputBase-root': { fontSize: 12 },
-    '& .MuiInputBase-input': { py: 0.75 },
-    '& .MuiSelect-select': { py: '6px !important' }
-};
-
 export default function DoiTraPhoiLoiList() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -66,7 +79,9 @@ export default function DoiTraPhoiLoiList() {
     const summaryPrintRef = useRef(null);
     const [filters, setFilters] = useState({ keyword: '', status: '', opinionDepartment: 'all', fromDate: '', toDate: '' });
     const [columnFilters, setColumnFilters] = useState(emptyColumnFilters);
+    const [filterPopover, setFilterPopover] = useState({ field: '', anchorEl: null });
     const [deletingId, setDeletingId] = useState(null);
+    const [expandedGroups, setExpandedGroups] = useState(() => new Set());
     const user = useMemo(() => getCurrentUser() || {}, []);
     const permissions = user?.permissions || [];
     const isAdmin = permissions.includes('QUAN_TRI_DM')
@@ -103,7 +118,7 @@ export default function DoiTraPhoiLoiList() {
             } else if (!departmentIds.includes(Number(filters.opinionDepartment))) return false;
         }
 
-        if (!containsSearch([row.SoPhieu], columnFilters.ticketNo)) return false;
+        if (!containsSearch([row.SoPhieuNhom, row.SoPhieu], columnFilters.ticketNo)) return false;
         if (columnFilters.createdDate && dateKey(row.NgayLap) !== columnFilters.createdDate) return false;
         if (!containsSearch([row.PlanNo, row.PlanID, row.OrderCode], columnFilters.planOrder)) return false;
         if (!containsSearch([row.ProductCode, row.ProductName], columnFilters.product)) return false;
@@ -125,12 +140,105 @@ export default function DoiTraPhoiLoiList() {
         return true;
     }), [columnFilters, filters.opinionDepartment, managedDepartmentIds, rows]);
     const printableRows = filteredRows.filter((row) => row.TrangThai !== 'DA_HUY');
+    const groupedRows = useMemo(() => {
+        const groups = new Map();
+        filteredRows.forEach((row) => {
+            const key = Number(row.NhomPhieuId) || `single:${row.Id}`;
+            const current = groups.get(key) || { key, rows: [] };
+            current.rows.push(row);
+            groups.set(key, current);
+        });
+        return [...groups.values()].map((group) => {
+            const activeRows = group.rows.filter((row) => row.TrangThai !== 'DA_HUY');
+            const completedCount = activeRows.filter((row) => row.TrangThai === 'HOAN_TAT').length;
+            const cancelledCount = group.rows.length - activeRows.length;
+            const warehouseConfirmedCount = activeRows.filter((row) => Number(row.PhieuNhapErpTrangThai) === 5).length;
+            const warehouseCreatedCount = activeRows.filter((row) => Boolean(row.SoPhieuNhapBtp)).length;
+            const b7Rows = activeRows.filter((row) => row.DinhMucTrangThai !== 'KHONG_AP_DUNG');
+            const b7ConfirmedCount = b7Rows.filter((row) => row.DinhMucTrangThai === 'DA_XAC_NHAN').length;
+            const pendingOpinionDepartments = [...new Set(activeRows
+                .filter((row) => row.TrangThai === 'CHO_Y_KIEN_KPH' && row.BoPhanChuaXacNhanText)
+                .map((row) => row.BoPhanChuaXacNhanText))];
+            const firstRow = group.rows[0];
+            let statusLabel = `${completedCount}/${activeRows.length} kế hoạch hoàn tất`;
+            let statusColor = completedCount === activeRows.length && activeRows.length > 0 ? 'success' : 'info';
+            if (!activeRows.length) {
+                statusLabel = 'Đã hủy toàn bộ';
+                statusColor = 'error';
+            } else if (completedCount === 0 && activeRows.every((row) => row.TrangThai === 'TAO_MOI')) {
+                statusLabel = 'Chưa bắt đầu xử lý';
+                statusColor = 'default';
+            }
+            return {
+                ...group, firstRow, activeRows, completedCount, cancelledCount, statusLabel, statusColor,
+                warehouseConfirmedCount, warehouseCreatedCount, b7Rows, b7ConfirmedCount,
+                pendingOpinionDepartments
+            };
+        });
+    }, [filteredRows]);
     const printableIdSet = new Set(printableRows.map((row) => Number(row.Id)));
     const visibleSelectedIds = selectedIds.filter((id) => printableIdSet.has(Number(id)));
+
+    const toggleGroup = (key) => setExpandedGroups((current) => {
+        const next = new Set(current);
+        if (next.has(key)) next.delete(key); else next.add(key);
+        return next;
+    });
+
+    const toggleGroupSelection = (group, checked) => {
+        const groupIds = group.activeRows.map((row) => Number(row.Id));
+        setSelectedIds((current) => checked
+            ? [...new Set([...current.map(Number), ...groupIds])]
+            : current.filter((id) => !groupIds.includes(Number(id))));
+    };
 
     const setColumnFilter = (name, value) => {
         setSelectedIds([]);
         setColumnFilters((current) => ({ ...current, [name]: value }));
+    };
+
+    const closeFilterPopover = () => setFilterPopover({ field: '', anchorEl: null });
+    const clearColumnFilters = () => {
+        setSelectedIds([]);
+        setColumnFilters(emptyColumnFilters);
+        closeFilterPopover();
+    };
+    const renderFilterHeader = ({ field, label, placeholder, options, type = 'text' }) => {
+        const value = columnFilters[field];
+        const isOpen = filterPopover.field === field;
+        const hasValue = Boolean(value);
+        return <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="space-between">
+            <span>{label}</span>
+            <Tooltip title={`Lọc ${label.toLocaleLowerCase('vi')}`}>
+                <IconButton size="small" color={hasValue ? 'primary' : 'default'}
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        setFilterPopover({ field, anchorEl: event.currentTarget });
+                    }}
+                    sx={{ width: 28, height: 28, bgcolor: hasValue ? 'action.selected' : 'transparent' }}>
+                    <FilterListIcon fontSize="small" />
+                </IconButton>
+            </Tooltip>
+            <Popover open={isOpen} anchorEl={filterPopover.anchorEl} onClose={closeFilterPopover}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+                onClick={(event) => event.stopPropagation()}>
+                <Box sx={{ p: 2, width: 290 }}>
+                    <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>{label}</Typography>
+                    <TextField autoFocus select={Boolean(options)} fullWidth size="small" type={type}
+                        placeholder={placeholder} value={value}
+                        onChange={(event) => setColumnFilter(field, event.target.value)}
+                        onKeyDown={(event) => event.key === 'Escape' && closeFilterPopover()}
+                        slotProps={type === 'date' ? { inputLabel: { shrink: true } } : undefined}>
+                        {options?.map((option) => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}
+                    </TextField>
+                    <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 2 }}>
+                        <Button variant="outlined" size="small" onClick={() => setColumnFilter(field, '')}>Bỏ lọc</Button>
+                        <Button variant="contained" size="small" onClick={closeFilterPopover}>Đóng</Button>
+                    </Stack>
+                </Box>
+            </Popover>
+        </Stack>;
     };
 
     const printSummary = useReactToPrint({
@@ -187,7 +295,7 @@ export default function DoiTraPhoiLoiList() {
     };
 
     const deleteTicket = async (row) => {
-        if (!window.confirm(`Xóa phiếu ${row.SoPhieu || row.Id} cùng toàn bộ dữ liệu liên quan? Hành động này không thể hoàn tác.`)) return;
+        if (!window.confirm(`Xóa kế hoạch ${row.PlanNo || row.PlanID || row.SoPhieu || row.Id} khỏi phiếu ${row.SoPhieuNhom || row.SoPhieu}? Toàn bộ dữ liệu xử lý riêng của kế hoạch này sẽ bị xóa và không thể hoàn tác.`)) return;
         try {
             setDeletingId(row.Id);
             await deleteDoiTraPhoiLoi(row.Id);
@@ -270,47 +378,91 @@ export default function DoiTraPhoiLoiList() {
                             <TableHead>
                                 <TableRow sx={{ bgcolor: '#f8fafc' }}>
                                     <TableCell padding="checkbox"><Checkbox checked={printableRows.length > 0 && visibleSelectedIds.length === printableRows.length} indeterminate={visibleSelectedIds.length > 0 && visibleSelectedIds.length < printableRows.length} onChange={(event) => setSelectedIds(event.target.checked ? printableRows.map((row) => row.Id) : [])} /></TableCell>
-                                    <TableCell>Số phiếu</TableCell>
-                                    <TableCell>Ngày lập</TableCell>
-                                    <TableCell>Kế hoạch / Đơn hàng</TableCell>
-                                    <TableCell>Sản phẩm</TableCell>
-                                    <TableCell>Công đoạn / Bộ phận</TableCell>
-                                    <TableCell align="right">Số lượng KH</TableCell>
-                                    <TableCell>Người lập</TableCell>
-                                    <TableCell>Trạng thái</TableCell>
-                                    <TableCell>Kho xác nhận nhập</TableCell>
-                                    <TableCell>Số lượng đổi trả B7</TableCell>
-                                    <TableCell align="center">Thao tác</TableCell>
-                                </TableRow>
-                                <TableRow sx={{ bgcolor: '#fff', '& .MuiTableCell-root': { py: 0.75, verticalAlign: 'top' } }}>
-                                    <TableCell padding="checkbox" />
-                                    <TableCell><TextField fullWidth size="small" variant="standard" placeholder="Lọc số phiếu" value={columnFilters.ticketNo} onChange={(event) => setColumnFilter('ticketNo', event.target.value)} sx={columnFilterSx} /></TableCell>
-                                    <TableCell><TextField fullWidth size="small" variant="standard" type="date" value={columnFilters.createdDate} onChange={(event) => setColumnFilter('createdDate', event.target.value)} sx={{ ...columnFilterSx, minWidth: 125 }} inputProps={{ 'aria-label': 'Lọc ngày lập' }} /></TableCell>
-                                    <TableCell><TextField fullWidth size="small" variant="standard" placeholder="KH hoặc đơn hàng" value={columnFilters.planOrder} onChange={(event) => setColumnFilter('planOrder', event.target.value)} sx={{ ...columnFilterSx, minWidth: 145 }} /></TableCell>
-                                    <TableCell><TextField fullWidth size="small" variant="standard" placeholder="Mã hoặc tên SP" value={columnFilters.product} onChange={(event) => setColumnFilter('product', event.target.value)} sx={{ ...columnFilterSx, minWidth: 145 }} /></TableCell>
-                                    <TableCell><TextField fullWidth size="small" variant="standard" placeholder="Công đoạn/BP" value={columnFilters.operationDepartment} onChange={(event) => setColumnFilter('operationDepartment', event.target.value)} sx={{ ...columnFilterSx, minWidth: 145 }} /></TableCell>
-                                    <TableCell><TextField fullWidth size="small" variant="standard" type="number" placeholder="SL" value={columnFilters.planQuantity} onChange={(event) => setColumnFilter('planQuantity', event.target.value)} sx={{ ...columnFilterSx, minWidth: 80 }} inputProps={{ min: 0, 'aria-label': 'Lọc số lượng kế hoạch' }} /></TableCell>
-                                    <TableCell><TextField fullWidth size="small" variant="standard" placeholder="Người lập" value={columnFilters.creator} onChange={(event) => setColumnFilter('creator', event.target.value)} sx={columnFilterSx} /></TableCell>
-                                    <TableCell><TextField select fullWidth size="small" variant="standard" value={columnFilters.status} onChange={(event) => setColumnFilter('status', event.target.value)} sx={{ ...columnFilterSx, minWidth: 160 }} SelectProps={{ displayEmpty: true }}><MenuItem value="">Tất cả</MenuItem>{Object.entries(DOI_TRA_STATUS_META).map(([value, meta]) => <MenuItem key={value} value={value}>{meta.label}</MenuItem>)}</TextField></TableCell>
-                                    <TableCell><TextField select fullWidth size="small" variant="standard" value={columnFilters.warehouseStatus} onChange={(event) => setColumnFilter('warehouseStatus', event.target.value)} sx={{ ...columnFilterSx, minWidth: 155 }} SelectProps={{ displayEmpty: true }}><MenuItem value="">Tất cả</MenuItem><MenuItem value="CONFIRMED">Đã xác nhận nhập</MenuItem><MenuItem value="PENDING">Chưa xác nhận nhập</MenuItem><MenuItem value="NOT_CREATED">Chưa tạo phiếu nhập</MenuItem></TextField></TableCell>
-                                    <TableCell><TextField select fullWidth size="small" variant="standard" value={columnFilters.b7Status} onChange={(event) => setColumnFilter('b7Status', event.target.value)} sx={{ ...columnFilterSx, minWidth: 155 }} SelectProps={{ displayEmpty: true }}><MenuItem value="">Tất cả</MenuItem>{Object.entries(DOI_TRA_DINH_MUC_STATUS_META).map(([value, meta]) => <MenuItem key={value} value={value}>{meta.label}</MenuItem>)}</TextField></TableCell>
-                                    <TableCell align="center"><Button size="small" disabled={!Object.values(columnFilters).some(Boolean)} onClick={() => { setSelectedIds([]); setColumnFilters(emptyColumnFilters); }}>Xóa lọc</Button></TableCell>
+                                    <TableCell>{renderFilterHeader({ field: 'ticketNo', label: 'Số phiếu', placeholder: 'Nhập số phiếu' })}</TableCell>
+                                    <TableCell>{renderFilterHeader({ field: 'createdDate', label: 'Ngày lập', type: 'date' })}</TableCell>
+                                    <TableCell>{renderFilterHeader({ field: 'planOrder', label: 'Kế hoạch / Đơn hàng', placeholder: 'Nhập kế hoạch hoặc đơn hàng' })}</TableCell>
+                                    <TableCell>{renderFilterHeader({ field: 'product', label: 'Sản phẩm', placeholder: 'Nhập mã hoặc tên sản phẩm' })}</TableCell>
+                                    <TableCell>{renderFilterHeader({ field: 'operationDepartment', label: 'Công đoạn / Bộ phận', placeholder: 'Nhập công đoạn hoặc bộ phận' })}</TableCell>
+                                    <TableCell align="right">{renderFilterHeader({ field: 'planQuantity', label: 'Số lượng KH', placeholder: 'Nhập số lượng', type: 'number' })}</TableCell>
+                                    <TableCell>{renderFilterHeader({ field: 'creator', label: 'Người lập', placeholder: 'Nhập tên người lập' })}</TableCell>
+                                    <TableCell>{renderFilterHeader({ field: 'status', label: 'Trạng thái', options: statusColumnOptions })}</TableCell>
+                                    <TableCell>{renderFilterHeader({ field: 'warehouseStatus', label: 'Kho xác nhận nhập', options: warehouseColumnOptions })}</TableCell>
+                                    <TableCell>{renderFilterHeader({ field: 'b7Status', label: 'Trạng thái B7', options: b7ColumnOptions })}</TableCell>
+                                    <TableCell align="center">{Object.values(columnFilters).some(Boolean) && <Tooltip title="Xóa toàn bộ bộ lọc cột"><IconButton size="small" color="primary" onClick={clearColumnFilters}><RestartAltIcon fontSize="small" /></IconButton></Tooltip>}</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
                                 {filteredRows.length === 0 && <TableRow><TableCell colSpan={12}>
                                     <Alert severity="info">Chưa có phiếu đổi trả phôi lỗi phù hợp. Bạn có thể thay đổi hoặc xóa bộ lọc ngay trên đầu cột.</Alert>
                                 </TableCell></TableRow>}
-                                {filteredRows.map((row) => {
-                                    const status = doiTraStatusMeta(row.TrangThai);
-                                    const dinhMucStatus = doiTraDinhMucStatusMeta(row.DinhMucTrangThai);
-                                    const displayProductCode = row.PhoiSelectionMode === 'PREVIOUS_STAGE_BTP'
-                                        ? [row.ProductCode, row.BtpStageSuffix || 'M'].filter(Boolean).join('.')
-                                        : row.ProductCode;
-                                    return (
-                                        <TableRow key={row.Id} hover>
-                                            <TableCell padding="checkbox"><Checkbox disabled={row.TrangThai === 'DA_HUY'} checked={selectedIds.includes(row.Id)} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, row.Id] : current.filter((id) => id !== row.Id))} /></TableCell>
-                                            <TableCell><Typography variant="body2" fontWeight={800} color="primary.main">{row.SoPhieu}</Typography></TableCell>
+                                {groupedRows.map((group) => {
+                                    const isExpanded = expandedGroups.has(group.key);
+                                    const groupSelectedCount = group.activeRows.filter((row) => selectedIds.includes(row.Id)).length;
+                                    return [
+                                        <TableRow key={`group-${group.key}`} sx={{ bgcolor: '#f8fafc', '& > td': { borderBottomColor: 'divider' } }}>
+                                            <TableCell padding="checkbox">
+                                                <Checkbox disabled={!group.activeRows.length}
+                                                    checked={group.activeRows.length > 0 && groupSelectedCount === group.activeRows.length}
+                                                    indeterminate={groupSelectedCount > 0 && groupSelectedCount < group.activeRows.length}
+                                                    onChange={(event) => toggleGroupSelection(group, event.target.checked)} />
+                                            </TableCell>
+                                            <TableCell colSpan={7} sx={{ py: 1.25 }}>
+                                                <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+                                                        <IconButton size="small" onClick={() => toggleGroup(group.key)} aria-label={isExpanded ? 'Thu gọn kế hoạch' : 'Mở danh sách kế hoạch'}>
+                                                            {isExpanded ? <KeyboardArrowDownIcon /> : <KeyboardArrowRightIcon />}
+                                                        </IconButton>
+                                                        <Box sx={{ minWidth: 0 }}>
+                                                            <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
+                                                                <Typography fontWeight={800} color="primary.main">{group.firstRow.SoPhieuNhom || group.firstRow.SoPhieu}</Typography>
+                                                                <Chip size="small" variant="outlined" label={`${group.rows.length} kế hoạch`} />
+                                                                {group.cancelledCount > 0 && <Chip size="small" color="error" variant="outlined" label={`${group.cancelledCount} đã hủy`} />}
+                                                            </Stack>
+                                                            <Typography variant="caption" color="text.secondary">
+                                                                Ngày lập {formatDoiTraDate(group.firstRow.NgayLap)} · Người lập: {group.firstRow.TenNguoiLap || '---'}
+                                                            </Typography>
+                                                        </Box>
+                                                </Stack>
+                                            </TableCell>
+                                            <TableCell sx={{ minWidth: 210 }}>
+                                                <Chip size="small" color={group.statusColor} label={group.statusLabel} />
+                                                {group.pendingOpinionDepartments.length > 0 && <Typography variant="caption" color="warning.dark" fontWeight={700} display="block" sx={{ mt: 0.5, whiteSpace: 'normal' }}>
+                                                    Chờ ý kiến: {group.pendingOpinionDepartments.join('; ')}
+                                                </Typography>}
+                                            </TableCell>
+                                            <TableCell sx={{ minWidth: 165 }}>
+                                                <Chip size="small" variant="outlined"
+                                                    color={group.warehouseConfirmedCount === group.activeRows.length && group.activeRows.length ? 'success' : 'warning'}
+                                                    label={`Kho ${group.warehouseConfirmedCount}/${group.activeRows.length}`} />
+                                                {group.warehouseCreatedCount < group.activeRows.length && <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                                                    {group.activeRows.length - group.warehouseCreatedCount} KH chưa tạo phiếu nhập
+                                                </Typography>}
+                                            </TableCell>
+                                            <TableCell sx={{ minWidth: 145 }}>
+                                                {group.b7Rows.length > 0
+                                                    ? <Chip size="small" variant="outlined" color={group.b7ConfirmedCount === group.b7Rows.length ? 'success' : 'warning'} label={`B7 ${group.b7ConfirmedCount}/${group.b7Rows.length}`} />
+                                                    : <Chip size="small" variant="outlined" label="Không áp dụng B7" />}
+                                            </TableCell>
+                                            <TableCell align="center">
+                                                <Tooltip title={isExpanded ? 'Thu gọn kế hoạch' : 'Xem chi tiết từng kế hoạch'}>
+                                                    <IconButton color="primary" onClick={() => toggleGroup(group.key)}>
+                                                        {isExpanded ? <KeyboardArrowDownIcon /> : <VisibilityOutlinedIcon />}
+                                                    </IconButton>
+                                                </Tooltip>
+                                                <Tooltip title="Mở phiếu"><IconButton color="primary" onClick={() => navigate(`/doi-tra-phoi-loi/${group.firstRow.Id}`)}><KeyboardArrowRightIcon /></IconButton></Tooltip>
+                                            </TableCell>
+                                        </TableRow>,
+                                        ...(isExpanded ? group.rows.map((row) => {
+                                            const status = doiTraStatusMeta(row.TrangThai);
+                                            const dinhMucStatus = doiTraDinhMucStatusMeta(row.DinhMucTrangThai);
+                                            const displayProductCode = row.PhoiSelectionMode === 'PREVIOUS_STAGE_BTP'
+                                                ? [row.ProductCode, row.BtpStageSuffix || 'M'].filter(Boolean).join('.')
+                                                : row.ProductCode;
+                                            return <TableRow key={row.Id} hover sx={{ '& > td': { bgcolor: '#fff' } }}>
+                                            <TableCell padding="checkbox" sx={{ pl: 3 }}><Checkbox disabled={row.TrangThai === 'DA_HUY'} checked={selectedIds.includes(row.Id)} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, row.Id] : current.filter((id) => id !== row.Id))} /></TableCell>
+                                            <TableCell>
+                                                <Chip size="small" color="primary" variant="outlined" label={`KH ${row.ThuTuHienThi || 1}/${row.SoKeHoach || group.rows.length}`} />
+                                                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>{row.SoPhieu}</Typography>
+                                            </TableCell>
                                             <TableCell>{formatDoiTraDate(row.NgayLap)}</TableCell>
                                             <TableCell>{row.PlanNo || row.PlanID || '---'}<br /><Typography variant="caption" color="text.secondary">{row.OrderCode || '---'}</Typography></TableCell>
                                             <TableCell>{displayProductCode || '---'}<br /><Typography variant="caption" color="text.secondary">{row.PhoiSelectionMode === 'PREVIOUS_STAGE_BTP' ? `BTP sau công đoạn May · ${row.ProductName || '---'}` : (row.ProductName || '---')}</Typography></TableCell>
@@ -341,7 +493,7 @@ export default function DoiTraPhoiLoiList() {
                                                     </Typography>}
                                                 </> : <Chip size="small" variant="outlined" label="Chưa tạo phiếu nhập" />}
                                             </TableCell>
-                                            <TableCell>
+                                            <TableCell sx={{ minWidth: 150 }}>
                                                 <Chip size="small" variant="outlined" color={dinhMucStatus.color} label={dinhMucStatus.label} />
                                                 {row.DinhMucTrangThai === 'DA_XAC_NHAN' && <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
                                                     {[row.TenB7XacNhan, formatDoiTraDate(row.B7ConfirmedAt, true)].filter((value) => value && value !== '---').join(' — ')}
@@ -350,11 +502,12 @@ export default function DoiTraPhoiLoiList() {
                                             <TableCell align="center">
                                                 <Stack direction="row" spacing={0.5} justifyContent="center">
                                                     <Button size="small" startIcon={<VisibilityOutlinedIcon />} onClick={() => navigate(`/doi-tra-phoi-loi/${row.Id}`)}>Xem</Button>
-                                                    {canDelete && <Button size="small" color="error" startIcon={deletingId === row.Id ? <CircularProgress size={16} /> : <DeleteOutlineIcon />} disabled={deletingId !== null} onClick={() => deleteTicket(row)}>{deletingId === row.Id ? 'Đang xóa…' : 'Xóa'}</Button>}
+                                                    {canDelete && <Tooltip title="Chỉ xóa kế hoạch này khỏi phiếu"><Button size="small" color="error" startIcon={deletingId === row.Id ? <CircularProgress size={16} /> : <DeleteOutlineIcon />} disabled={deletingId !== null} onClick={() => deleteTicket(row)}>{deletingId === row.Id ? 'Đang xóa…' : 'Xóa KH'}</Button></Tooltip>}
                                                 </Stack>
                                             </TableCell>
                                         </TableRow>
-                                    );
+                                        }) : [])
+                                    ];
                                 })}
                             </TableBody>
                         </Table>

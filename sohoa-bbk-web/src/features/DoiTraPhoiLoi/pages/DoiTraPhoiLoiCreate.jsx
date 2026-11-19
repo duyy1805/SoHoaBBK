@@ -15,7 +15,7 @@ export default function DoiTraPhoiLoiCreate() {
     const navigate = useNavigate();
     const [keyword, setKeyword] = useState('');
     const [plans, setPlans] = useState([]);
-    const [selected, setSelected] = useState(null);
+    const [selected, setSelected] = useState([]);
     const [searching, setSearching] = useState(false);
     const [creating, setCreating] = useState(false);
     const [searched, setSearched] = useState(false);
@@ -30,7 +30,6 @@ export default function DoiTraPhoiLoiCreate() {
             setSearched(true);
             const response = await searchDoiTraProductionPlans({ keyword: keyword.trim(), topN: 50 });
             setPlans(response.data || []);
-            setSelected(null);
         } catch (error) {
             window.alert(error.response?.data?.message || 'Không tìm được kế hoạch sản xuất.');
         } finally {
@@ -39,10 +38,10 @@ export default function DoiTraPhoiLoiCreate() {
     };
 
     const create = async () => {
-        if (!selected?.PlanSelectKey) return;
+        if (!selected.length) return;
         try {
             setCreating(true);
-            const response = await createDoiTraPhoiLoi(selected.PlanSelectKey);
+            const response = await createDoiTraPhoiLoi(selected.map((plan) => plan.PlanSelectKey));
             navigate(`/doi-tra-phoi-loi/${response.data.Id}?tab=phoi`, { replace: true });
         } catch (error) {
             window.alert(error.response?.data?.message || 'Không tạo được phiếu đổi trả phôi lỗi.');
@@ -78,19 +77,19 @@ export default function DoiTraPhoiLoiCreate() {
                 </Stack>
             </Paper>
 
-            {selected && <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2, borderColor: 'primary.light', bgcolor: '#f5f7ff' }}>
+            {selected.length > 0 && <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2, borderColor: 'primary.light', bgcolor: '#f5f7ff' }}>
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
-                    <CheckCircleIcon color="success" /><Typography fontWeight={800}>Kế hoạch đã chọn</Typography>
+                    <CheckCircleIcon color="success" /><Typography fontWeight={800}>{selected.length} kế hoạch đã chọn</Typography>
                 </Stack>
-                <Grid container spacing={1.5}>
-                    <Grid size={{ xs: 12, sm: 4 }}><Typography variant="caption" color="text.secondary">Kế hoạch</Typography><Typography fontWeight={800}>{selected.PlanNo || selected.PlanID}</Typography></Grid>
-                    <Grid size={{ xs: 12, sm: 4 }}><Typography variant="caption" color="text.secondary">Sản phẩm</Typography><Typography variant="body2" fontWeight={700}>{[selected.ProductCode, selected.ProductName].filter(Boolean).join(' — ')}</Typography></Grid>
-                    <Grid size={{ xs: 6, sm: 2 }}><Typography variant="caption" color="text.secondary">Đơn hàng</Typography><Typography variant="body2" fontWeight={700}>{selected.OrderCode || '---'}</Typography></Grid>
-                    <Grid size={{ xs: 6, sm: 2 }}><Typography variant="caption" color="text.secondary">Số lượng</Typography><Typography variant="body2" fontWeight={700}>{formatDoiTraQuantity(selected.PlanQty)}</Typography></Grid>
-                    <Grid size={{ xs: 12, sm: 4 }}><Typography variant="caption" color="text.secondary">Công đoạn</Typography><Typography variant="body2">{selected.OperationName || selected.OperationCode || '---'}</Typography></Grid>
-                    <Grid size={{ xs: 12, sm: 4 }}><Typography variant="caption" color="text.secondary">Đơn vị thực hiện</Typography><Typography variant="body2">{[selected.DepartmentName, selected.UnitName].filter(Boolean).join(' — ') || '---'}</Typography></Grid>
-                    <Grid size={{ xs: 12, sm: 4 }}><Typography variant="caption" color="text.secondary">Ngày kế hoạch</Typography><Typography variant="body2">{formatDoiTraDate(selected.PlanDate)}</Typography></Grid>
-                </Grid>
+                <Stack spacing={0.75} sx={{ maxHeight: 300, overflowY: 'auto', pr: 0.5 }}>{selected.map((plan, index) => <Paper key={plan.PlanSelectKey} variant="outlined" sx={{ p: 1 }}>
+                    <Grid container spacing={1} alignItems="center">
+                        <Grid size={{ xs: 12, sm: 3 }}><Typography variant="caption" color="text.secondary">Kế hoạch {index + 1}</Typography><Typography fontWeight={800}>{plan.PlanNo || plan.PlanID}</Typography></Grid>
+                        <Grid size={{ xs: 12, sm: 4 }}><Typography variant="body2" fontWeight={700}>{[plan.ProductCode, plan.ProductName].filter(Boolean).join(' — ')}</Typography></Grid>
+                        <Grid size={{ xs: 6, sm: 2 }}><Typography variant="body2">{plan.OrderCode || '---'}</Typography></Grid>
+                        <Grid size={{ xs: 6, sm: 2 }}><Typography variant="body2">SL {formatDoiTraQuantity(plan.PlanQty)}</Typography></Grid>
+                        <Grid size={{ xs: 12, sm: 1 }} textAlign="right"><Button size="small" color="error" onClick={() => setSelected((current) => current.filter((item) => item.PlanSelectKey !== plan.PlanSelectKey))}>Bỏ</Button></Grid>
+                    </Grid>
+                </Paper>)}</Stack>
             </Paper>}
 
             <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
@@ -117,7 +116,7 @@ export default function DoiTraPhoiLoiCreate() {
                             </TableHead>
                             <TableBody>
                                 {plans.map((plan) => {
-                                    const isSelected = selected?.PlanSelectKey === plan.PlanSelectKey;
+                                    const isSelected = selected.some((item) => item.PlanSelectKey === plan.PlanSelectKey);
                                     return (
                                         <TableRow key={plan.PlanSelectKey} hover selected={isSelected}>
                                             <TableCell><b>{plan.PlanNo || plan.PlanID}</b></TableCell>
@@ -128,7 +127,9 @@ export default function DoiTraPhoiLoiCreate() {
                                             <TableCell>{formatDoiTraDate(plan.PlanDate)}</TableCell>
                                             <TableCell align="right">{formatDoiTraQuantity(plan.PlanQty)}</TableCell>
                                             <TableCell align="center">
-                                                <Button size="small" variant={isSelected ? 'contained' : 'outlined'} onClick={() => setSelected(plan)}>
+                                                <Button size="small" variant={isSelected ? 'contained' : 'outlined'} onClick={() => setSelected((current) => isSelected
+                                                    ? current.filter((item) => item.PlanSelectKey !== plan.PlanSelectKey)
+                                                    : [...current, plan])}>
                                                     {isSelected ? 'Đã chọn' : 'Chọn'}
                                                 </Button>
                                             </TableCell>
@@ -144,11 +145,11 @@ export default function DoiTraPhoiLoiCreate() {
             <Paper elevation={4} sx={{ position: 'sticky', bottom: 12, zIndex: 5, mt: 2, p: 1.25, borderRadius: 2 }}>
                 <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1}>
                     <Typography variant="body2" color="text.secondary">
-                        {selected ? `Đã chọn ${selected.PlanNo || selected.PlanID}` : 'Chọn một kế hoạch để tiếp tục'}
+                        {selected.length ? `Đã chọn ${selected.length} kế hoạch · mỗi kế hoạch sẽ xử lý độc lập` : 'Chọn một hoặc nhiều kế hoạch để tiếp tục'}
                     </Typography>
                     <Button variant="contained" startIcon={creating ? <CircularProgress size={18} color="inherit" /> : <AddTaskIcon />}
-                        disabled={!selected || creating} onClick={create}>
-                        Tạo phiếu và nhập phôi
+                        disabled={!selected.length || creating} onClick={create}>
+                        Tạo phiếu với {selected.length || 0} kế hoạch
                     </Button>
                 </Stack>
             </Paper>

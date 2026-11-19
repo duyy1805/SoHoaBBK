@@ -9,8 +9,10 @@ export const getDoiTraProductionPlanDetail = (planSelectKey) =>
 export const getDoiTraPhoiLoiList = (params = {}) =>
     axiosClient.get('/doi-tra-phoi-loi', { params });
 
-export const createDoiTraPhoiLoi = (planSelectKey) =>
-    axiosClient.post('/doi-tra-phoi-loi', { planSelectKey });
+export const createDoiTraPhoiLoi = (planSelectKeys) =>
+    axiosClient.post('/doi-tra-phoi-loi', {
+        planSelectKeys: Array.isArray(planSelectKeys) ? planSelectKeys : [planSelectKeys]
+    });
 
 export const getDoiTraPhoiLoiDetail = (id) =>
     axiosClient.get(`/doi-tra-phoi-loi/${id}`);

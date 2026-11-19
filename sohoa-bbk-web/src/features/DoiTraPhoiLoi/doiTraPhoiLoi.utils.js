@@ -4,6 +4,7 @@ export const DOI_TRA_STATUS_META = {
     CHO_TBP_KCS_XAC_NHAN: { label: 'Chờ TBP KCS xác nhận', color: 'secondary', step: 1 },
     TRA_LAI_KCS: { label: 'Trả lại KCS', color: 'warning', step: 0 },
     CHO_B7_NHAP_DINH_MUC: { label: 'Chờ B7 nhập số lượng đổi trả', color: 'info', step: 2 },
+    CHO_CAC_KE_HOACH_KCS: { label: 'Chờ các kế hoạch hoàn tất KCS', color: 'warning', step: 1 },
     CHO_THIET_LAP_KPH: { label: 'Chờ thiết lập KPH', color: 'info', step: 2 },
     CHO_Y_KIEN_KPH: { label: 'Chờ ý kiến phòng ban', color: 'warning', step: 3 },
     CHO_XAC_NHAN_CUOI_KPH: { label: 'Chờ xác nhận cuối KPH', color: 'secondary', step: 4 },

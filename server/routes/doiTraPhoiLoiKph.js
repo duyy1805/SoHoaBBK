@@ -28,7 +28,18 @@ const editableStatuses = ['CHO_THIET_LAP_KPH', 'CHO_Y_KIEN_KPH', 'CHO_XAC_NHAN_C
 
 async function loadRecord(executor, phieuId, lock = false) {
     const result = await new sql.Request(executor).input('Id', sql.Int, phieuId).query(`
-        SELECT p.*,workflow.VersionNo,planRow.RequiresB7,planRow.PhoiSelectionMode,
+        DECLARE @KphPhieuId INT;
+        SELECT @KphPhieuId=COALESCE(groupRow.KphPhieuId,requested.Id)
+        FROM dbo.DOI_TRA_PHOI_LOI requested
+        LEFT JOIN dbo.DOI_TRA_PHOI_LOI_NHOM groupRow ON groupRow.Id=requested.NhomPhieuId
+        WHERE requested.Id=@Id;
+        SELECT p.*,requested.Id AS RequestedPhieuId,workflow.VersionNo,planRow.RequiresB7,planRow.PhoiSelectionMode,
+            (SELECT COUNT(*) FROM dbo.DOI_TRA_PHOI_LOI groupPlan
+                WHERE groupPlan.NhomPhieuId=p.NhomPhieuId AND groupPlan.TrangThai<>N'DA_HUY') AS GroupPlanCount,
+            (SELECT COUNT(*) FROM dbo.DOI_TRA_PHOI_LOI groupPlan
+                WHERE groupPlan.NhomPhieuId=p.NhomPhieuId AND groupPlan.TrangThai<>N'DA_HUY'
+                  AND NOT EXISTS(SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHIEU_NHAP_BTP receipt
+                    WHERE receipt.PhieuId=groupPlan.Id AND receipt.TrangThai=N'ACTIVE')) AS PendingKcsCount,
             CAST(CASE WHEN EXISTS(
                 SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHIEU_NHAP_BTP receiptLink
                 WHERE receiptLink.PhieuId=p.Id AND receiptLink.TrangThai=N'ACTIVE'
@@ -37,11 +48,12 @@ async function loadRecord(executor, phieuId, lock = false) {
             COALESCE(p.BoPhanKcsId,creator.BoPhanId) CreatorDepartmentId,
             COALESCE(NULLIF(confirmer.FullName,N''),confirmer.Username) CreatorConfirmedByName
         FROM dbo.DOI_TRA_PHOI_LOI p ${lock ? 'WITH (UPDLOCK,HOLDLOCK)' : ''}
+        JOIN dbo.DOI_TRA_PHOI_LOI requested ON requested.Id=@Id AND requested.NhomPhieuId=p.NhomPhieuId
         JOIN dbo.DOI_TRA_PHOI_LOI_WORKFLOW workflow ON workflow.Id=p.WorkflowId
         JOIN dbo.DOI_TRA_PHOI_LOI_PLAN planRow ON planRow.PhieuId=p.Id
         LEFT JOIN dbo.USERS creator ON creator.Id=p.NguoiLapId
         LEFT JOIN dbo.USERS confirmer ON confirmer.Id=p.CreatorConfirmedBy
-        WHERE p.Id=@Id`);
+        WHERE p.Id=@KphPhieuId`);
     return result.recordset?.[0];
 }
 
@@ -74,6 +86,40 @@ async function addHistory(executor, record, actionCode, toStatus, actorId, note 
             VALUES(@PhieuId,@ActionCode,@FromStatus,@ToStatus,@Actor,@Note)`);
 }
 
+async function syncGroupKphState(executor, record) {
+    await new sql.Request(executor).input('OwnerId', sql.Int, record.Id).query(`
+        DECLARE @GroupId INT,@Status NVARCHAR(80),@StepId INT,@RequiresExecutive BIT;
+        SELECT @GroupId=NhomPhieuId,@Status=TrangThai,@StepId=CurrentStepId,
+            @RequiresExecutive=RequiresExecutiveApproval
+        FROM dbo.DOI_TRA_PHOI_LOI WHERE Id=@OwnerId;
+        UPDATE sibling SET TrangThai=@Status,CurrentStepId=@StepId,
+            RequiresExecutiveApproval=@RequiresExecutive,UpdatedAt=SYSDATETIME()
+        FROM dbo.DOI_TRA_PHOI_LOI sibling
+        WHERE sibling.NhomPhieuId=@GroupId AND sibling.Id<>@OwnerId
+          AND sibling.TrangThai<>N'DA_HUY' AND sibling.KcsCompletedAt IS NOT NULL;
+    `);
+}
+
+async function completeGroupKph(executor, record) {
+    await new sql.Request(executor).input('OwnerId', sql.Int, record.Id).query(`
+        DECLARE @GroupId INT=(SELECT NhomPhieuId FROM dbo.DOI_TRA_PHOI_LOI WHERE Id=@OwnerId);
+        UPDATE sibling SET
+            TrangThai=CASE
+                WHEN planRow.RequiresB7=1 AND ISNULL(sibling.DinhMucTrangThai,N'CHUA_NHAP')<>N'DA_XAC_NHAN'
+                    THEN N'KPH_HOAN_TAT_CHO_B7'
+                WHEN NOT EXISTS(SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHIEU_NHAP_BTP receipt
+                    WHERE receipt.PhieuId=sibling.Id AND receipt.TrangThai=N'ACTIVE'
+                      AND receipt.WarehouseConfirmedAt IS NOT NULL)
+                    THEN N'KPH_HOAN_TAT_CHO_KHO'
+                ELSE N'HOAN_TAT' END,
+            CurrentStepId=NULL,UpdatedAt=SYSDATETIME()
+        FROM dbo.DOI_TRA_PHOI_LOI sibling
+        JOIN dbo.DOI_TRA_PHOI_LOI_PLAN planRow ON planRow.PhieuId=sibling.Id
+        WHERE sibling.NhomPhieuId=@GroupId AND sibling.TrangThai<>N'DA_HUY'
+          AND sibling.KcsCompletedAt IS NOT NULL;
+    `);
+}
+
 async function returnToSetup(transaction, record, actorId, reason, opinionId = null, departmentId = null, source = 'KPH_RETURN') {
     const setupStep = await stepId(transaction, record.WorkflowId, 'KPH_THIET_LAP');
     await new sql.Request(transaction).input('Id', sql.Int, record.Id).input('Actor', sql.Int, actorId)
@@ -92,6 +138,7 @@ async function returnToSetup(transaction, record, actorId, reason, opinionId = n
                 (PhieuId,YKienId,BoPhanId,ReviewRound,ActionCode,ActorUserId,Reason)
             VALUES(@Id,@OpinionId,@DepartmentId,@Round,N'TRA_LAI_THIET_LAP',@Actor,@Reason);`);
     await addHistory(transaction, record, source, 'CHO_THIET_LAP_KPH', actorId, reason);
+    await syncGroupKphState(transaction, record);
 }
 
 router.get('/:id/kph', async (req, res) => {
@@ -143,7 +190,10 @@ router.get('/:id/kph', async (req, res) => {
                 && (isAdmin(req.user) || Number(item.CreatedBy) === uid(req)) }));
         const evaluation = result.recordsets[4]?.[0] || null;
         if (evaluation) evaluation.SignatureDataUrl = signatures.get(Number(evaluation.NguoiTheoDoiId)) || null;
-        res.json(encode({ opinions, xuLy: decorate(result.recordsets[1]), chiPhi: decorate(result.recordsets[2]),
+        res.json(encode({ kphPhieu: { Id: record.Id, NhomPhieuId: record.NhomPhieuId,
+                TrangThai: record.TrangThai, RowVersion: record.RowVersion,
+                GroupPlanCount: record.GroupPlanCount, PendingKcsCount: record.PendingKcsCount },
+            opinions, xuLy: decorate(result.recordsets[1]), chiPhi: decorate(result.recordsets[2]),
             hanhDong: decorate(result.recordsets[3]), evaluation,
             executiveApprovals: (result.recordsets[5] || []).map((item) => ({ ...item,
                 SignatureDataUrl: signatures.get(Number(item.ActedBy)) || null })),
@@ -194,6 +244,7 @@ router.put('/:id/kph/opinion-departments', async (req, res) => {
                 UPDATE dbo.DOI_TRA_PHOI_LOI SET TrangThai=N'CHO_Y_KIEN_KPH',CurrentStepId=@Step,
                     OpinionDepartmentsConfirmedBy=@User,OpinionDepartmentsConfirmedAt=SYSDATETIME(),LyDoTraLai=NULL,UpdatedAt=SYSDATETIME() WHERE Id=@Id;`);
         await addHistory(transaction, record, 'KPH_SETUP', 'CHO_Y_KIEN_KPH', uid(req), `Vòng ${record.ReviewRound}`);
+        await syncGroupKphState(transaction, record);
         await new sql.Request(transaction).input('Id', sql.Int, record.Id).input('Ids', sql.NVarChar(sql.MAX), departmentIds.join(','))
             .query(`INSERT dbo.NOTIFICATIONS(UserId,Title,Message,Type,ReferenceId,IsRead,CreatedAt)
                 SELECT DISTINCT u.Id,N'Phiếu đổi trả cần ý kiến',N'Bạn có phiếu đổi trả phôi lỗi cần nhập hoặc xác nhận ý kiến.',N'DTP_KPH_OPINION',@Id,0,GETDATE()
@@ -306,6 +357,7 @@ router.post('/:id/kph/opinions/:opinionId/confirm', async (req, res) => {
             await new sql.Request(transaction).input('Id', sql.Int, record.Id).input('Step', sql.Int, finalStep)
                 .query("UPDATE dbo.DOI_TRA_PHOI_LOI SET TrangThai=N'CHO_XAC_NHAN_CUOI_KPH',CurrentStepId=@Step,UpdatedAt=SYSDATETIME() WHERE Id=@Id");
             await addHistory(transaction, record, 'KPH_ALL_OPINIONS_CONFIRMED', 'CHO_XAC_NHAN_CUOI_KPH', uid(req));
+            await syncGroupKphState(transaction, record);
         }
         await transaction.commit(); res.json({ success: true });
     } catch (error) { try { await transaction.rollback(); } catch (_) { /* noop */ } res.status(error.status || 500).json({ message: error.message || 'Không xác nhận được ý kiến' }); }
@@ -340,6 +392,7 @@ router.post('/:id/kph/creator-confirm', async (req, res) => {
                 SELECT DISTINCT u.Id,N'Phiếu đổi trả chờ BGD',N'Phiếu đổi trả phôi lỗi đang chờ Ban giám đốc xác nhận.',N'DTP_EXECUTIVE_APPROVAL',@Id,0,GETDATE()
                 FROM dbo.USERS u WHERE u.TrangThai=1 AND EXISTS(SELECT 1 FROM dbo.USER_ROLE ur JOIN dbo.ROLE_PERMISSION rp ON rp.RoleId=ur.RoleId JOIN dbo.PERMISSIONS permission ON permission.Id=rp.PermissionId WHERE ur.UserId=u.Id AND permission.PermissionCode=N'XAC_NHAN_BAN_GIAM_DOC');`);
         await addHistory(transaction, record, 'KPH_CREATOR_CONFIRM', next, uid(req));
+        await syncGroupKphState(transaction, record);
         await transaction.commit(); res.json({ success: true, nextStatus: next });
     } catch (error) { try { await transaction.rollback(); } catch (_) { /* noop */ } res.status(error.status || 500).json({ message: error.message || 'Không xác nhận được KPH' }); }
 });
@@ -362,6 +415,7 @@ router.post('/:id/kph/executive-approval', async (req, res) => {
             await new sql.Request(transaction).input('Id', sql.Int, record.Id).input('Step', sql.Int, followStep)
                 .query("UPDATE dbo.DOI_TRA_PHOI_LOI SET TrangThai=N'CHO_THEO_DOI',CurrentStepId=@Step,UpdatedAt=SYSDATETIME() WHERE Id=@Id");
             await addHistory(transaction, record, 'KPH_EXECUTIVE_APPROVE', 'CHO_THEO_DOI', uid(req));
+            await syncGroupKphState(transaction, record);
         }
         await transaction.commit(); res.json({ success: true });
     } catch (error) { try { await transaction.rollback(); } catch (_) { /* noop */ } res.status(error.status || 500).json({ message: error.message || 'Không xử lý được xác nhận BGD' }); }
@@ -385,6 +439,7 @@ router.post('/:id/kph/follow-up', async (req, res) => {
                 INSERT dbo.DOI_TRA_PHOI_LOI_KPH_THEO_DOI(PhieuId,KetQua,PhieuKphMoiSo,GhiChu,NguoiTheoDoiId) VALUES(@Id,@Result,@NewNo,@Note,@User);
                 UPDATE dbo.DOI_TRA_PHOI_LOI SET TrangThai=@Next,CurrentStepId=NULL,UpdatedAt=SYSDATETIME() WHERE Id=@Id;`);
         await addHistory(transaction, record, 'KPH_FOLLOW_UP', next, uid(req), resultCode === 'THOA_MAN' ? 'Thỏa mãn' : `Không thỏa mãn - ${newNumber}`);
+        await completeGroupKph(transaction, record);
         await transaction.commit(); res.json({ success: true, nextStatus: next });
     } catch (error) { try { await transaction.rollback(); } catch (_) { /* noop */ } res.status(error.status || 500).json({ message: error.message || 'Không lưu được đánh giá' }); }
 });
