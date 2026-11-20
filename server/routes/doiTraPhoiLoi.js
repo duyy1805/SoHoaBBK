@@ -24,6 +24,7 @@ const {
     createDoiTraDefectReceipt,
     cancelDraftDefectReceipt,
     confirmDefectReceiptByWarehouse,
+    updateDraftDefectReceiptProcess,
     RECEIPT_VALIDATION_ERROR_MIN,
     RECEIPT_VALIDATION_ERROR_MAX
 } = require('../services/doiTraDefectReceipt');
@@ -613,7 +614,9 @@ router.post('/summary-preview', authorizeDoiTraAccess, async (req, res) => {
 
                 SELECT receiptLink.PhieuId,receiptLink.SoPhieuNhapBtp,receiptLink.SoLuongBtpLoi,
                     receiptLink.SourceKhoNhapId,warehouse.Ten_Kho AS TenKhoNhap,
-                    receiptLink.SourceQuyTrinhSanXuatId,processRow.Ten_QuyTrinhSanXuat,
+                    receiptLink.SourceQuyTrinhSanXuatId,
+                    processRow.KyHieu_QuyTrinhSanXuat AS MaQuyTrinhSanXuat,
+                    processRow.Ten_QuyTrinhSanXuat,
                     receiptLink.TrangThai,receiptLink.CreatedAt,receipt.TrangThai AS ErpTrangThai,
                     orderProduct.ItemCode AS MaBtp,orderProduct.Ten_SanPham AS TenBtp,
                     productionLot.So_LoSanXuat AS SoLoSanXuat
@@ -1929,10 +1932,14 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
     const rawBtpQuantity = req.body?.soLuongBtpLoi;
     const soLuongBtpLoi = rawBtpQuantity === '' || rawBtpQuantity == null ? null : Number(rawBtpQuantity);
     const khoNhapId = positiveId(req.body?.khoNhapId);
+    const quyTrinhSanXuatId = positiveId(req.body?.quyTrinhSanXuatId);
     const isKcsCompletion = ['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(actionCode);
     const supportedActions = ['KCS_SUBMIT', 'KCS_RESUBMIT', 'TBP_CONFIRM', 'TBP_RETURN', 'B7_CONFIRM', 'KHO_CONFIRM'];
     if (isKcsCompletion && (!khoNhapId || khoNhapId > 32767)) {
         return res.status(400).json({ message: 'Vui lòng chọn kho nhập BTP lỗi hợp lệ' });
+    }
+    if (isKcsCompletion && (!quyTrinhSanXuatId || quyTrinhSanXuatId > 255)) {
+        return res.status(400).json({ message: 'Vui lòng chọn loại BTP hợp lệ' });
     }
     if (!phieuId || !rowVersion || !supportedActions.includes(actionCode)
         || (ghiChu?.length || 0) > 1000 || (actionCode === 'TBP_RETURN' && !ghiChu)
@@ -2020,7 +2027,8 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
                 userId: userIdOf(req),
                 soPhieu: workflowAction.SoPhieu,
                 quantity: soLuongBtpLoi,
-                warehouseId: khoNhapId
+                warehouseId: khoNhapId,
+                processId: quyTrinhSanXuatId
             });
         } else if (actionCode === 'KHO_CONFIRM') {
             generatedReceipt = await confirmDefectReceiptByWarehouse(transaction, {
@@ -2202,6 +2210,38 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
     }
 });
 
+router.put('/:id/receipt/btp-type', authorizeDoiTraAccess, async (req, res) => {
+    const phieuId = positiveId(req.params.id);
+    const processId = positiveId(req.body?.quyTrinhSanXuatId);
+    if (!phieuId || !processId || processId > 255) {
+        return res.status(400).json({ message: 'Phiếu hoặc loại BTP không hợp lệ' });
+    }
+    try {
+        const pool = await poolPromise;
+        const permissionResult = await pool.request()
+            .input('PhieuId', sql.Int, phieuId)
+            .query(`SELECT NguoiLapId,KcsCompletedBy,TrangThai FROM dbo.DOI_TRA_PHOI_LOI WHERE Id=@PhieuId;`);
+        const phieu = permissionResult.recordset?.[0];
+        if (!phieu) return res.status(404).json({ message: 'Không tìm thấy phiếu đổi trả phôi lỗi' });
+        const userId = userIdOf(req);
+        const isKcsOwner = hasPermission(req.user, 'THUC_HIEN_KIEM')
+            && [Number(phieu.NguoiLapId), Number(phieu.KcsCompletedBy)].includes(userId);
+        if (!isAdmin(req.user) && !isKcsOwner) {
+            return res.status(403).json({ message: 'Chỉ KCS thực hiện phiếu được thay đổi loại BTP' });
+        }
+        if (phieu.TrangThai === 'DA_HUY') {
+            return res.status(409).json({ message: 'Phiếu đã hủy, không thể thay đổi loại BTP' });
+        }
+        const receipt = await updateDraftDefectReceiptProcess(pool, { phieuId, userId, processId });
+        return res.json(encodeBinary({ success: true, receipt }));
+    } catch (error) {
+        console.error('DoiTraPhoiLoi update receipt BTP type error:', error);
+        const number = Number(error?.number || error?.originalError?.info?.number);
+        return res.status(number >= RECEIPT_VALIDATION_ERROR_MIN && number <= RECEIPT_VALIDATION_ERROR_MAX ? 422 : 409)
+            .json({ message: errorMessage(error, 'Không cập nhật được loại BTP của phiếu nhập') });
+    }
+});
+
 router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
     const phieuId = positiveId(req.params.id);
     if (!phieuId) return res.status(400).json({ message: 'Mã phiếu không hợp lệ' });
@@ -2349,7 +2389,9 @@ router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
 
                 SELECT receiptLink.Id,receiptLink.SourcePhieuNhapBtpId,receiptLink.SoPhieuNhapBtp,
                     receiptLink.SoLuongBtpLoi,receiptLink.SourceKhoNhapId,warehouse.Ten_Kho AS TenKhoNhap,
-                    receiptLink.SourceQuyTrinhSanXuatId,processRow.Ten_QuyTrinhSanXuat,
+                    receiptLink.SourceQuyTrinhSanXuatId,
+                    processRow.KyHieu_QuyTrinhSanXuat AS MaQuyTrinhSanXuat,
+                    processRow.Ten_QuyTrinhSanXuat,
                     receiptLink.TrangThai,receiptLink.CreatedAt,receiptLink.CancelledAt,receiptLink.CancelReason,
                     receiptLink.WarehouseConfirmedBy,receiptLink.WarehouseConfirmedAt,
                     COALESCE(NULLIF(warehouseActor.FullName,N''),warehouseActor.Username) AS TenKhoXacNhan,
@@ -2393,6 +2435,12 @@ router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
                   ON receipt.ID_PhieuNhapBTP=receiptLink.SourcePhieuNhapBtpId
                 WHERE currentRow.Id=@PhieuId
                 ORDER BY child.ThuTuKeHoach,child.Id;
+
+                SELECT processRow.ID_QuyTrinhSanXuat AS Id,
+                    processRow.KyHieu_QuyTrinhSanXuat AS MaQuyTrinh,
+                    processRow.Ten_QuyTrinhSanXuat AS TenQuyTrinh
+                FROM TAG_QTKD.dbo.DM_QuyTrinhSanXuat processRow
+                ORDER BY processRow.Ten_QuyTrinhSanXuat,processRow.ID_QuyTrinhSanXuat;
             `);
         const phieu = result.recordsets[0]?.[0];
         if (!phieu) return res.status(404).json({ message: 'Không tìm thấy phiếu đổi trả phôi lỗi' });
@@ -2424,6 +2472,12 @@ router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
             hasActiveIssue
         });
         const activeReceipt = receiptLinks.find((item) => item.TrangThai === 'ACTIVE');
+        const canEditReceiptBtpType = Boolean(activeReceipt)
+            && Number(activeReceipt.TonTai) === 1
+            && Number(activeReceipt.ErpTrangThai) !== 5
+            && phieu.TrangThai !== 'DA_HUY'
+            && (isAdmin(req.user) || (hasPermission(req.user, 'THUC_HIEN_KIEM')
+                && [Number(phieu.NguoiLapId), Number(phieu.KcsCompletedBy)].includes(userId)));
         const canConfirmWarehouse = workflowVersion >= 6
             && Boolean(phieu.KcsCompletedAt)
             && phieu.TrangThai !== 'DA_HUY'
@@ -2469,9 +2523,11 @@ router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
             phieuNhapBtpItems: receiptLinks,
             warehouses: result.recordsets[11] || [],
             siblingPlans: result.recordsets[12] || [],
+            btpTypes: result.recordsets[13] || [],
             capabilities: {
                 canCancel: phieu.TrangThai === 'TAO_MOI' && canEditPhoi,
                 canEditPhoi,
+                canEditReceiptBtpType,
                 canEditDinhMuc: canWorkB7 && b7Actor,
                 canSaveDinhMuc: canWorkB7 && b7Actor,
                 canConfirmDinhMuc: canWorkB7 && b7Actor,

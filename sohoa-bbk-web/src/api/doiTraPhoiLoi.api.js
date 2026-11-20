@@ -44,6 +44,9 @@ export const saveDoiTraSoLuong = (id, rowVersion, items) =>
 export const executeDoiTraAction = (id, actionCode, data) =>
     axiosClient.post(`/doi-tra-phoi-loi/${id}/actions/${actionCode}`, data);
 
+export const updateDoiTraReceiptBtpType = (id, quyTrinhSanXuatId) =>
+    axiosClient.put(`/doi-tra-phoi-loi/${id}/receipt/btp-type`, { quyTrinhSanXuatId });
+
 export const confirmDoiTraSoLuong = (id, rowVersion) =>
     axiosClient.post(`/doi-tra-phoi-loi/${id}/actions/B7_CONFIRM`, { rowVersion });
 

@@ -48,6 +48,7 @@ export const DOI_TRA_HISTORY_ACTION_LABELS = {
     KPH_EXECUTIVE_APPROVE: 'Ban giám đốc xác nhận KPH',
     KPH_EXECUTIVE_RETURN: 'Ban giám đốc trả KPH về thiết lập',
     KPH_FOLLOW_UP: 'Hoàn tất theo dõi KPH',
+    KCS_UPDATE_BTP_TYPE: 'KCS thay đổi loại BTP phiếu nhập',
     CANCEL_DRAFT: 'Hủy phiếu nháp'
 };
 

@@ -32,12 +32,13 @@ const getActiveDefectReceipt = async (executor, phieuId) => {
     return result.recordset?.[0] || null;
 };
 
-const loadReceiptContext = async (executor, phieuId, userId, quantity, warehouseId) => {
+const loadReceiptContext = async (executor, phieuId, userId, quantity, warehouseId, selectedProcessId) => {
     const result = await requestFor(executor)
         .input('PhieuId', sql.Int, phieuId)
         .input('UserId', sql.Int, userId)
         .input('Quantity', sql.Decimal(18, 2), quantity)
         .input('WarehouseId', sql.SmallInt, warehouseId)
+        .input('SelectedProcessId', sql.TinyInt, selectedProcessId)
         .query(`
             DECLARE @PlanCount INT=(SELECT COUNT(*) FROM dbo.DOI_TRA_PHOI_LOI_PLAN
                 WHERE PhieuId=@PhieuId AND TRY_CONVERT(INT,PlanID) IS NOT NULL);
@@ -72,6 +73,10 @@ const loadReceiptContext = async (executor, phieuId, userId, quantity, warehouse
                 SELECT 1 FROM TAG_QTKD.dbo.DM_Kho warehouse
                 WHERE warehouse.ID_Kho=@WarehouseId AND warehouse.SuDung=1 AND warehouse.TonTai=1
             ) THROW 52414,N'Kho nhập BTP đã chọn không tồn tại hoặc không còn sử dụng.',1;
+            IF @SelectedProcessId IS NULL OR NOT EXISTS(
+                SELECT 1 FROM TAG_QTKD.dbo.DM_QuyTrinhSanXuat processRow
+                WHERE processRow.ID_QuyTrinhSanXuat=@SelectedProcessId
+            ) THROW 52424,N'Loại BTP đã chọn không tồn tại.',1;
 
             DECLARE @ProductCount INT=(
                 SELECT COUNT(*)
@@ -107,7 +112,7 @@ const loadReceiptContext = async (executor, phieuId, userId, quantity, warehouse
                 WHERE localUser.Id=@UserId);
 
             SELECT @PlanId PlanId,@OrderId OrderId,@CustomerId CustomerId,@UnitId UnitId,
-                @DepartmentId DepartmentId,@ProcessId ProcessId,@WarehouseId WarehouseId,
+                @DepartmentId DepartmentId,@SelectedProcessId ProcessId,@WarehouseId WarehouseId,
                 @OrderProductId OrderProductId,@ProductionLotId ProductionLotId,@ErpAccountId ErpAccountId;
         `);
     return result.recordset?.[0] || null;
@@ -130,11 +135,11 @@ const allocateReceiptNumber = async (executor) => {
 };
 
 const createDoiTraDefectReceipt = async (executor, {
-    phieuId, userId, soPhieu, quantity, warehouseId
+    phieuId, userId, soPhieu, quantity, warehouseId, processId
 }) => {
     const existing = await getActiveDefectReceipt(executor, phieuId);
     if (existing) return { ...existing, idempotent: true };
-    const context = await loadReceiptContext(executor, phieuId, userId, quantity, warehouseId);
+    const context = await loadReceiptContext(executor, phieuId, userId, quantity, warehouseId, processId);
     if (!context) throw Object.assign(new Error('Không đủ dữ liệu tạo phiếu nhập BTP lỗi'), { number: 52410 });
     const receiptNumber = await allocateReceiptNumber(executor);
     const inserted = await requestFor(executor)
@@ -253,11 +258,76 @@ const confirmDefectReceiptByWarehouse = async (executor, { phieuId, userId }) =>
     return result.recordset?.[0] || null;
 };
 
+const updateDraftDefectReceiptProcess = async (executor, { phieuId, userId, processId }) => {
+    await requestFor(executor)
+        .input('PhieuId', sql.Int, phieuId)
+        .input('UserId', sql.Int, userId)
+        .input('ProcessId', sql.TinyInt, processId)
+        .query(`
+            DECLARE @ReceiptId INT,@ErpStatus TINYINT,@Exists BIT,@OldProcessId TINYINT,
+                @FromStatus NVARCHAR(80),@ErpAccountId SMALLINT;
+
+            SELECT @ReceiptId=linkRow.SourcePhieuNhapBtpId,@ErpStatus=receipt.TrangThai,
+                @Exists=receipt.TonTai,@OldProcessId=linkRow.SourceQuyTrinhSanXuatId
+            FROM dbo.DOI_TRA_PHOI_LOI_PHIEU_NHAP_BTP linkRow WITH(UPDLOCK,HOLDLOCK)
+            JOIN TAG_QTKD.dbo.PhieuNhapBTP receipt WITH(UPDLOCK,HOLDLOCK)
+              ON receipt.ID_PhieuNhapBTP=linkRow.SourcePhieuNhapBtpId
+            WHERE linkRow.PhieuId=@PhieuId AND linkRow.TrangThai=N'ACTIVE';
+
+            IF @ReceiptId IS NULL
+                THROW 52425,N'Không tìm thấy phiếu nhập BTP lỗi đang hiệu lực.',1;
+            IF @Exists<>1
+                THROW 52426,N'Phiếu nhập BTP lỗi đã bị hủy trên ERP.',1;
+            IF @ErpStatus=5
+                THROW 52427,N'Phiếu nhập BTP lỗi đã được Kho xác nhận, không thể thay đổi loại BTP.',1;
+            IF @ProcessId IS NULL OR NOT EXISTS(
+                SELECT 1 FROM TAG_QTKD.dbo.DM_QuyTrinhSanXuat processRow
+                WHERE processRow.ID_QuyTrinhSanXuat=@ProcessId
+            ) THROW 52428,N'Loại BTP đã chọn không tồn tại.',1;
+
+            IF (SELECT COUNT(*) FROM dbo.USERS localUser
+                JOIN TAG_System.dbo.TaiKhoanDangNhap externalAccount
+                  ON LOWER(LTRIM(RTRIM(externalAccount.TenDangNhap))) COLLATE DATABASE_DEFAULT
+                   = LOWER(LTRIM(RTRIM(localUser.Username))) COLLATE DATABASE_DEFAULT
+                WHERE localUser.Id=@UserId)<>1
+                THROW 52429,N'Tài khoản KCS chưa được ánh xạ duy nhất với tài khoản ERP.',1;
+
+            SELECT @ErpAccountId=externalAccount.ID_TaiKhoanDangNhap
+            FROM dbo.USERS localUser
+            JOIN TAG_System.dbo.TaiKhoanDangNhap externalAccount
+              ON LOWER(LTRIM(RTRIM(externalAccount.TenDangNhap))) COLLATE DATABASE_DEFAULT
+               = LOWER(LTRIM(RTRIM(localUser.Username))) COLLATE DATABASE_DEFAULT
+            WHERE localUser.Id=@UserId;
+
+            IF @OldProcessId<>@ProcessId
+            BEGIN
+                UPDATE TAG_QTKD.dbo.PhieuNhapBTP
+                SET ID_QuyTrinhSanXuat=@ProcessId,TaiKhoan_SuaCuoi=@ErpAccountId,Ngay_SuaCuoi=GETDATE()
+                WHERE ID_PhieuNhapBTP=@ReceiptId AND TrangThai<>5 AND TonTai=1;
+                IF @@ROWCOUNT<>1
+                    THROW 52427,N'Phiếu nhập BTP lỗi vừa được Kho xác nhận, không thể thay đổi loại BTP.',1;
+
+                UPDATE dbo.DOI_TRA_PHOI_LOI_PHIEU_NHAP_BTP
+                SET SourceQuyTrinhSanXuatId=@ProcessId
+                WHERE PhieuId=@PhieuId AND SourcePhieuNhapBtpId=@ReceiptId AND TrangThai=N'ACTIVE';
+
+                SELECT @FromStatus=TrangThai FROM dbo.DOI_TRA_PHOI_LOI WHERE Id=@PhieuId;
+                UPDATE dbo.DOI_TRA_PHOI_LOI SET UpdatedAt=SYSDATETIME() WHERE Id=@PhieuId;
+                INSERT dbo.DOI_TRA_PHOI_LOI_HISTORY
+                    (PhieuId,ActionCode,FromStatus,ToStatus,ActionBy,GhiChu)
+                VALUES(@PhieuId,N'KCS_UPDATE_BTP_TYPE',@FromStatus,@FromStatus,@UserId,
+                    CONCAT(N'Đổi loại BTP từ ',@OldProcessId,N' sang ',@ProcessId));
+            END;
+        `);
+    return getActiveDefectReceipt(executor, phieuId);
+};
+
 module.exports = {
     RECEIPT_VALIDATION_ERROR_MIN,
     RECEIPT_VALIDATION_ERROR_MAX,
     getActiveDefectReceipt,
     createDoiTraDefectReceipt,
     cancelDraftDefectReceipt,
-    confirmDefectReceiptByWarehouse
+    confirmDefectReceiptByWarehouse,
+    updateDraftDefectReceiptProcess
 };
