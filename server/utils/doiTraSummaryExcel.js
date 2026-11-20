@@ -28,9 +28,9 @@ const parseIssueTraceabilities = (item) => {
         return [];
     }
 };
-const traceLines = (traces, field, formatter = text) => traces
-    .map((trace) => formatter(trace[field]))
-    .join('\n');
+const traceLines = (traces, field, formatter = text) => [...new Set(traces
+    .map((trace) => text(formatter(trace[field])))
+    .filter(Boolean))].join('\n');
 const phoiCount = (value) => {
     const parsed = Number(text(value));
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
@@ -53,7 +53,7 @@ const SUMMARY_HEADERS = [
     'Công đoạn', 'Đơn vị sản xuất', 'Mã vật tư', 'Quy cách vật tư', 'Loại phôi', 'Dao chặt',
     'Số phôi', 'Ký hiệu', 'Số lượng kiểm', 'Số lượng lỗi', 'Số bộ lỗi', 'ĐVT', 'Số lượng đổi trả',
     'LXVT', 'Lot sản xuất', 'Dấu tuần', 'Đơn vị tạo phôi', 'Ngày tạo phôi', 'Tổ sản xuất',
-    'Công nhân sản xuất', 'KCS', 'Chi tiết lỗi', 'Bộ phận/NCC gây lỗi', 'Ghi chú phôi'
+    'Công nhân sản xuất', 'Chi tiết lỗi', 'Bộ phận/NCC gây lỗi', 'Ghi chú phôi'
 ];
 const RECEIPT_HEADERS = [
     'STT', 'Số phiếu đổi phôi', 'Số phiếu nhập BTP', 'Mã BTP', 'Tên BTP', 'Lô sản xuất',
@@ -77,7 +77,7 @@ const buildDoiTraSummaryWorkbook = ({ items = [], defects = [], receipts = [] } 
         const itemDefects = defectsByPhoi.get(Number(item.PhoiId)) || [];
         const issueTraceabilities = parseIssueTraceabilities(item);
         const issueNumbers = issueTraceabilities.length
-            ? issueTraceabilities.map((trace) => text(trace.SoLenhXuatVT)).filter(Boolean)
+            ? [...new Set(issueTraceabilities.map((trace) => text(trace.SoLenhXuatVT)).filter(Boolean))]
             : [...new Set(itemDefects.map((defect) => text(defect.SoLenhXuatVT)).filter(Boolean))];
         return {
             'STT': index + 1,
@@ -107,7 +107,6 @@ const buildDoiTraSummaryWorkbook = ({ items = [], defects = [], receipts = [] } 
             'Ngày tạo phôi': issueTraceabilities.length ? traceLines(issueTraceabilities, 'NgayTaoPhoi', dateText) : dateOrBlank(item.NgayTaoPhoi),
             'Tổ sản xuất': issueTraceabilities.length ? traceLines(issueTraceabilities, 'ToSanXuat') : item.ToSanXuat || '',
             'Công nhân sản xuất': issueTraceabilities.length ? traceLines(issueTraceabilities, 'CongNhanSanXuat') : item.CongNhanSanXuat || '',
-            'KCS': item.TenKcs || '',
             'Chi tiết lỗi': itemDefects.map(defectLabel).filter(Boolean).join('\n'),
             'Bộ phận/NCC gây lỗi': [...new Set(itemDefects.map(responsibleLabel).filter(Boolean))].join('\n'),
             'Ghi chú phôi': item.GhiChu || ''
@@ -131,7 +130,7 @@ const buildDoiTraSummaryWorkbook = ({ items = [], defects = [], receipts = [] } 
 
     const workbook = XLSX.utils.book_new();
     const summarySheet = XLSX.utils.json_to_sheet(summaryRows, { cellDates: true, header: SUMMARY_HEADERS });
-    setColumnWidths(summarySheet, [6, 18, 12, 18, 16, 16, 32, 22, 25, 16, 32, 24, 16, 10, 12, 14, 14, 12, 10, 16, 16, 18, 12, 22, 14, 18, 28, 18, 45, 35, 30]);
+    setColumnWidths(summarySheet, [6, 18, 12, 18, 16, 16, 32, 22, 25, 16, 32, 24, 16, 10, 12, 14, 14, 12, 10, 16, 16, 18, 12, 22, 14, 18, 28, 45, 35, 30]);
     XLSX.utils.book_append_sheet(workbook, summarySheet, 'TongHopDoiPhoi');
 
     const receiptSheet = XLSX.utils.json_to_sheet(receiptRows, { cellDates: true, header: RECEIPT_HEADERS });

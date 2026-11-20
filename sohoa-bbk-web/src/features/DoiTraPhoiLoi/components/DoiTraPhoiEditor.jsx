@@ -106,6 +106,7 @@ const toDraft = (item, defaultLot = '') => {
     congNhanSanXuat: item.CongNhanSanXuat || '',
     issueTraceabilities: traces,
     defects: (item.defects || []).map((defect) => ({
+        clientKey: defect.Id ? `saved-${defect.Id}` : newManualLxvtKey(),
         nhomLoiId: defect.NhomLoiId || '', defectId: defect.DefectId || '',
         MaLoi: defect.MaLoi || '', TenLoi: defect.TenLoi || '', DefectType: defect.DefectType || '',
         soLuongLoi: defect.SoLuongLoi ?? 1, ghiChu: defect.GhiChu || '',
@@ -191,17 +192,17 @@ const ManualPhoiDialog = ({ open, onClose, materials, saving, onSubmit }) => {
     </Dialog>;
 };
 
-const DefectEntryRow = ({ defect, defectIndex, groups, defects, responsibleDepartments, onPatch, onSelect, onDelete }) => {
+const DefectEntryRow = ({ defect, groups, defects, responsibleDepartments, onPatch, onSelect, onDelete }) => {
     const chosen = defects.find((option) => Number(option.Id) === Number(defect.defectId));
     const responsible = responsibleDepartments.find((option) => option.source === defect.boPhanGayLoiSource
         && Number(option.sourceId) === Number(defect.boPhanGayLoiSourceId));
     return <Paper variant="outlined" sx={{ p: 1.25, bgcolor: '#fcfcfd' }}><Grid container spacing={1} alignItems="center">
-        <Grid size={{ xs: 12, md: 2 }}><FormControl fullWidth size="small"><InputLabel>Nhóm lỗi</InputLabel><Select label="Nhóm lỗi" value={defect.nhomLoiId} onChange={(event) => onPatch(defectIndex, { nhomLoiId: event.target.value })}>{groups.map((group) => <MenuItem key={group.Id} value={group.Id}>{group.MaNhom} — {group.TenNhom}</MenuItem>)}</Select></FormControl></Grid>
-        <Grid size={{ xs: 12, md: 4 }}><DefectPickerDialog fullWidth defects={defects} onSelect={(value) => onSelect(defectIndex, value)} buttonLabel={chosen ? `${chosen.MaLoi || ''} — ${chosen.TenLoi || ''}` : 'Chọn lỗi từ danh mục'} /></Grid>
-        <Grid size={{ xs: 12, md: 4 }}><Autocomplete size="small" options={responsibleDepartments} filterOptions={filterResponsibleOptions} value={responsible || null} isOptionEqualToValue={(a, b) => a.key === b.key} getOptionKey={(row) => row.key} getOptionLabel={responsibleOptionLabel} onChange={(_, value) => onPatch(defectIndex, { boPhanGayLoiSource: value?.source || '', boPhanGayLoiSourceId: value?.sourceId || '' })} renderInput={(params) => <TextField {...params} required label="Bộ phận/NCC gây lỗi" />} /></Grid>
-        <Grid size={{ xs: 9, md: 1 }}><TextField fullWidth size="small" type="number" label="SL lỗi" value={defect.soLuongLoi} onChange={(event) => onPatch(defectIndex, { soLuongLoi: event.target.value })} /></Grid>
-        <Grid size={{ xs: 3, md: 1 }} textAlign="right"><IconButton color="error" onClick={() => onDelete(defectIndex)}><DeleteOutlineIcon /></IconButton></Grid>
-        <Grid size={12}><TextField fullWidth size="small" label="Ghi chú lỗi" value={defect.ghiChu} onChange={(event) => onPatch(defectIndex, { ghiChu: event.target.value })} /></Grid>
+        <Grid size={{ xs: 12, md: 2 }}><FormControl required fullWidth size="small"><InputLabel>Nhóm lỗi</InputLabel><Select label="Nhóm lỗi" value={defect.nhomLoiId} onChange={(event) => onPatch(defect.clientKey, { nhomLoiId: Number(event.target.value) })}>{groups.map((group) => <MenuItem key={group.Id} value={Number(group.Id)}>{group.MaNhom} — {group.TenNhom}</MenuItem>)}</Select></FormControl></Grid>
+        <Grid size={{ xs: 12, md: 4 }}><DefectPickerDialog fullWidth defects={defects} onSelect={(value) => onSelect(defect.clientKey, value)} buttonLabel={chosen ? `${chosen.MaLoi || ''} — ${chosen.TenLoi || ''}` : 'Chọn lỗi từ danh mục'} /></Grid>
+        <Grid size={{ xs: 12, md: 4 }}><Autocomplete size="small" options={responsibleDepartments} filterOptions={filterResponsibleOptions} value={responsible || null} isOptionEqualToValue={(a, b) => a.key === b.key} getOptionKey={(row) => row.key} getOptionLabel={responsibleOptionLabel} onChange={(_, value) => onPatch(defect.clientKey, { boPhanGayLoiSource: value?.source || '', boPhanGayLoiSourceId: value?.sourceId || '' })} renderInput={(params) => <TextField {...params} required label="Bộ phận/NCC gây lỗi" />} /></Grid>
+        <Grid size={{ xs: 9, md: 1 }}><TextField fullWidth size="small" type="number" label="SL lỗi" value={defect.soLuongLoi} onChange={(event) => onPatch(defect.clientKey, { soLuongLoi: event.target.value })} /></Grid>
+        <Grid size={{ xs: 3, md: 1 }} textAlign="right"><IconButton color="error" onClick={() => onDelete(defect.clientKey)}><DeleteOutlineIcon /></IconButton></Grid>
+        <Grid size={12}><TextField fullWidth size="small" label="Ghi chú lỗi" value={defect.ghiChu} onChange={(event) => onPatch(defect.clientKey, { ghiChu: event.target.value })} /></Grid>
     </Grid></Paper>;
 };
 
@@ -235,6 +236,7 @@ export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, 
     const [saving, setSaving] = useState(false);
     const [search, setSearch] = useState('');
     const [detailTab, setDetailTab] = useState('trace');
+    const [selectedManualIssueKey, setSelectedManualIssueKey] = useState('');
     const [selectedKey, setSelectedKey] = useState(null);
     const [options, setOptions] = useState([]);
     const [groups, setGroups] = useState([]);
@@ -272,16 +274,18 @@ export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, 
     const beginEdit = async () => { setDraft(items.map((item) => toDraft(item, defaultLot))); setDetailTab('trace'); setEditing(true); onDirtyChange?.(false); await loadLookups(); };
     const updateDraft = (updater) => { setDraft(updater); onDirtyChange?.(true); };
     const patchItem = (patch) => updateDraft((current) => current.map((item, index) => index === selectedIndex ? { ...item, ...patch } : item));
-    const patchDefect = (defectIndex, patch) => patchItem({ defects: selectedItem.defects.map((defect, index) => index === defectIndex ? { ...defect, ...patch } : defect) });
-    const selectDefect = (defectIndex, selected) => {
-        const current = selectedItem.defects[defectIndex];
-        if (selectedItem.defects.some((item, index) => index !== defectIndex && Number(item.defectId) === Number(selected.Id)
+    const patchDefect = (clientKey, patch) => patchItem({ defects: selectedItem.defects.map((defect) => defect.clientKey === clientKey ? { ...defect, ...patch } : defect) });
+    const selectDefect = (clientKey, selected) => {
+        const current = selectedItem.defects.find((defect) => defect.clientKey === clientKey);
+        if (!current) return;
+        if (selectedItem.defects.some((item) => item.clientKey !== clientKey && Number(item.defectId) === Number(selected.Id)
             && item.manualLxvtKey === current.manualLxvtKey
             && item.boPhanGayLoiSource === current.boPhanGayLoiSource && Number(item.boPhanGayLoiSourceId) === Number(current.boPhanGayLoiSourceId))) return window.alert('Lỗi này đã được chọn cho cùng LXVT và bộ phận/nhà thầu/nhà cung cấp.');
-        patchDefect(defectIndex, { defectId: selected.Id, MaLoi: selected.MaLoi || '', TenLoi: selected.TenLoi || '', DefectType: selected.DefectType || '' });
+        patchDefect(clientKey, { defectId: selected.Id, MaLoi: selected.MaLoi || '', TenLoi: selected.TenLoi || '', DefectType: selected.DefectType || '' });
     };
     const addDefectForIssue = (issue) => patchItem({
         defects: [...selectedItem.defects, {
+            clientKey: newManualLxvtKey(),
             nhomLoiId: '', defectId: '', soLuongLoi: 1, ghiChu: '',
             boPhanGayLoiSource: '', boPhanGayLoiSourceId: '',
             manualLxvtKey: issue?.manualLxvtKey || issue?.ManualLxvtKey || '', soLenhXuatVT: issue?.soLenhXuatVT || issue?.SoLenhXuatVT || ''
@@ -392,7 +396,9 @@ export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, 
         manualLxvtKey: trace.manualLxvtKey || trace.ManualLxvtKey,
         SoLenhXuatVT: trace.soLenhXuatVT || trace.SoLenhXuatVT
     }));
-    const defectGroupsByIssue = [...readDefects.reduce((result, defect, index) => {
+    const selectedManualIssue = selectedIssueOptions.find((option) => option.manualLxvtKey === selectedManualIssueKey)
+        || selectedIssueOptions[0] || null;
+    const defectGroupsByIssue = [...readDefects.reduce((result, defect) => {
         const issueId = defect.manualLxvtKey || defect.ManualLxvtKey || '';
         const key = issueId || 'NO_ISSUE';
         if (!result.has(key)) {
@@ -403,9 +409,13 @@ export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, 
                 entries: []
             });
         }
-        result.get(key).entries.push({ defect, index });
+        result.get(key).entries.push({ defect });
         return result;
-    }, new Map()).values()];
+    }, new Map(selectedIssueOptions.map((issue) => [issue.manualLxvtKey, {
+        issueId: issue.manualLxvtKey,
+        issue,
+        entries: []
+    }]))).values()];
     return <Stack spacing={1.5}>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
             <Box><Typography fontWeight={800}>Kết quả kiểm theo loại phôi</Typography><Typography variant="caption" color="text.secondary">Chọn một phôi bên trái để nhập hoặc xem chi tiết.</Typography></Box>
@@ -428,12 +438,17 @@ export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, 
                 <Tabs value={detailTab} onChange={(_, value) => setDetailTab(value)} variant="scrollable" sx={{ borderBottom: 1, borderColor: 'divider', px: 1 }}><Tab value="trace" label="1. Tem truy nguyên & LXVT" /><Tab value="defects" label={`2. Các dạng lỗi (${readDefects.length})`} /></Tabs>
                 <Box sx={{ p: { xs: 1.25, md: 1.75 } }}>
                     {detailTab === 'defects' && (editing ? <Stack spacing={1}>
+                        {!selectedIssueOptions.length && requireLxvt && <Alert severity="warning">Chưa có LXVT nào được nhập. Hãy quay lại bước 1 để thêm LXVT và thông tin tem truy nguyên.</Alert>}
+                        {selectedIssueOptions.length > 0 && <Paper variant="outlined" sx={{ p: 1.5, bgcolor: '#fafbff' }}><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+                            <Autocomplete sx={{ flex: 1, minWidth: 0 }} size="small" options={selectedIssueOptions} value={selectedManualIssue} isOptionEqualToValue={(a, b) => a.manualLxvtKey === b.manualLxvtKey} getOptionLabel={(option) => option.SoLenhXuatVT || 'Chưa nhập số LXVT'} onChange={(_, value) => setSelectedManualIssueKey(value?.manualLxvtKey || '')} renderInput={(params) => <TextField {...params} label="Chọn LXVT đã nhập tem" />} />
+                            <Button variant="contained" startIcon={<AddIcon />} disabled={!selectedManualIssue} onClick={() => addDefectForIssue(selectedManualIssue)}>Thêm lỗi cho LXVT</Button>
+                        </Stack></Paper>}
                         {defectGroupsByIssue.map((issueGroup) => <Paper key={issueGroup.issueId || 'NO_ISSUE'} variant="outlined" sx={{ p: 1.25, borderColor: issueGroup.issueId ? 'primary.light' : 'warning.light' }}>
                             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} sx={{ mb: 1 }}>
                                 <Box sx={{ flex: 1 }}><Typography fontWeight={900}>{issueGroup.issue ? `LXVT ${issueGroup.issue.SoLenhXuatVT}` : 'Chưa gán LXVT'}</Typography><Typography variant="caption" color="text.secondary">Lệnh xuất vật tư nhập tay</Typography></Box>
                                 {issueGroup.issue && <Button size="small" startIcon={<AddIcon />} onClick={() => addDefectForIssue(issueGroup.issue)}>Thêm lỗi</Button>}
                             </Stack>
-                            <Stack spacing={1}>{issueGroup.entries.map(({ defect, index }) => <DefectEntryRow key={index} defect={defect} defectIndex={index} groups={groups} defects={defects} responsibleDepartments={responsibleDepartments} onPatch={patchDefect} onSelect={selectDefect} onDelete={(defectIndex) => patchItem({ defects: selectedItem.defects.filter((_, currentIndex) => currentIndex !== defectIndex) })} />)}</Stack>
+                            <Stack spacing={1}>{issueGroup.entries.map(({ defect }) => <DefectEntryRow key={defect.clientKey} defect={defect} groups={groups} defects={defects} responsibleDepartments={responsibleDepartments} onPatch={patchDefect} onSelect={selectDefect} onDelete={(clientKey) => patchItem({ defects: selectedItem.defects.filter((item) => item.clientKey !== clientKey) })} />)}</Stack>
                         </Paper>)}
                         {!defectGroupsByIssue.length && <Alert severity="info">Chưa thêm dạng lỗi cho phôi này.</Alert>}
                         {!requireLxvt && <Button startIcon={<AddIcon />} onClick={() => addDefectForIssue(null)}>Thêm dạng lỗi</Button>}

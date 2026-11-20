@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Collapse, Dialog,
+    Alert, Autocomplete, Box, Button, Card, CardContent, Chip, CircularProgress, Collapse, Dialog,
     DialogActions, DialogContent, DialogTitle, Divider, Grid, Paper, Stack, Step,
     StepLabel, Stepper, Tab, Table, TableBody, TableCell, TableContainer,
     TableHead, TableRow, Tabs, TextField, Typography, MenuItem
@@ -48,7 +48,7 @@ const chooseDefaultTab = (detail) => {
     if (actions.some((item) => ['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(item.ActionCode))) return detail.phoiItems?.length ? 'inspection' : 'phoi';
     if (detail.capabilities?.canEditDinhMuc && detail.phoiItems?.length && detail.phieu?.DinhMucTrangThai !== 'DA_XAC_NHAN') return 'quota';
     if (Number(detail.workflow?.definition?.VersionNo) >= 5
-        && !['TAO_MOI', 'TRA_LAI_KCS', 'CHO_TBP_KCS_XAC_NHAN'].includes(detail.phieu?.TrangThai)) return 'kph';
+        && !['TAO_MOI', 'TRA_LAI_KCS', 'CHO_TBP_KCS_XAC_NHAN', 'CHO_CAC_KE_HOACH_KCS'].includes(detail.phieu?.TrangThai)) return 'kph';
     return 'overview';
 };
 
@@ -141,7 +141,7 @@ export default function DoiTraPhoiLoiDetail() {
             const response = await exportDoiTraSummaryExcel([Number(id)]);
             const url = window.URL.createObjectURL(response.data);
             const link = document.createElement('a');
-            const safeNumber = String(data.phieu?.SoPhieu || id).replace(/[^\w.-]+/g, '_');
+            const safeNumber = String(data.phieu?.SoPhieuNhom || data.phieu?.SoPhieu || id).replace(/[^\w.-]+/g, '_');
             link.href = url;
             link.download = `tong-hop-doi-phoi-${safeNumber}.xlsx`;
             document.body.appendChild(link);
@@ -226,8 +226,9 @@ export default function DoiTraPhoiLoiDetail() {
     if (loading) return <Box sx={{ py: 10, display: 'grid', placeItems: 'center' }}><CircularProgress /></Box>;
     if (!data.phieu) return <Alert severity="error">Không tìm thấy phiếu đổi trả phôi lỗi.</Alert>;
 
-    const { phieu, plans, history, phoiItems = [], dinhMucItems = [], lenhXuatVatTuItems = [], phieuNhapBtpItems = [], warehouses = [], workflow = {}, defectGroups = [], capabilities } = data;
+    const { phieu, plans, siblingPlans = [], history, phoiItems = [], dinhMucItems = [], lenhXuatVatTuItems = [], phieuNhapBtpItems = [], warehouses = [], workflow = {}, defectGroups = [], capabilities } = data;
     const plan = plans[0] || {};
+    const currentSibling = siblingPlans.find((item) => Number(item.Id) === Number(id));
     const requiresB7 = Boolean(plan.RequiresB7);
     const isStageBtp = plan.PhoiSelectionMode === 'PREVIOUS_STAGE_BTP';
     const displayProductCode = isStageBtp
@@ -252,7 +253,7 @@ export default function DoiTraPhoiLoiDetail() {
     const activeReceipt = phieuNhapBtpItems.find((item) => item.TrangThai === 'ACTIVE');
     const warehouseConfirmed = Number(activeReceipt?.ErpTrangThai) === 5;
     const summaryData = {
-        tickets: [{ ...plan, ...phieu }],
+        tickets: [{ ...plan, ...phieu, SoPhieu: phieu.SoPhieuNhom || phieu.SoPhieu }],
         phoiItems,
         dinhMucItems,
         phieuNhapBtpItems,
@@ -262,10 +263,46 @@ export default function DoiTraPhoiLoiDetail() {
     return (
         <Box>
             <Button startIcon={<ArrowBackIcon />} onClick={goBack} sx={{ mb: 1 }}>Quay lại danh sách</Button>
+            {siblingPlans.length > 1 && <Paper variant="outlined" sx={{ p: 1.25, mb: 2, borderRadius: 2 }}>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}>
+                    <Box sx={{ minWidth: { md: 220 } }}>
+                        <Typography fontWeight={900}>Kế hoạch đang xử lý</Typography>
+                        <Typography variant="caption" color="text.secondary">{siblingPlans.length} kế hoạch trong phiếu · nhập để tìm nhanh</Typography>
+                    </Box>
+                    <Autocomplete
+                        size="small"
+                        fullWidth
+                        disableClearable
+                        options={siblingPlans}
+                        value={currentSibling || siblingPlans[0]}
+                        isOptionEqualToValue={(option, value) => Number(option.Id) === Number(value.Id)}
+                        getOptionLabel={(item) => `KH ${item.ThuTuHienThi} · ${item.PlanNo || item.PlanID || '---'} · ${doiTraStatusMeta(item.TrangThai).label}`}
+                        onChange={(_event, item) => {
+                            if (!item || Number(item.Id) === Number(id)) return;
+                            if (hasUnsavedChanges && !window.confirm('Bỏ thay đổi chưa lưu và chuyển sang kế hoạch khác?')) return;
+                            setPhoiDirty(false); setQuotaDirty(false);
+                            navigate(`/doi-tra-phoi-loi/${item.Id}?tab=${activeTab}`);
+                        }}
+                        renderOption={(props, item) => {
+                            const itemStatus = doiTraStatusMeta(item.TrangThai);
+                            return <Box component="li" {...props} key={item.Id} sx={{ gap: 1 }}>
+                                <Chip size="small" variant="outlined" label={`KH ${item.ThuTuHienThi}`} />
+                                <Box sx={{ minWidth: 0, flex: 1 }}>
+                                    <Typography variant="body2" fontWeight={800} noWrap>{item.PlanNo || item.PlanID || '---'}</Typography>
+                                    <Typography variant="caption" color="text.secondary" noWrap>{item.OrderCode || item.ProductCode || '---'}</Typography>
+                                </Box>
+                                <Chip size="small" color={itemStatus.color} label={itemStatus.label} />
+                            </Box>;
+                        }}
+                        renderInput={(params) => <TextField {...params} placeholder="Tìm kế hoạch trong phiếu" />}
+                        slotProps={{ listbox: { sx: { maxHeight: 360 } } }}
+                    />
+                </Stack>
+            </Paper>}
             <Paper variant="outlined" sx={{ position: { md: 'sticky' }, top: { md: 8 }, zIndex: 4, mb: 2, borderRadius: 2, overflow: 'hidden', boxShadow: { md: '0 6px 22px rgba(15,23,42,.08)' } }}>
                 <Box sx={{ p: { xs: 1.5, md: 2 } }}>
                     <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1.5}>
-                        <Box sx={{ minWidth: 0 }}><Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap><Typography variant="h5" fontWeight={900}>{phieu.SoPhieu}</Typography><Chip size="small" color={status.color} label={status.label} /></Stack><Typography variant="body2" color="text.secondary" noWrap>{[plan.PlanNo || plan.PlanID, displayProductCode, plan.ProductName].filter(Boolean).join(' · ')}</Typography></Box>
+                        <Box sx={{ minWidth: 0 }}><Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap><Typography variant="h5" fontWeight={900}>{phieu.SoPhieuNhom || phieu.SoPhieu}</Typography>{siblingPlans.length > 1 && <Chip size="small" variant="outlined" label={`Kế hoạch ${currentSibling?.ThuTuHienThi || phieu.ThuTuKeHoach}/${siblingPlans.length}`} />}<Chip size="small" color={status.color} label={status.label} /></Stack><Typography variant="body2" color="text.secondary" noWrap>{[plan.PlanNo || plan.PlanID, displayProductCode, plan.ProductName].filter(Boolean).join(' · ')}</Typography></Box>
                         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                             <Button size="small" endIcon={<ExpandMoreIcon sx={{ transform: showDetails ? 'rotate(180deg)' : 'none' }} />} onClick={() => setShowDetails((value) => !value)}>Xem chi tiết</Button>
                             {hasPermission('XOA_HO_SO_KCS') && <Button size="small" color="error" variant="outlined" startIcon={deleting ? <CircularProgress size={16} /> : <DeleteOutlineIcon />} disabled={deleting} onClick={deleteTicket}>Xóa</Button>}
@@ -375,7 +412,7 @@ export default function DoiTraPhoiLoiDetail() {
                         <DoiTraPhoiLoiSummaryPrintTemplate ref={summaryPrintRef} data={summaryData} />
                     </Box>
                     {isKphWorkflow && <Box sx={{ display: printTab === 'kph' ? 'flex' : 'none', justifyContent: 'center' }}>
-                        <DoiTraPhoiLoiPrintTemplate ref={kphPrintRef} data={{ ...data, kph: kphData || {} }} />
+                        <DoiTraPhoiLoiPrintTemplate ref={kphPrintRef} data={{ ...data, phieu: { ...phieu, SoPhieu: phieu.SoPhieuNhom || phieu.SoPhieu }, kph: kphData || {} }} />
                     </Box>}
                 </DialogContent>
                 <DialogActions>

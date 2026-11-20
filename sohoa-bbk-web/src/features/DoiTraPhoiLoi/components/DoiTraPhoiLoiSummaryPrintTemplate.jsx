@@ -102,26 +102,32 @@ const DoiTraPhoiLoiSummaryPrintTemplate = forwardRef(function DoiTraPhoiLoiSumma
     const quotaByMaterial = new Map(dinhMucItems.map((item) => [
         `${Number(item.PhieuId)}:${Number(item.SourceVatTuId)}`, item
     ]));
-    const rows = groupRowsByOrder(phoiItems.map((item) => {
+    const rows = groupRowsByOrder(phoiItems.flatMap((item, itemIndex) => {
         const ticket = ticketById.get(Number(item.PhieuId)) || {};
         const quota = quotaByMaterial.get(`${Number(item.PhieuId)}:${Number(item.SourceVatTuId)}`) || {};
-        const errorQuantities = new Map(ERROR_COLUMNS.map((column) => [column.key, 0]));
-        (item.defects || []).forEach((defect) => {
-            const key = errorColumn(defect);
-            errorQuantities.set(key, (errorQuantities.get(key) || 0) + Number(defect.SoLuongLoi || 0));
-        });
-        const responsibleUnits = [...new Set((item.defects || [])
-            .map(responsibleUnitLabel).filter(Boolean))];
         const issueTraceabilities = item.issueTraceabilities || [];
-        const materialIssueNumbers = issueTraceabilities.length
-            ? issueTraceabilities.map((trace) => text(trace.SoLenhXuatVT)).filter(Boolean)
-            : [...new Set((item.defects || []).map((defect) => text(defect.SoLenhXuatVT)).filter(Boolean))];
-        const traceLines = (field, formatter = (value) => value) => issueTraceabilities
-            .map((trace) => {
-                const value = formatter(trace[field]);
-                return value || '';
-            }).join('\n');
-        return { ...item, ticket, quota, errorQuantities, responsibleUnits, materialIssueNumbers, issueTraceabilities, traceLines };
+        const traces = issueTraceabilities.length ? issueTraceabilities : [null];
+        return traces.map((trace, traceIndex) => {
+            const traceKey = text(trace?.ManualLxvtKey || trace?.manualLxvtKey);
+            const issueNumber = text(trace?.SoLenhXuatVT || trace?.soLenhXuatVT);
+            const scopedDefects = trace ? (item.defects || []).filter((defect) => {
+                const defectKey = text(defect.ManualLxvtKey || defect.manualLxvtKey);
+                return traceKey && defectKey ? traceKey === defectKey : text(defect.SoLenhXuatVT) === issueNumber;
+            }) : (item.defects || []);
+            const errorQuantities = new Map(ERROR_COLUMNS.map((column) => [column.key, 0]));
+            scopedDefects.forEach((defect) => {
+                const key = errorColumn(defect);
+                errorQuantities.set(key, (errorQuantities.get(key) || 0) + Number(defect.SoLuongLoi || 0));
+            });
+            const responsibleUnits = [...new Set(scopedDefects.map(responsibleUnitLabel).filter(Boolean))];
+            const traceValue = (field, formatter = (value) => value) => trace ? text(formatter(trace[field])) : '';
+            return {
+                ...item, ticket, quota, errorQuantities, responsibleUnits,
+                materialIssueNumbers: issueNumber ? [issueNumber] : [], trace,
+                traceLines: traceValue, commonKey: `${item.PhieuId}:${item.Id || item.PhoiId || itemIndex}`,
+                displayIndex: itemIndex + 1, traceIndex
+            };
+        });
     }));
     const pages = chunkRows(rows);
 
@@ -144,6 +150,7 @@ const DoiTraPhoiLoiSummaryPrintTemplate = forwardRef(function DoiTraPhoiLoiSumma
                 const pageReceipts = receiptItems.filter((item) => item.TrangThai === 'ACTIVE'
                     && pageTicketIds.has(Number(item.PhieuId)));
                 const orderRowSpans = mergedRowSpans(pageRows, (row) => row.ticket?.OrderCode);
+                const commonRowSpans = mergedRowSpans(pageRows, (row) => row.commonKey);
                 while (padded.length < ROWS_PER_PAGE) padded.push(null);
                 return (
                     <section
@@ -183,7 +190,7 @@ const DoiTraPhoiLoiSummaryPrintTemplate = forwardRef(function DoiTraPhoiLoiSumma
                         </div>}
                         <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '6.5pt' }}>
                             <colgroup>
-                                {[2, 5, 4, 5, 4, 7, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 6, 5, 4, 8, 9].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
+                                {[2, 5, 4, 5, 4, 7, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 6, 8, 9].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
                             </colgroup>
                             <thead>
                                 <tr style={{ height: 30 }}>
@@ -200,28 +207,28 @@ const DoiTraPhoiLoiSummaryPrintTemplate = forwardRef(function DoiTraPhoiLoiSumma
                                     <th rowSpan={2} style={headerCell}>Dấu<br />tuần</th>
                                     <th colSpan={5} style={headerCell}>TEM TRUY NGUYÊN</th>
                                     <th colSpan={7} style={headerCell}>CÁC DẠNG LỖI - TRÁCH NHIỆM</th>
-                                    <th colSpan={2} style={headerCell}>KÝ XÁC NHẬN KHI KIỂM<br />ĐẦU VÀO XÁC NHẬN</th>
                                     <th colSpan={2} style={headerCell}>SỐ LƯỢNG<br />CẦN CẤP BỔ SUNG</th>
                                 </tr>
                                 <tr style={{ height: 54 }}>
                                     {['Đơn vị tạo phôi', 'Ngày tạo phôi', 'Tổ SX', 'Công nhân SX', 'KCS'].map((label) => <th key={label} style={headerCell}>{label}</th>)}
                                     {ERROR_COLUMNS.map((column) => <th key={column.key} style={headerCell}>{column.label}</th>)}
                                     <th style={headerCell}>Đơn vị gây ra lỗi</th>
-                                    {['KCS', 'Kho', 'Mã VT', 'Số mét'].map((label, index) => <th key={`${label}-${index}`} style={headerCell}>{label}</th>)}
+                                    {['Mã VT', 'Số mét'].map((label, index) => <th key={`${label}-${index}`} style={headerCell}>{label}</th>)}
                                 </tr>
                             </thead>
                             <tbody>
                                 {padded.map((row, rowIndex) => {
                                     const orderRowSpan = row ? orderRowSpans.get(rowIndex) : 1;
-                                    return <tr key={row ? row.Id : `empty-${rowIndex}`} style={{ height: 28 }}>
-                                        <td style={{ ...cell, textAlign: 'center' }}>{row ? pageIndex * ROWS_PER_PAGE + rowIndex + 1 : ''}</td>
-                                        <td style={cell}>{row ? row.ticket.DepartmentName || row.ticket.UnitName || '' : ''}</td>
-                                        <td style={{ ...cell, textAlign: 'center' }}>{row ? formatDate(row.ticket.NgayLap) : ''}</td>
+                                    const commonRowSpan = row ? commonRowSpans.get(rowIndex) : 1;
+                                    return <tr key={row ? `${row.commonKey}:${row.traceIndex}` : `empty-${rowIndex}`} style={{ height: 28 }}>
+                                        {commonRowSpan !== 0 && <td rowSpan={commonRowSpan} style={{ ...cell, textAlign: 'center' }}>{row?.displayIndex || ''}</td>}
+                                        {commonRowSpan !== 0 && <td rowSpan={commonRowSpan} style={cell}>{row ? row.ticket.DepartmentName || row.ticket.UnitName || '' : ''}</td>}
+                                        {commonRowSpan !== 0 && <td rowSpan={commonRowSpan} style={{ ...cell, textAlign: 'center' }}>{row ? formatDate(row.ticket.NgayLap) : ''}</td>}
                                         {orderRowSpan !== 0 && <td rowSpan={orderRowSpan} style={{ ...cell, textAlign: 'center' }}>{row?.ticket?.OrderCode || ''}</td>}
-                                        <td style={{ ...cell, textAlign: 'center' }}>{row ? formatQuantity(row.quota.SoLuongBoLoiSnapshot ?? doiTraDefectiveSetQuantity(row)) : ''}</td>
-                                        <td style={cell}>{row ? materialLabel(row) : ''}</td>
-                                        <td style={{ ...cell, textAlign: 'center' }}>{row?.quota?.TenDonViTinh || ''}</td>
-                                        <td style={{ ...cell, textAlign: 'center' }}>{row ? formatQuantity(row.quota.SoLuongDoiTra) : ''}</td>
+                                        {commonRowSpan !== 0 && <td rowSpan={commonRowSpan} style={{ ...cell, textAlign: 'center' }}>{row ? formatQuantity(row.quota.SoLuongBoLoiSnapshot ?? doiTraDefectiveSetQuantity(row)) : ''}</td>}
+                                        {commonRowSpan !== 0 && <td rowSpan={commonRowSpan} style={cell}>{row ? materialLabel(row) : ''}</td>}
+                                        {commonRowSpan !== 0 && <td rowSpan={commonRowSpan} style={{ ...cell, textAlign: 'center' }}>{row?.quota?.TenDonViTinh || ''}</td>}
+                                        {commonRowSpan !== 0 && <td rowSpan={commonRowSpan} style={{ ...cell, textAlign: 'center' }}>{row ? formatQuantity(row.quota.SoLuongDoiTra) : ''}</td>}
                                         <td style={{ ...cell, whiteSpace: 'pre-wrap' }}>{row?.materialIssueNumbers?.join('\n') || row?.LenhXuatVatTu || ''}</td>
                                         <td style={{ ...cell, textAlign: 'center', whiteSpace: 'pre-wrap' }}>{row?.traceLines?.('LotSanXuat') || (row ? row.ticket.ExpectedProductionLot || row.LotSanXuat || '' : '')}</td>
                                         <td style={{ ...cell, textAlign: 'center', whiteSpace: 'pre-wrap' }}>{row?.traceLines?.('DauTuan') || row?.DauTuan || ''}</td>
@@ -232,9 +239,8 @@ const DoiTraPhoiLoiSummaryPrintTemplate = forwardRef(function DoiTraPhoiLoiSumma
                                         <td style={cell}>{row?.TenKcs || ''}</td>
                                         {ERROR_COLUMNS.map((column) => <td key={column.key} style={{ ...cell, textAlign: 'center' }}>{row ? formatQuantity(row.errorQuantities.get(column.key) || '') : ''}</td>)}
                                         <td style={{ ...cell, whiteSpace: 'pre-wrap' }}>{row?.responsibleUnits?.join('\n') || ''}</td>
-                                        {Array.from({ length: 2 }, (_, index) => <td key={index} style={cell}></td>)}
-                                        <td style={{ ...cell, textAlign: 'center' }}>{row ? (row.ticket.RequiresB7 === false || Number(row.ticket.RequiresB7) === 0 ? 'Không áp dụng' : row.MaVatTu || '') : ''}</td>
-                                        <td style={{ ...cell, textAlign: 'center' }}>{row && row.ticket.RequiresB7 !== false && Number(row.ticket.RequiresB7) !== 0 ? formatQuantity(row.quota.SoLuongDoiTra) : ''}</td>
+                                        {commonRowSpan !== 0 && <td rowSpan={commonRowSpan} style={{ ...cell, textAlign: 'center' }}>{row ? (row.ticket.RequiresB7 === false || Number(row.ticket.RequiresB7) === 0 ? 'Không áp dụng' : row.MaVatTu || '') : ''}</td>}
+                                        {commonRowSpan !== 0 && <td rowSpan={commonRowSpan} style={{ ...cell, textAlign: 'center' }}>{row && row.ticket.RequiresB7 !== false && Number(row.ticket.RequiresB7) !== 0 ? formatQuantity(row.quota.SoLuongDoiTra) : ''}</td>}
                                     </tr>;
                                 })}
                             </tbody>
