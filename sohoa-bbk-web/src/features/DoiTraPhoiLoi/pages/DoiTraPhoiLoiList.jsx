@@ -23,7 +23,8 @@ import {
 } from '../../../api/doiTraPhoiLoi.api';
 import { getCurrentUser } from '../../../utils/auth';
 import {
-    DOI_TRA_DINH_MUC_STATUS_META, DOI_TRA_STATUS_META, doiTraDinhMucStatusMeta, doiTraStatusMeta,
+    DOI_TRA_DINH_MUC_STATUS_META, DOI_TRA_STATUS_META, doiTraDinhMucStatusMeta,
+    doiTraProductionDepartmentLabel, doiTraStatusMeta,
     formatDoiTraDate, formatDoiTraQuantity
 } from '../doiTraPhoiLoi.utils';
 import DoiTraPhoiLoiSummaryPrintTemplate from '../components/DoiTraPhoiLoiSummaryPrintTemplate';
@@ -466,7 +467,7 @@ export default function DoiTraPhoiLoiList() {
                                             <TableCell>{formatDoiTraDate(row.NgayLap)}</TableCell>
                                             <TableCell>{row.PlanNo || row.PlanID || '---'}<br /><Typography variant="caption" color="text.secondary">{row.OrderCode || '---'}</Typography></TableCell>
                                             <TableCell>{displayProductCode || '---'}<br /><Typography variant="caption" color="text.secondary">{row.PhoiSelectionMode === 'PREVIOUS_STAGE_BTP' ? `BTP sau công đoạn May · ${row.ProductName || '---'}` : (row.ProductName || '---')}</Typography></TableCell>
-                                            <TableCell>{row.OperationName || row.OperationCode || '---'}<br /><Typography variant="caption" color="text.secondary">{row.DepartmentName || '---'}</Typography></TableCell>
+                                            <TableCell>{row.OperationName || row.OperationCode || '---'}<br /><Typography variant="caption" color="text.secondary">{doiTraProductionDepartmentLabel(row, row.DepartmentName || '---')}</Typography></TableCell>
                                             <TableCell align="right">{formatDoiTraQuantity(row.PlanQty)}</TableCell>
                                             <TableCell>{row.TenNguoiLap || '---'}</TableCell>
                                             <TableCell sx={{ minWidth: 220, maxWidth: 320 }}>

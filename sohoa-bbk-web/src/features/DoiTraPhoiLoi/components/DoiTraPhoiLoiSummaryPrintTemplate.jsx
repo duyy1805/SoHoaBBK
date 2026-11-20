@@ -1,5 +1,7 @@
 import { forwardRef } from 'react';
-import { doiTraDefectiveSetQuantity } from '../doiTraPhoiLoi.utils';
+import {
+    doiTraDefectiveSetQuantity, doiTraProductionDepartmentLabel
+} from '../doiTraPhoiLoi.utils';
 
 const ROWS_PER_PAGE = 12;
 const ERROR_COLUMNS = [
@@ -222,7 +224,7 @@ const DoiTraPhoiLoiSummaryPrintTemplate = forwardRef(function DoiTraPhoiLoiSumma
                                     const commonRowSpan = row ? commonRowSpans.get(rowIndex) : 1;
                                     return <tr key={row ? `${row.commonKey}:${row.traceIndex}` : `empty-${rowIndex}`} style={{ height: 28 }}>
                                         {commonRowSpan !== 0 && <td rowSpan={commonRowSpan} style={{ ...cell, textAlign: 'center' }}>{row?.displayIndex || ''}</td>}
-                                        {commonRowSpan !== 0 && <td rowSpan={commonRowSpan} style={cell}>{row ? row.ticket.DepartmentName || row.ticket.UnitName || '' : ''}</td>}
+                                        {commonRowSpan !== 0 && <td rowSpan={commonRowSpan} style={cell}>{row ? doiTraProductionDepartmentLabel(row.ticket, row.ticket.DepartmentName || row.ticket.UnitName || '') : ''}</td>}
                                         {commonRowSpan !== 0 && <td rowSpan={commonRowSpan} style={{ ...cell, textAlign: 'center' }}>{row ? formatDate(row.ticket.NgayLap) : ''}</td>}
                                         {orderRowSpan !== 0 && <td rowSpan={orderRowSpan} style={{ ...cell, textAlign: 'center' }}>{row?.ticket?.OrderCode || ''}</td>}
                                         {commonRowSpan !== 0 && <td rowSpan={commonRowSpan} style={{ ...cell, textAlign: 'center' }}>{row ? formatQuantity(row.quota.SoLuongBoLoiSnapshot ?? doiTraDefectiveSetQuantity(row)) : ''}</td>}

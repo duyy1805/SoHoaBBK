@@ -33,8 +33,8 @@ import DoiTraPhoiEditor from '../components/DoiTraPhoiEditor';
 import DoiTraDinhMucEditor from '../components/DoiTraDinhMucEditor';
 import DoiTraKphWorkflow from '../components/DoiTraKphWorkflow';
 import {
-    doiTraDinhMucStatusMeta, doiTraHistoryActionLabel, doiTraStatusMeta,
-    formatDoiTraDate, formatDoiTraQuantity, maxDoiTraDefectiveSetQuantity
+    doiTraDinhMucStatusMeta, doiTraHistoryActionLabel, doiTraProductionDepartmentLabel, doiTraStatusMeta,
+    formatDoiTraDate, formatDoiTraQuantity
 } from '../doiTraPhoiLoi.utils';
 
 const Info = ({ label, value }) => (
@@ -44,6 +44,22 @@ const Info = ({ label, value }) => (
     </Box>
 );
 const DETAIL_TABS = ['overview', 'phoi', 'inspection', 'kph', 'quota', 'history'];
+const buildReceiptDrafts = (suggestions = []) => Object.values(suggestions.reduce((groups, item) => {
+    const processId = Number(item.SuggestedProcessId) || '';
+    const key = processId ? `PROCESS:${processId}` : `UNMAPPED:${item.PhoiId}`;
+    if (!groups[key]) {
+        groups[key] = {
+            key,
+            processId,
+            warehouseId: '',
+            quantity: Number(item.SuggestedQuantity) || '',
+            items: []
+        };
+    }
+    groups[key].quantity = Math.max(Number(groups[key].quantity) || 0, Number(item.SuggestedQuantity) || 0) || '';
+    groups[key].items.push(item);
+    return groups;
+}, {}));
 const chooseDefaultTab = (detail) => {
     const actions = detail.workflow?.availableActions || [];
     if (actions.some((item) => ['TBP_CONFIRM', 'TBP_RETURN'].includes(item.ActionCode))) return 'inspection';
@@ -71,9 +87,7 @@ export default function DoiTraPhoiLoiDetail() {
     const [showDetails, setShowDetails] = useState(false);
     const [actionDialog, setActionDialog] = useState(null);
     const [actionNote, setActionNote] = useState('');
-    const [btpDefectQuantity, setBtpDefectQuantity] = useState('');
-    const [receiptWarehouseId, setReceiptWarehouseId] = useState('');
-    const [receiptBtpTypeId, setReceiptBtpTypeId] = useState('');
+    const [receiptDrafts, setReceiptDrafts] = useState([]);
     const [actionLoading, setActionLoading] = useState(false);
     const [editReceiptBtpTypeOpen, setEditReceiptBtpTypeOpen] = useState(false);
     const [editReceiptBtpTypeId, setEditReceiptBtpTypeId] = useState('');
@@ -192,37 +206,38 @@ export default function DoiTraPhoiLoiDetail() {
         }
         setActionDialog(action);
         setActionNote('');
-        setReceiptWarehouseId('');
-        setReceiptBtpTypeId('');
-        const savedQuantity = Number(data.phieu?.SoLuongBtpLoi);
-        const defaultQuantity = maxDoiTraDefectiveSetQuantity(data.phoiItems);
-        setBtpDefectQuantity(savedQuantity > 0 ? savedQuantity : (defaultQuantity || ''));
+        setReceiptDrafts(buildReceiptDrafts(data.receiptSuggestions));
     };
 
     const executeAction = async () => {
         if (!actionDialog) return;
         if (actionDialog.ActionCode === 'TBP_RETURN' && !actionNote.trim()) return window.alert('Vui lòng nhập lý do trả lại.');
         const isKcsCompletion = ['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(actionDialog.ActionCode);
-        const quantity = Number(btpDefectQuantity);
-        if (isKcsCompletion && !Number(receiptWarehouseId)) {
-            return window.alert('Vui lòng chọn Kho nhập BTP lỗi.');
-        }
-        if (isKcsCompletion && !Number(receiptBtpTypeId)) {
-            return window.alert('Vui lòng chọn Loại BTP.');
-        }
-        if (isKcsCompletion && (!Number.isFinite(quantity) || quantity <= 0
-            || quantity > Number(data.plans?.[0]?.PlanQty || 0)
-            || Math.abs(quantity * 100 - Math.round(quantity * 100)) > 1e-8)) {
-            return window.alert('Số lượng BTP lỗi phải lớn hơn 0, tối đa 2 chữ số thập phân và không vượt số lượng kế hoạch.');
+        if (isKcsCompletion) {
+            if (!receiptDrafts.length || receiptDrafts.some((item) => !Number(item.processId)
+                || !Number(item.warehouseId) || !Number(item.quantity))) {
+                return window.alert('Vui lòng nhập đủ Loại BTP, Kho nhập và Số lượng cho tất cả phiếu nhập dự kiến.');
+            }
+            if (new Set(receiptDrafts.map((item) => Number(item.processId))).size !== receiptDrafts.length) {
+                return window.alert('Hai phiếu nhập dự kiến đang chọn cùng Loại BTP. Vui lòng gộp hoặc chọn lại loại BTP.');
+            }
+            if (receiptDrafts.some((item) => Number(item.quantity) > Number(data.plans?.[0]?.PlanQty || 0)
+                || Math.abs(Number(item.quantity) * 100 - Math.round(Number(item.quantity) * 100)) > 1e-8)) {
+                return window.alert('Số lượng mỗi phiếu phải lớn hơn 0, tối đa 2 chữ số thập phân và không vượt số lượng kế hoạch.');
+            }
         }
         try {
             setActionLoading(true);
             await executeDoiTraAction(id, actionDialog.ActionCode, {
                 rowVersion: data.phieu.RowVersion,
                 ghiChu: actionNote.trim() || null,
-                soLuongBtpLoi: isKcsCompletion ? quantity : null,
-                khoNhapId: isKcsCompletion ? Number(receiptWarehouseId) : null,
-                quyTrinhSanXuatId: isKcsCompletion ? Number(receiptBtpTypeId) : null
+                receipts: isKcsCompletion ? receiptDrafts.map((item) => ({
+                    quyTrinhSanXuatId: Number(item.processId),
+                    khoNhapId: Number(item.warehouseId),
+                    soLuongBtpLoi: Number(item.quantity),
+                    phoiIds: item.items.map((phoi) => Number(phoi.PhoiId)),
+                    suggestedProcessByPhoi: Object.fromEntries(item.items.map((phoi) => [phoi.PhoiId, phoi.SuggestedProcessId || null]))
+                })) : null
             });
             setActionDialog(null);
             await load({ background: true });
@@ -262,7 +277,25 @@ export default function DoiTraPhoiLoiDetail() {
         ? [plan.ExpectedBtpCode, plan.ExpectedBtpName].filter(Boolean).join(' — ')
         : 'Không xác định duy nhất';
     const activeReceipt = phieuNhapBtpItems.find((item) => item.TrangThai === 'ACTIVE');
-    const warehouseConfirmed = Number(activeReceipt?.ErpTrangThai) === 5;
+    const activeReceipts = phieuNhapBtpItems.filter((item) => item.TrangThai === 'ACTIVE');
+    const warehouseConfirmed = activeReceipts.length > 0
+        && activeReceipts.every((item) => Number(item.ErpTrangThai) === 5);
+    const updateReceiptDraft = (key, field, value) => setReceiptDrafts((current) => {
+        const source = current.find((item) => item.key === key);
+        if (!source) return current;
+        if (field === 'processId' && value) {
+            const target = current.find((item) => item.key !== key && Number(item.processId) === Number(value));
+            if (target) {
+                return current.filter((item) => item.key !== key).map((item) => item.key === target.key ? {
+                    ...item,
+                    items: [...item.items, ...source.items],
+                    quantity: Math.max(Number(item.quantity) || 0, Number(source.quantity) || 0) || '',
+                    warehouseId: item.warehouseId || source.warehouseId
+                } : item);
+            }
+        }
+        return current.map((item) => item.key === key ? { ...item, [field]: value } : item);
+    });
     const openEditReceiptBtpType = () => {
         setEditReceiptBtpTypeId(activeReceipt?.SourceQuyTrinhSanXuatId || '');
         setEditReceiptBtpTypeOpen(true);
@@ -338,7 +371,7 @@ export default function DoiTraPhoiLoiDetail() {
                             <Button size="small" variant="contained" startIcon={<PrintIcon />} onClick={openPrintPreview}>Xem trước bản in</Button>
                         </Stack>
                     </Stack>
-                    <Grid container spacing={1.5} sx={{ mt: 0.5 }}><Grid size={{ xs: 6, md: 3 }}><Info label="Đơn vị sản xuất" value={[plan.DepartmentCode, plan.DepartmentName].filter(Boolean).join(' — ')} /></Grid><Grid size={{ xs: 6, md: 3 }}><Info label="Đơn hàng" value={plan.OrderCode} /></Grid><Grid size={{ xs: 6, md: 3 }}><Info label="Người lập" value={phieu.TenNguoiLap} /></Grid><Grid size={{ xs: 6, md: 3 }}><Info label="Ngày lập" value={formatDoiTraDate(phieu.NgayLap)} /></Grid></Grid>
+                    <Grid container spacing={1.5} sx={{ mt: 0.5 }}><Grid size={{ xs: 6, md: 3 }}><Info label="Đơn vị sản xuất" value={doiTraProductionDepartmentLabel(plan, [plan.DepartmentCode, plan.DepartmentName].filter(Boolean).join(' — '))} /></Grid><Grid size={{ xs: 6, md: 3 }}><Info label="Đơn hàng" value={plan.OrderCode} /></Grid><Grid size={{ xs: 6, md: 3 }}><Info label="Người lập" value={phieu.TenNguoiLap} /></Grid><Grid size={{ xs: 6, md: 3 }}><Info label="Ngày lập" value={formatDoiTraDate(phieu.NgayLap)} /></Grid></Grid>
                     <Collapse in={showDetails}><Divider sx={{ my: 1.5 }} /><Grid container spacing={1.5}><Grid size={{ xs: 12, sm: 4 }}><Info label="Công đoạn" value={[plan.OperationCode, plan.OperationName].filter(Boolean).join(' — ')} /></Grid><Grid size={{ xs: 12, sm: 4 }}><Info label="Số lượng kế hoạch" value={formatDoiTraQuantity(plan.PlanQty)} /></Grid><Grid size={{ xs: 12, sm: 4 }}><Info label="Bộ phận gây lỗi" value={[phieu.MaBoPhanGayLoiSnapshot, phieu.TenBoPhanGayLoiSnapshot, phieu.TenDonViGayLoiSnapshot].filter(Boolean).join(' — ')} /></Grid></Grid></Collapse>
                 </Box>
                 <Box sx={{ px: { xs: 1, md: 2 }, py: 1.25, borderTop: 1, borderColor: 'divider', bgcolor: '#fafbff' }}>
@@ -372,7 +405,7 @@ export default function DoiTraPhoiLoiDetail() {
 
             {activeTab === 'overview' && <Stack spacing={2}>
                 <Grid container spacing={2}>
-                    <Grid size={{ xs: 12, md: 8 }}><Card variant="outlined" sx={{ height: '100%', borderRadius: 2 }}><CardContent><Typography fontWeight={900} sx={{ mb: 1.5 }}>Thông tin kế hoạch</Typography><Grid container spacing={1.5}><Grid size={{ xs: 12, sm: 6 }}><Info label="Kế hoạch" value={plan.PlanNo || plan.PlanID} /></Grid><Grid size={{ xs: 12, sm: 6 }}><Info label="Sản phẩm" value={[displayProductCode, plan.ProductName].filter(Boolean).join(' — ')} /></Grid><Grid size={{ xs: 12, sm: 6 }}><Info label="Đơn hàng" value={plan.OrderCode} /></Grid><Grid size={{ xs: 12, sm: 6 }}><Info label="Đơn vị" value={[plan.DepartmentName, plan.UnitName].filter(Boolean).join(' — ')} /></Grid><Grid size={{ xs: 6, sm: 4 }}><Info label="Công đoạn" value={[plan.OperationCode, plan.OperationName].filter(Boolean).join(' — ')} /></Grid><Grid size={{ xs: 6, sm: 4 }}><Info label="Số lượng kế hoạch" value={formatDoiTraQuantity(plan.PlanQty)} /></Grid><Grid size={{ xs: 12, sm: 4 }}><Info label="Trạng thái ERP" value={plan.ERPPlanStatus} /></Grid>{isStageBtp && <Grid size={{ xs: 12 }}><Info label="Đối tượng kiểm" value={`${displayProductCode} — BTP sau công đoạn May`} /></Grid>}</Grid></CardContent></Card></Grid>
+                    <Grid size={{ xs: 12, md: 8 }}><Card variant="outlined" sx={{ height: '100%', borderRadius: 2 }}><CardContent><Typography fontWeight={900} sx={{ mb: 1.5 }}>Thông tin kế hoạch</Typography><Grid container spacing={1.5}><Grid size={{ xs: 12, sm: 6 }}><Info label="Kế hoạch" value={plan.PlanNo || plan.PlanID} /></Grid><Grid size={{ xs: 12, sm: 6 }}><Info label="Sản phẩm" value={[displayProductCode, plan.ProductName].filter(Boolean).join(' — ')} /></Grid><Grid size={{ xs: 12, sm: 6 }}><Info label="Đơn hàng" value={plan.OrderCode} /></Grid><Grid size={{ xs: 12, sm: 6 }}><Info label="Đơn vị" value={doiTraProductionDepartmentLabel(plan, [plan.DepartmentName, plan.UnitName].filter(Boolean).join(' — '))} /></Grid><Grid size={{ xs: 6, sm: 4 }}><Info label="Công đoạn" value={[plan.OperationCode, plan.OperationName].filter(Boolean).join(' — ')} /></Grid><Grid size={{ xs: 6, sm: 4 }}><Info label="Số lượng kế hoạch" value={formatDoiTraQuantity(plan.PlanQty)} /></Grid><Grid size={{ xs: 12, sm: 4 }}><Info label="Trạng thái ERP" value={plan.ERPPlanStatus} /></Grid>{isStageBtp && <Grid size={{ xs: 12 }}><Info label="Đối tượng kiểm" value={`${displayProductCode} — BTP sau công đoạn May`} /></Grid>}</Grid></CardContent></Card></Grid>
                     <Grid size={{ xs: 12, md: 4 }}><Card variant="outlined" sx={{ height: '100%', borderRadius: 2 }}><CardContent><Typography fontWeight={900}>{requiresB7 ? 'KPH, B7 và Kho xử lý độc lập' : 'KPH và Kho xác nhận nhập'}</Typography><Stack direction="row" spacing={1} sx={{ my: 1.5 }} flexWrap="wrap" useFlexGap>{requiresB7 && <Chip size="small" color={quotaStatus.color} label={quotaStatus.label} />} {!requiresB7 && <Chip size="small" variant="outlined" label="Không áp dụng B7" />}<Chip size="small" color={warehouseConfirmed ? 'success' : 'warning'} label={warehouseConfirmed ? 'Kho đã xác nhận nhập' : 'Kho chưa xác nhận nhập'} /></Stack><Typography variant="body2" color="text.secondary">{requiresB7 ? 'Ngay khi KCS hoàn tất, hệ thống tạo phiếu nhập BTP lỗi và mở KPH. B7 và Kho có thể xác nhận trên hai nhánh độc lập.' : 'Phiếu Bao gói hoàn tất khi KPH kết thúc và Kho đã xác nhận nhập BTP lỗi.'}</Typography></CardContent></Card></Grid>
                 </Grid>
                 <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}><Typography fontWeight={900} sx={{ mb: 1.5 }}>Thông tin xác nhận</Typography><Grid container spacing={2}><Grid size={{ xs: 12, md: 4 }}><Info label="KCS hoàn tất" value={phieu.KcsCompletedAt ? `${phieu.TenKcsHoanTat || '---'} — ${formatDoiTraDate(phieu.KcsCompletedAt, true)}` : null} /></Grid>{Number(workflow.definition?.VersionNo) < 6 && <Grid size={{ xs: 12, md: 4 }}><Info label="TBP KCS xác nhận" value={phieu.TbpKcsConfirmedAt ? `${phieu.TenTbpKcsXacNhan || '---'} — ${formatDoiTraDate(phieu.TbpKcsConfirmedAt, true)}` : null} /></Grid>}{requiresB7 && <Grid size={{ xs: 12, md: 4 }}><Info label="B7 xác nhận số lượng" value={phieu.B7ConfirmedAt ? `${phieu.TenB7XacNhan || '---'} — ${formatDoiTraDate(phieu.B7ConfirmedAt, true)}` : null} /></Grid>}<Grid size={{ xs: 12, md: 4 }}><Info label="Kho xác nhận nhập" value={activeReceipt?.WarehouseConfirmedAt ? `${activeReceipt.TenKhoXacNhan || '---'} — ${formatDoiTraDate(activeReceipt.WarehouseConfirmedAt, true)}` : null} /></Grid></Grid></Paper>
@@ -393,7 +426,7 @@ export default function DoiTraPhoiLoiDetail() {
 
             {activeTab === 'history' && <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}><Stack direction="row" spacing={1} alignItems="center" sx={{ p: 2 }}><HistoryIcon color="action" /><Box><Typography fontWeight={900}>Lịch sử phiếu</Typography><Typography variant="caption" color="text.secondary">Các mốc tạo phiếu, lưu nháp gần nhất và trình duyệt</Typography></Box></Stack><TableContainer><Table size="small"><TableHead><TableRow sx={{ bgcolor: '#f8fafc' }}><TableCell>Thời gian</TableCell><TableCell>Hành động</TableCell><TableCell>Trạng thái</TableCell><TableCell>Người thực hiện</TableCell><TableCell>Ghi chú</TableCell></TableRow></TableHead><TableBody>{history.map((item) => <TableRow key={item.Id}><TableCell>{formatDoiTraDate(item.CreatedAt, true)}</TableCell><TableCell>{doiTraHistoryActionLabel(item.ActionCode)}</TableCell><TableCell>{doiTraStatusMeta(item.ToStatus).label}</TableCell><TableCell>{item.TenNguoiThucHien || '---'}</TableCell><TableCell>{item.GhiChu || '---'}</TableCell></TableRow>)}</TableBody></Table></TableContainer></Paper>}
 
-            <Dialog open={Boolean(actionDialog)} onClose={() => !actionLoading && setActionDialog(null)} fullWidth maxWidth="sm">
+            <Dialog open={Boolean(actionDialog)} onClose={() => !actionLoading && setActionDialog(null)} fullWidth maxWidth="md">
                 <DialogTitle>{actionDialog?.ActionName}</DialogTitle>
                 <DialogContent dividers>
                     <Stack spacing={2} sx={{ pt: 0.5 }}>
@@ -405,28 +438,36 @@ export default function DoiTraPhoiLoiDetail() {
                             inputProps={{ maxLength: 1000 }}
                         />
                         {['KCS_SUBMIT', 'KCS_RESUBMIT'].includes(actionDialog?.ActionCode) && <>
-                            <TextField required fullWidth type="number" label="Số lượng BTP lỗi" value={btpDefectQuantity} onChange={(event) => setBtpDefectQuantity(event.target.value)} inputProps={{ min: 0.01, max: plan.PlanQty, step: 0.01 }} helperText={`Mặc định là số bộ lỗi lớn nhất · Tối đa ${formatDoiTraQuantity(plan.PlanQty, 2)} · Có thể chỉnh sửa`} />
-                            <TextField required fullWidth select label="Kho nhập BTP lỗi" value={receiptWarehouseId}
-                                onChange={(event) => setReceiptWarehouseId(event.target.value)}
-                                helperText="Chọn trực tiếp từ danh mục kho đang sử dụng trên ERP">
-                                <MenuItem value=""><em>Chọn kho nhập</em></MenuItem>
-                                {warehouses.map((warehouse) => <MenuItem key={warehouse.Id} value={warehouse.Id}>
-                                    {warehouse.TenKho || `Kho ${warehouse.Id}`}
-                                </MenuItem>)}
-                            </TextField>
-                            <TextField required fullWidth select label="Loại BTP" value={receiptBtpTypeId}
-                                onChange={(event) => setReceiptBtpTypeId(event.target.value)}
-                                helperText="Chọn loại BTP thực tế: May, Cắt phôi, Dán…">
-                                <MenuItem value=""><em>Chọn loại BTP</em></MenuItem>
-                                {btpTypes.map((item) => <MenuItem key={item.Id} value={item.Id}>
-                                    {[item.MaQuyTrinh, item.TenQuyTrinh].filter(Boolean).join(' — ') || `Loại BTP ${item.Id}`}
-                                </MenuItem>)}
-                            </TextField>
+                            <Alert severity="info">Hệ thống dự kiến tạo <strong>{receiptDrafts.length} phiếu nhập BTP</strong> theo quy trình được cấp của từng vật tư trong đơn hàng. KCS kiểm tra và có thể điều chỉnh trước khi xác nhận.</Alert>
+                            {receiptDrafts.map((draft, index) => <Paper key={draft.key} variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                                <Typography fontWeight={900} sx={{ mb: 0.5 }}>Phiếu nhập dự kiến {index + 1}</Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                                    Vật tư: {draft.items.map((item) => `${item.MaVatTu || `#${item.PhoiId}`} — ${item.TenLoaiPhoi || 'Phôi'}`).join(', ')}
+                                </Typography>
+                                <Grid container spacing={1.5}>
+                                    <Grid size={{ xs: 12, md: 4 }}><TextField required fullWidth select label="Loại BTP" value={draft.processId}
+                                        onChange={(event) => updateReceiptDraft(draft.key, 'processId', event.target.value)}>
+                                        <MenuItem value=""><em>Chọn loại BTP</em></MenuItem>
+                                        {btpTypes.map((item) => <MenuItem key={item.Id} value={item.Id}>{item.TenQuyTrinh || item.MaQuyTrinh || `Loại BTP ${item.Id}`}</MenuItem>)}
+                                    </TextField></Grid>
+                                    <Grid size={{ xs: 12, md: 4 }}><TextField required fullWidth select label="Kho nhập" value={draft.warehouseId}
+                                        onChange={(event) => updateReceiptDraft(draft.key, 'warehouseId', event.target.value)}>
+                                        <MenuItem value=""><em>Chọn kho nhập</em></MenuItem>
+                                        {warehouses.map((warehouse) => <MenuItem key={warehouse.Id} value={warehouse.Id}>{warehouse.TenKho || `Kho ${warehouse.Id}`}</MenuItem>)}
+                                    </TextField></Grid>
+                                    <Grid size={{ xs: 12, md: 4 }}><TextField required fullWidth type="number" label="Số lượng BTP lỗi" value={draft.quantity}
+                                        onChange={(event) => updateReceiptDraft(draft.key, 'quantity', event.target.value)}
+                                        inputProps={{ min: 0.01, max: plan.PlanQty, step: 0.01 }} />
+                                    </Grid>
+                                </Grid>
+                                {draft.items.some((item) => Number(item.MappingCount) > 1) && <Alert severity="warning" sx={{ mt: 1.5 }}>Có vật tư được cấp cho nhiều quy trình; hệ thống đang lấy dòng cấu hình đầu tiên. Vui lòng kiểm tra lại Loại BTP.</Alert>}
+                                {draft.items.some((item) => !item.SuggestedProcessId) && <Alert severity="warning" sx={{ mt: 1.5 }}>Có vật tư chưa xác định được quy trình cấp trong đơn hàng. KCS cần chọn Loại BTP thủ công.</Alert>}
+                            </Paper>)}
                             <Alert severity="info">
                                 BTP: {expectedBtp}{plan.ExpectedProductionLot ? ` · Lô ${plan.ExpectedProductionLot}` : ''}<br />
                                 Công đoạn: {[plan.OperationCode, plan.OperationName].filter(Boolean).join(' — ') || '---'}.
                             </Alert>
-                            <Alert severity="info">Khi xác nhận, hệ thống tạo phiếu nhập BTP lỗi theo Kho và Loại BTP đã chọn ở trạng thái Đang lập, đồng thời mở luồng KPH. Danh sách phôi và lỗi sẽ được khóa; Kho xác nhận nhập ở bước độc lập.</Alert>
+                            <Alert severity="info">Khi xác nhận, hệ thống tạo riêng từng phiếu nhập BTP lỗi ở trạng thái Đang lập và đồng thời mở luồng KPH.</Alert>
                         </>}
                         {actionDialog?.ActionCode === 'KHO_CONFIRM' && <Alert severity="warning">Xác nhận sẽ chuyển phiếu nhập BTP lỗi sang trạng thái ERP 5 — Đã duyệt. Thao tác được ghi nhận theo tài khoản Kho hiện tại.</Alert>}
                     </Stack>

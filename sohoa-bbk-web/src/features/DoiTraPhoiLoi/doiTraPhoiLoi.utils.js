@@ -84,3 +84,20 @@ export const doiTraDefectiveSetQuantity = (item) => Math.ceil(
 export const maxDoiTraDefectiveSetQuantity = (items = []) => (items || []).reduce(
     (maximum, item) => Math.max(maximum, doiTraDefectiveSetQuantity(item)), 0
 );
+
+const normalizeDoiTraText = (value) => String(value ?? '').trim().normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toUpperCase();
+
+export const isDoiTraSxbtDepartment = (item = {}) => {
+    const unitCode = String(item.UnitCode ?? '').trim();
+    const unitName = normalizeDoiTraText(item.UnitName);
+    const departmentName = normalizeDoiTraText(item.DepartmentName);
+    return unitCode === '32' || unitName === 'SXBT' || departmentName.startsWith('SXBT');
+};
+
+export const doiTraProductionDepartmentLabel = (item = {}, fallback = '') => {
+    if (isDoiTraSxbtDepartment(item)) {
+        return String(item.SxbtUnitCode ?? '').trim() || '---';
+    }
+    return fallback || item.DepartmentName || item.UnitName || item.DepartmentCode || '---';
+};

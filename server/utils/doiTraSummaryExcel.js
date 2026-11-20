@@ -1,6 +1,15 @@
 const XLSX = require('xlsx');
 
 const text = (value) => String(value ?? '').trim();
+const normalize = (value) => text(value).normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toUpperCase();
+const productionDepartmentLabel = (item) => {
+    const isSxbt = text(item.UnitCode) === '32'
+        || normalize(item.UnitName) === 'SXBT'
+        || normalize(item.DepartmentName).startsWith('SXBT');
+    if (isSxbt) return text(item.SxbtUnitCode);
+    return [item.DepartmentCode, item.DepartmentName].filter(Boolean).join(' - ');
+};
 const numberOrBlank = (value) => {
     if (value === '' || value == null) return '';
     const parsed = Number(value);
@@ -88,7 +97,7 @@ const buildDoiTraSummaryWorkbook = ({ items = [], defects = [], receipts = [] } 
             'Mã sản phẩm': item.ProductCode || '',
             'Tên sản phẩm': item.ProductName || '',
             'Công đoạn': [item.OperationCode, item.OperationName].filter(Boolean).join(' - '),
-            'Đơn vị sản xuất': [item.DepartmentCode, item.DepartmentName].filter(Boolean).join(' - '),
+            'Đơn vị sản xuất': productionDepartmentLabel(item),
             'Mã vật tư': item.MaVatTu || '',
             'Quy cách vật tư': item.QuyCachVatTu || '',
             'Loại phôi': item.TenLoaiPhoi || '',
