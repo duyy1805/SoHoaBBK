@@ -142,6 +142,17 @@ const isDefectAdmin = (user) =>
   (Array.isArray(user?.roles) && user.roles.some((role) => String(role || "").toUpperCase() === "ADMIN"));
 const DEFECT_APPROVE_PERMISSION = "DUYET_DANH_MUC_LOI";
 const CHECK_CATALOG_MANAGE_PERMISSION = "QUAN_LY_DANH_MUC_KIEM";
+const PHOI_DETAIL_MANAGE_PERMISSION = "QUAN_LY_CHI_TIET_PHOI";
+const authorizePhoiDetailManagement = (req, res, next) => {
+  const permissions = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+  const roles = Array.isArray(req.user?.roles) ? req.user.roles : [];
+  const isSystemAdmin = roles.some((role) => String(role || "").toUpperCase() === "ADMIN");
+  if (isSystemAdmin || permissions.includes(PHOI_DETAIL_MANAGE_PERMISSION)) return next();
+  return res.status(403).json({
+    message: "Bạn chưa có quyền quản lý chi tiết phôi",
+    requiredPermissions: [PHOI_DETAIL_MANAGE_PERMISSION]
+  });
+};
 const DEFECT_B7_DEPARTMENT_CODE = "B7";
 const DEFECT_GROUP_CODES = new Set(["L01", "L02", "L03", "L04", "L05"]);
 const hasDefectRole = (user, roleCode) =>
@@ -2336,6 +2347,268 @@ router.get(
     }
   }
 );
+
+// Quản lý chi tiết phôi nguồn tại TAG_Giang. Các API này dùng danh mục ERP
+// (TAG_QTKD) vì ID_SanPham/ID_VatTu trong bảng nguồn không phải ID danh mục nội bộ.
+router.get("/phoi-chi-tiet/products", authenticateToken, authorizePhoiDetailManagement, async (req, res) => {
+  try {
+    const keyword = trimValue(req.query.keyword);
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("Keyword", sql.NVarChar(200), keyword || null)
+      .query(`
+        SELECT TOP (50) product.ID_SanPham AS Id,product.ItemCode,
+          product.Ten_SanPham AS TenSanPham,product.Co_SanPham AS CoSanPham,
+          product.Mau_SanPham AS MauSanPham,product.ThiTruong
+        FROM TAG_QTKD.dbo.DM_SanPham product
+        WHERE product.TonTai=1 AND NULLIF(LTRIM(RTRIM(product.ItemCode)),N'') IS NOT NULL
+          AND (@Keyword IS NULL OR product.ItemCode LIKE N'%'+@Keyword+N'%'
+            OR product.Ten_SanPham LIKE N'%'+@Keyword+N'%')
+        ORDER BY CASE WHEN product.ItemCode=@Keyword THEN 0 ELSE 1 END,product.ItemCode;
+      `);
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error("Search phoi products error:", err);
+    res.status(500).json({ message: "Không tìm được danh sách itemcode" });
+  }
+});
+
+router.get("/phoi-chi-tiet/materials", authenticateToken, authorizePhoiDetailManagement, async (req, res) => {
+  try {
+    const keyword = trimValue(req.query.keyword);
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("Keyword", sql.NVarChar(200), keyword || null)
+      .query(`
+        SELECT TOP (50) material.ID_VatTu AS Id,material.Ma_VatTu AS MaVatTu,
+          material.QuyCach,material.Mau_VatTu AS MauVatTu,material.Co_VatTu AS CoVatTu
+        FROM TAG_QTKD.dbo.DM_VatTu material
+        WHERE material.TonTai=1 AND NULLIF(LTRIM(RTRIM(material.Ma_VatTu)),N'') IS NOT NULL
+          AND (@Keyword IS NULL OR material.Ma_VatTu LIKE N'%'+@Keyword+N'%'
+            OR material.QuyCach LIKE N'%'+@Keyword+N'%')
+        ORDER BY CASE WHEN material.Ma_VatTu=@Keyword THEN 0 ELSE 1 END,material.Ma_VatTu;
+      `);
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error("Search phoi materials error:", err);
+    res.status(500).json({ message: "Không tìm được danh sách vật tư" });
+  }
+});
+
+router.get("/phoi-chi-tiet/catalog", authenticateToken, authorizePhoiDetailManagement, async (req, res) => {
+  try {
+    const keyword = trimValue(req.query.keyword);
+    const status = String(req.query.status || "all").toLowerCase();
+    const page = Math.max(0, Number.parseInt(req.query.page, 10) || 0);
+    const pageSize = Math.min(100, Math.max(10, Number.parseInt(req.query.pageSize, 10) || 25));
+    if (!["all", "configured", "missing"].includes(status)) {
+      return res.status(400).json({ message: "Trạng thái lọc không hợp lệ" });
+    }
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("Keyword", sql.NVarChar(200), keyword || null)
+      .input("Status", sql.NVarChar(20), status)
+      .input("Offset", sql.Int, page * pageSize)
+      .input("PageSize", sql.Int, pageSize)
+      .query(`
+        ;WITH ProductCatalog AS (
+          SELECT product.ID_SanPham AS Id,product.ItemCode,
+            product.Ten_SanPham AS TenSanPham,product.Co_SanPham AS CoSanPham,
+            product.Mau_SanPham AS MauSanPham,product.ThiTruong,
+            COUNT(DISTINCT CASE WHEN ISNULL(phoi.TonTai,1)=1 THEN phoi.ID_LoiPhoi END) AS PhoiCount,
+            COUNT(DISTINCT CASE WHEN ISNULL(phoi.TonTai,1)=1 THEN phoi.ID_VatTu END) AS MaterialCount,
+            MAX(CASE WHEN ISNULL(phoi.TonTai,1)=1 THEN phoi.Ngay_Sua END) AS LastUpdatedAt
+          FROM TAG_QTKD.dbo.DM_SanPham product
+          LEFT JOIN TAG_Giang.dbo.DA_TruyNguyen_SanPham_LoiPhoi phoi ON phoi.ID_SanPham=product.ID_SanPham
+          WHERE product.TonTai=1 AND NULLIF(LTRIM(RTRIM(product.ItemCode)),N'') IS NOT NULL
+            AND (@Keyword IS NULL OR product.ItemCode LIKE N'%'+@Keyword+N'%'
+              OR product.Ten_SanPham LIKE N'%'+@Keyword+N'%')
+          GROUP BY product.ID_SanPham,product.ItemCode,product.Ten_SanPham,
+            product.Co_SanPham,product.Mau_SanPham,product.ThiTruong
+        ), CatalogStats AS (
+          SELECT SUM(CASE WHEN PhoiCount>0 THEN 1 ELSE 0 END) AS ConfiguredRows,
+            SUM(CASE WHEN PhoiCount=0 THEN 1 ELSE 0 END) AS MissingRows
+          FROM ProductCatalog
+        ), Filtered AS (
+          SELECT * FROM ProductCatalog
+          WHERE @Status=N'all' OR (@Status=N'configured' AND PhoiCount>0) OR (@Status=N'missing' AND PhoiCount=0)
+        )
+        SELECT Filtered.*,COUNT(*) OVER() AS TotalRows,stats.ConfiguredRows,stats.MissingRows
+        FROM Filtered CROSS JOIN CatalogStats stats
+        ORDER BY Id DESC
+        OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+      `);
+    const rows = result.recordset || [];
+    res.json({
+      data: rows.map(({ TotalRows, ConfiguredRows, MissingRows, ...row }) => row),
+      total: Number(rows[0]?.TotalRows || 0),
+      configured: Number(rows[0]?.ConfiguredRows || 0),
+      missing: Number(rows[0]?.MissingRows || 0),
+      page,
+      pageSize
+    });
+  } catch (err) {
+    console.error("Get phoi catalog error:", err);
+    res.status(500).json({ message: "Không tải được danh sách trạng thái chi tiết phôi" });
+  }
+});
+
+router.get("/phoi-chi-tiet", authenticateToken, authorizePhoiDetailManagement, async (req, res) => {
+  const productId = Number(req.query.productId);
+  if (!Number.isInteger(productId) || productId <= 0) {
+    return res.status(400).json({ message: "Itemcode không hợp lệ" });
+  }
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().input("ProductId", sql.Int, productId).query(`
+      SELECT row.ID_LoiPhoi AS Id,row.ID_SanPham AS ProductId,row.ID_VatTu AS MaterialId,
+        material.Ma_VatTu AS MaVatTu,material.QuyCach,row.Ten_loaiPhoi AS TenLoaiPhoi,
+        row.DaoChat,row.So_phoi AS SoPhoi,row.KyHieu,ISNULL(row.IS_IN,0) AS IsIn,
+        row.DinhMuc,row.Ngay_Sua AS NgaySua
+      FROM TAG_Giang.dbo.DA_TruyNguyen_SanPham_LoiPhoi row
+      LEFT JOIN TAG_QTKD.dbo.DM_VatTu material ON material.ID_VatTu=row.ID_VatTu
+      WHERE row.ID_SanPham=@ProductId AND ISNULL(row.TonTai,1)=1
+      ORDER BY material.Ma_VatTu,row.Ten_loaiPhoi,row.ID_LoiPhoi;
+    `);
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error("Get phoi details error:", err);
+    res.status(500).json({ message: "Không tải được thông tin chi tiết phôi" });
+  }
+});
+
+router.post("/phoi-chi-tiet", authenticateToken, authorizePhoiDetailManagement, async (req, res) => {
+  const productIds = [...new Set((req.body.productIds || []).map(Number))]
+    .filter(id => Number.isInteger(id) && id > 0);
+  const materialId = Number(req.body.materialId);
+  const rows = (req.body.rows || []).map(row => ({
+    tenLoaiPhoi: trimValue(row.tenLoaiPhoi),
+    daoChat: trimValue(row.daoChat),
+    soPhoi: trimValue(row.soPhoi),
+    kyHieu: trimValue(row.kyHieu),
+    isIn: Boolean(row.isIn),
+    dinhMuc: row.dinhMuc === "" || row.dinhMuc == null ? null : Number(row.dinhMuc)
+  })).filter(row => row.tenLoaiPhoi);
+  if (!productIds.length || !Number.isInteger(materialId) || materialId <= 0 || !rows.length) {
+    return res.status(400).json({ message: "Cần chọn itemcode, vật tư và nhập ít nhất một loại phôi" });
+  }
+  if (rows.some(row => row.tenLoaiPhoi.length > 200 || row.daoChat.length > 100
+    || row.soPhoi.length > 30 || row.kyHieu.length > 50
+    || (row.dinhMuc != null && (!Number.isFinite(row.dinhMuc) || row.dinhMuc < 0)))) {
+    return res.status(400).json({ message: "Thông tin loại phôi không hợp lệ hoặc vượt độ dài cho phép" });
+  }
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("ProductIds", sql.NVarChar(sql.MAX), JSON.stringify(productIds))
+      .input("Rows", sql.NVarChar(sql.MAX), JSON.stringify(rows))
+      .input("MaterialId", sql.Int, materialId)
+      .input("UserId", sql.Int, Number(req.user?.userId) || null)
+      .query(`
+        SET XACT_ABORT ON; BEGIN TRANSACTION;
+        IF EXISTS(SELECT 1 FROM OPENJSON(@ProductIds) ids
+          LEFT JOIN TAG_QTKD.dbo.DM_SanPham product ON product.ID_SanPham=TRY_CONVERT(INT,ids.value) AND product.TonTai=1
+          WHERE product.ID_SanPham IS NULL) THROW 52101,N'Có itemcode không tồn tại hoặc đã ngừng sử dụng.',1;
+        IF NOT EXISTS(SELECT 1 FROM TAG_QTKD.dbo.DM_VatTu WHERE ID_VatTu=@MaterialId AND TonTai=1)
+          THROW 52102,N'Vật tư không tồn tại hoặc đã ngừng sử dụng.',1;
+
+        DECLARE @Inserted INT=0,@Skipped INT=0;
+        SELECT TRY_CONVERT(INT,ids.value) ProductId INTO #Products FROM OPENJSON(@ProductIds) ids;
+        SELECT DISTINCT TenLoaiPhoi,DaoChat,SoPhoi,KyHieu,IsIn,DinhMuc INTO #Rows
+        FROM OPENJSON(@Rows) WITH(TenLoaiPhoi NVARCHAR(200) '$.tenLoaiPhoi',DaoChat NVARCHAR(100) '$.daoChat',
+          SoPhoi NVARCHAR(30) '$.soPhoi',KyHieu NVARCHAR(50) '$.kyHieu',IsIn BIT '$.isIn',DinhMuc DECIMAL(18,8) '$.dinhMuc');
+
+        INSERT TAG_Giang.dbo.DA_TruyNguyen_SanPham_LoiPhoi
+          (ID_SanPham,ID_VatTu,Ten_loaiPhoi,DaoChat,So_phoi,TonTai,KyHieu,IS_IN,DinhMuc,ID_TaiKhoan_SuaCuoi,Ngay_Sua,GuID)
+        SELECT product.ProductId,@MaterialId,row.TenLoaiPhoi,NULLIF(row.DaoChat,N''),NULLIF(row.SoPhoi,N''),1,
+          NULLIF(row.KyHieu,N''),row.IsIn,row.DinhMuc,@UserId,GETDATE(),NEWID()
+        FROM #Products product CROSS JOIN #Rows row
+        WHERE NOT EXISTS(SELECT 1 FROM TAG_Giang.dbo.DA_TruyNguyen_SanPham_LoiPhoi currentRow WITH(UPDLOCK,HOLDLOCK)
+          WHERE currentRow.ID_SanPham=product.ProductId AND currentRow.ID_VatTu=@MaterialId AND ISNULL(currentRow.TonTai,1)=1
+            AND UPPER(LTRIM(RTRIM(ISNULL(currentRow.Ten_loaiPhoi,N''))))=UPPER(LTRIM(RTRIM(ISNULL(row.TenLoaiPhoi,N''))))
+            AND UPPER(LTRIM(RTRIM(ISNULL(currentRow.DaoChat,N''))))=UPPER(LTRIM(RTRIM(ISNULL(row.DaoChat,N''))))
+            AND UPPER(LTRIM(RTRIM(ISNULL(currentRow.So_phoi,N''))))=UPPER(LTRIM(RTRIM(ISNULL(row.SoPhoi,N''))))
+            AND UPPER(LTRIM(RTRIM(ISNULL(currentRow.KyHieu,N''))))=UPPER(LTRIM(RTRIM(ISNULL(row.KyHieu,N'')))));
+        SET @Inserted=@@ROWCOUNT;
+        SET @Skipped=(SELECT COUNT(*) FROM #Products)*(SELECT COUNT(*) FROM #Rows)-@Inserted;
+        COMMIT; SELECT @Inserted AS Inserted,@Skipped AS Skipped;
+      `);
+    res.status(201).json({ message: "Đã thêm thông tin phôi", ...(result.recordset?.[0] || {}) });
+  } catch (err) {
+    console.error("Create phoi details error:", err);
+    const number = Number(err?.number || err?.originalError?.info?.number);
+    res.status(number === 52101 || number === 52102 ? 422 : 500)
+      .json({ message: err?.originalError?.info?.message || "Không thêm được thông tin phôi" });
+  }
+});
+
+router.post("/phoi-chi-tiet/copy", authenticateToken, authorizePhoiDetailManagement, async (req, res) => {
+  const sourceProductId = Number(req.body.sourceProductId);
+  const targetProductIds = [...new Set((req.body.targetProductIds || []).map(Number))]
+    .filter(id => Number.isInteger(id) && id > 0 && id !== sourceProductId);
+  if (!Number.isInteger(sourceProductId) || sourceProductId <= 0 || !targetProductIds.length) {
+    return res.status(400).json({ message: "Cần chọn item nguồn và ít nhất một item đích khác nguồn" });
+  }
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("SourceProductId", sql.Int, sourceProductId)
+      .input("TargetProductIds", sql.NVarChar(sql.MAX), JSON.stringify(targetProductIds))
+      .input("UserId", sql.Int, Number(req.user?.userId) || null)
+      .query(`
+        SET XACT_ABORT ON; BEGIN TRANSACTION;
+        IF NOT EXISTS(SELECT 1 FROM TAG_QTKD.dbo.DM_SanPham WHERE ID_SanPham=@SourceProductId AND TonTai=1)
+          THROW 52103,N'Itemcode nguồn không tồn tại hoặc đã ngừng sử dụng.',1;
+        IF NOT EXISTS(SELECT 1 FROM TAG_Giang.dbo.DA_TruyNguyen_SanPham_LoiPhoi WHERE ID_SanPham=@SourceProductId AND ISNULL(TonTai,1)=1)
+          THROW 52104,N'Itemcode nguồn chưa có thông tin phôi để sao chép.',1;
+        IF EXISTS(SELECT 1 FROM OPENJSON(@TargetProductIds) ids
+          LEFT JOIN TAG_QTKD.dbo.DM_SanPham product ON product.ID_SanPham=TRY_CONVERT(INT,ids.value) AND product.TonTai=1
+          WHERE product.ID_SanPham IS NULL) THROW 52105,N'Có itemcode đích không tồn tại hoặc đã ngừng sử dụng.',1;
+
+        DECLARE @Inserted INT=0;
+        SELECT TRY_CONVERT(INT,ids.value) ProductId INTO #Targets FROM OPENJSON(@TargetProductIds) ids;
+        INSERT TAG_Giang.dbo.DA_TruyNguyen_SanPham_LoiPhoi
+          (ID_SanPham,ID_VatTu,Ten_loaiPhoi,DaoChat,So_phoi,TonTai,KyHieu,IS_IN,DinhMuc,ID_TaiKhoan_SuaCuoi,Ngay_Sua,GuID)
+        SELECT DISTINCT target.ProductId,source.ID_VatTu,source.Ten_loaiPhoi,source.DaoChat,source.So_phoi,1,
+          source.KyHieu,source.IS_IN,source.DinhMuc,@UserId,GETDATE(),NEWID()
+        FROM #Targets target CROSS JOIN TAG_Giang.dbo.DA_TruyNguyen_SanPham_LoiPhoi source
+        WHERE source.ID_SanPham=@SourceProductId AND ISNULL(source.TonTai,1)=1
+          AND NOT EXISTS(SELECT 1 FROM TAG_Giang.dbo.DA_TruyNguyen_SanPham_LoiPhoi currentRow WITH(UPDLOCK,HOLDLOCK)
+            WHERE currentRow.ID_SanPham=target.ProductId AND currentRow.ID_VatTu=source.ID_VatTu AND ISNULL(currentRow.TonTai,1)=1
+              AND UPPER(LTRIM(RTRIM(ISNULL(currentRow.Ten_loaiPhoi,N''))))=UPPER(LTRIM(RTRIM(ISNULL(source.Ten_loaiPhoi,N''))))
+              AND UPPER(LTRIM(RTRIM(ISNULL(currentRow.DaoChat,N''))))=UPPER(LTRIM(RTRIM(ISNULL(source.DaoChat,N''))))
+              AND UPPER(LTRIM(RTRIM(ISNULL(currentRow.So_phoi,N''))))=UPPER(LTRIM(RTRIM(ISNULL(source.So_phoi,N''))))
+              AND UPPER(LTRIM(RTRIM(ISNULL(currentRow.KyHieu,N''))))=UPPER(LTRIM(RTRIM(ISNULL(source.KyHieu,N'')))));
+        SET @Inserted=@@ROWCOUNT; COMMIT; SELECT @Inserted AS Inserted;
+      `);
+    res.status(201).json({ message: "Đã sao chép thông tin phôi", ...(result.recordset?.[0] || {}) });
+  } catch (err) {
+    console.error("Copy phoi details error:", err);
+    const number = Number(err?.number || err?.originalError?.info?.number);
+    res.status(number >= 52103 && number <= 52105 ? 422 : 500)
+      .json({ message: err?.originalError?.info?.message || "Không sao chép được thông tin phôi" });
+  }
+});
+
+router.delete("/phoi-chi-tiet/:id", authenticateToken, authorizePhoiDetailManagement, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Dòng phôi không hợp lệ" });
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().input("Id", sql.Int, id)
+      .input("UserId", sql.Int, Number(req.user?.userId) || null).query(`
+        UPDATE TAG_Giang.dbo.DA_TruyNguyen_SanPham_LoiPhoi
+        SET TonTai=0,ID_TaiKhoan_SuaCuoi=@UserId,Ngay_Sua=GETDATE()
+        WHERE ID_LoiPhoi=@Id AND ISNULL(TonTai,1)=1;
+        SELECT @@ROWCOUNT AS AffectedRows;
+      `);
+    if (!result.recordset?.[0]?.AffectedRows) return res.status(404).json({ message: "Không tìm thấy dòng phôi" });
+    res.json({ message: "Đã xóa thông tin phôi" });
+  } catch (err) {
+    console.error("Delete phoi detail error:", err);
+    res.status(500).json({ message: "Không xóa được thông tin phôi" });
+  }
+});
 
 router.get("/san-pham-responsible-users", authenticateToken, authorize("QUAN_TRI_DM"), async (req, res) => {
   try {

@@ -223,6 +223,21 @@ export const updateSanPhamImage = (id, imageUrl) =>
 export const deleteSanPham = (id) =>
     axiosClient.delete(`/lookup/san-pham/${id}`);
 
+export const searchPhoiProducts = (keyword = "") =>
+    axiosClient.get("/lookup/phoi-chi-tiet/products", { params: { keyword } });
+export const searchPhoiMaterials = (keyword = "") =>
+    axiosClient.get("/lookup/phoi-chi-tiet/materials", { params: { keyword } });
+export const getPhoiDetailCatalog = (params = {}) =>
+    axiosClient.get("/lookup/phoi-chi-tiet/catalog", { params });
+export const getPhoiDetails = (productId) =>
+    axiosClient.get("/lookup/phoi-chi-tiet", { params: { productId } });
+export const createPhoiDetails = (data) =>
+    axiosClient.post("/lookup/phoi-chi-tiet", data);
+export const copyPhoiDetails = (data) =>
+    axiosClient.post("/lookup/phoi-chi-tiet/copy", data);
+export const deletePhoiDetail = (id) =>
+    axiosClient.delete(`/lookup/phoi-chi-tiet/${id}`);
+
 export const uploadSanPhamImage = (file, meta = {}) => {
     const formData = new FormData();
     formData.append("image", file);

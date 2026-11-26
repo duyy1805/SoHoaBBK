@@ -71,6 +71,7 @@ Hệ thống dựa trên JWT chứa `roles` và `permissions`. Các permission q
 - `XAC_NHAN_KIEM_NGHIEM`: quyền cũ, không còn dùng trong luồng phiếu kiểm thường.
 - `KET_LUAN`: người có quyền kết luận/hoàn tất biên bản hoặc một số bước quản lý chất lượng.
 - `QUAN_TRI_DM`: quản trị danh mục.
+- `QUAN_LY_CHI_TIET_PHOI`: xem và quản lý chi tiết phôi theo itemcode; được gán mặc định cho role chuyên biệt cùng mã, không phụ thuộc `QUAN_TRI_DM`.
 - `XAC_NHAN_NGUOI_XU_LY`: phân công/xác nhận người xử lý biên bản.
 
 Khi sửa UI thao tác, phải kiểm tra điều kiện permission hiện có trong cả Web và Mobile để tránh mở sai nút nghiệp vụ.

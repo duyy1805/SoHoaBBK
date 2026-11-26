@@ -29,6 +29,7 @@ import {
 } from '../doiTraPhoiLoi.utils';
 import DoiTraPhoiLoiSummaryPrintTemplate from '../components/DoiTraPhoiLoiSummaryPrintTemplate';
 import DoiTraDefectFlowReport from '../components/DoiTraDefectFlowReport';
+import PhoiCatalogManager from '../components/PhoiCatalogManager';
 
 const emptyColumnFilters = {
     ticketNo: '', createdDate: '', planOrder: '', product: '', operationDepartment: '',
@@ -85,7 +86,7 @@ export default function DoiTraPhoiLoiList() {
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams, setSearchParams] = useSearchParams();
-    const activeTab = searchParams.get('tab') === 'report' ? 'report' : 'tickets';
+    const requestedTab = searchParams.get('tab');
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedIds, setSelectedIds] = useState([]);
@@ -109,6 +110,10 @@ export default function DoiTraPhoiLoiList() {
     const permissions = user?.permissions || [];
     const isAdmin = permissions.includes('QUAN_TRI_DM')
         || (user?.roles || []).some((role) => String(role).toUpperCase().includes('ADMIN'));
+    const canManagePhoiDetails = permissions.includes('QUAN_LY_CHI_TIET_PHOI')
+        || (user?.roles || []).some((role) => String(role || '').toUpperCase() === 'ADMIN');
+    const activeTab = requestedTab === 'report' ? 'report'
+        : requestedTab === 'phoi-catalog' && canManagePhoiDetails ? 'phoi-catalog' : 'tickets';
     const canCreate = isAdmin || permissions.includes('THUC_HIEN_KIEM');
     const canDelete = permissions.includes('XOA_HO_SO_KCS');
     const listUrl = `${location.pathname}${location.search}`;
@@ -387,13 +392,16 @@ export default function DoiTraPhoiLoiList() {
             </Stack>
 
             <Paper variant="outlined" sx={{ mb: 2, borderRadius: 2 }}>
-                <Tabs value={activeTab} onChange={(_event, value) => updateQuery({ tab: value === 'report' ? 'report' : '' })}>
+                <Tabs value={activeTab} onChange={(_event, value) => updateQuery({ tab: value === 'tickets' ? '' : value })}
+                    variant="scrollable" scrollButtons="auto">
                     <Tab value="tickets" label="Danh sách phiếu" />
                     <Tab value="report" label="Báo cáo đối soát BTP lỗi" />
+                    {canManagePhoiDetails && <Tab value="phoi-catalog" label="Chi tiết phôi theo itemcode" />}
                 </Tabs>
             </Paper>
 
-            {activeTab === 'report' ? <DoiTraDefectFlowReport /> : <>
+            {activeTab === 'report' ? <DoiTraDefectFlowReport />
+                : activeTab === 'phoi-catalog' ? <PhoiCatalogManager /> : <>
             <Paper variant="outlined" sx={{ p: 1.5, mb: 2, borderRadius: 2 }}>
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} useFlexGap sx={{ flexWrap: { md: 'wrap' } }}>
                     <TextField
