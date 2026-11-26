@@ -12,6 +12,13 @@ build/
 !server/sql/migrations/20261112_doi_tra_phoi_loi_kcs_direct_kho_confirm.sql
 !server/sql/migrations/20261113_check_item_customer_aql_config.sql
 !server/sql/migrations/20261114_small_lot_aql_fallback.sql
+!server/sql/migrations/20261117_doi_tra_phoi_loi_packaging_btp.sql
+!server/sql/migrations/20261118_doi_tra_phoi_loi_defect_material_issue.sql
+!server/sql/migrations/20261118_doi_tra_phoi_loi_manual_blanks.sql
+!server/sql/migrations/20261118_doi_tra_phoi_loi_multi_plan_batch.sql
+!server/sql/migrations/20261118_doi_tra_phoi_loi_group_kph.sql
+!server/sql/migrations/20261120_doi_tra_phoi_loi_multi_btp_receipts.sql
+!server/sql/migrations/20261120_doi_tra_phoi_loi_stock_card_permission.sql
 
 *.xlsx
 
@@ -20,4 +27,8 @@ build/
 /outputs
 /docs
 server/test
+!server/test/
+server/test/*
+!server/test/doiTraPackagingWorkflow.test.js
+!server/test/doiTraMultiPlan.test.js
 scripts

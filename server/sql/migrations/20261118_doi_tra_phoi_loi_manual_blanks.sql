@@ -1,0 +1,61 @@
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+GO
+
+BEGIN TRANSACTION;
+
+IF OBJECT_ID(N'dbo.DOI_TRA_PHOI_LOI_PHOI',N'U') IS NULL
+    THROW 52820,N'Chưa có bảng phôi đổi trả.',1;
+
+IF OBJECT_ID(N'dbo.DM_PHOI_DOI_TRA_NHAP_TAY',N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.DM_PHOI_DOI_TRA_NHAP_TAY(
+        Id INT IDENTITY(1,1) NOT NULL,
+        ProductCode NVARCHAR(100) NOT NULL,
+        SourceVatTuId INT NOT NULL,
+        MaVatTu NVARCHAR(30) NULL,
+        QuyCachVatTu NVARCHAR(4000) NULL,
+        TenLoaiPhoi NVARCHAR(200) NOT NULL,
+        DaoChat NVARCHAR(100) NULL,
+        SoPhoi NVARCHAR(30) NULL,
+        KyHieu NVARCHAR(50) NULL,
+        IsActive BIT NOT NULL CONSTRAINT DF_DTPL_MANUAL_IsActive DEFAULT(1),
+        CreatedBy INT NOT NULL,
+        CreatedAt DATETIME2(0) NOT NULL CONSTRAINT DF_DTPL_MANUAL_CreatedAt DEFAULT(SYSDATETIME()),
+        UpdatedAt DATETIME2(0) NOT NULL CONSTRAINT DF_DTPL_MANUAL_UpdatedAt DEFAULT(SYSDATETIME()),
+        CONSTRAINT PK_DTPL_MANUAL PRIMARY KEY(Id),
+        CONSTRAINT FK_DTPL_MANUAL_CreatedBy FOREIGN KEY(CreatedBy) REFERENCES dbo.USERS(Id)
+    );
+    CREATE INDEX IX_DTPL_MANUAL_Product
+        ON dbo.DM_PHOI_DOI_TRA_NHAP_TAY(ProductCode,IsActive,SourceVatTuId,Id);
+END;
+
+IF COL_LENGTH(N'dbo.DOI_TRA_PHOI_LOI_PHOI',N'SourceManualPhoiId') IS NULL
+    ALTER TABLE dbo.DOI_TRA_PHOI_LOI_PHOI ADD SourceManualPhoiId INT NULL;
+GO
+
+IF EXISTS(SELECT 1 FROM sys.check_constraints
+    WHERE parent_object_id=OBJECT_ID(N'dbo.DOI_TRA_PHOI_LOI_PHOI') AND name=N'CK_DTPLP_SourceType')
+    ALTER TABLE dbo.DOI_TRA_PHOI_LOI_PHOI DROP CONSTRAINT CK_DTPLP_SourceType;
+
+IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE name=N'FK_DTPLP_ManualPhoi')
+    ALTER TABLE dbo.DOI_TRA_PHOI_LOI_PHOI WITH CHECK ADD CONSTRAINT FK_DTPLP_ManualPhoi
+        FOREIGN KEY(SourceManualPhoiId) REFERENCES dbo.DM_PHOI_DOI_TRA_NHAP_TAY(Id);
+
+IF NOT EXISTS(SELECT 1 FROM sys.indexes
+    WHERE object_id=OBJECT_ID(N'dbo.DOI_TRA_PHOI_LOI_PHOI') AND name=N'UX_DTPLP_Manual')
+    CREATE UNIQUE INDEX UX_DTPLP_Manual
+        ON dbo.DOI_TRA_PHOI_LOI_PHOI(PhieuId,SourceManualPhoiId)
+        WHERE SourceType=N'MANUAL' AND SourceManualPhoiId IS NOT NULL;
+
+ALTER TABLE dbo.DOI_TRA_PHOI_LOI_PHOI WITH CHECK ADD CONSTRAINT CK_DTPLP_SourceType CHECK(
+    (SourceType=N'COMPONENT' AND SourceLoiPhoiId IS NOT NULL AND SourceVatTuId IS NOT NULL
+        AND SourceCatalogProductId IS NULL AND SourceManualPhoiId IS NULL)
+    OR (SourceType=N'BTP_STAGE' AND SourceLoiPhoiId IS NULL AND SourceVatTuId IS NULL
+        AND SourceCatalogProductId IS NOT NULL AND SourceManualPhoiId IS NULL)
+    OR (SourceType=N'MANUAL' AND SourceLoiPhoiId IS NULL AND SourceVatTuId IS NOT NULL
+        AND SourceCatalogProductId IS NULL AND SourceManualPhoiId IS NOT NULL)
+);
+
+COMMIT;
+GO

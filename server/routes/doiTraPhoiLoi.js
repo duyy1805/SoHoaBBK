@@ -92,6 +92,7 @@ const isB7Actor = async (executor, user) => {
 };
 
 const canRunWorkflowAction = async (executor, user, phieu, actionCode) => {
+    if (actionCode === 'STOCK_CARD_RECORD') return hasPermission(user, 'GHI_THE_KHO');
     if (isAdmin(user)) return true;
     const userId = Number(user?.userId || user?.id || 0);
     if (actionCode === 'KCS_SUBMIT' || actionCode === 'KCS_RESUBMIT') {
@@ -103,7 +104,6 @@ const canRunWorkflowAction = async (executor, user, phieu, actionCode) => {
     }
     if (actionCode === 'B7_CONFIRM') return isB7Actor(executor, user);
     if (actionCode === 'KHO_CONFIRM') return hasPermission(user, 'XAC_NHAN_KHO_SXBT');
-    if (actionCode === 'STOCK_CARD_RECORD') return hasPermission(user, 'GHI_THE_KHO');
     return false;
 };
 const authorizeDoiTraAccess = async (req, res, next) => {
@@ -2629,7 +2629,7 @@ router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
         const activeReceipt = activeReceipts[0];
         const canEditReceiptBtpType = activeReceipts.length === 1
             && Number(activeReceipt.TonTai) === 1
-            && Number(activeReceipt.ErpTrangThai) !== 5
+            && Number(activeReceipt.ErpTrangThai) === 0
             && phieu.TrangThai !== 'DA_HUY'
             && (isAdmin(req.user) || (hasPermission(req.user, 'THUC_HIEN_KIEM')
                 && [Number(phieu.NguoiLapId), Number(phieu.KcsCompletedBy)].includes(userId)));
@@ -2649,7 +2649,7 @@ router.get('/:id', authorizeDoiTraAccess, async (req, res) => {
                 && [4, 5].includes(Number(item.ErpTrangThai)))
             && activeReceipts.some((item) => Number(item.ErpTrangThai) === 4
                 && !item.StockCardRecordedAt)
-            && (isAdmin(req.user) || hasPermission(req.user, 'GHI_THE_KHO'));
+            && hasPermission(req.user, 'GHI_THE_KHO');
         const availableActions = [];
         for (const action of result.recordsets[8] || []) {
             if (await canRunWorkflowAction(pool, req.user, phieu, action.ActionCode)) {

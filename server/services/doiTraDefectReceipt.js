@@ -399,7 +399,7 @@ const updateDraftDefectReceiptProcess = async (executor, { phieuId, userId, proc
                 THROW 52425,N'Không tìm thấy phiếu nhập BTP lỗi đang hiệu lực.',1;
             IF @Exists<>1
                 THROW 52426,N'Phiếu nhập BTP lỗi đã bị hủy trên ERP.',1;
-            IF @ErpStatus=5
+            IF @ErpStatus IN(4,5)
                 THROW 52427,N'Phiếu nhập BTP lỗi đã được Kho xác nhận, không thể thay đổi loại BTP.',1;
             IF @ProcessId IS NULL OR NOT EXISTS(
                 SELECT 1 FROM TAG_QTKD.dbo.DM_QuyTrinhSanXuat processRow
@@ -424,7 +424,7 @@ const updateDraftDefectReceiptProcess = async (executor, { phieuId, userId, proc
             BEGIN
                 UPDATE TAG_QTKD.dbo.PhieuNhapBTP
                 SET ID_QuyTrinhSanXuat=@ProcessId,TaiKhoan_SuaCuoi=@ErpAccountId,Ngay_SuaCuoi=GETDATE()
-                WHERE ID_PhieuNhapBTP=@ReceiptId AND TrangThai<>5 AND TonTai=1;
+                WHERE ID_PhieuNhapBTP=@ReceiptId AND TrangThai NOT IN(4,5) AND TonTai=1;
                 IF @@ROWCOUNT<>1
                     THROW 52427,N'Phiếu nhập BTP lỗi vừa được Kho xác nhận, không thể thay đổi loại BTP.',1;
 

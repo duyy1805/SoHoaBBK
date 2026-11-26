@@ -41,6 +41,7 @@ export const DOI_TRA_HISTORY_ACTION_LABELS = {
     TBP_RETURN: 'TBP KCS trả lại',
     B7_CONFIRM: 'B7 xác nhận hoàn tất',
     KHO_CONFIRM: 'Kho xác nhận nhập BTP lỗi',
+    STOCK_CARD_RECORD: 'Ghi thẻ kho phiếu nhập BTP lỗi',
     KPH_SETUP: 'Thiết lập bộ phận lấy ý kiến KPH',
     KPH_ALL_OPINIONS_CONFIRMED: 'Hoàn tất lấy ý kiến KPH',
     KPH_OPINION_RETURN: 'TBP trả KPH về thiết lập',
