@@ -45,12 +45,6 @@ const defectiveQuantity = (item) => (item.defects || []).reduce(
     (total, defect) => total + (Number(defect.soLuongLoi ?? defect.SoLuongLoi) || 0), 0
 );
 const itemKey = (item) => `${sourceTypeOf(item)}:${sourceIdOf(item)}`;
-const traceComplete = (item) => Boolean(
-    (item.lotSanXuat ?? item.LotSanXuat)
-    && (item.donViTaoPhoiId ?? item.DonViTaoPhoiId)
-    && (item.ngayTaoPhoi ?? item.NgayTaoPhoi) && (item.toSanXuat ?? item.ToSanXuat)
-    && (item.congNhanSanXuat ?? item.CongNhanSanXuat)
-);
 const issueTraceComplete = (trace) => Boolean(
     (trace.lotSanXuat ?? trace.LotSanXuat)
     && (trace.donViTaoPhoiId ?? trace.DonViTaoPhoiId)
@@ -79,14 +73,22 @@ const filterResponsibleOptions = (options, { inputValue }) => {
     return options.filter((item) => clean(responsibleOptionLabel(item)).includes(keyword));
 };
 
-const toDraft = (item, defaultLot = '') => {
-    const traces = (item.issueTraceabilities || item.IssueTraceabilities || []).map((trace) => ({
+const toDraft = (item, defaultLot = '', requireLxvt = true) => {
+    let traces = (item.issueTraceabilities || item.IssueTraceabilities || []).map((trace) => ({
         manualLxvtKey: trace.ManualLxvtKey || trace.manualLxvtKey || newManualLxvtKey(),
         soLenhXuatVT: trace.SoLenhXuatVT || trace.soLenhXuatVT || '',
         lotSanXuat: trace.LotSanXuat || '', dauTuan: trace.DauTuan || '',
         donViTaoPhoiId: trace.DonViTaoPhoiId || '', ngayTaoPhoi: String(trace.NgayTaoPhoi || '').slice(0, 10),
         toSanXuat: trace.ToSanXuat || '', congNhanSanXuat: trace.CongNhanSanXuat || ''
     }));
+    if (!requireLxvt && !traces.length) {
+        traces = [{
+            manualLxvtKey: newManualLxvtKey(), soLenhXuatVT: '',
+            lotSanXuat: defaultLot || item.LotSanXuat || '', dauTuan: item.DauTuan || '',
+            donViTaoPhoiId: item.DonViTaoPhoiId || '', ngayTaoPhoi: String(item.NgayTaoPhoi || '').slice(0, 10),
+            toSanXuat: item.ToSanXuat || '', congNhanSanXuat: item.CongNhanSanXuat || ''
+        }];
+    }
     return ({
     sourceType: sourceTypeOf(item), sourceId: sourceIdOf(item),
     sourceLoiPhoiId: item.SourceLoiPhoiId ? Number(item.SourceLoiPhoiId) : null,
@@ -111,7 +113,7 @@ const toDraft = (item, defaultLot = '') => {
         MaLoi: defect.MaLoi || '', TenLoi: defect.TenLoi || '', DefectType: defect.DefectType || '',
         soLuongLoi: defect.SoLuongLoi ?? 1, ghiChu: defect.GhiChu || '',
         boPhanGayLoiSource: defect.BoPhanGayLoiSource || '', boPhanGayLoiSourceId: defect.BoPhanGayLoiSourceId || '',
-        manualLxvtKey: defect.ManualLxvtKey || traces.find((trace) => trace.soLenhXuatVT === defect.SoLenhXuatVT)?.manualLxvtKey || '',
+        manualLxvtKey: defect.ManualLxvtKey || traces.find((trace) => trace.soLenhXuatVT && trace.soLenhXuatVT === defect.SoLenhXuatVT)?.manualLxvtKey || (!requireLxvt ? traces[0]?.manualLxvtKey : '') || '',
         soLenhXuatVT: defect.SoLenhXuatVT || ''
     }))
     });
@@ -122,8 +124,9 @@ const MasterItem = ({ item, selected, editing, onClick, requireLxvt }) => {
     const checkedQty = editing ? item.soLuongKiem : item.SoLuongKiem;
     const itemDefects = editing ? item.defects || [] : item.defects || [];
     const manualIssues = item.issueTraceabilities || item.IssueTraceabilities || [];
-    const isComplete = traceComplete(item) && errorQty > 0 && itemDefects.length > 0
-        && (!requireLxvt || (manualIssues.length > 0 && manualIssues.every(issueTraceComplete)));
+    const isComplete = errorQty > 0 && itemDefects.length > 0 && manualIssues.length > 0
+        && manualIssues.every(issueTraceComplete)
+        && (!requireLxvt || manualIssues.every((trace) => Boolean(trace.soLenhXuatVT || trace.SoLenhXuatVT)));
     return <Paper component="button" type="button" onClick={onClick} variant="outlined" sx={{
         width: '100%', p: 1.25, textAlign: 'left', cursor: 'pointer', borderRadius: 1.5,
         borderColor: selected ? 'primary.main' : 'divider', bgcolor: selected ? '#f4f6ff' : 'background.paper',
@@ -206,14 +209,14 @@ const DefectEntryRow = ({ defect, groups, defects, responsibleDepartments, onPat
     </Grid></Paper>;
 };
 
-const IssueTraceCard = ({ trace, index, departments, onPatch, onRemove }) => (
+const IssueTraceCard = ({ trace, index, departments, requireLxvt, onPatch, onRemove }) => (
     <Paper variant="outlined" sx={{ p: 1.5, borderColor: 'secondary.light' }}>
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.25 }}>
-            <Box sx={{ flex: 1 }}><Typography fontWeight={900}>Lệnh xuất vật tư {index + 1}</Typography><Typography variant="caption" color="text.secondary">Nhập tay theo thông tin tem</Typography></Box>
-            <IconButton color="error" aria-label="Bỏ LXVT và thông tin truy nguyên" onClick={() => onRemove(trace)}><DeleteOutlineIcon /></IconButton>
+            <Box sx={{ flex: 1 }}><Typography fontWeight={900}>{requireLxvt ? `Lệnh xuất vật tư ${index + 1}` : `Tem truy nguyên ${index + 1}`}</Typography><Typography variant="caption" color="text.secondary">Nhập theo thông tin trên tem</Typography></Box>
+            <IconButton color="error" aria-label={requireLxvt ? 'Bỏ LXVT và thông tin truy nguyên' : 'Bỏ tem truy nguyên'} onClick={() => onRemove(trace)}><DeleteOutlineIcon /></IconButton>
         </Stack>
         <Grid container spacing={1.25}>
-            <Grid size={{ xs: 12, md: 4 }}><TextField required fullWidth size="small" label="Số lệnh xuất vật tư" value={trace.soLenhXuatVT} onChange={(event) => onPatch(index, { soLenhXuatVT: event.target.value })} /></Grid>
+            {requireLxvt && <Grid size={{ xs: 12, md: 4 }}><TextField required fullWidth size="small" label="Số lệnh xuất vật tư" value={trace.soLenhXuatVT} onChange={(event) => onPatch(index, { soLenhXuatVT: event.target.value })} /></Grid>}
             <Grid size={{ xs: 12, md: 4 }}><TextField required fullWidth size="small" label="Lot sản xuất" value={trace.lotSanXuat} onChange={(event) => onPatch(index, { lotSanXuat: event.target.value })} /></Grid>
             <Grid size={{ xs: 12, md: 4 }}><TextField fullWidth size="small" label="Dấu tuần" value={trace.dauTuan} onChange={(event) => onPatch(index, { dauTuan: event.target.value })} /></Grid>
             <Grid size={{ xs: 12, md: 4 }}><Autocomplete size="small" options={departments} value={departments.find((row) => Number(row.Id) === Number(trace.donViTaoPhoiId)) || null} getOptionLabel={(row) => [row.MaBoPhan, row.TenBoPhan].filter(Boolean).join(' — ')} onChange={(_, value) => onPatch(index, { donViTaoPhoiId: value?.Id || '' })} renderInput={(params) => <TextField {...params} required label="Đơn vị tạo phôi" />} /></Grid>
@@ -243,12 +246,12 @@ export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, 
     const [defects, setDefects] = useState([]);
     const [departments, setDepartments] = useState([]);
     const [responsibleDepartments, setResponsibleDepartments] = useState([]);
-    const [draft, setDraft] = useState(() => items.map((item) => toDraft(item, defaultLot)));
+    const [draft, setDraft] = useState(() => items.map((item) => toDraft(item, defaultLot, requireLxvt)));
     const visibleItems = editing ? draft : items;
     const selectedItem = visibleItems.find((item) => itemKey(item) === selectedKey) || visibleItems[0] || null;
     const selectedIndex = selectedItem ? visibleItems.findIndex((item) => itemKey(item) === itemKey(selectedItem)) : -1;
 
-    useEffect(() => { if (!editing) setDraft(items.map((item) => toDraft(item, defaultLot))); }, [defaultLot, editing, items]);
+    useEffect(() => { if (!editing) setDraft(items.map((item) => toDraft(item, defaultLot, requireLxvt))); }, [defaultLot, editing, items, requireLxvt]);
     useEffect(() => { if (visibleItems.length && !visibleItems.some((item) => itemKey(item) === selectedKey)) setSelectedKey(itemKey(visibleItems[0])); }, [selectedKey, visibleItems]);
     useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
@@ -271,7 +274,7 @@ export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, 
         } catch (error) { window.alert(error.response?.data?.message || 'Không tải được danh sách phôi hoặc lỗi.'); }
         finally { setLoadingLookups(false); }
     };
-    const beginEdit = async () => { setDraft(items.map((item) => toDraft(item, defaultLot))); setDetailTab('trace'); setEditing(true); onDirtyChange?.(false); await loadLookups(); };
+    const beginEdit = async () => { setDraft(items.map((item) => toDraft(item, defaultLot, requireLxvt))); setDetailTab('trace'); setEditing(true); onDirtyChange?.(false); await loadLookups(); };
     const updateDraft = (updater) => { setDraft(updater); onDirtyChange?.(true); };
     const patchItem = (patch) => updateDraft((current) => current.map((item, index) => index === selectedIndex ? { ...item, ...patch } : item));
     const patchDefect = (clientKey, patch) => patchItem({ defects: selectedItem.defects.map((defect) => defect.clientKey === clientKey ? { ...defect, ...patch } : defect) });
@@ -306,7 +309,7 @@ export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, 
         const key = itemKey(option);
         updateDraft((current) => current.some((item) => itemKey(item) === key)
             ? current.filter((item) => itemKey(item) !== key)
-            : [...current, toDraft({ ...material, ...option }, defaultLot)]);
+            : [...current, toDraft({ ...material, ...option }, defaultLot, requireLxvt)]);
         setSelectedKey(key);
     };
     const createManualPhoi = async (form) => {
@@ -321,7 +324,7 @@ export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, 
                 return current.map((item, index) => index === materialIndex ? { ...item, phoi: [...item.phoi, created] } : item);
             });
             const key = itemKey(created);
-            updateDraft((current) => current.some((item) => itemKey(item) === key) ? current : [...current, toDraft(created, defaultLot)]);
+            updateDraft((current) => current.some((item) => itemKey(item) === key) ? current : [...current, toDraft(created, defaultLot, requireLxvt)]);
             setSelectedKey(key);
             setManualPhoiOpen(false);
         } catch (error) {
@@ -334,10 +337,9 @@ export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, 
         for (const item of draft) {
             const checked = Number(item.soLuongKiem); const rejected = defectiveQuantity(item);
             if (!Number.isInteger(checked) || checked <= 0 || rejected > checked) return 'Số lượng kiểm phải là số nguyên dương và không được nhỏ hơn tổng số lượng lỗi.';
-            if (mode !== 'list' && requireLxvt && !item.issueTraceabilities.length) return 'Vui lòng thêm ít nhất một lệnh xuất vật tư.';
-            if (mode !== 'list' && item.issueTraceabilities.some((trace) => !trace.soLenhXuatVT.trim() || !issueTraceComplete(trace))) return 'Mỗi lệnh xuất vật tư phải có số lệnh và đầy đủ thông tin tem truy nguyên.';
-            if (mode !== 'list' && !requireLxvt && !traceComplete(item)) return 'Vui lòng nhập đầy đủ thông tin tem truy nguyên.';
-            if (mode !== 'list' && item.defects.some((defect) => requireLxvt && !defect.manualLxvtKey)) return 'Mỗi lỗi phải được gán với một lệnh xuất vật tư đã nhập.';
+            if (mode !== 'list' && !item.issueTraceabilities.length) return requireLxvt ? 'Vui lòng thêm ít nhất một lệnh xuất vật tư.' : 'Vui lòng thêm ít nhất một tem truy nguyên.';
+            if (mode !== 'list' && item.issueTraceabilities.some((trace) => (requireLxvt && !trace.soLenhXuatVT.trim()) || !issueTraceComplete(trace))) return requireLxvt ? 'Mỗi lệnh xuất vật tư phải có số lệnh và đầy đủ thông tin tem truy nguyên.' : 'Mỗi tem truy nguyên phải có đầy đủ thông tin.';
+            if (mode !== 'list' && item.defects.some((defect) => !defect.manualLxvtKey)) return requireLxvt ? 'Mỗi lỗi phải được gán với một lệnh xuất vật tư đã nhập.' : 'Mỗi lỗi phải được gán với một tem truy nguyên.';
             for (const defect of item.defects) {
                 if (!defect.nhomLoiId || !defect.defectId || !defect.boPhanGayLoiSourceId || !Number.isInteger(Number(defect.soLuongLoi)) || Number(defect.soLuongLoi) <= 0) return 'Mỗi dòng lỗi cần có nhóm lỗi, lỗi, bộ phận/nhà thầu/nhà cung cấp gây lỗi và số lượng hợp lệ.';
             }
@@ -379,7 +381,7 @@ export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, 
                     <Grid size={{ xs: 12, md: 6 }}><Typography variant="body2" fontWeight={900}>{phoiTitle(item)}</Typography><Typography variant="caption" color="text.secondary">{phoiMetaLabel(item)}</Typography></Grid>
                     <Grid size={{ xs: 8, sm: 4, md: 2 }}>{editing ? <TextField fullWidth size="small" type="number" label="Số lượng kiểm" value={item.soLuongKiem} inputProps={{ min: 1, step: 1 }} onChange={(event) => updateDraft((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, soLuongKiem: event.target.value } : row))} /> : <><Typography variant="caption" color="text.secondary">Số lượng kiểm</Typography><Typography fontWeight={900}>{item.SoLuongKiem}</Typography></>}</Grid>
                     <Grid size={{ xs: 4, sm: 3, md: 2 }}><Typography variant="caption" color="text.secondary">Số phôi lỗi</Typography><Typography fontWeight={800} color="error.main">{editing ? defectiveQuantity(item) : item.SoLuongPhoiLoi || 0}</Typography></Grid>
-                    <Grid size={{ xs: 12, sm: 5, md: 2 }} sx={{ textAlign: 'right' }}>{editing ? <IconButton color="error" aria-label="Bỏ phôi khỏi danh sách" onClick={() => updateDraft((current) => current.filter((_, rowIndex) => rowIndex !== index))}><DeleteOutlineIcon /></IconButton> : <Chip size="small" color={(item.defects || []).length && (requireLxvt ? (item.issueTraceabilities || []).length && item.issueTraceabilities.every(issueTraceComplete) && item.defects.every((defect) => defect.ManualLxvtKey) : traceComplete(item)) ? 'success' : 'default'} label={(item.defects || []).length && (requireLxvt ? (item.issueTraceabilities || []).length && item.issueTraceabilities.every(issueTraceComplete) && item.defects.every((defect) => defect.ManualLxvtKey) : traceComplete(item)) ? 'Đã có kết quả' : 'Chưa kiểm'} />}</Grid>
+                    <Grid size={{ xs: 12, sm: 5, md: 2 }} sx={{ textAlign: 'right' }}>{editing ? <IconButton color="error" aria-label="Bỏ phôi khỏi danh sách" onClick={() => updateDraft((current) => current.filter((_, rowIndex) => rowIndex !== index))}><DeleteOutlineIcon /></IconButton> : <Chip size="small" color={(item.defects || []).length && (item.issueTraceabilities || []).length && item.issueTraceabilities.every(issueTraceComplete) && item.defects.every((defect) => defect.ManualLxvtKey) ? 'success' : 'default'} label={(item.defects || []).length && (item.issueTraceabilities || []).length && item.issueTraceabilities.every(issueTraceComplete) && item.defects.every((defect) => defect.ManualLxvtKey) ? 'Đã có kết quả' : 'Chưa kiểm'} />}</Grid>
                 </Grid>
             </Paper>)}
         </Stack>}
@@ -435,37 +437,28 @@ export default function DoiTraPhoiEditor({ mode = 'inspection', phieuId, phieu, 
                     {editing && <Chip size="small" color="primary" variant="outlined" label="Đang nhập kết quả" />}
                 </Stack>
                     {editing ? <Grid container spacing={1} sx={{ mt: 0.5 }}><Grid size={{ xs: 6, sm: 3 }}><TextField fullWidth size="small" label="Số lượng kiểm" value={selectedItem.soLuongKiem} slotProps={{ input: { readOnly: true } }} helperText="Chỉnh tại tab Danh sách phôi" /></Grid><Grid size={{ xs: 6, sm: 3 }}><TextField fullWidth size="small" label="Số phôi lỗi" value={defectiveQuantity(selectedItem)} slotProps={{ input: { readOnly: true } }} helperText="Tự động theo tổng lỗi" /></Grid><Grid size={{ xs: 12, sm: 6 }}><TextField fullWidth size="small" label="Ghi chú phôi" value={selectedItem.ghiChu} onChange={(e) => patchItem({ ghiChu: e.target.value })} /></Grid></Grid> : <Stack direction="row" spacing={1} sx={{ mt: 1 }}><Chip label={`Số lượng kiểm: ${selectedItem.SoLuongKiem}`} /><Chip color="error" label={`Số phôi lỗi: ${selectedItem.SoLuongPhoiLoi}`} /></Stack>}</Box>
-                <Tabs value={detailTab} onChange={(_, value) => setDetailTab(value)} variant="scrollable" sx={{ borderBottom: 1, borderColor: 'divider', px: 1 }}><Tab value="trace" label="1. Tem truy nguyên & LXVT" /><Tab value="defects" label={`2. Các dạng lỗi (${readDefects.length})`} /></Tabs>
+                <Tabs value={detailTab} onChange={(_, value) => setDetailTab(value)} variant="scrollable" sx={{ borderBottom: 1, borderColor: 'divider', px: 1 }}><Tab value="trace" label={requireLxvt ? '1. Tem truy nguyên & LXVT' : '1. Tem truy nguyên'} /><Tab value="defects" label={`2. Các dạng lỗi (${readDefects.length})`} /></Tabs>
                 <Box sx={{ p: { xs: 1.25, md: 1.75 } }}>
                     {detailTab === 'defects' && (editing ? <Stack spacing={1}>
-                        {!selectedIssueOptions.length && requireLxvt && <Alert severity="warning">Chưa có LXVT nào được nhập. Hãy quay lại bước 1 để thêm LXVT và thông tin tem truy nguyên.</Alert>}
+                        {!selectedIssueOptions.length && <Alert severity="warning">{requireLxvt ? 'Chưa có LXVT nào được nhập. Hãy quay lại bước 1 để thêm LXVT và thông tin tem truy nguyên.' : 'Chưa có tem truy nguyên. Hãy quay lại bước 1 để thêm tem.'}</Alert>}
                         {selectedIssueOptions.length > 0 && <Paper variant="outlined" sx={{ p: 1.5, bgcolor: '#fafbff' }}><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
-                            <Autocomplete sx={{ flex: 1, minWidth: 0 }} size="small" options={selectedIssueOptions} value={selectedManualIssue} isOptionEqualToValue={(a, b) => a.manualLxvtKey === b.manualLxvtKey} getOptionLabel={(option) => option.SoLenhXuatVT || 'Chưa nhập số LXVT'} onChange={(_, value) => setSelectedManualIssueKey(value?.manualLxvtKey || '')} renderInput={(params) => <TextField {...params} label="Chọn LXVT đã nhập tem" />} />
-                            <Button variant="contained" startIcon={<AddIcon />} disabled={!selectedManualIssue} onClick={() => addDefectForIssue(selectedManualIssue)}>Thêm lỗi cho LXVT</Button>
+                            <Autocomplete sx={{ flex: 1, minWidth: 0 }} size="small" options={selectedIssueOptions} value={selectedManualIssue} isOptionEqualToValue={(a, b) => a.manualLxvtKey === b.manualLxvtKey} getOptionLabel={(option) => requireLxvt ? (option.SoLenhXuatVT || 'Chưa nhập số LXVT') : `Tem truy nguyên ${selectedIssueOptions.findIndex((item) => item.manualLxvtKey === option.manualLxvtKey) + 1}`} onChange={(_, value) => setSelectedManualIssueKey(value?.manualLxvtKey || '')} renderInput={(params) => <TextField {...params} label={requireLxvt ? 'Chọn LXVT đã nhập tem' : 'Chọn tem truy nguyên'} />} />
+                            <Button variant="contained" startIcon={<AddIcon />} disabled={!selectedManualIssue} onClick={() => addDefectForIssue(selectedManualIssue)}>{requireLxvt ? 'Thêm lỗi cho LXVT' : 'Thêm lỗi cho tem'}</Button>
                         </Stack></Paper>}
                         {defectGroupsByIssue.map((issueGroup) => <Paper key={issueGroup.issueId || 'NO_ISSUE'} variant="outlined" sx={{ p: 1.25, borderColor: issueGroup.issueId ? 'primary.light' : 'warning.light' }}>
                             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} sx={{ mb: 1 }}>
-                                <Box sx={{ flex: 1 }}><Typography fontWeight={900}>{issueGroup.issue ? `LXVT ${issueGroup.issue.SoLenhXuatVT}` : 'Chưa gán LXVT'}</Typography><Typography variant="caption" color="text.secondary">Lệnh xuất vật tư nhập tay</Typography></Box>
+                                <Box sx={{ flex: 1 }}><Typography fontWeight={900}>{issueGroup.issue ? (requireLxvt ? `LXVT ${issueGroup.issue.SoLenhXuatVT}` : `Tem truy nguyên ${selectedIssueOptions.findIndex((item) => item.manualLxvtKey === issueGroup.issueId) + 1}`) : (requireLxvt ? 'Chưa gán LXVT' : 'Chưa gán tem')}</Typography><Typography variant="caption" color="text.secondary">{requireLxvt ? 'Lệnh xuất vật tư nhập tay' : 'Thông tin nguồn tạo phôi'}</Typography></Box>
                                 {issueGroup.issue && <Button size="small" startIcon={<AddIcon />} onClick={() => addDefectForIssue(issueGroup.issue)}>Thêm lỗi</Button>}
                             </Stack>
                             <Stack spacing={1}>{issueGroup.entries.map(({ defect }) => <DefectEntryRow key={defect.clientKey} defect={defect} groups={groups} defects={defects} responsibleDepartments={responsibleDepartments} onPatch={patchDefect} onSelect={selectDefect} onDelete={(clientKey) => patchItem({ defects: selectedItem.defects.filter((item) => item.clientKey !== clientKey) })} />)}</Stack>
                         </Paper>)}
                         {!defectGroupsByIssue.length && <Alert severity="info">Chưa thêm dạng lỗi cho phôi này.</Alert>}
-                        {!requireLxvt && <Button startIcon={<AddIcon />} onClick={() => addDefectForIssue(null)}>Thêm dạng lỗi</Button>}
-                    </Stack> : readDefects.length ? <Stack spacing={1}>{defectGroupsByIssue.map((issueGroup) => <Paper key={issueGroup.issueId || 'NO_ISSUE'} variant="outlined" sx={{ p: 1.25 }}><Typography fontWeight={900} color={issueGroup.issueId ? 'secondary.main' : 'warning.main'}>{issueGroup.issue ? `LXVT ${issueGroup.issue.SoLenhXuatVT}` : 'Không có LXVT'}</Typography><Stack spacing={1} sx={{ mt: 1 }}>{issueGroup.entries.map(({ defect }) => <Box key={defect.Id}><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}><Chip size="small" color="primary" label={defect.TenNhomLoi} /><Typography variant="body2" fontWeight={700} sx={{ flex: 1 }}>{[defect.MaLoi, defect.TenLoi].filter(Boolean).join(' — ')}</Typography><Chip size="small" color="error" variant="outlined" label={`SL ${defect.SoLuongLoi}`} /></Stack><Typography variant="caption" color="text.secondary">Bộ phận/nhà thầu/nhà cung cấp gây lỗi: {responsibleLabel(defect) || '---'}</Typography>{defect.GhiChu && <Typography variant="caption" display="block" color="text.secondary">{defect.GhiChu}</Typography>}</Box>)}</Stack></Paper>)}</Stack> : <Alert severity="info">Chưa cập nhật nhóm lỗi/lỗi.</Alert>)}
+                    </Stack> : readDefects.length ? <Stack spacing={1}>{defectGroupsByIssue.map((issueGroup) => <Paper key={issueGroup.issueId || 'NO_ISSUE'} variant="outlined" sx={{ p: 1.25 }}><Typography fontWeight={900} color={issueGroup.issueId ? 'secondary.main' : 'warning.main'}>{issueGroup.issue ? (requireLxvt ? `LXVT ${issueGroup.issue.SoLenhXuatVT}` : `Tem truy nguyên ${selectedIssueOptions.findIndex((item) => item.manualLxvtKey === issueGroup.issueId) + 1}`) : (requireLxvt ? 'Không có LXVT' : 'Không có tem truy nguyên')}</Typography><Stack spacing={1} sx={{ mt: 1 }}>{issueGroup.entries.map(({ defect }) => <Box key={defect.Id}><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}><Chip size="small" color="primary" label={defect.TenNhomLoi} /><Typography variant="body2" fontWeight={700} sx={{ flex: 1 }}>{[defect.MaLoi, defect.TenLoi].filter(Boolean).join(' — ')}</Typography><Chip size="small" color="error" variant="outlined" label={`SL ${defect.SoLuongLoi}`} /></Stack><Typography variant="caption" color="text.secondary">Bộ phận/nhà thầu/nhà cung cấp gây lỗi: {responsibleLabel(defect) || '---'}</Typography>{defect.GhiChu && <Typography variant="caption" display="block" color="text.secondary">{defect.GhiChu}</Typography>}</Box>)}</Stack></Paper>)}</Stack> : <Alert severity="info">Chưa cập nhật nhóm lỗi/lỗi.</Alert>)}
                     {detailTab === 'trace' && (editing ? <Stack spacing={2}>
-                        {requireLxvt ? <><Alert severity="info">Nhập một hoặc nhiều LXVT. Mỗi lệnh có tem truy nguyên và các lỗi riêng.</Alert>
-                            {selectedItem.issueTraceabilities.map((trace, index) => <IssueTraceCard key={trace.manualLxvtKey} trace={trace} index={index} departments={departments} onPatch={patchIssueTrace} onRemove={removeIssueTrace} />)}
-                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}><Button variant="outlined" startIcon={<AddIcon />} onClick={addIssueTrace}>Thêm LXVT</Button><Button variant="contained" disabled={!selectedItem.issueTraceabilities.length} onClick={() => setDetailTab('defects')}>Tiếp tục nhập dạng lỗi</Button></Stack></> : <>
-                            <Paper variant="outlined" sx={{ p: 1.5 }}><Typography fontWeight={900} sx={{ mb: 1 }}>Thông tin tem truy nguyên</Typography><Grid container spacing={1.25}>
-                                <Grid size={{ xs: 12, md: 4 }}><TextField required fullWidth size="small" label="Lot sản xuất" value={selectedItem.lotSanXuat} onChange={(e) => patchItem({ lotSanXuat: e.target.value })} /></Grid>
-                                <Grid size={{ xs: 12, md: 4 }}><TextField fullWidth size="small" label="Dấu tuần" value={selectedItem.dauTuan} onChange={(e) => patchItem({ dauTuan: e.target.value })} /></Grid>
-                                <Grid size={{ xs: 12, md: 4 }}><Autocomplete size="small" options={departments} value={departments.find((row) => Number(row.Id) === Number(selectedItem.donViTaoPhoiId)) || null} getOptionLabel={(row) => [row.MaBoPhan, row.TenBoPhan].filter(Boolean).join(' — ')} onChange={(_, value) => patchItem({ donViTaoPhoiId: value?.Id || '' })} renderInput={(params) => <TextField {...params} required label="Đơn vị tạo phôi" />} /></Grid>
-                                <Grid size={{ xs: 12, md: 4 }}><TextField required fullWidth size="small" type="date" label="Ngày tạo phôi" value={selectedItem.ngayTaoPhoi} onChange={(e) => patchItem({ ngayTaoPhoi: e.target.value })} slotProps={{ inputLabel: { shrink: true } }} /></Grid>
-                                <Grid size={{ xs: 12, md: 4 }}><TextField required fullWidth size="small" label="Tổ sản xuất" value={selectedItem.toSanXuat} onChange={(e) => patchItem({ toSanXuat: e.target.value })} /></Grid>
-                                <Grid size={{ xs: 12, md: 4 }}><TextField required fullWidth size="small" label="Công nhân sản xuất" value={selectedItem.congNhanSanXuat} onChange={(e) => patchItem({ congNhanSanXuat: e.target.value })} /></Grid>
-                            </Grid></Paper><Button variant="contained" onClick={() => setDetailTab('defects')}>Tiếp tục nhập dạng lỗi</Button></>}
-                    </Stack> : selectedItem.issueTraceabilities?.length ? <Stack spacing={1.25}>{selectedItem.issueTraceabilities.map((trace) => <Paper key={trace.ManualLxvtKey || trace.Id} variant="outlined" sx={{ p: 1.5 }}><Typography fontWeight={900}>LXVT {trace.SoLenhXuatVT}</Typography><Grid container spacing={1.5} sx={{ mt: 0.5 }}>{[['Lot sản xuất', trace.LotSanXuat], ['Dấu tuần', trace.DauTuan], ['Đơn vị tạo phôi', trace.TenDonViTaoPhoi], ['Ngày tạo phôi', String(trace.NgayTaoPhoi || '').slice(0, 10)], ['Tổ sản xuất', trace.ToSanXuat], ['Công nhân sản xuất', trace.CongNhanSanXuat]].map(([label, value]) => <Grid key={label} size={{ xs: 12, sm: 6, md: 4 }}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="body2" fontWeight={700}>{value || '---'}</Typography></Grid>)}</Grid></Paper>)}</Stack> : !requireLxvt ? <Grid container spacing={1.5}>{[['Lot sản xuất', defaultLot || selectedItem.LotSanXuat], ['Dấu tuần', selectedItem.DauTuan], ['Đơn vị tạo phôi', selectedItem.TenDonViTaoPhoi], ['Ngày tạo phôi', String(selectedItem.NgayTaoPhoi || '').slice(0, 10)], ['Tổ sản xuất', selectedItem.ToSanXuat], ['Công nhân sản xuất', selectedItem.CongNhanSanXuat], ['KCS xác nhận', selectedItem.TenKcs]].map(([label, value]) => <Grid key={label} size={{ xs: 12, sm: 6, md: 4 }}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="body2" fontWeight={700}>{value || '---'}</Typography></Grid>)}</Grid> : <Alert severity="info">Chưa nhập lệnh xuất vật tư.</Alert>)}
+                        <Alert severity="info">{requireLxvt ? 'Nhập một hoặc nhiều LXVT. Mỗi lệnh có tem truy nguyên và các lỗi riêng.' : 'Nhập một hoặc nhiều tem truy nguyên. Mỗi tem có các lỗi riêng.'}</Alert>
+                        {selectedItem.issueTraceabilities.map((trace, index) => <IssueTraceCard key={trace.manualLxvtKey} trace={trace} index={index} departments={departments} requireLxvt={requireLxvt} onPatch={patchIssueTrace} onRemove={removeIssueTrace} />)}
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}><Button variant="outlined" startIcon={<AddIcon />} onClick={addIssueTrace}>{requireLxvt ? 'Thêm LXVT' : 'Thêm tem truy nguyên'}</Button><Button variant="contained" disabled={!selectedItem.issueTraceabilities.length} onClick={() => setDetailTab('defects')}>Tiếp tục nhập dạng lỗi</Button></Stack>
+                    </Stack> : selectedItem.issueTraceabilities?.length ? <Stack spacing={1.25}>{selectedItem.issueTraceabilities.map((trace, index) => <Paper key={trace.ManualLxvtKey || trace.Id} variant="outlined" sx={{ p: 1.5 }}><Typography fontWeight={900}>{requireLxvt ? `LXVT ${trace.SoLenhXuatVT}` : `Tem truy nguyên ${index + 1}`}</Typography><Grid container spacing={1.5} sx={{ mt: 0.5 }}>{[['Lot sản xuất', trace.LotSanXuat], ['Dấu tuần', trace.DauTuan], ['Đơn vị tạo phôi', trace.TenDonViTaoPhoi], ['Ngày tạo phôi', String(trace.NgayTaoPhoi || '').slice(0, 10)], ['Tổ sản xuất', trace.ToSanXuat], ['Công nhân sản xuất', trace.CongNhanSanXuat]].map(([label, value]) => <Grid key={label} size={{ xs: 12, sm: 6, md: 4 }}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="body2" fontWeight={700}>{value || '---'}</Typography></Grid>)}</Grid></Paper>)}</Stack> : <Alert severity="info">{requireLxvt ? 'Chưa nhập lệnh xuất vật tư.' : 'Chưa nhập tem truy nguyên.'}</Alert>)}
                 </Box>
             </Paper>}
         </Box>}

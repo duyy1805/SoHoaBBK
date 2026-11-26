@@ -1345,8 +1345,8 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
         || (item.lotSanXuat?.length || 0) > 100 || (item.lenhXuatVatTu?.length || 0) > 100
         || (item.dauTuan?.length || 0) > 100 || (item.toSanXuat?.length || 0) > 255
         || (item.congNhanSanXuat?.length || 0) > 1000
-        || item.issueTraceabilities.some((trace) => !trace.manualLxvtKey || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(trace.manualLxvtKey) || !trace.soLenhXuatVT
-            || trace.manualLxvtKey.length > 36 || trace.soLenhXuatVT.length > 100
+        || item.issueTraceabilities.some((trace) => !trace.manualLxvtKey || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(trace.manualLxvtKey)
+            || trace.manualLxvtKey.length > 36 || (trace.soLenhXuatVT?.length || 0) > 100
             || (trace.lotSanXuat?.length || 0) > 100 || (trace.dauTuan?.length || 0) > 100
             || (trace.toSanXuat?.length || 0) > 255 || (trace.congNhanSanXuat?.length || 0) > 1000)
         || item.defects.some((defect) => !defect.nhomLoiId || !defect.defectId
@@ -1358,7 +1358,10 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
     const sourceIds = items.map((item) => `${item.sourceType}:${item.sourceId}`);
     if (new Set(sourceIds).size !== sourceIds.length
         || items.some((item) => new Set(item.issueTraceabilities.map((trace) => trace.manualLxvtKey)).size !== item.issueTraceabilities.length)
-        || items.some((item) => new Set(item.issueTraceabilities.map((trace) => trace.soLenhXuatVT.toUpperCase())).size !== item.issueTraceabilities.length)
+        || items.some((item) => {
+            const issueNumbers = item.issueTraceabilities.map((trace) => trace.soLenhXuatVT?.toUpperCase()).filter(Boolean);
+            return new Set(issueNumbers).size !== issueNumbers.length;
+        })
         || items.some((item) => new Set(item.defects.map((defect) => `${defect.manualLxvtKey || ''}:${defect.defectId}:${defect.boPhanGayLoiSource}:${defect.boPhanGayLoiSourceId}`)).size !== item.defects.length)) {
         return res.status(400).json({ message: 'Danh sách phôi hoặc lỗi đang bị trùng' });
     }
@@ -1553,7 +1556,7 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
 
                 CREATE TABLE #InputIssueTrace(
                     SourceType NVARCHAR(20) NOT NULL,SourceId INT NOT NULL,
-                    ManualLxvtKey UNIQUEIDENTIFIER NOT NULL,SoLenhXuatVT NVARCHAR(100) NOT NULL,
+                    ManualLxvtKey UNIQUEIDENTIFIER NOT NULL,SoLenhXuatVT NVARCHAR(100) NULL,
                     LotSanXuat NVARCHAR(100) NULL,
                     DauTuan NVARCHAR(100) NULL,DonViTaoPhoiId INT NULL,NgayTaoPhoi DATE NULL,
                     ToSanXuat NVARCHAR(255) NULL,CongNhanSanXuat NVARCHAR(1000) NULL,
@@ -1578,7 +1581,7 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                         AND inputPhoi.SourceId=traceRow.SourceId
                     LEFT JOIN dbo.DM_BO_PHAN department ON department.Id=traceRow.DonViTaoPhoiId
                         AND ISNULL(department.TrangThai,1)=1
-                    WHERE inputPhoi.SourceId IS NULL OR NULLIF(LTRIM(RTRIM(traceRow.SoLenhXuatVT)),N'') IS NULL
+                    WHERE inputPhoi.SourceId IS NULL OR (@RequireLxvt=1 AND NULLIF(LTRIM(RTRIM(traceRow.SoLenhXuatVT)),N'') IS NULL)
                        OR (traceRow.DonViTaoPhoiId IS NOT NULL AND department.Id IS NULL)
                 ) THROW 52033,N'Thông tin tem có phôi, LXVT hoặc đơn vị tạo phôi không hợp lệ.',1;
 
@@ -1640,9 +1643,9 @@ router.put('/:id/phoi', authorize('THUC_HIEN_KIEM'), async (req, res) => {
                      AND traceRow.ManualLxvtKey=inputDefect.ManualLxvtKey
                     WHERE inputDefect.ManualLxvtKey IS NOT NULL
                       AND traceRow.ManualLxvtKey IS NULL
-                ) THROW 52034,N'Chỉ được gán lỗi cho LXVT đã nhập thông tin tem truy nguyên.',1;
-                IF @RequireLxvt=1 AND EXISTS(SELECT 1 FROM #InputDefect WHERE ManualLxvtKey IS NULL)
-                    THROW 52034,N'Mỗi lỗi phải được gán cho một LXVT đã nhập thông tin tem truy nguyên.',1;
+                ) THROW 52034,N'Chỉ được gán lỗi cho tem truy nguyên đã nhập.',1;
+                IF EXISTS(SELECT 1 FROM #InputDefect WHERE ManualLxvtKey IS NULL)
+                    THROW 52034,N'Mỗi lỗi phải được gán cho một tem truy nguyên đã nhập.',1;
 
                 DELETE FROM dbo.DOI_TRA_PHOI_LOI_PHOI WHERE PhieuId=@PhieuId;
 
@@ -2192,45 +2195,41 @@ router.post('/:id/actions/:actionCode', authorizeDoiTraAccess, async (req, res) 
                         WHERE phoiRow.PhieuId=@PhieuId AND (
                             phoiRow.SoLuongKiem<=0 OR phoiRow.SoLuongPhoiLoi<=0
                             OR phoiRow.SoLuongPhoiLoi>phoiRow.SoLuongKiem
-                            OR (planRow.RequireLenhXuatVatTu=1 AND NOT EXISTS (
+                            OR NOT EXISTS (
                                 SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI_LXVT_TRUY_NGUYEN traceRow
-                                WHERE traceRow.PhoiId=phoiRow.Id))
-                            OR (planRow.RequireLenhXuatVatTu=1 AND EXISTS (
+                                WHERE traceRow.PhoiId=phoiRow.Id)
+                            OR EXISTS (
                                 SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI_LXVT_TRUY_NGUYEN traceRow
                                 WHERE traceRow.PhoiId=phoiRow.Id AND (
-                                    NULLIF(LTRIM(RTRIM(traceRow.SoLenhXuatVT)),N'') IS NULL
+                                    (planRow.RequireLenhXuatVatTu=1 AND NULLIF(LTRIM(RTRIM(traceRow.SoLenhXuatVT)),N'') IS NULL)
                                     OR NULLIF(LTRIM(RTRIM(traceRow.LotSanXuat)),N'') IS NULL
                                     OR traceRow.DonViTaoPhoiId IS NULL OR traceRow.NgayTaoPhoi IS NULL
                                     OR NULLIF(LTRIM(RTRIM(traceRow.ToSanXuat)),N'') IS NULL
-                                    OR NULLIF(LTRIM(RTRIM(traceRow.CongNhanSanXuat)),N'') IS NULL)))
-                            OR (planRow.RequireLenhXuatVatTu=0 AND (
-                                NULLIF(LTRIM(RTRIM(phoiRow.LotSanXuat)),N'') IS NULL
-                                OR phoiRow.DonViTaoPhoiId IS NULL OR phoiRow.NgayTaoPhoi IS NULL
-                                OR NULLIF(LTRIM(RTRIM(phoiRow.ToSanXuat)),N'') IS NULL
-                                OR NULLIF(LTRIM(RTRIM(phoiRow.CongNhanSanXuat)),N'') IS NULL))
+                                    OR NULLIF(LTRIM(RTRIM(traceRow.CongNhanSanXuat)),N'') IS NULL))
                         )
                     ) THROW 52111, N'Mỗi loại phôi phải có đủ số lượng, lot sản xuất và thông tin tem truy nguyên.', 1;
                     IF EXISTS (
                         SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow
                         JOIN dbo.DOI_TRA_PHOI_LOI_PLAN planRow ON planRow.PhieuId=phoiRow.PhieuId
-                        LEFT JOIN dbo.DM_BO_PHAN sourceDepartment
-                          ON sourceDepartment.Id=phoiRow.DonViTaoPhoiId AND ISNULL(sourceDepartment.TrangThai,1)=1
-                        WHERE phoiRow.PhieuId=@PhieuId
-                          AND planRow.RequireLenhXuatVatTu=0 AND sourceDepartment.Id IS NULL
-                    ) THROW 52118, N'Đơn vị tạo phôi không còn hoạt động.', 1;
-                    IF EXISTS (
-                        SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow
-                        JOIN dbo.DOI_TRA_PHOI_LOI_PLAN planRow ON planRow.PhieuId=phoiRow.PhieuId
                         JOIN dbo.DOI_TRA_PHOI_LOI_PHOI_LXVT_TRUY_NGUYEN traceRow ON traceRow.PhoiId=phoiRow.Id
-                        LEFT JOIN dbo.DM_BO_PHAN sourceDepartment ON sourceDepartment.Id=traceRow.DonViTaoPhoiId AND ISNULL(sourceDepartment.TrangThai,1)=1
-                        WHERE phoiRow.PhieuId=@PhieuId AND planRow.RequireLenhXuatVatTu=1 AND sourceDepartment.Id IS NULL
-                    ) THROW 52118, N'Đơn vị tạo phôi của LXVT không còn hoạt động.', 1;
+                        LEFT JOIN dbo.DM_BO_PHAN sourceDepartment
+                          ON sourceDepartment.Id=traceRow.DonViTaoPhoiId AND ISNULL(sourceDepartment.TrangThai,1)=1
+                        WHERE phoiRow.PhieuId=@PhieuId
+                          AND sourceDepartment.Id IS NULL
+                    ) THROW 52118, N'Đơn vị tạo phôi không còn hoạt động.', 1;
                     IF EXISTS (
                         SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow
                         WHERE phoiRow.PhieuId=@PhieuId AND NOT EXISTS (
                             SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI_DEFECT defectRow WHERE defectRow.PhoiId=phoiRow.Id
                         )
                     ) THROW 52112, N'Mỗi loại phôi phải có ít nhất một lỗi.', 1;
+                    IF EXISTS (
+                        SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI_DEFECT defectRow
+                        JOIN dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow ON phoiRow.Id=defectRow.PhoiId
+                        LEFT JOIN dbo.DOI_TRA_PHOI_LOI_PHOI_LXVT_TRUY_NGUYEN traceRow
+                          ON traceRow.PhoiId=defectRow.PhoiId AND traceRow.ManualLxvtKey=defectRow.ManualLxvtKey
+                        WHERE phoiRow.PhieuId=@PhieuId AND traceRow.Id IS NULL
+                    ) THROW 52120, N'Mỗi lỗi phải được gán với một tem truy nguyên hợp lệ.', 1;
                     IF EXISTS (
                         SELECT 1 FROM dbo.DOI_TRA_PHOI_LOI_PHOI_DEFECT defectRow
                         JOIN dbo.DOI_TRA_PHOI_LOI_PHOI phoiRow ON phoiRow.Id=defectRow.PhoiId

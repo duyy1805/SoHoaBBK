@@ -92,12 +92,42 @@ export const getCurrentUser = () => {
         localStorage.getItem("user") ||
         sessionStorage.getItem("user");
 
-    if (!userStr) return null;
+    const decoded = decodeToken();
+    if (!userStr) {
+        if (!decoded) return null;
+        return {
+            id: decoded.userId,
+            username: decoded.username,
+            boPhanId: decoded.boPhanId,
+            managedBoPhanIds: Array.isArray(decoded.managedBoPhanIds) ? decoded.managedBoPhanIds : [],
+            roles: Array.isArray(decoded.roles) ? decoded.roles : [],
+            permissions: Array.isArray(decoded.permissions) ? decoded.permissions : []
+        };
+    }
 
     try {
-        return JSON.parse(userStr);
+        const user = JSON.parse(userStr);
+        return {
+            ...user,
+            managedBoPhanIds: Array.isArray(user?.managedBoPhanIds)
+                ? user.managedBoPhanIds
+                : (Array.isArray(decoded?.managedBoPhanIds) ? decoded.managedBoPhanIds : []),
+            roles: Array.isArray(user?.roles)
+                ? user.roles
+                : (Array.isArray(decoded?.roles) ? decoded.roles : []),
+            permissions: Array.isArray(user?.permissions)
+                ? user.permissions
+                : (Array.isArray(decoded?.permissions) ? decoded.permissions : [])
+        };
     } catch {
-        return null;
+        return decoded ? {
+            id: decoded.userId,
+            username: decoded.username,
+            boPhanId: decoded.boPhanId,
+            managedBoPhanIds: Array.isArray(decoded.managedBoPhanIds) ? decoded.managedBoPhanIds : [],
+            roles: Array.isArray(decoded.roles) ? decoded.roles : [],
+            permissions: Array.isArray(decoded.permissions) ? decoded.permissions : []
+        } : null;
     }
 };
 
@@ -125,7 +155,7 @@ export const hasPermission = (permission) => {
     const user = getCurrentUser();
     if (!user) return false;
 
-    return user.permissions.includes(permission);
+    return Array.isArray(user.permissions) && user.permissions.includes(permission);
 };
 
 export const canManageUsers = (user = getCurrentUser()) => {
