@@ -192,7 +192,8 @@ router.get('/:id/kph', async (req, res) => {
         if (evaluation) evaluation.SignatureDataUrl = signatures.get(Number(evaluation.NguoiTheoDoiId)) || null;
         res.json(encode({ kphPhieu: { Id: record.Id, NhomPhieuId: record.NhomPhieuId,
                 TrangThai: record.TrangThai, RowVersion: record.RowVersion,
-                GroupPlanCount: record.GroupPlanCount, PendingKcsCount: record.PendingKcsCount },
+                GroupPlanCount: record.GroupPlanCount, PendingKcsCount: record.PendingKcsCount,
+                MoTaChiTietKph: record.MoTaChiTietKph || null },
             opinions, xuLy: decorate(result.recordsets[1]), chiPhi: decorate(result.recordsets[2]),
             hanhDong: decorate(result.recordsets[3]), evaluation,
             executiveApprovals: (result.recordsets[5] || []).map((item) => ({ ...item,
@@ -201,6 +202,7 @@ router.get('/:id/kph', async (req, res) => {
             creatorSignatureDataUrl: signatures.get(Number(record.CreatorConfirmedBy)) || null,
             departments: result.recordsets[6] || [], capabilities: {
                 canManage: rights.creatorManage && record.TrangThai === 'CHO_THIET_LAP_KPH',
+                canEditDescription: rights.creatorManage && editableStatuses.includes(record.TrangThai),
                 canContribute: editableStatuses.includes(record.TrangThai) && (rights.creatorManage || Boolean(rights.selectedDepartmentId)),
                 targetDepartmentId: rights.selectedDepartmentId || record.CreatorDepartmentId,
                 canCreatorConfirm: record.TrangThai === 'CHO_XAC_NHAN_CUOI_KPH'
@@ -212,6 +214,47 @@ router.get('/:id/kph', async (req, res) => {
     } catch (error) {
         console.error('DTP KPH detail:', error);
         res.status(500).json({ message: error.message || 'Không tải được dữ liệu KPH' });
+    }
+});
+
+router.put('/:id/kph/description', async (req, res) => {
+    const version = rowVersion(req.body?.rowVersion);
+    const description = String(req.body?.moTaChiTietKph || '').trim() || null;
+    if (!version) return res.status(400).json({ message: 'Vui lòng tải lại phiên bản phiếu' });
+    if ((description?.length || 0) > 4000) {
+        return res.status(400).json({ message: 'Mô tả chi tiết KPH không được vượt quá 4.000 ký tự' });
+    }
+    const pool = await poolPromise;
+    const transaction = new sql.Transaction(pool);
+    try {
+        await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+        const record = await loadRecord(transaction, validId(req.params.id), true);
+        if (!record) throw Object.assign(new Error('Không tìm thấy phiếu'), { status: 404 });
+        const rights = await access(transaction, req, record);
+        if (!rights.creatorManage || !editableStatuses.includes(record.TrangThai)) {
+            throw Object.assign(new Error('Bạn không thể sửa mô tả KPH ở trạng thái hiện tại'), { status: 403 });
+        }
+        const result = await new sql.Request(transaction)
+            .input('Id', sql.Int, record.Id)
+            .input('RV', sql.VarBinary(8), version)
+            .input('Description', sql.NVarChar(4000), description)
+            .input('User', sql.Int, uid(req))
+            .query(`
+                UPDATE dbo.DOI_TRA_PHOI_LOI
+                SET MoTaChiTietKph=@Description,UpdatedAt=SYSDATETIME()
+                WHERE Id=@Id AND RowVersion=@RV;
+                SELECT @@ROWCOUNT AS AffectedRows;
+            `);
+        if (!result.recordset?.[0]?.AffectedRows) {
+            throw Object.assign(new Error('Phiếu đã thay đổi. Vui lòng tải lại trước khi lưu mô tả.'), { status: 409 });
+        }
+        await addHistory(transaction, record, 'KPH_UPDATE_DESCRIPTION', record.TrangThai, uid(req),
+            description ? 'Cập nhật mô tả chi tiết KPH' : 'Xóa mô tả chi tiết KPH');
+        await transaction.commit();
+        res.json({ success: true });
+    } catch (error) {
+        try { await transaction.rollback(); } catch (_) { /* noop */ }
+        res.status(error.status || 500).json({ message: error.message || 'Không lưu được mô tả chi tiết KPH' });
     }
 });
 

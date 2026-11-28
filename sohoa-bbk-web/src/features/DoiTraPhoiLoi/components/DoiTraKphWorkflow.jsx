@@ -15,7 +15,7 @@ import {
     addDoiTraKphSection, approveDoiTraKphExecutive, confirmDoiTraKphCreator,
     confirmDoiTraKphOpinion, deleteDoiTraKphSection, followUpDoiTraKph, getDoiTraKph,
     returnDoiTraKphOpinion, saveDoiTraKphDepartments, saveDoiTraKphOpinion,
-    updateDoiTraKphSection
+    saveDoiTraKphDescription, updateDoiTraKphSection
 } from '../../../api/doiTraPhoiLoi.api';
 import ResponsiveDataList from '../../BienBan/components/ResponsiveDataList';
 
@@ -42,12 +42,14 @@ export default function DoiTraKphWorkflow({ phieu, onChanged, onData }) {
     const [bgdReturnDialog, setBgdReturnDialog] = useState({ open: false, reason: '' });
     const [opinionDrafts, setOpinionDrafts] = useState({});
     const [followUp, setFollowUp] = useState({ ketQua: '', phieuKphMoiSo: '', ghiChu: '' });
+    const [descriptionDraft, setDescriptionDraft] = useState('');
 
     const load = async () => {
         try {
             const response = await getDoiTraKph(phieu.Id);
             const next = response.data;
             setData(next); onData?.(next);
+            setDescriptionDraft(next.kphPhieu?.MoTaChiTietKph || '');
             setSelectedDepartments((next.departments || []).filter((department) =>
                 (next.opinions || []).some((opinion) => Number(opinion.BoPhanId) === Number(department.Id))));
             setOpinionDrafts(Object.fromEntries((next.opinions || []).map((item) => [item.Id, item.NoiDung || ''])));
@@ -92,6 +94,26 @@ export default function DoiTraKphWorkflow({ phieu, onChanged, onData }) {
             KPH chung chưa mở: còn {kphPhieu.PendingKcsCount}/{kphPhieu.GroupPlanCount} kế hoạch chưa hoàn tất KCS và tạo phiếu nhập BTP.
         </Alert>}
         {phieu.TrangThai === 'TRA_LAI_KCS' && <Alert severity="error"><strong>Phiếu đã được trả về KCS:</strong> {phieu.LastReturnReason || phieu.LyDoTraLai || 'Chưa có lý do'}</Alert>}
+
+        <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}><CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+            <Typography variant="h6" fontWeight={800}>Mô tả chi tiết KPH</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1.5 }}>
+                Nội dung này được in tại mục “Mô tả chi tiết KPH”. Nếu để trống, bản in sử dụng nội dung tự động từ danh sách phôi lỗi.
+            </Typography>
+            <TextField fullWidth multiline minRows={4} maxRows={10} value={descriptionDraft}
+                disabled={!capabilities.canEditDescription || busy === 'description'}
+                placeholder="Nhập diễn giải cụ thể về hiện tượng, phạm vi và nội dung không phù hợp..."
+                onChange={(event) => setDescriptionDraft(event.target.value)}
+                inputProps={{ maxLength: 4000 }}
+                helperText={`${descriptionDraft.length}/4000 ký tự`} />
+            {capabilities.canEditDescription && <Stack direction="row" justifyContent="flex-end" sx={{ mt: 1.5 }}>
+                <Button variant="contained" disabled={busy === 'description'
+                    || descriptionDraft.trim() === String(kphPhieu.MoTaChiTietKph || '').trim()}
+                    onClick={() => run('description', () => saveDoiTraKphDescription(kphPhieu.Id, kphPhieu.RowVersion, descriptionDraft))}>
+                    {busy === 'description' ? 'Đang lưu…' : 'Lưu mô tả KPH'}
+                </Button>
+            </Stack>}
+        </CardContent></Card>
 
         <Card elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}><CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.25}>

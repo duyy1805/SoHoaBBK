@@ -51,6 +51,8 @@ export const confirmDoiTraSoLuong = (id, rowVersion) =>
     axiosClient.post(`/doi-tra-phoi-loi/${id}/actions/B7_CONFIRM`, { rowVersion });
 
 export const getDoiTraKph = (id) => axiosClient.get(`/doi-tra-phoi-loi/${id}/kph`);
+export const saveDoiTraKphDescription = (id, rowVersion, moTaChiTietKph) =>
+    axiosClient.put(`/doi-tra-phoi-loi/${id}/kph/description`, { rowVersion, moTaChiTietKph });
 export const saveDoiTraKphDepartments = (id, rowVersion, boPhanIds) =>
     axiosClient.put(`/doi-tra-phoi-loi/${id}/kph/opinion-departments`, { rowVersion, boPhanIds });
 export const addDoiTraKphSection = (id, section, data) =>

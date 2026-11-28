@@ -20,6 +20,7 @@ build/
 !server/sql/migrations/20261120_doi_tra_phoi_loi_multi_btp_receipts.sql
 !server/sql/migrations/20261120_doi_tra_phoi_loi_stock_card_permission.sql
 !server/sql/migrations/20261127_phoi_detail_management_permission.sql
+!server/sql/migrations/20261128_doi_tra_phoi_loi_kph_description.sql
 
 *.xlsx
 

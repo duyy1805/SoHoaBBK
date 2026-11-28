@@ -563,6 +563,7 @@ router.post('/summary-preview', authorizeDoiTraAccess, async (req, res) => {
                     phieu.ThuTuKeHoach,phieu.TrangThai,phieu.NgayLap,
                     planRow.PlanID,planRow.PlanNo,planRow.OrderCode,planRow.ProductCode,planRow.ProductName,
                     planRow.DepartmentCode,planRow.DepartmentName,planRow.UnitCode,planRow.UnitName,
+                    planRow.RequiresB7,
                     sxbtUnit.SxbtUnitCode,
                     productionLot.ExpectedProductionLot
                 FROM #SelectedPhieu selected
@@ -695,7 +696,7 @@ router.post('/summary-export', authorizeDoiTraAccess, async (req, res) => {
                     phieu.SoPhieu AS SoPhieuKeHoach,phieu.ThuTuKeHoach,phieu.NgayLap,
                     planRow.PlanID,planRow.PlanNo,planRow.OrderCode,planRow.ProductCode,planRow.ProductName,
                     planRow.OperationCode,planRow.OperationName,planRow.DepartmentCode,planRow.DepartmentName,
-                    planRow.UnitCode,planRow.UnitName,sxbtUnit.SxbtUnitCode,
+                    planRow.UnitCode,planRow.UnitName,planRow.RequiresB7,sxbtUnit.SxbtUnitCode,
                     productionLot.ExpectedProductionLot,phoiRow.*,
                     quota.SoLuongBoLoiSnapshot,quota.SoLuongDoiTra,quota.TenDonViTinh,
                     JSON_QUERY((
@@ -753,8 +754,7 @@ router.post('/summary-export', authorizeDoiTraAccess, async (req, res) => {
             `);
         const buffer = writeDoiTraSummaryExcel({
             items: result.recordsets[0] || [],
-            defects: result.recordsets[1] || [],
-            receipts: result.recordsets[2] || []
+            defects: result.recordsets[1] || []
         });
         const suffix = phieuIds.length === 1 ? `-${phieuIds[0]}` : `-${phieuIds.length}-phieu`;
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

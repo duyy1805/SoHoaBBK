@@ -43,6 +43,7 @@ export const DOI_TRA_HISTORY_ACTION_LABELS = {
     KHO_CONFIRM: 'Kho xác nhận nhập BTP lỗi',
     STOCK_CARD_RECORD: 'Ghi thẻ kho phiếu nhập BTP lỗi',
     KPH_SETUP: 'Thiết lập bộ phận lấy ý kiến KPH',
+    KPH_UPDATE_DESCRIPTION: 'Cập nhật mô tả chi tiết KPH',
     KPH_ALL_OPINIONS_CONFIRMED: 'Hoàn tất lấy ý kiến KPH',
     KPH_OPINION_RETURN: 'TBP trả KPH về thiết lập',
     KPH_CREATOR_CONFIRM: 'TBP bộ phận lập xác nhận KPH',

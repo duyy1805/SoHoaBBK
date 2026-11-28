@@ -2,31 +2,24 @@ const XLSX = require('xlsx');
 
 const text = (value) => String(value ?? '').trim();
 const normalize = (value) => text(value).normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toUpperCase();
-const productionDepartmentLabel = (item) => {
-    const isSxbt = text(item.UnitCode) === '32'
-        || normalize(item.UnitName) === 'SXBT'
-        || normalize(item.DepartmentName).startsWith('SXBT');
-    if (isSxbt) return text(item.SxbtUnitCode);
-    return [item.DepartmentCode, item.DepartmentName].filter(Boolean).join(' - ');
-};
+    .replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
 const numberOrBlank = (value) => {
     if (value === '' || value == null) return '';
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : '';
 };
-const dateOrBlank = (value) => {
+const dateText = (value) => {
     if (!value) return '';
     const date = value instanceof Date ? value : new Date(value);
-    return Number.isNaN(date.getTime()) ? text(value).slice(0, 10) : date;
+    if (Number.isNaN(date.getTime())) return text(value).slice(0, 10);
+    return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
 };
-const dateText = (value) => {
-    const normalized = dateOrBlank(value);
-    if (!normalized) return '';
-    if (normalized instanceof Date) {
-        return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}-${String(normalized.getDate()).padStart(2, '0')}`;
-    }
-    return text(normalized).slice(0, 10);
+const productionDepartmentLabel = (item) => {
+    const isSxbt = text(item.UnitCode) === '32'
+        || normalize(item.UnitName) === 'sxbt'
+        || normalize(item.DepartmentName).startsWith('sxbt');
+    if (isSxbt) return text(item.SxbtUnitCode);
+    return [item.DepartmentCode, item.DepartmentName].filter(Boolean).join(' - ');
 };
 const parseIssueTraceabilities = (item) => {
     if (Array.isArray(item.issueTraceabilities)) return item.issueTraceabilities;
@@ -37,44 +30,60 @@ const parseIssueTraceabilities = (item) => {
         return [];
     }
 };
-const traceLines = (traces, field, formatter = text) => [...new Set(traces
-    .map((trace) => text(formatter(trace[field])))
-    .filter(Boolean))].join('\n');
 const phoiCount = (value) => {
     const parsed = Number(text(value));
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 };
-const defectiveSetQuantity = (item) => Math.ceil(
-    (Number(item.SoLuongPhoiLoi) || 0) / phoiCount(item.SoPhoi)
-);
-const defectLabel = (item) => [
-    [item.MaNhom, item.TenNhom].filter(Boolean).join(' - '),
-    [item.MaLoi, item.TenLoi].filter(Boolean).join(' - '),
-    item.SoLuongLoi == null ? '' : `SL ${item.SoLuongLoi}`
-].filter(Boolean).join(': ');
-const responsibleLabel = (item) => [
-    item.MaBoPhanGayLoiSnapshot,
-    item.TenBoPhanGayLoiSnapshot,
-    item.TenDonViGayLoiSnapshot
-].filter(Boolean).join(' - ');
-const SUMMARY_HEADERS = [
-    'STT', 'Số phiếu', 'Ngày lập', 'Kế hoạch', 'Đơn hàng', 'Mã sản phẩm', 'Tên sản phẩm',
-    'Công đoạn', 'Đơn vị sản xuất', 'Mã vật tư', 'Quy cách vật tư', 'Loại phôi', 'Dao chặt',
-    'Số phôi', 'Ký hiệu', 'Số lượng kiểm', 'Số lượng lỗi', 'Số bộ lỗi', 'ĐVT', 'Số lượng đổi trả',
-    'LXVT', 'Lot sản xuất', 'Dấu tuần', 'Đơn vị tạo phôi', 'Ngày tạo phôi', 'Tổ sản xuất',
-    'Công nhân sản xuất', 'Chi tiết lỗi', 'Bộ phận/NCC gây lỗi', 'Ghi chú phôi'
-];
-const RECEIPT_HEADERS = [
-    'STT', 'Số phiếu đổi phôi', 'Số phiếu nhập BTP', 'Mã BTP', 'Tên BTP', 'Lô sản xuất',
-    'Số lượng BTP lỗi', 'Kho nhập', 'Quy trình sản xuất', 'Trạng thái liên kết', 'Trạng thái ERP', 'Ngày tạo'
-];
-
-const setColumnWidths = (worksheet, widths) => {
-    worksheet['!cols'] = widths.map((wch) => ({ wch }));
-    if (worksheet['!ref']) worksheet['!autofilter'] = { ref: worksheet['!ref'] };
+const defectiveSetQuantity = (item) => Math.ceil((Number(item.SoLuongPhoiLoi) || 0) / phoiCount(item.SoPhoi));
+const materialLabel = (item) => {
+    const name = text(item.TenLoaiPhoi);
+    const code = text(item.MaVatTu);
+    const label = name && code ? `${name} (${code})` : name || code;
+    return [label, item.DaoChat ? `Dao chặt: ${text(item.DaoChat)}` : ''].filter(Boolean).join(' - ');
+};
+const responsibleUnitLabel = (defect) => {
+    const unit = text(defect.TenDonViGayLoi || defect.TenDonViGayLoiSnapshot);
+    const department = text(defect.TenBoPhanGayLoi || defect.TenBoPhanGayLoiSnapshot);
+    if (unit && department && normalize(unit) !== normalize(department)) return `${unit} - ${department}`;
+    return unit || department || text(defect.MaBoPhanGayLoi || defect.MaBoPhanGayLoiSnapshot);
+};
+const errorColumn = (defect) => {
+    const value = normalize([
+        defect.MaNhomLoi || defect.MaNhom, defect.TenNhomLoi || defect.TenNhom,
+        defect.MaLoi, defect.TenLoi
+    ].filter(Boolean).join(' '));
+    if (value.includes('cat tao phoi') || value.includes('cat phoi')) return 0;
+    if (value.includes('det')) return 1;
+    if (value.includes('trang')) return 2;
+    if (value.includes('don vi') || value.includes('may')) return 3;
+    if (value.includes('cong nghe')) return 4;
+    return 5;
+};
+const traceDefects = (defects, trace) => {
+    if (!trace) return defects;
+    const traceKey = text(trace.ManualLxvtKey || trace.manualLxvtKey);
+    const issueNumber = text(trace.SoLenhXuatVT || trace.soLenhXuatVT);
+    return defects.filter((defect) => {
+        const defectKey = text(defect.ManualLxvtKey || defect.manualLxvtKey);
+        return traceKey && defectKey ? traceKey === defectKey : text(defect.SoLenhXuatVT) === issueNumber;
+    });
 };
 
-const buildDoiTraSummaryWorkbook = ({ items = [], defects = [], receipts = [] } = {}) => {
+const COLUMN_WIDTHS = [5, 16, 12, 16, 10, 28, 11, 11, 14, 14, 10, 18, 13, 13, 18, 16, 11, 11, 11, 11, 11, 11, 22, 16, 12];
+const HEADER_ROW_1 = [
+    'TT', 'Đơn vị cắt/may/bao gói', 'Ngày nhập trả lỗi', 'Đơn hàng', 'Số lượng (bộ)',
+    'Tên VT, BTP, TP (chi tiết lỗi)', 'Đơn vị (cái, kg) chi tiết', 'Số lượng', 'LXVT',
+    'Lot sản xuất', 'Dấu tuần', 'TEM TRUY NGUYÊN', '', '', '', '',
+    'CÁC DẠNG LỖI - TRÁCH NHIỆM', '', '', '', '', '', '',
+    'SỐ LƯỢNG CẦN CẤP BỔ SUNG', ''
+];
+const HEADER_ROW_2 = [
+    '', '', '', '', '', '', '', '', '', '', '', 'Đơn vị tạo phôi', 'Ngày tạo phôi', 'Tổ SX',
+    'Công nhân SX', 'KCS', 'Do cắt tạo phôi', 'Lỗi dệt', 'Lỗi trắng', 'Lỗi do đơn vị may',
+    'Lỗi công nghệ', 'Lỗi khác', 'Đơn vị gây ra lỗi', 'Mã VT', 'Số mét'
+];
+
+const buildDoiTraSummaryWorkbook = ({ items = [], defects = [] } = {}) => {
     const defectsByPhoi = new Map();
     defects.forEach((defect) => {
         const key = Number(defect.PhoiId);
@@ -82,76 +91,77 @@ const buildDoiTraSummaryWorkbook = ({ items = [], defects = [], receipts = [] } 
         defectsByPhoi.get(key).push(defect);
     });
 
-    const summaryRows = items.map((item, index) => {
+    const dataRows = [];
+    const itemRanges = [];
+    items.forEach((item, itemIndex) => {
         const itemDefects = defectsByPhoi.get(Number(item.PhoiId)) || [];
-        const issueTraceabilities = parseIssueTraceabilities(item);
-        const issueNumbers = issueTraceabilities.length
-            ? [...new Set(issueTraceabilities.map((trace) => text(trace.SoLenhXuatVT)).filter(Boolean))]
-            : [...new Set(itemDefects.map((defect) => text(defect.SoLenhXuatVT)).filter(Boolean))];
-        return {
-            'STT': index + 1,
-            'Số phiếu': item.SoPhieu || '',
-            'Ngày lập': dateOrBlank(item.NgayLap),
-            'Kế hoạch': item.PlanNo || item.PlanID || '',
-            'Đơn hàng': item.OrderCode || '',
-            'Mã sản phẩm': item.ProductCode || '',
-            'Tên sản phẩm': item.ProductName || '',
-            'Công đoạn': [item.OperationCode, item.OperationName].filter(Boolean).join(' - '),
-            'Đơn vị sản xuất': productionDepartmentLabel(item),
-            'Mã vật tư': item.MaVatTu || '',
-            'Quy cách vật tư': item.QuyCachVatTu || '',
-            'Loại phôi': item.TenLoaiPhoi || '',
-            'Dao chặt': item.DaoChat || '',
-            'Số phôi': item.SoPhoi || '',
-            'Ký hiệu': item.KyHieu || '',
-            'Số lượng kiểm': numberOrBlank(item.SoLuongKiem),
-            'Số lượng lỗi': numberOrBlank(item.SoLuongPhoiLoi),
-            'Số bộ lỗi': numberOrBlank(item.SoLuongBoLoiSnapshot ?? defectiveSetQuantity(item)),
-            'ĐVT': item.TenDonViTinh || '',
-            'Số lượng đổi trả': numberOrBlank(item.SoLuongDoiTra),
-            'LXVT': issueNumbers.join('\n') || item.LenhXuatVatTu || '',
-            'Lot sản xuất': issueTraceabilities.length ? traceLines(issueTraceabilities, 'LotSanXuat') : item.ExpectedProductionLot || item.LotSanXuat || '',
-            'Dấu tuần': issueTraceabilities.length ? traceLines(issueTraceabilities, 'DauTuan') : item.DauTuan || '',
-            'Đơn vị tạo phôi': issueTraceabilities.length ? traceLines(issueTraceabilities, 'TenDonViTaoPhoi') : item.TenDonViTaoPhoi || '',
-            'Ngày tạo phôi': issueTraceabilities.length ? traceLines(issueTraceabilities, 'NgayTaoPhoi', dateText) : dateOrBlank(item.NgayTaoPhoi),
-            'Tổ sản xuất': issueTraceabilities.length ? traceLines(issueTraceabilities, 'ToSanXuat') : item.ToSanXuat || '',
-            'Công nhân sản xuất': issueTraceabilities.length ? traceLines(issueTraceabilities, 'CongNhanSanXuat') : item.CongNhanSanXuat || '',
-            'Chi tiết lỗi': itemDefects.map(defectLabel).filter(Boolean).join('\n'),
-            'Bộ phận/NCC gây lỗi': [...new Set(itemDefects.map(responsibleLabel).filter(Boolean))].join('\n'),
-            'Ghi chú phôi': item.GhiChu || ''
-        };
+        const traces = parseIssueTraceabilities(item);
+        const effectiveTraces = traces.length ? traces : [null];
+        const start = dataRows.length;
+        effectiveTraces.forEach((trace, traceIndex) => {
+            const scopedDefects = traceDefects(itemDefects, trace);
+            const errorQuantities = [0, 0, 0, 0, 0, 0];
+            scopedDefects.forEach((defect) => {
+                const index = errorColumn(defect);
+                errorQuantities[index] += Number(defect.SoLuongLoi || 0);
+            });
+            const responsibleUnits = [...new Set(scopedDefects.map(responsibleUnitLabel).filter(Boolean))];
+            const isFirst = traceIndex === 0;
+            const appliesB7 = item.RequiresB7 !== false && Number(item.RequiresB7) !== 0;
+            dataRows.push([
+                isFirst ? itemIndex + 1 : '', isFirst ? productionDepartmentLabel(item) : '',
+                isFirst ? dateText(item.NgayLap) : '', isFirst ? text(item.OrderCode) : '',
+                isFirst ? numberOrBlank(item.SoLuongBoLoiSnapshot ?? defectiveSetQuantity(item)) : '',
+                isFirst ? materialLabel(item) : '', isFirst ? text(item.TenDonViTinh) : '',
+                isFirst ? numberOrBlank(item.SoLuongDoiTra) : '',
+                text(trace?.SoLenhXuatVT || item.LenhXuatVatTu),
+                text(trace?.LotSanXuat || item.ExpectedProductionLot || item.LotSanXuat),
+                text(trace?.DauTuan || item.DauTuan), text(trace?.TenDonViTaoPhoi || item.TenDonViTaoPhoi),
+                dateText(trace?.NgayTaoPhoi || item.NgayTaoPhoi), text(trace?.ToSanXuat || item.ToSanXuat),
+                text(trace?.CongNhanSanXuat || item.CongNhanSanXuat), text(item.TenKcs),
+                ...errorQuantities.map((value) => value || ''), responsibleUnits.join('\n'),
+                isFirst ? (appliesB7 ? text(item.MaVatTu) : 'Không áp dụng') : '',
+                isFirst && appliesB7 ? numberOrBlank(item.SoLuongDoiTra) : ''
+            ]);
+        });
+        itemRanges.push({ start, end: dataRows.length - 1 });
     });
 
-    const receiptRows = receipts.map((item, index) => ({
-        'STT': index + 1,
-        'Số phiếu đổi phôi': item.SoPhieu || '',
-        'Số phiếu nhập BTP': item.SoPhieuNhapBtp || '',
-        'Mã BTP': item.MaBtp || '',
-        'Tên BTP': item.TenBtp || '',
-        'Lô sản xuất': item.SoLoSanXuat || '',
-        'Số lượng BTP lỗi': numberOrBlank(item.SoLuongBtpLoi),
-        'Kho nhập': item.TenKhoNhap || '',
-        'Quy trình sản xuất': item.TenQuyTrinhSanXuat || '',
-        'Trạng thái liên kết': item.TrangThai || '',
-        'Trạng thái ERP': Number(item.ErpTrangThai) === 0 ? 'Đang lập' : text(item.ErpTrangThai),
-        'Ngày tạo': dateOrBlank(item.CreatedAt)
-    }));
+    const rows = [
+        ['Z76', 'BẢNG TỔNG HỢP PHÔI, BTP LỖI ĐỔI TRẢ', ...Array(21).fill(''), 'Mã số: BM.01-HĐ.01-QT.03-B3', ''],
+        ['', '', ...Array(21).fill(''), 'Ngày hiệu lực: 18/09/2026', ''],
+        ['', '', ...Array(21).fill(''), 'Phiên bản: 01', ''],
+        [...Array(23).fill(''), 'Số TT:', ''], HEADER_ROW_1, HEADER_ROW_2, ...dataRows,
+        [...Array(23).fill(''), 'Ngày     tháng     năm', ''],
+        ['BÊN GIAO', ...Array(11).fill(''), 'BÊN NHẬN', ...Array(12).fill('')]
+    ];
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    const merges = [
+        { s: { r: 0, c: 0 }, e: { r: 2, c: 0 } }, { s: { r: 0, c: 1 }, e: { r: 2, c: 22 } },
+        { s: { r: 0, c: 23 }, e: { r: 0, c: 24 } }, { s: { r: 1, c: 23 }, e: { r: 1, c: 24 } },
+        { s: { r: 2, c: 23 }, e: { r: 2, c: 24 } },
+        ...Array.from({ length: 11 }, (_, c) => ({ s: { r: 4, c }, e: { r: 5, c } })),
+        { s: { r: 4, c: 11 }, e: { r: 4, c: 15 } }, { s: { r: 4, c: 16 }, e: { r: 4, c: 22 } },
+        { s: { r: 4, c: 23 }, e: { r: 4, c: 24 } }
+    ];
+    itemRanges.filter(({ start, end }) => end > start).forEach(({ start, end }) => {
+        [0, 1, 2, 3, 4, 5, 6, 7, 23, 24].forEach((c) => merges.push({ s: { r: 6 + start, c }, e: { r: 6 + end, c } }));
+    });
+    worksheet['!merges'] = merges;
+    worksheet['!cols'] = COLUMN_WIDTHS.map((wch) => ({ wch }));
+    worksheet['!rows'] = rows.map((_, index) => ({ hpt: index < 3 ? 22 : index === 4 || index === 5 ? 38 : 28 }));
+    worksheet['!autofilter'] = { ref: `A5:Y${Math.max(6, 6 + dataRows.length)}` };
+    worksheet['!freeze'] = { xSplit: 0, ySplit: 6 };
+    worksheet['!margins'] = { left: 0.2, right: 0.2, top: 0.2, bottom: 0.2, header: 0, footer: 0 };
+    worksheet['!pageSetup'] = { orientation: 'landscape', paperSize: 9, fitToWidth: 1, fitToHeight: 0 };
 
     const workbook = XLSX.utils.book_new();
-    const summarySheet = XLSX.utils.json_to_sheet(summaryRows, { cellDates: true, header: SUMMARY_HEADERS });
-    setColumnWidths(summarySheet, [6, 18, 12, 18, 16, 16, 32, 22, 25, 16, 32, 24, 16, 10, 12, 14, 14, 12, 10, 16, 16, 18, 12, 22, 14, 18, 28, 45, 35, 30]);
-    XLSX.utils.book_append_sheet(workbook, summarySheet, 'TongHopDoiPhoi');
-
-    const receiptSheet = XLSX.utils.json_to_sheet(receiptRows, { cellDates: true, header: RECEIPT_HEADERS });
-    setColumnWidths(receiptSheet, [6, 18, 22, 16, 32, 18, 18, 24, 28, 18, 16, 18]);
-    XLSX.utils.book_append_sheet(workbook, receiptSheet, 'PhieuNhapBTPLoi');
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'TongHopDoiPhoi');
     return workbook;
 };
 
 const writeDoiTraSummaryExcel = (data) => XLSX.write(buildDoiTraSummaryWorkbook(data), {
-    type: 'buffer',
-    bookType: 'xlsx',
-    cellDates: true
+    type: 'buffer', bookType: 'xlsx', cellDates: true
 });
 
 module.exports = { buildDoiTraSummaryWorkbook, writeDoiTraSummaryExcel };

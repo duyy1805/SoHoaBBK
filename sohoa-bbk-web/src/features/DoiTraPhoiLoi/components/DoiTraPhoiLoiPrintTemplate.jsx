@@ -65,12 +65,12 @@ const DoiTraPhoiLoiPrintTemplate = forwardRef(function DoiTraPhoiLoiPrintTemplat
         PhatHienTu: 'TRONG_SAN_XUAT',
         MaLoai: 'DOI_TRA_PHOI_LOI',
         MauPhieuVersion: 'V01',
-        MoTaChung: phoiItems.length
+        MoTaChung: String(kph.kphPhieu?.MoTaChiTietKph || '').trim() || (phoiItems.length
             ? [
                 `Đổi trả ${phoiItems.length} loại phôi lỗi theo kế hoạch ${plan.PlanNo || plan.PlanID || ''}.`,
                 responsibleDepartment ? `Bộ phận gây lỗi: ${responsibleDepartment}.` : ''
             ].filter(Boolean).join(' ')
-            : 'Chưa cập nhật danh sách phôi lỗi.',
+            : 'Chưa cập nhật danh sách phôi lỗi.'),
         PhieuKiemTbpXacNhanAt: phieu.TbpKcsConfirmedAt,
         PhieuKiemTbpXacNhanId: phieu.TbpKcsConfirmedBy,
         PhieuKiemTbpXacNhanName: phieu.TenTbpKcsXacNhan,
